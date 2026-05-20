@@ -10,7 +10,11 @@
 
 前端上传或确认后的文件不能乱动。没有用户明确要求时，不得修改前端页面、样式、资源文件或构建配置。
 
-指导文档、开发手册、阶段计划和本地测试记录默认放在仓库外的 `C:\Users\15780\Documents\GitHub\beiming-official-website-local-docs`。不得把这类本地文档放入 `docs/`，也不得上传到仓库。仓库内 `.local-docs/` 仅作为已忽略的临时兜底目录，不作为默认位置。
+指导文档、开发手册、阶段计划、本地测试记录、AI 对话交接文档和临时分析文档，默认只能放在仓库外的 `C:\Users\15780\Documents\GitHub\beiming-official-website-local-docs`。不得把这类本地文档放入仓库内，也不得上传到 GitHub。
+
+仓库内的 `docs/` 只允许保留正式项目文档，例如需求文档、系统设计文档、接口契约和对外说明。新增 `docs/` 文件前必须先确认它是正式要上传的文档，不是本地开发指导。
+
+仓库内 `.local-docs/` 仅作为已忽略的临时兜底目录，不作为默认位置。发现本地开发文档误放进仓库目录时，应移动到 `C:\Users\15780\Documents\GitHub\beiming-official-website-local-docs`，并确认 `git status` 没有把它列为待提交文件。
 
 禁止批量删除文件或目录。不要使用 `del /s`、`rd /s`、`rmdir /s`、`Remove-Item -Recurse`、`rm -rf`。需要删除文件时，只能一次删除一个明确路径的文件。需要批量删除时，必须停止并询问用户。
 
