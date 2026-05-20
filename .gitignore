@@ -1,0 +1,17 @@
+.idea/
+.local-docs/
+node_modules/
+dist/
+target/
+backend/*/target/
+
+.env
+.env.local
+.env.*.local
+
+*.log
+*.tmp
+tmp-*/
+
+.DS_Store
+Thumbs.db
