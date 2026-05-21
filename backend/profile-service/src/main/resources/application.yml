@@ -1,5 +1,0 @@
-spring:
-  application:
-    name: beiming-profile-service
-server:
-  port: 8082
