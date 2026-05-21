@@ -334,6 +334,8 @@ class AuthStore {
     private final Map<String, Integer> loginFailures = new ConcurrentHashMap<>();
     private final Map<String, Integer> registerAttempts = new ConcurrentHashMap<>();
     private final Map<String, Integer> passwordResetAttempts = new ConcurrentHashMap<>();
+    private boolean failNextSessionCreation;
+    private boolean failNextAudit;
 
     synchronized void reset() {
         usersById.clear();
@@ -349,6 +351,8 @@ class AuthStore {
         loginFailures.clear();
         registerAttempts.clear();
         passwordResetAttempts.clear();
+        failNextSessionCreation = false;
+        failNextAudit = false;
     }
 
     synchronized void seedOwner(String username, String password) {
@@ -458,6 +462,18 @@ class AuthStore {
         registerAttempts.clear();
     }
 
+    synchronized boolean userExists(String username) {
+        return userIdByUsername.containsKey(username.toLowerCase(Locale.ROOT));
+    }
+
+    synchronized void failNextSessionCreation() {
+        failNextSessionCreation = true;
+    }
+
+    synchronized void failNextAudit() {
+        failNextAudit = true;
+    }
+
     synchronized Map<String, Object> register(String rawCode, String username, String password, String displayName, String idempotencyKey) {
         int attempts = registerAttempts.merge("global", 1, Integer::sum);
         if (attempts > 5) {
@@ -487,20 +503,36 @@ class AuthStore {
             throw new ApiException(43114, HttpStatus.CONFLICT, "invitation exhausted");
         }
         String id = "usr_" + UUID.randomUUID();
+        int beforeUsedCount = invitation.usedCount;
+        int beforeUsageSize = invitation.usageRecords.size();
         UserAccount user = new UserAccount(id, username, displayName, encoder.encode(password), invitation.boundRoles, invitation.boundPermissions, "PENDING_PROFILE", Instant.now(), Instant.now());
-        usersById.put(id, user);
-        userIdByUsername.put(username.toLowerCase(Locale.ROOT), id);
-        invitation.usedCount++;
-        invitation.usageRecords.add(Map.of("id", "use_" + UUID.randomUUID(), "invitationId", invitation.id, "usedByUserId", id, "usedByUsername", username, "usedAt", Instant.now().toString(), "sourceIp", "127.0.0.1", "requestId", RequestIdFilter.currentRequestId()));
-        audit("AUTH_REGISTER_SUCCESS", null, user, "SUCCESS", null, null, null);
-        if ("ADMIN".equals(invitation.type)) {
-            audit("AUTH_ADMIN_INVITATION_USED", null, user, "SUCCESS", null, null, null);
+        try {
+            usersById.put(id, user);
+            userIdByUsername.put(username.toLowerCase(Locale.ROOT), id);
+            invitation.usedCount++;
+            invitation.usageRecords.add(Map.of("id", "use_" + UUID.randomUUID(), "invitationId", invitation.id, "usedByUserId", id, "usedByUsername", username, "usedAt", Instant.now().toString(), "sourceIp", "127.0.0.1", "requestId", RequestIdFilter.currentRequestId()));
+            try {
+                audit("AUTH_REGISTER_SUCCESS", null, user, "SUCCESS", null, null, null);
+                if ("ADMIN".equals(invitation.type)) {
+                    audit("AUTH_ADMIN_INVITATION_USED", null, user, "SUCCESS", null, null, null);
+                }
+            } catch (AuditWriteException exception) {
+                audits.add(new AuditRecord("aud_" + UUID.randomUUID(), RequestIdFilter.currentRequestId(), null, null, user.id, "AUTH_AUDIT_COMPENSATION_RECORDED", null, null, null, "SUCCESS", exception.getMessage(), Instant.now()));
+            }
+            Map<String, Object> payload = sessionPayload(user);
+            if (idempotencyKey != null) {
+                registerIdempotency.put(idempotencyKey, new IdempotencyRecord(signature, payload, null));
+            }
+            return payload;
+        } catch (RuntimeException exception) {
+            usersById.remove(id);
+            userIdByUsername.remove(username.toLowerCase(Locale.ROOT));
+            invitation.usedCount = beforeUsedCount;
+            while (invitation.usageRecords.size() > beforeUsageSize) {
+                invitation.usageRecords.remove(invitation.usageRecords.size() - 1);
+            }
+            throw exception;
         }
-        Map<String, Object> payload = sessionPayload(user);
-        if (idempotencyKey != null) {
-            registerIdempotency.put(idempotencyKey, new IdempotencyRecord(signature, payload, null));
-        }
-        return payload;
     }
 
     synchronized Map<String, Object> login(String username, String password, String idempotencyKey) {
@@ -657,6 +689,8 @@ class AuthStore {
             throw new ApiException(43111, HttpStatus.CONFLICT, "display name exists");
         }
         String before = state(target);
+        String oldDisplayName = target.displayName;
+        String oldStatus = target.status;
         if (displayName != null) {
             target.displayName = displayName;
         }
@@ -667,7 +701,13 @@ class AuthStore {
             }
         }
         target.updatedAt = Instant.now();
-        audit("AUTH_USER_UPDATED", actor, target, "SUCCESS", reason, before, state(target));
+        try {
+            audit("AUTH_USER_UPDATED", actor, target, "SUCCESS", reason, before, state(target));
+        } catch (RuntimeException exception) {
+            target.displayName = oldDisplayName;
+            target.status = oldStatus;
+            throw exception;
+        }
         return userSummary(target);
     }
 
@@ -841,6 +881,10 @@ class AuthStore {
     }
 
     private Map<String, Object> sessionPayload(UserAccount user) {
+        if (failNextSessionCreation) {
+            failNextSessionCreation = false;
+            throw new SessionCreationException("session creation failed");
+        }
         String token = "ses_" + UUID.randomUUID();
         Instant expiresAt = Instant.now().plus(2, ChronoUnit.HOURS);
         sessions.put(token, new SessionRecord(token, user.id, expiresAt));
@@ -920,6 +964,10 @@ class AuthStore {
     }
 
     private void audit(String action, UserAccount actor, UserAccount target, String result, String reason, String before, String after) {
+        if (failNextAudit) {
+            failNextAudit = false;
+            throw new AuditWriteException("audit write failed");
+        }
         audits.add(new AuditRecord("aud_" + UUID.randomUUID(), RequestIdFilter.currentRequestId(), actor == null ? null : actor.id, actor == null ? null : String.join(",", actor.roles), target == null ? null : target.id, action, reason, before, after, result, null, Instant.now()));
     }
 
@@ -962,7 +1010,8 @@ class AuthExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     ResponseEntity<Map<String, Object>> any(Exception exception) {
-        Map<String, Object> body = AuthController.envelope(50000, "internal server error", null);
+        int code = exception instanceof AuditWriteException || exception instanceof SessionCreationException ? 51100 : 50000;
+        Map<String, Object> body = AuthController.envelope(code, "internal server error", null);
         body.put("requestId", RequestIdFilter.currentRequestId());
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(body);
     }
@@ -1011,6 +1060,18 @@ class ApiException extends RuntimeException {
 
     static ApiException badRequest(String field) {
         return new ApiException(40001, HttpStatus.BAD_REQUEST, "invalid request", field);
+    }
+}
+
+class AuditWriteException extends RuntimeException {
+    AuditWriteException(String message) {
+        super(message);
+    }
+}
+
+class SessionCreationException extends RuntimeException {
+    SessionCreationException(String message) {
+        super(message);
     }
 }
 

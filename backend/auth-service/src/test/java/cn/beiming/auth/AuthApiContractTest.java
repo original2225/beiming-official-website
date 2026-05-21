@@ -33,6 +33,27 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 class AuthApiContractTest {
+    private static final String TEST_DOCUMENT_COVERAGE = """
+            AUTH-COM-001 AUTH-COM-002 AUTH-COM-003 AUTH-COM-004 AUTH-COM-005 AUTH-COM-006 AUTH-COM-007 AUTH-COM-008 AUTH-COM-009 AUTH-COM-010
+            AUTH-REG-001 AUTH-REG-002 AUTH-REG-003 AUTH-REG-004 AUTH-REG-005 AUTH-REG-006 AUTH-REG-007 AUTH-REG-008 AUTH-REG-009 AUTH-REG-010 AUTH-REG-011 AUTH-REG-012 AUTH-REG-013 AUTH-REG-014 AUTH-REG-015 AUTH-REG-016 AUTH-REG-017 AUTH-REG-018 AUTH-REG-019
+            AUTH-LOGIN-001 AUTH-LOGIN-002 AUTH-LOGIN-003 AUTH-LOGIN-004 AUTH-LOGIN-005 AUTH-LOGIN-006 AUTH-LOGIN-007 AUTH-LOGIN-008 AUTH-LOGIN-009
+            AUTH-LOGOUT-001 AUTH-LOGOUT-002 AUTH-LOGOUT-003 AUTH-LOGOUT-004
+            AUTH-ME-001 AUTH-ME-002 AUTH-ME-003 AUTH-ME-004 AUTH-ME-005
+            AUTH-VERIFY-001 AUTH-VERIFY-002
+            AUTH-PWD-001 AUTH-PWD-002 AUTH-PWD-003 AUTH-PWD-004 AUTH-PWD-005 AUTH-PWD-006 AUTH-PWD-007 AUTH-PWD-008 AUTH-PWD-009 AUTH-PWD-010 AUTH-PWD-011 AUTH-PWD-012 AUTH-PWD-013
+            AUTH-MC-001 AUTH-MC-002 AUTH-MC-003 AUTH-MC-004 AUTH-MC-005 AUTH-MC-006 AUTH-MC-007 AUTH-MC-008 AUTH-MC-009 AUTH-MC-010 AUTH-MC-011
+            AUTH-USER-LIST-001 AUTH-USER-LIST-002 AUTH-USER-LIST-003 AUTH-USER-LIST-004 AUTH-USER-LIST-005 AUTH-USER-LIST-006 AUTH-USER-LIST-007
+            AUTH-USER-DETAIL-001 AUTH-USER-DETAIL-002 AUTH-USER-DETAIL-003
+            AUTH-USER-PATCH-001 AUTH-USER-PATCH-002 AUTH-USER-PATCH-003 AUTH-USER-PATCH-004 AUTH-USER-PATCH-005 AUTH-USER-PATCH-006 AUTH-USER-PATCH-007 AUTH-USER-PATCH-008 AUTH-USER-PATCH-009
+            AUTH-ROLE-001 AUTH-ROLE-002 AUTH-ROLE-003 AUTH-ROLE-004 AUTH-ROLE-005 AUTH-ROLE-006 AUTH-ROLE-007 AUTH-ROLE-008
+            AUTH-INV-LIST-001 AUTH-INV-LIST-002 AUTH-INV-LIST-003 AUTH-INV-LIST-004 AUTH-INV-LIST-005 AUTH-INV-LIST-006
+            AUTH-INV-CREATE-001 AUTH-INV-CREATE-002 AUTH-INV-CREATE-003 AUTH-INV-CREATE-004 AUTH-INV-CREATE-005 AUTH-INV-CREATE-006 AUTH-INV-CREATE-007 AUTH-INV-CREATE-008 AUTH-INV-CREATE-009 AUTH-INV-CREATE-010 AUTH-INV-CREATE-011
+            AUTH-INV-DISABLE-001 AUTH-INV-DISABLE-002 AUTH-INV-DISABLE-003 AUTH-INV-DISABLE-004 AUTH-INV-DISABLE-005 AUTH-INV-DISABLE-006
+            AUTH-INV-USAGE-001 AUTH-INV-USAGE-002 AUTH-INV-USAGE-003 AUTH-INV-USAGE-004
+            AUTH-STATE-001 AUTH-STATE-002 AUTH-STATE-003 AUTH-STATE-004 AUTH-STATE-005 AUTH-STATE-006 AUTH-STATE-007 AUTH-STATE-008 AUTH-STATE-009
+            AUTH-SEC-001 AUTH-SEC-002 AUTH-SEC-003 AUTH-SEC-004 AUTH-SEC-005 AUTH-SEC-006 AUTH-SEC-007
+            """;
+
     @Autowired
     MockMvc mvc;
 
@@ -137,6 +158,20 @@ class AuthApiContractTest {
                 .andExpect(status().isOk());
 
         assertThat(store.latestAuditRequestId("AUTH_USER_UPDATED")).isEqualTo("req-audit-check");
+    }
+
+    @Test
+    @DisplayName("docs/tests-auth.md every case id has an automated coverage mapping")
+    void everyDocumentedCaseHasCoverageMapping() throws Exception {
+        String testsDoc = java.nio.file.Files.readString(java.nio.file.Path.of("..", "..", "docs", "tests-auth.md"));
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("AUTH-[A-Z]+(?:-[A-Z]+)*-[0-9]{3}");
+        Set<String> documented = pattern.matcher(testsDoc).results()
+                .map(java.util.regex.MatchResult::group)
+                .collect(java.util.stream.Collectors.toCollection(java.util.TreeSet::new));
+        Set<String> mapped = pattern.matcher(TEST_DOCUMENT_COVERAGE).results()
+                .map(java.util.regex.MatchResult::group)
+                .collect(java.util.stream.Collectors.toCollection(java.util.TreeSet::new));
+        assertThat(mapped).containsExactlyElementsOf(documented);
     }
 
     @Test
@@ -278,6 +313,18 @@ class AuthApiContractTest {
         assertThat(successCount.get()).isEqualTo(1);
         assertThat(exhaustedCount.get()).isEqualTo(1);
         assertThat(store.invitationUsedCount("LAST-CODE-1")).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("AUTH-REG-017 rolls back user and invitation state when session creation fails")
+    void registerRollsBackWhenSessionCreationFails() throws Exception {
+        int beforeUsedCount = store.invitationUsedCount("PLAYER-CODE-1");
+        store.failNextSessionCreation();
+
+        performJson(post("/api/v1/auth/register"), registerBody("PLAYER-CODE-1", "rollback_user"), 500, 51100);
+
+        assertThat(store.userExists("rollback_user")).isFalse();
+        assertThat(store.invitationUsedCount("PLAYER-CODE-1")).isEqualTo(beforeUsedCount);
     }
 
     @Test
@@ -433,6 +480,14 @@ class AuthApiContractTest {
         String validToken = store.latestPasswordResetToken("user");
         performJson(post("/api/v1/auth/password-reset/confirm"), Map.of("resetToken", validToken, "newPassword", "short"), 400, 40001);
         performJson(post("/api/v1/auth/password-reset/confirm"), Map.of("resetToken", validToken, "newPassword", "Password12345"), 409, 43001);
+    }
+
+    @Test
+    @DisplayName("AUTH-PWD-013 writes failure audit for expired password reset token")
+    void passwordResetExpiredTokenWritesFailureAudit() throws Exception {
+        String expiredToken = store.createExpiredPasswordResetToken("user");
+        performJson(post("/api/v1/auth/password-reset/confirm"), Map.of("resetToken", expiredToken, "newPassword", "NewPassword12345"), 401, 41104);
+        assertThat(store.auditActions()).contains("AUTH_PASSWORD_RESET_FAILED");
     }
 
     @Test
@@ -768,6 +823,12 @@ class AuthApiContractTest {
                         .param("page", "0"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(40002));
+
+        String adminToken = login("admin");
+        mvc.perform(get("/api/v1/auth/admin/invitations/" + store.invitationId("PLAYER-CODE-1") + "/usage-records")
+                        .header("Authorization", bearer(adminToken)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(42001));
     }
 
     @Test
@@ -796,6 +857,32 @@ class AuthApiContractTest {
         performJson(post("/api/v1/auth/register"), registerBody("PLAYER-CODE-1", "secret_user"), 201);
         assertThat(store.passwordHash("secret_user")).doesNotContain("Password12345");
         assertThat(store.invitationStoredSecret("PLAYER-CODE-1")).doesNotContain("PLAYER-CODE-1");
+    }
+
+    @Test
+    @DisplayName("AUTH-SEC-005 backend write rolls back when audit fails")
+    void backendWriteRollsBackWhenAuditFails() throws Exception {
+        String ownerToken = login("owner");
+        String userId = store.userId("user");
+        store.failNextAudit();
+
+        performJson(patch("/api/v1/auth/admin/users/" + userId).header("Authorization", bearer(ownerToken)), Map.of(
+                "displayName", "Audit Fail User",
+                "reason", "simulate audit failure"
+        ), 500, 51100);
+
+        assertThat(store.displayName("user")).isEqualTo("user");
+    }
+
+    @Test
+    @DisplayName("AUTH-SEC-006 ordinary register succeeds with compensation when audit fails")
+    void ordinaryRegisterKeepsCompensationWhenAuditFails() throws Exception {
+        store.failNextAudit();
+
+        performJson(post("/api/v1/auth/register"), registerBody("PLAYER-CODE-1", "audit_comp_user"), 201);
+
+        assertThat(store.userExists("audit_comp_user")).isTrue();
+        assertThat(store.auditActions()).contains("AUTH_AUDIT_COMPENSATION_RECORDED");
     }
 
     private String login(String username) throws Exception {
