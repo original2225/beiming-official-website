@@ -1,5 +1,6 @@
 .idea/
 .local-docs/
+localdocs/
 node_modules/
 dist/
 target/
