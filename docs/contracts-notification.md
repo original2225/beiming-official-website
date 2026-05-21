@@ -193,11 +193,13 @@ P0 只实现站内通知。邮件、短信、QQ、Oopz 和游戏内消息只保�
 | 后台按模板创建通知 | POST | `/api/v1/notifications/admin/messages/from-template` | 是 | `ADMIN` 或 `OWNER` | MEDIUM |
 | 模板列表 | GET | `/api/v1/notifications/admin/templates` | 是 | `HELPER`、`ADMIN` 或 `OWNER` | LOW |
 | 模板详情 | GET | `/api/v1/notifications/admin/templates/{templateId}` | 是 | `HELPER`、`ADMIN` 或 `OWNER` | LOW |
+| 模板预览 | POST | `/api/v1/notifications/admin/templates/preview` | 是 | `HELPER`、`ADMIN` 或 `OWNER` | LOW |
 | 创建模板 | POST | `/api/v1/notifications/admin/templates` | 是 | `ADMIN` 或 `OWNER` | MEDIUM |
 | 修改模板 | PATCH | `/api/v1/notifications/admin/templates/{templateId}` | 是 | `ADMIN` 或 `OWNER` | MEDIUM |
 | 禁用模板 | PATCH | `/api/v1/notifications/admin/templates/{templateId}/disable` | 是 | `ADMIN` 或 `OWNER` | MEDIUM |
 | 启用模板 | PATCH | `/api/v1/notifications/admin/templates/{templateId}/enable` | 是 | `ADMIN` 或 `OWNER` | MEDIUM |
 | 通知审计列表 | GET | `/api/v1/notifications/admin/messages/{notificationId}/audit-logs` | 是 | `ADMIN` 或 `OWNER` | LOW |
+| notification 自检摘要 | GET | `/api/v1/notifications/admin/ops/summary` | 是 | `ADMIN` 或 `OWNER` | LOW |
 
 ## 当前用户接口
 
@@ -406,6 +408,43 @@ P0 只实现站内通知。邮件、短信、QQ、Oopz 和游戏内消息只保�
 
 成功响应 HTTP `200`，`data` 为 `NotificationTemplate`。模板不存在返回 `43301`。
 
+### 模板预览
+
+`POST /api/v1/notifications/admin/templates/preview`
+
+请求字段：
+
+| 字段 | 类型 | 必填 | 规则 |
+| --- | --- | --- | --- |
+| `templateCode` | string | 是 | 已存在模板编码。允许预览启用或禁用模板。 |
+| `variables` | object | 是 | 模板变量键值。值统一按字符串渲染，单个值最多 500 位。 |
+
+成功响应 HTTP `200`。
+
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "templateId": "tpl_xxx",
+    "templateCode": "WHITELIST_APPROVED",
+    "templateVersion": 2,
+    "templateStatus": "ENABLED",
+    "sendable": true,
+    "title": "白名单审核已通过",
+    "body": "Steve，你的白名单审核已通过。",
+    "variables": {
+      "playerName": "Steve"
+    },
+    "createdNotification": false
+  }
+}
+```
+
+业务规则：模板预览只渲染模板，不创建通知、不创建收件人、不更新未读数、不写投递审计、不修改模板版本。模板不存在返回 `43301`。缺少必填变量、变量名非法或提交未定义变量返回 `43313`。渲染后仍存在未解析变量，或标题正文超出投递字段长度，返回 `43314`。禁用模板允许预览，但 `sendable` 必须为 `false`，按模板投递仍返回 `43312`。
+
+权限规则：`HELPER`、`ADMIN` 和 `OWNER` 可访问。`USER` 返回 `42001`。未登录返回 `41000`。
+
 ### 创建模板
 
 `POST /api/v1/notifications/admin/templates`
@@ -493,6 +532,44 @@ P0 只实现站内通知。邮件、短信、QQ、Oopz 和游戏内消息只保�
 
 权限规则：只有 `ADMIN` 和 `OWNER` 可访问。`HELPER` 可读后台通知列表和详情，但不能读取审计列表。通知不存在返回 `43300`。审计日志不得通过 notification API 删除。
 
+## 运维自检接口
+
+### notification 自检摘要
+
+`GET /api/v1/notifications/admin/ops/summary`
+
+成功响应 HTTP `200`。
+
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "service": "notification",
+    "storageMode": "IN_MEMORY",
+    "authMode": "TEST_STUB",
+    "messagesTotal": 12,
+    "templatesTotal": 4,
+    "auditsTotal": 20,
+    "recipientsTotal": 18,
+    "unreadTotal": 6,
+    "archivedTotal": 1,
+    "deliveredTotal": 18,
+    "failedTotal": 0,
+    "pendingExternalDeliveries": 0,
+    "lastAuditAt": "2026-05-22T00:00:00Z",
+    "warnings": [
+      "P0_IN_MEMORY_STORAGE",
+      "P0_AUTH_STUB"
+    ]
+  }
+}
+```
+
+业务规则：自检摘要用于后台确认 notification 当前运行模式、数据规模、投递状态和生产化缺口。P0 `storageMode` 固定为 `IN_MEMORY`，`authMode` 固定为 `TEST_STUB`，`pendingExternalDeliveries` 固定为 `0`。摘要不得返回 token、请求头、用户敏感字段、通知正文、模板正文或审计原因。数据读取失败返回 `51300`，不得伪造健康。
+
+权限规则：只有 `ADMIN` 和 `OWNER` 可访问。`HELPER`、`USER` 返回 `42001`。未登录返回 `41000`。
+
 ## 状态、幂等和并发
 
 收件人状态流转为 `UNREAD` 到 `READ`，`UNREAD` 或 `READ` 到 `ARCHIVED`。`ARCHIVED` 为当前用户视角终态，不允许再标记已读。重复已读和重复归档保持幂等。
@@ -521,4 +598,4 @@ P0 只实现站内通知。邮件、短信、QQ、Oopz 和游戏内消息只保�
 
 `notification` API 文档按 `docs/contracts-notification.md` 独立存在，并由 `.local-docs/tests-notification.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级和审计要求。
 
-`notification` 完成时必须满足以下条件：全部接口按本文档实现；当前用户接口只能访问当前用户自己的通知；未读数准确且失败时不伪造 0；后台接口按角色限制；创建通知和模板写操作全有或全无；模板变量校验和渲染失败可测试；auth 适配不直接读取 auth 实现；`.local-docs/tests-notification.md` 中全部测试用例都有对应自动化验证；未实现时自动化测试必须先失败；实现后 notification 全部测试通过；auth 和 profile 前序服务回归测试通过；没有修改前序服务稳定接口。
+`notification` 完成时必须满足以下条件：全部接口按本文档实现；当前用户接口只能访问当前用户自己的通知；未读数准确且失败时不伪造 0；后台接口按角色限制；创建通知和模板写操作全有或全无；模板变量校验、模板预览和渲染失败可测试；自检摘要能暴露当前运行模式但不泄露敏感数据；auth 适配不直接读取 auth 实现；`.local-docs/tests-notification.md` 中全部测试用例都有对应自动化验证；未实现时自动化测试必须先失败；实现后 notification 全部测试通过；auth 和 profile 前序服务回归测试通过；没有修改前序服务稳定接口。
