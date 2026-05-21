@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc -b && vite build",
+    "test:e2e": "node tests/e2e-auth-console.mjs",
+    "test:e2e:full": "node tests/e2e-auth-console.mjs --with-backend",
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {
@@ -18,6 +20,7 @@
   },
   "devDependencies": {
     "@types/react": "^18.3.12",
-    "@types/react-dom": "^18.3.1"
+    "@types/react-dom": "^18.3.1",
+    "playwright-core": "^1.49.0"
   }
 }

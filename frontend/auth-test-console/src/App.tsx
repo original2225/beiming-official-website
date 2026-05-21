@@ -23,7 +23,8 @@ import {
   Users
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import type { FormEvent, ReactNode } from "react";
+import type { FormEvent, ReactNode, RefObject } from "react";
+import { useRef } from "react";
 
 type ApiEnvelope<T = unknown> = {
   code: number;
@@ -86,6 +87,7 @@ type CreateInvitationResult = {
 };
 
 type ServiceStatus = "checking" | "online" | "offline";
+type SectionKey = "overview" | "account" | "session" | "invitation" | "logs";
 
 const API_BASE = "http://localhost:8101/api/v1/auth";
 const storedToken = localStorage.getItem("beiming.authTestConsole.token") ?? "";
@@ -103,12 +105,18 @@ const formatTime = (value?: string | null) => {
 };
 
 export default function App() {
+  const overviewRef = useRef<HTMLElement | null>(null);
+  const accountRef = useRef<HTMLElement | null>(null);
+  const sessionRef = useRef<HTMLElement | null>(null);
+  const invitationRef = useRef<HTMLElement | null>(null);
+  const logsRef = useRef<HTMLElement | null>(null);
   const [token, setToken] = useState(storedToken);
   const [currentUser, setCurrentUser] = useState<UserSummary | null>(null);
   const [status, setStatus] = useState<ServiceStatus>("checking");
   const [lastResponse, setLastResponse] = useState<ApiEnvelope | null>(null);
   const [lastAction, setLastAction] = useState("等待请求");
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [activeSection, setActiveSection] = useState<SectionKey>("overview");
   const [registerForm, setRegisterForm] = useState({
     invitationCode: "PLAYER-CODE-1",
     username: `tester_${Date.now().toString().slice(-5)}`,
@@ -287,6 +295,18 @@ export default function App() {
 
   const responseCode = lastResponse ? String(lastResponse.code) : "NA";
   const online = status === "online";
+  const navItems: Array<{ key: SectionKey; label: string; icon: ReactNode; ref: RefObject<HTMLElement | null> }> = [
+    { key: "overview", label: "概览", icon: <Boxes size={19} />, ref: overviewRef },
+    { key: "account", label: "账号", icon: <Users size={19} />, ref: accountRef },
+    { key: "session", label: "会话", icon: <ShieldCheck size={19} />, ref: sessionRef },
+    { key: "invitation", label: "邀请码", icon: <Ticket size={19} />, ref: invitationRef },
+    { key: "logs", label: "日志", icon: <Code2 size={19} />, ref: logsRef }
+  ];
+
+  function goToSection(key: SectionKey, sectionRef: RefObject<HTMLElement | null>) {
+    setActiveSection(key);
+    sectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 
   return (
     <main>
@@ -302,26 +322,18 @@ export default function App() {
         </div>
 
         <nav className="tabs" aria-label="测试台导航">
-          <button className="tab active">
-            <Boxes size={19} />
-            概览
-          </button>
-          <button className="tab">
-            <Users size={19} />
-            账号
-          </button>
-          <button className="tab">
-            <ShieldCheck size={19} />
-            会话
-          </button>
-          <button className="tab">
-            <Ticket size={19} />
-            邀请码
-          </button>
-          <button className="tab">
-            <Code2 size={19} />
-            日志
-          </button>
+          {navItems.map((item) => (
+            <button
+              className={`tab ${activeSection === item.key ? "active" : ""}`}
+              type="button"
+              aria-current={activeSection === item.key ? "page" : undefined}
+              onClick={() => goToSection(item.key, item.ref)}
+              key={item.key}
+            >
+              {item.icon}
+              {item.label}
+            </button>
+          ))}
         </nav>
 
         <label className="search">
@@ -344,7 +356,7 @@ export default function App() {
       </header>
 
       <section className="shell">
-        <section className="hero">
+        <section className="hero" ref={overviewRef}>
           <div className="hero-copy">
             <h1>统一测试注册、登录与会话校验</h1>
             <p>当前节点：Auth-8101 - localhost。测试台只负责调用 auth 契约接口。</p>
@@ -360,9 +372,9 @@ export default function App() {
             </div>
           </div>
 
-          <aside className="status-card">
+          <aside className="status-card" ref={sessionRef}>
             <div className="status-head">
-              <span>北冥认证器</span>
+              <h2>北冥认证器</h2>
               <b className={online ? "pill online" : status === "checking" ? "pill checking" : "pill offline"}>
                 {status.toUpperCase()}
               </b>
@@ -385,7 +397,7 @@ export default function App() {
         </section>
 
         <section className="workspace">
-          <div className="panel auth-panel">
+          <section className="panel auth-panel" ref={accountRef}>
             <div className="panel-title">
               <Network size={22} />
               <h2>接口操作</h2>
@@ -449,7 +461,7 @@ export default function App() {
               </button>
             </div>
 
-            <section className="invite-console">
+            <section className="invite-console" ref={invitationRef}>
               <div className="panel-title">
                 <Ticket size={22} />
                 <h2>邀请码管理</h2>
@@ -509,9 +521,9 @@ export default function App() {
                 </div>
               </div>
             </section>
-          </div>
+          </section>
 
-          <aside className="panel response-panel">
+          <aside className="panel response-panel" ref={logsRef}>
             <div className="panel-title">
               <Activity size={22} />
               <h2>最近事件</h2>

@@ -299,9 +299,11 @@ button:disabled {
   gap: 16px;
 }
 
-.status-head span {
+.status-head h2 {
+  margin: 0;
   color: #53627c;
   font-size: 18px;
+  font-weight: 500;
 }
 
 .pill {
