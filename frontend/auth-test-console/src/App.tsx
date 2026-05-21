@@ -88,9 +88,16 @@ type CreateInvitationResult = {
 
 type ServiceStatus = "checking" | "online" | "offline";
 type SectionKey = "overview" | "account" | "session" | "invitation" | "logs";
+type InvitationType = "PLAYER" | "ADMIN";
 
 const API_BASE = "http://localhost:8101/api/v1/auth";
 const storedToken = localStorage.getItem("beiming.authTestConsole.token") ?? "";
+const BASE_ROLES = ["OWNER", "ADMIN", "HELPER", "USER"];
+const PERMISSIONS = ["NODE_READ", "NODE_WRITE", "CONTAINER_OPERATE", "VM_OPERATE", "FILE_MANAGE", "TERMINAL_ACCESS", "HIGH_RISK_APPROVE"];
+const INVITATION_ROLE_OPTIONS: Record<InvitationType, string[]> = {
+  PLAYER: ["USER"],
+  ADMIN: ["ADMIN", "HELPER"]
+};
 
 const formatTime = (value?: string | null) => {
   if (!value) {
@@ -133,9 +140,9 @@ export default function App() {
     verificationCode: "local"
   });
   const [invitationForm, setInvitationForm] = useState({
-    type: "PLAYER",
-    boundRoles: "USER",
-    boundPermissions: "",
+    type: "PLAYER" as InvitationType,
+    boundRole: "USER",
+    boundPermissions: [] as string[],
     maxUses: "3",
     reason: "local auth test"
   });
@@ -144,6 +151,7 @@ export default function App() {
 
   const roleLabel = useMemo(() => currentUser?.roles.join(" / ") ?? "未登录", [currentUser]);
   const tokenPreview = token ? `${token.slice(0, 10)}...${token.slice(-6)}` : "空";
+  const invitationRoleOptions = INVITATION_ROLE_OPTIONS[invitationForm.type];
 
   useEffect(() => {
     localStorage.setItem("beiming.authTestConsole.token", token);
@@ -269,8 +277,8 @@ export default function App() {
       auth: true,
       body: {
         type: invitationForm.type,
-        boundRoles: csvValues(invitationForm.boundRoles),
-        boundPermissions: csvValues(invitationForm.boundPermissions),
+        boundRoles: [invitationForm.boundRole],
+        boundPermissions: invitationForm.type === "ADMIN" ? invitationForm.boundPermissions : [],
         maxUses: Number(invitationForm.maxUses),
         reason: invitationForm.reason,
         idempotencyKey: `ui-${Date.now()}`
@@ -306,6 +314,16 @@ export default function App() {
   function goToSection(key: SectionKey, sectionRef: RefObject<HTMLElement | null>) {
     setActiveSection(key);
     sectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function changeInvitationType(type: string) {
+    const nextType = type as InvitationType;
+    setInvitationForm({
+      ...invitationForm,
+      type: nextType,
+      boundRole: INVITATION_ROLE_OPTIONS[nextType][0],
+      boundPermissions: []
+    });
   }
 
   return (
@@ -349,7 +367,7 @@ export default function App() {
         <div className="operator">
           <div className="avatar">北</div>
           <div>
-            <strong>{currentUser?.displayName ?? "测试管理员"}</strong>
+            <strong>{currentUser?.displayName ?? "未登录用户"}</strong>
             <span>{roleLabel}</span>
           </div>
         </div>
@@ -392,7 +410,7 @@ export default function App() {
         <section className="metrics">
           <InfoCard icon={<Server />} label="服务端口" value="8101" hint="Spring Boot" />
           <InfoCard icon={<BadgeCheck />} label="会话状态" value={token ? "已持有" : "未登录"} hint={tokenPreview} />
-          <InfoCard icon={<UserRound />} label="当前用户" value={currentUser?.username ?? "Guest"} hint={currentUser?.status ?? "等待登录"} />
+          <InfoCard icon={<UserRound />} label="当前用户" value={currentUser?.username ?? "未登录"} hint={currentUser?.status ?? "等待登录"} />
           <InfoCard icon={<Database />} label="最近响应" value={responseCode} hint={lastAction} />
         </section>
 
@@ -467,16 +485,38 @@ export default function App() {
                 <h2>邀请码管理</h2>
               </div>
 
+              <div className="contract-strip" aria-label="auth 权限契约">
+                <div>
+                  <span>基础角色模型</span>
+                  <strong>{BASE_ROLES.join(" / ")}</strong>
+                </div>
+                <div>
+                  <span>运维能力点</span>
+                  <strong>{PERMISSIONS.join(" / ")}</strong>
+                </div>
+              </div>
+
               <div className="invite-layout">
                 <form onSubmit={createInvitation} className="invite-form">
                   <SelectField
                     label="类型"
                     value={invitationForm.type}
                     options={["PLAYER", "ADMIN"]}
-                    onChange={(type) => setInvitationForm({ ...invitationForm, type, boundRoles: type === "ADMIN" ? "ADMIN" : "USER" })}
+                    onChange={changeInvitationType}
                   />
-                  <Field label="绑定角色" value={invitationForm.boundRoles} onChange={(boundRoles) => setInvitationForm({ ...invitationForm, boundRoles })} />
-                  <Field label="能力点" value={invitationForm.boundPermissions} onChange={(boundPermissions) => setInvitationForm({ ...invitationForm, boundPermissions })} />
+                  <SelectField
+                    label="绑定角色"
+                    value={invitationForm.boundRole}
+                    options={invitationRoleOptions}
+                    onChange={(boundRole) => setInvitationForm({ ...invitationForm, boundRole })}
+                  />
+                  <CheckboxGroup
+                    label="能力点"
+                    options={PERMISSIONS}
+                    values={invitationForm.boundPermissions}
+                    disabled={invitationForm.type === "PLAYER"}
+                    onChange={(boundPermissions) => setInvitationForm({ ...invitationForm, boundPermissions })}
+                  />
                   <Field label="次数" type="number" value={invitationForm.maxUses} onChange={(maxUses) => setInvitationForm({ ...invitationForm, maxUses })} />
                   <Field label="原因" value={invitationForm.reason} onChange={(reason) => setInvitationForm({ ...invitationForm, reason })} />
                   <button className="primary full" disabled={!token || busyAction === "创建邀请码"}>
@@ -543,13 +583,6 @@ export default function App() {
   );
 }
 
-function csvValues(value: string) {
-  return value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
 function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="metric">
@@ -586,6 +619,42 @@ function Field({
       <span>{label}</span>
       <input type={type} value={value} onChange={(event) => onChange(event.target.value)} />
     </label>
+  );
+}
+
+function CheckboxGroup({
+  label,
+  options,
+  values,
+  disabled = false,
+  onChange
+}: {
+  label: string;
+  options: string[];
+  values: string[];
+  disabled?: boolean;
+  onChange: (value: string[]) => void;
+}) {
+  function toggle(option: string) {
+    if (values.includes(option)) {
+      onChange(values.filter((item) => item !== option));
+      return;
+    }
+    onChange([...values, option]);
+  }
+
+  return (
+    <fieldset className="check-group" disabled={disabled}>
+      <legend>{label}</legend>
+      <div className="permission-grid">
+        {options.map((option) => (
+          <label className="check-option" key={option}>
+            <input type="checkbox" checked={values.includes(option)} onChange={() => toggle(option)} />
+            <span>{option}</span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
   );
 }
 

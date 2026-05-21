@@ -1,6 +1,6 @@
 # 北冥官网 auth 测试台测试文档
 
-版本：0.1
+版本：0.2
 
 ## 文档定位
 
@@ -39,10 +39,11 @@
 | AUTH-UI-019 | 错误响应展示 | 输入错误密码或无权限操作 | 最近事件展示统一错误响应，不吞掉错误码和 message。 |
 | AUTH-UI-020 | 构建验证 | 执行前端构建 | TypeScript 和 Vite 构建成功，无类型错误。 |
 | AUTH-UI-021 | 后端契约回归 | 执行 auth 后端测试 | `docs/tests-auth.md` 对应自动化测试全部通过。 |
+| AUTH-UI-022 | 权限模型界面规范 | 打开测试台并进入邀请码管理区 | 页面显示 `OWNER / ADMIN / HELPER / USER` 四级基础角色和全部运维能力点；未登录用户不显示 `Guest`、`测试管理员` 等非契约称呼；`PLAYER` 邀请码只能绑定 `USER` 且不能选择运维能力点；`ADMIN` 邀请码只能绑定 `ADMIN` 或 `HELPER`，不得出现 `OWNER` 选项。 |
 
 ## 验收口径
 
-`AUTH-UI-001` 到 `AUTH-UI-021` 必须都有自动化或可复现验证。顶部导航按钮必须是真实交互，点击后要改变当前选中状态并移动到对应区域。所有接口按钮必须在后端可用时调用真实 auth API，在后端不可用时显示明确失败响应。测试通过不能依赖手工刷新、浏览器缓存或隐藏的旧 token。
+`AUTH-UI-001` 到 `AUTH-UI-022` 必须都有自动化或可复现验证。顶部导航按钮必须是真实交互，点击后要改变当前选中状态并移动到对应区域。所有接口按钮必须在后端可用时调用真实 auth API，在后端不可用时显示明确失败响应。权限界面必须直接使用 `docs/contracts-auth.md` 的角色和能力点枚举，不能把角色、能力点做成任意文本输入。测试通过不能依赖手工刷新、浏览器缓存或隐藏的旧 token。
 
 ## 测试过程记录
 
@@ -61,3 +62,19 @@
 反复复测结果：执行 `npm run test:e2e:full`，结果通过；执行 `mvn test`，结果为 43 个测试全部通过，失败 0，错误 0，跳过 0；执行 `npm run build`，结果通过；再次执行 `npm run test:e2e:full`，结果通过；再次执行 `mvn test`，结果仍为 43 个测试全部通过，失败 0，错误 0，跳过 0。该轮覆盖 `AUTH-UI-001` 到 `AUTH-UI-015`、`AUTH-UI-018`、`AUTH-UI-020` 和 `AUTH-UI-021`。`AUTH-UI-016`、`AUTH-UI-017`、`AUTH-UI-019` 已在测试文档列为验收用例，后续扩展测试台时需要继续补足自动化断言。
 
 结论：本轮修复确认顶部导航不再是静态按钮，点击后会切换选中状态并定位到对应区域；auth 核心联调按钮可在完整 E2E 中调用真实后端；重复执行暴露出的不稳定断言已修正。剩余风险是注册表单、Minecraft 绑定和错误响应展示尚未加入本轮完整 E2E 的自动化断言，需要在下一次测试台增强时补齐。
+
+### 2026-05-21 权限模型界面规范闭环
+
+测试范围：`frontend/auth-test-console` 的用户称呼、四级基础角色展示、运维能力点展示、邀请码创建表单、顶部滚动避让、前端构建、完整联调和 auth 后端契约回归。测试环境为 Windows 本地仓库，测试台通过 Vite 在 `127.0.0.1:5174` 运行，auth 后端固定为 `http://127.0.0.1:8101`，浏览器自动化复用本机 Microsoft Edge。
+
+规范核对：`docs/requirements.md`、`docs/system-design.md` 和 `docs/contracts-auth.md` 均确认用户权限管理采用 `OWNER`、`ADMIN`、`HELPER`、`USER` 四级基础角色，运维能力点为 `NODE_READ`、`NODE_WRITE`、`CONTAINER_OPERATE`、`VM_OPERATE`、`FILE_MANAGE`、`TERMINAL_ACCESS`、`HIGH_RISK_APPROVE`。后端 `AuthModule` 已使用相同枚举，问题集中在测试台界面。
+
+首次失败验证：新增 `AUTH-UI-022` 自动化断言后执行 `npm run test:e2e`，结果失败在 `getByText('基础角色模型')` 等待超时。失败原因是页面没有展示正式四级角色模型，邀请码表单仍允许通过文本框随意填写绑定角色和能力点，并且未登录状态存在 `Guest`、`测试管理员` 这类非契约称呼。
+
+修复动作：将邀请码绑定角色改为枚举选择，`PLAYER` 只允许 `USER`，`ADMIN` 只允许 `ADMIN` 或 `HELPER`，任何路径都不展示 `OWNER` 邀请选项；将运维能力点改为固定复选项，`PLAYER` 邀请码禁用能力点选择；新增角色模型和能力点契约展示；把未登录用户文案统一为 `未登录`、`未登录用户`；补充滚动避让，避免邀请码区标题被粘性顶部栏遮挡。
+
+复测过程：第一次复测 `npm run test:e2e` 失败在 Playwright 严格模式，原因是 `NODE_READ` 同时出现在契约摘要和复选项，测试选择器不够精确。修复为限定 `.check-option` 范围后再次执行 `npm run test:e2e` 通过。随后通过浏览器截图检查邀请码区，确认 `基础角色模型`、`OWNER / ADMIN / HELPER / USER`、运维能力点和表单控件均可见，且页面不再出现 `Guest` 或 `测试管理员`。
+
+最终验证：执行 `npm run test:e2e`，结果通过；执行 `npm run build`，结果通过；首次执行 `npm run test:e2e:full` 超时，排查发现 `8101` 和 `5174` 均已监听，后端登录接口能返回 `owner` 会话，判断为启动等待过程超时，不是接口或页面行为失败；复用已运行服务执行 `node tests\e2e-auth-console.mjs --with-backend`，结果通过；提交前再次执行 `npm run test:e2e`、`npm run build`、`npm run test:e2e:full` 均通过；执行 `mvn test`，结果为 43 个测试全部通过，失败 0，错误 0，跳过 0。
+
+剩余风险：测试台仍是 auth 本地联调工具，不是正式后台用户管理页面。本轮已把权限模型展示和邀请码创建入口对齐正式契约，后续若新增真正的用户角色修改界面，必须继续按 `OWNER` 专属修改角色能力点、`ADMIN` 不得修改 `OWNER`、`HELPER` 和 `USER` 无后台权限的规则补自动化测试。

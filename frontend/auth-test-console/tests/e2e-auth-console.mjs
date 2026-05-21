@@ -138,6 +138,54 @@ async function expectNoTopbarOverlap(page) {
   }
 }
 
+async function expectAuthRoleContractUi(page) {
+  await page.getByText("基础角色模型").waitFor();
+  await page.getByText("OWNER / ADMIN / HELPER / USER").waitFor();
+  await page.getByText("运维能力点").waitFor();
+  for (const permission of [
+    "NODE_READ",
+    "NODE_WRITE",
+    "CONTAINER_OPERATE",
+    "VM_OPERATE",
+    "FILE_MANAGE",
+    "TERMINAL_ACCESS",
+    "HIGH_RISK_APPROVE"
+  ]) {
+    await page.locator(".check-option", { hasText: permission }).waitFor();
+  }
+
+  const bodyText = await page.locator("body").innerText();
+  if (bodyText.includes("Guest") || bodyText.includes("测试管理员")) {
+    throw new Error("Non-contract user labels are still visible");
+  }
+
+  const roleOptions = await page.locator("label", { hasText: "绑定角色" }).locator("option").evaluateAll((options) =>
+    options.map((option) => option.textContent?.trim())
+  );
+  if (roleOptions.join("|") !== "USER") {
+    throw new Error(`PLAYER invitation role options must be USER only, got ${roleOptions.join(",")}`);
+  }
+  const disabledPermissionCount = await page.locator(".check-group input:disabled").count();
+  if (disabledPermissionCount !== 7) {
+    throw new Error(`PLAYER invitation must not allow operation permissions, got ${disabledPermissionCount} disabled permission controls`);
+  }
+
+  await page.locator("label", { hasText: "类型" }).locator("select").selectOption("ADMIN");
+  const adminRoleOptions = await page.locator("label", { hasText: "绑定角色" }).locator("option").evaluateAll((options) =>
+    options.map((option) => option.textContent?.trim())
+  );
+  if (adminRoleOptions.join("|") !== "ADMIN|HELPER") {
+    throw new Error(`ADMIN invitation role options must be ADMIN and HELPER, got ${adminRoleOptions.join(",")}`);
+  }
+  if (adminRoleOptions.includes("OWNER")) {
+    throw new Error("Invitation role options must not include OWNER");
+  }
+  const enabledPermissionCount = await page.locator(".check-group input:not(:disabled)").count();
+  if (enabledPermissionCount !== 7) {
+    throw new Error(`ADMIN invitation must expose the exact operation permission controls, got ${enabledPermissionCount}`);
+  }
+}
+
 async function run() {
   const backend = await startBackendIfNeeded();
   const vite = await startViteIfNeeded();
@@ -154,6 +202,10 @@ async function run() {
     await page.getByRole("heading", { name: "邀请码管理" }).waitFor();
     await page.getByRole("heading", { name: "最近事件" }).waitFor();
     await expectNoTopbarOverlap(page);
+    await page.setViewportSize({ width: 1988, height: 1000 });
+    await expectNoTopbarOverlap(page);
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await expectAuthRoleContractUi(page);
 
     await clickNav(page, "概览", "统一测试注册、登录与会话校验");
     await clickNav(page, "账号", "接口操作");

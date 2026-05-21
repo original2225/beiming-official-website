@@ -27,6 +27,10 @@ input {
   font: inherit;
 }
 
+fieldset {
+  font: inherit;
+}
+
 select {
   font: inherit;
 }
@@ -206,6 +210,14 @@ button:disabled {
   max-width: 2060px;
   margin: 0 auto;
   padding: 38px 44px 56px;
+}
+
+.hero,
+.status-card,
+.auth-panel,
+.invite-console,
+.response-panel {
+  scroll-margin-top: 190px;
 }
 
 .hero {
@@ -529,6 +541,55 @@ button:disabled {
   box-shadow: 0 0 0 3px rgba(50, 109, 246, 0.13);
 }
 
+.check-group {
+  min-width: 0;
+  margin: 16px 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.check-group legend {
+  margin-bottom: 8px;
+  color: #52627e;
+  font-size: 15px;
+}
+
+.permission-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.check-option {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: 38px;
+  gap: 8px;
+  padding: 0 10px;
+  border: 1px solid #d3deec;
+  border-radius: 6px;
+  color: #111827;
+  background: #ffffff;
+}
+
+.check-option input {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+.check-option span {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.check-group:disabled .check-option {
+  color: #7b879a;
+  background: #f0f4fa;
+}
+
 .form-card button {
   margin-top: 18px;
 }
@@ -551,6 +612,36 @@ button:disabled {
   margin-top: 34px;
   padding-top: 30px;
   border-top: 1px solid #dce5f2;
+}
+
+.contract-strip {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.45fr) minmax(0, 1fr);
+  gap: 16px;
+  margin-top: 22px;
+}
+
+.contract-strip div {
+  min-width: 0;
+  padding: 16px 18px;
+  border: 1px solid #dce5f2;
+  border-radius: 8px;
+  background: #fbfdff;
+}
+
+.contract-strip span {
+  display: block;
+  color: #60708d;
+  font-size: 14px;
+}
+
+.contract-strip strong {
+  display: block;
+  margin-top: 8px;
+  color: #111827;
+  font-size: 17px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .invite-layout {
@@ -775,6 +866,10 @@ pre {
   .invite-layout {
     grid-template-columns: 1fr;
   }
+
+  .contract-strip {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 1180px) {
@@ -800,6 +895,14 @@ pre {
 
   .tab.active::after {
     bottom: 0;
+  }
+
+  .hero,
+  .status-card,
+  .auth-panel,
+  .invite-console,
+  .response-panel {
+    scroll-margin-top: 360px;
   }
 }
 
