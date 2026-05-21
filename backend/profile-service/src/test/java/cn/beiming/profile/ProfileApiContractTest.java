@@ -355,7 +355,7 @@ class ProfileApiContractTest {
     @DisplayName("PROF-ADMIN-PATCH backend updates validate fields, permissions, conflicts, state, and audit rollback")
     void adminPatchContract() throws Exception {
         JsonNode updated = performJson(patch("/api/v1/profile/admin/members/" + store.memberIdByUserId("active_member"))
-                .header("Authorization", bearer("admin-token")), Map.of(
+                .header("Authorization", bearer("admin-token")), mapOf(
                 "displayNameSnapshot", "Renamed Member",
                 "avatarUrl", "https://example.com/renamed.png",
                 "minecraftId", "RenamedMc",
@@ -571,6 +571,14 @@ class ProfileApiContractTest {
 
     private String json(Object value) throws Exception {
         return objectMapper.writeValueAsString(value);
+    }
+
+    private Map<String, Object> mapOf(Object... pairs) {
+        Map<String, Object> map = new java.util.LinkedHashMap<>();
+        for (int i = 0; i < pairs.length; i += 2) {
+            map.put(String.valueOf(pairs[i]), pairs[i + 1]);
+        }
+        return map;
     }
 
     private List<String> values(JsonNode arrayNode) {
