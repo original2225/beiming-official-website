@@ -167,6 +167,14 @@ class NotificationController {
         return ok(store.templateMap(templateId));
     }
 
+    @PostMapping("/admin/templates/preview")
+    ResponseEntity<Map<String, Object>> previewTemplate(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                                        @RequestBody(required = false) Map<String, Object> body) {
+        AuthUser current = auth.requireCurrent(authorization);
+        requireReader(current);
+        return ok(store.previewTemplate(bodyOrEmpty(body)));
+    }
+
     @PostMapping("/admin/templates")
     ResponseEntity<Map<String, Object>> createTemplate(@RequestHeader(value = "Authorization", required = false) String authorization,
                                                        @RequestBody(required = false) Map<String, Object> body) {
@@ -208,10 +216,15 @@ class NotificationController {
                                                   @RequestParam(defaultValue = "1") int page,
                                                   @RequestParam(defaultValue = "20") int pageSize) {
         AuthUser current = auth.requireCurrent(authorization);
-        if (!current.roles.contains("ADMIN") && !current.roles.contains("OWNER")) {
-            throw new ApiException(42001, HttpStatus.FORBIDDEN, "role insufficient");
-        }
+        requireAdminOrOwner(current);
         return ok(store.auditLogs(notificationId, page, pageSize));
+    }
+
+    @GetMapping("/admin/ops/summary")
+    ResponseEntity<Map<String, Object>> opsSummary(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        AuthUser current = auth.requireCurrent(authorization);
+        requireAdminOrOwner(current);
+        return ok(store.opsSummary());
     }
 
     private void requireReader(AuthUser current) {
@@ -221,6 +234,12 @@ class NotificationController {
     }
 
     private void requireWriter(AuthUser current) {
+        if (!current.roles.contains("ADMIN") && !current.roles.contains("OWNER")) {
+            throw new ApiException(42001, HttpStatus.FORBIDDEN, "role insufficient");
+        }
+    }
+
+    private void requireAdminOrOwner(AuthUser current) {
         if (!current.roles.contains("ADMIN") && !current.roles.contains("OWNER")) {
             throw new ApiException(42001, HttpStatus.FORBIDDEN, "role insufficient");
         }
@@ -697,6 +716,32 @@ class NotificationStore {
         return templateMapRecord(template(templateId));
     }
 
+    @SuppressWarnings("unchecked")
+    synchronized Map<String, Object> previewTemplate(Map<String, Object> body) {
+        NotificationTemplateRecord template = templateByCode(requiredString(body, "templateCode"));
+        Map<String, Object> variables = body.get("variables") instanceof Map<?, ?> raw ? new LinkedHashMap<>((Map<String, Object>) raw) : null;
+        if (variables == null) {
+            throw new ApiException(43313, HttpStatus.BAD_REQUEST, "template variables invalid");
+        }
+        Map<String, String> renderVariables = validateTemplateVariables(template, variables);
+        String title = render(template.titleTemplate, renderVariables, template);
+        String text = render(template.bodyTemplate, renderVariables, template);
+        if (title.length() > 80 || text.length() > 2000) {
+            throw new ApiException(43314, HttpStatus.BAD_REQUEST, "template render failed");
+        }
+        return NotificationController.mapOf(
+                "templateId", template.templateId,
+                "templateCode", template.code,
+                "templateVersion", template.version,
+                "templateStatus", template.status,
+                "sendable", "ENABLED".equals(template.status),
+                "title", title,
+                "body", text,
+                "variables", new LinkedHashMap<>(renderVariables),
+                "createdNotification", false
+        );
+    }
+
     synchronized Map<String, Object> createTemplate(AuthUser actor, Map<String, Object> body) {
         String idempotencyKey = optionalString(body, "idempotencyKey");
         String scope = actor.userId + ":" + idempotencyKey;
@@ -779,6 +824,47 @@ class NotificationStore {
                 .map(this::auditMap)
                 .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
         return page(rows, page, pageSize);
+    }
+
+    synchronized Map<String, Object> opsSummary() {
+        int recipientsTotal = messages.values().stream().mapToInt(message -> message.recipients.size()).sum();
+        long unreadTotal = messages.values().stream()
+                .flatMap(message -> message.recipients.values().stream())
+                .filter(recipient -> "UNREAD".equals(recipient.status))
+                .count();
+        long archivedTotal = messages.values().stream()
+                .flatMap(message -> message.recipients.values().stream())
+                .filter(recipient -> "ARCHIVED".equals(recipient.status))
+                .count();
+        long deliveredTotal = messages.values().stream()
+                .flatMap(message -> message.recipients.values().stream())
+                .filter(recipient -> "DELIVERED".equals(recipient.deliveryStatus))
+                .count();
+        long failedTotal = messages.values().stream()
+                .flatMap(message -> message.recipients.values().stream())
+                .filter(recipient -> "FAILED".equals(recipient.deliveryStatus))
+                .count();
+        String lastAuditAt = audits.stream()
+                .map(audit -> audit.createdAt)
+                .max(Comparator.naturalOrder())
+                .map(Instant::toString)
+                .orElse(null);
+        return NotificationController.mapOf(
+                "service", "notification",
+                "storageMode", "IN_MEMORY",
+                "authMode", "TEST_STUB",
+                "messagesTotal", messages.size(),
+                "templatesTotal", templates.size(),
+                "auditsTotal", audits.size(),
+                "recipientsTotal", recipientsTotal,
+                "unreadTotal", (int) unreadTotal,
+                "archivedTotal", (int) archivedTotal,
+                "deliveredTotal", (int) deliveredTotal,
+                "failedTotal", (int) failedTotal,
+                "pendingExternalDeliveries", 0,
+                "lastAuditAt", lastAuditAt,
+                "warnings", List.of("P0_IN_MEMORY_STORAGE", "P0_AUTH_STUB")
+        );
     }
 
     private NotificationTemplateRecord templateFromBody(String templateId, AuthUser actor, Map<String, Object> body, boolean patch) {
