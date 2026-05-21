@@ -12,6 +12,8 @@
 
 `docs/` 只保存需要上传到仓库的正式项目文档，包括需求文档、系统设计、开发治理、接口契约、模块边界、权限模型、状态流转、验收口径和对外说明。
 
+`docs/requirements.md`、`docs/system-design.md` 和 `docs/development-governance.md` 是项目开发的核心正式文档，必须随仓库上传，供所有同伴查看和遵守。后续新增的正式接口契约、模块设计和验收标准也应放在 `docs/` 并提交。
+
 `localdocs/` 只保存不需要上传的本地资料，包括开发手册、阶段计划、本地测试记录、AI 对话交接文档、临时分析、调研草稿、排障记录和个人工作笔记。`localdocs/` 必须被 `.gitignore` 忽略，不得提交到 GitHub。
 
 发现本地临时资料误放进可提交路径时，应先移动到 `localdocs/`，再确认 `git status --short --branch` 不再把它列为待提交文件。
