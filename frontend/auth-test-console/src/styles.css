@@ -41,7 +41,7 @@ button:disabled {
   top: 0;
   z-index: 20;
   display: grid;
-  grid-template-columns: 300px auto minmax(240px, 630px) minmax(260px, 450px) minmax(230px, 380px);
+  grid-template-columns: 260px minmax(390px, 520px) minmax(320px, 1fr) 360px minmax(220px, 300px);
   gap: 24px;
   align-items: center;
   min-height: 92px;
@@ -99,12 +99,14 @@ button:disabled {
   display: flex;
   align-items: center;
   height: 76px;
-  gap: 28px;
+  gap: 22px;
+  overflow: hidden;
 }
 
 .tab {
   position: relative;
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 10px;
   height: 76px;
@@ -112,6 +114,7 @@ button:disabled {
   color: #4b5871;
   background: transparent;
   font-size: 20px;
+  white-space: nowrap;
 }
 
 .tab.active {
@@ -150,6 +153,9 @@ button:disabled {
   background: transparent;
   outline: 0;
   font-size: 22px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .node,
@@ -167,6 +173,7 @@ button:disabled {
   padding: 0 22px;
   color: #263043;
   font-size: 22px;
+  white-space: nowrap;
 }
 
 .operator {
@@ -199,8 +206,8 @@ button:disabled {
 
 .hero {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 630px;
-  gap: 52px;
+  grid-template-columns: minmax(0, 1fr) minmax(470px, 630px);
+  gap: 44px;
   min-height: 500px;
   padding: 62px 60px;
   border: 1px solid #dce5f2;
@@ -213,7 +220,7 @@ button:disabled {
   max-width: 1080px;
   margin: 0;
   color: #111827;
-  font-size: 60px;
+  font-size: clamp(44px, 3.1vw, 60px);
   line-height: 1.18;
   letter-spacing: 0;
 }
@@ -561,15 +568,38 @@ pre {
   word-break: break-word;
 }
 
-@media (max-width: 1500px) {
+@media (max-width: 1840px) {
   .topbar {
-    grid-template-columns: 260px 1fr;
+    grid-template-columns: 260px minmax(390px, 1fr) minmax(260px, 420px);
+    grid-template-areas:
+      "brand tabs operator"
+      "search node node";
+    gap: 12px 24px;
+  }
+
+  .brand {
+    grid-area: brand;
+  }
+
+  .tabs {
+    grid-area: tabs;
   }
 
   .search,
-  .node,
+  .node {
+    height: 56px;
+  }
+
+  .search {
+    grid-area: search;
+  }
+
+  .node {
+    grid-area: node;
+  }
+
   .operator {
-    grid-column: span 1;
+    grid-area: operator;
   }
 
   .hero {
@@ -585,10 +615,16 @@ pre {
   }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1180px) {
   .topbar {
     grid-template-columns: 1fr;
-    padding: 14px 18px;
+    grid-template-areas:
+      "brand"
+      "tabs"
+      "search"
+      "node"
+      "operator";
+    padding: 14px 24px;
   }
 
   .tabs {
@@ -598,11 +634,17 @@ pre {
 
   .tab {
     height: 48px;
-    flex: 0 0 auto;
   }
 
   .tab.active::after {
     bottom: 0;
+  }
+}
+
+@media (max-width: 900px) {
+  .topbar {
+    grid-template-columns: 1fr;
+    padding: 14px 18px;
   }
 
   .shell {
