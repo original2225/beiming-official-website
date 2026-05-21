@@ -40,7 +40,9 @@ class AuthApiContractTest {
             AUTH-LOGOUT-001 AUTH-LOGOUT-002 AUTH-LOGOUT-003 AUTH-LOGOUT-004
             AUTH-ME-001 AUTH-ME-002 AUTH-ME-003 AUTH-ME-004 AUTH-ME-005
             AUTH-VERIFY-001 AUTH-VERIFY-002
-            AUTH-PWD-001 AUTH-PWD-002 AUTH-PWD-003 AUTH-PWD-004 AUTH-PWD-005 AUTH-PWD-006 AUTH-PWD-007 AUTH-PWD-008 AUTH-PWD-009 AUTH-PWD-010 AUTH-PWD-011 AUTH-PWD-012 AUTH-PWD-013
+            AUTH-SESSION-LIST-001 AUTH-SESSION-LIST-002 AUTH-SESSION-LIST-003
+            AUTH-SESSION-REVOKE-001 AUTH-SESSION-REVOKE-002 AUTH-SESSION-REVOKE-003 AUTH-SESSION-REVOKE-004 AUTH-SESSION-REVOKE-005
+            AUTH-PWD-001 AUTH-PWD-002 AUTH-PWD-003 AUTH-PWD-004 AUTH-PWD-005 AUTH-PWD-006 AUTH-PWD-007 AUTH-PWD-008 AUTH-PWD-009 AUTH-PWD-010 AUTH-PWD-011 AUTH-PWD-012 AUTH-PWD-013 AUTH-PWD-014 AUTH-PWD-015 AUTH-PWD-016 AUTH-PWD-017 AUTH-PWD-018 AUTH-PWD-019
             AUTH-MC-001 AUTH-MC-002 AUTH-MC-003 AUTH-MC-004 AUTH-MC-005 AUTH-MC-006 AUTH-MC-007 AUTH-MC-008 AUTH-MC-009 AUTH-MC-010 AUTH-MC-011
             AUTH-USER-LIST-001 AUTH-USER-LIST-002 AUTH-USER-LIST-003 AUTH-USER-LIST-004 AUTH-USER-LIST-005 AUTH-USER-LIST-006 AUTH-USER-LIST-007
             AUTH-USER-DETAIL-001 AUTH-USER-DETAIL-002 AUTH-USER-DETAIL-003
@@ -51,7 +53,7 @@ class AuthApiContractTest {
             AUTH-INV-DISABLE-001 AUTH-INV-DISABLE-002 AUTH-INV-DISABLE-003 AUTH-INV-DISABLE-004 AUTH-INV-DISABLE-005 AUTH-INV-DISABLE-006
             AUTH-INV-USAGE-001 AUTH-INV-USAGE-002 AUTH-INV-USAGE-003 AUTH-INV-USAGE-004
             AUTH-STATE-001 AUTH-STATE-002 AUTH-STATE-003 AUTH-STATE-004 AUTH-STATE-005 AUTH-STATE-006 AUTH-STATE-007 AUTH-STATE-008 AUTH-STATE-009
-            AUTH-SEC-001 AUTH-SEC-002 AUTH-SEC-003 AUTH-SEC-004 AUTH-SEC-005 AUTH-SEC-006 AUTH-SEC-007
+            AUTH-SEC-001 AUTH-SEC-002 AUTH-SEC-003 AUTH-SEC-004 AUTH-SEC-005 AUTH-SEC-006 AUTH-SEC-007 AUTH-SEC-008
             """;
 
     @Autowired
@@ -432,6 +434,56 @@ class AuthApiContractTest {
     }
 
     @Test
+    @DisplayName("AUTH-SESSION-LIST-001/002/003 returns current user sessions without tokens and updates last seen")
+    void currentUserSessionListContract() throws Exception {
+        String firstToken = login("user");
+        login("user");
+
+        JsonNode firstList = performJson(get("/api/v1/auth/me/sessions").header("Authorization", bearer(firstToken)), 200);
+        assertThat(firstList.at("/data/items").size()).isEqualTo(2);
+        assertThat(firstList.toString()).doesNotContain("accessToken").doesNotContain(firstToken);
+        assertThat(firstList.at("/data/items").findValues("current").stream().map(JsonNode::asText).toList()).contains("true");
+        String currentSessionId = currentSessionId(firstList);
+        Instant firstSeenAt = Instant.parse(currentSession(firstList).path("lastSeenAt").asText());
+
+        mvc.perform(get("/api/v1/auth/me").header("Authorization", bearer(firstToken))).andExpect(status().isOk());
+        JsonNode secondList = performJson(get("/api/v1/auth/me/sessions").header("Authorization", bearer(firstToken)), 200);
+        Instant secondSeenAt = Instant.parse(currentSession(secondList).path("lastSeenAt").asText());
+        assertThat(secondSeenAt).isAfterOrEqualTo(firstSeenAt);
+        assertThat(currentSessionId(secondList)).isEqualTo(currentSessionId);
+
+        performJson(get("/api/v1/auth/me/sessions"), 401, 41000);
+    }
+
+    @Test
+    @DisplayName("AUTH-SESSION-REVOKE-001/002/003/004/005 revokes only owned sessions with audit and idempotency")
+    void revokeCurrentUserSessionContract() throws Exception {
+        String currentToken = login("user");
+        String otherToken = login("user");
+        String adminToken = login("admin");
+        JsonNode sessionList = performJson(get("/api/v1/auth/me/sessions").header("Authorization", bearer(currentToken)), 200);
+        String otherSessionId = nonCurrentSessionId(sessionList);
+
+        performJson(delete("/api/v1/auth/me/sessions/" + otherSessionId).header("Authorization", bearer(currentToken)), Map.of("reason", "lost device"), 200);
+        mvc.perform(get("/api/v1/auth/me").header("Authorization", bearer(otherToken)))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(41103));
+        mvc.perform(get("/api/v1/auth/me").header("Authorization", bearer(currentToken))).andExpect(status().isOk());
+        performJson(delete("/api/v1/auth/me/sessions/" + otherSessionId).header("Authorization", bearer(currentToken)), Map.of("reason", "repeat"), 200);
+        assertThat(store.auditCount("AUTH_SESSION_REVOKED")).isEqualTo(1);
+
+        String adminSessionId = currentSessionId(performJson(get("/api/v1/auth/me/sessions").header("Authorization", bearer(adminToken)), 200));
+        performJson(delete("/api/v1/auth/me/sessions/" + adminSessionId).header("Authorization", bearer(currentToken)), Map.of("reason", "not mine"), 401, 41106);
+        performJson(delete("/api/v1/auth/me/sessions/" + otherSessionId).header("Authorization", bearer(currentToken)), Map.of(), 400, 40001);
+
+        String currentSessionId = currentSessionId(performJson(get("/api/v1/auth/me/sessions").header("Authorization", bearer(currentToken)), 200));
+        performJson(delete("/api/v1/auth/me/sessions/" + currentSessionId).header("Authorization", bearer(currentToken)), Map.of("reason", "sign out device"), 200);
+        mvc.perform(get("/api/v1/auth/me").header("Authorization", bearer(currentToken)))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(41103));
+    }
+
+    @Test
     @DisplayName("AUTH-PWD resets password and revokes old sessions")
     void passwordResetFlow() throws Exception {
         String oldToken = login("user");
@@ -488,6 +540,65 @@ class AuthApiContractTest {
         String expiredToken = store.createExpiredPasswordResetToken("user");
         performJson(post("/api/v1/auth/password-reset/confirm"), Map.of("resetToken", expiredToken, "newPassword", "NewPassword12345"), 401, 41104);
         assertThat(store.auditActions()).contains("AUTH_PASSWORD_RESET_FAILED");
+    }
+
+    @Test
+    @DisplayName("AUTH-PWD-014/019 active password change keeps current session and revokes other sessions")
+    void changePasswordKeepsCurrentSessionAndRevokesOtherSessions() throws Exception {
+        String currentToken = login("user");
+        String otherToken = login("user");
+        String beforeHash = store.passwordHash("user");
+
+        performJson(post("/api/v1/auth/me/password").header("Authorization", bearer(currentToken)), Map.of(
+                "currentPassword", "Password12345",
+                "newPassword", "ChangedPassword12345",
+                "reason", "regular rotation"
+        ), 200);
+
+        assertThat(store.passwordHash("user")).isNotEqualTo(beforeHash);
+        assertThat(store.auditActions()).contains("AUTH_PASSWORD_CHANGED");
+        mvc.perform(get("/api/v1/auth/me").header("Authorization", bearer(currentToken))).andExpect(status().isOk());
+        mvc.perform(get("/api/v1/auth/me").header("Authorization", bearer(otherToken)))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(41103));
+        performJson(post("/api/v1/auth/login"), Map.of("username", "user", "password", "Password12345"), 401, 41100);
+        performJson(post("/api/v1/auth/login"), Map.of("username", "user", "password", "ChangedPassword12345"), 200);
+    }
+
+    @Test
+    @DisplayName("AUTH-PWD-015/016/017/018 active password change rejects unsafe or invalid requests")
+    void changePasswordRejectsInvalidRequests() throws Exception {
+        String token = login("user");
+        String otherToken = login("user");
+        String beforeHash = store.passwordHash("user");
+
+        performJson(post("/api/v1/auth/me/password").header("Authorization", bearer(token)), Map.of(
+                "currentPassword", "WrongPassword12345",
+                "newPassword", "ChangedPassword12345",
+                "reason", "bad current"
+        ), 401, 41105);
+        performJson(post("/api/v1/auth/me/password").header("Authorization", bearer(token)), Map.of(
+                "currentPassword", "Password12345",
+                "newPassword", "Password12345",
+                "reason", "same"
+        ), 409, 43001);
+        performJson(post("/api/v1/auth/me/password").header("Authorization", bearer(token)), Map.of(
+                "currentPassword", "Password12345",
+                "newPassword", "Password123",
+                "reason", "common"
+        ), 400, 40001);
+        performJson(post("/api/v1/auth/me/password"), Map.of(
+                "currentPassword", "Password12345",
+                "newPassword", "ChangedPassword12345",
+                "reason", "missing auth"
+        ), 401, 41000);
+        performJson(post("/api/v1/auth/me/password").header("Authorization", bearer(token)), Map.of(
+                "currentPassword", "Password12345",
+                "newPassword", "ChangedPassword12345"
+        ), 400, 40001);
+
+        assertThat(store.passwordHash("user")).isEqualTo(beforeHash);
+        mvc.perform(get("/api/v1/auth/me").header("Authorization", bearer(otherToken))).andExpect(status().isOk());
     }
 
     @Test
@@ -860,6 +971,23 @@ class AuthApiContractTest {
     }
 
     @Test
+    @DisplayName("AUTH-SEC-008 rejects common weak passwords without mutating auth state")
+    void commonWeakPasswordsAreRejected() throws Exception {
+        int beforeUsedCount = store.invitationUsedCount("PLAYER-CODE-1");
+        Map<String, Object> registerBody = registerBody("PLAYER-CODE-1", "weak_password_user");
+        registerBody.put("password", "Password123");
+        performJson(post("/api/v1/auth/register"), registerBody, 400, 40001);
+        assertThat(store.userExists("weak_password_user")).isFalse();
+        assertThat(store.invitationUsedCount("PLAYER-CODE-1")).isEqualTo(beforeUsedCount);
+
+        performJson(post("/api/v1/auth/password-reset/request"), Map.of("username", "user"), 200);
+        String resetToken = store.latestPasswordResetToken("user");
+        String beforeHash = store.passwordHash("user");
+        performJson(post("/api/v1/auth/password-reset/confirm"), Map.of("resetToken", resetToken, "newPassword", "Password123"), 400, 40001);
+        assertThat(store.passwordHash("user")).isEqualTo(beforeHash);
+    }
+
+    @Test
     @DisplayName("AUTH-SEC-005 backend write rolls back when audit fails")
     void backendWriteRollsBackWhenAuditFails() throws Exception {
         String ownerToken = login("owner");
@@ -902,10 +1030,26 @@ class AuthApiContractTest {
     }
 
     private JsonNode performJson(org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request,
+                                 int expectedStatus) throws Exception {
+        MvcResult result = mvc.perform(request)
+                .andExpect(status().is(expectedStatus))
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString());
+    }
+
+    private JsonNode performJson(org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request,
                                  Object body,
                                  int expectedStatus,
                                  int expectedCode) throws Exception {
         JsonNode result = performJson(request, body, expectedStatus);
+        assertThat(result.path("code").asInt()).isEqualTo(expectedCode);
+        return result;
+    }
+
+    private JsonNode performJson(org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request,
+                                 int expectedStatus,
+                                 int expectedCode) throws Exception {
+        JsonNode result = performJson(request, expectedStatus);
         assertThat(result.path("code").asInt()).isEqualTo(expectedCode);
         return result;
     }
@@ -931,5 +1075,25 @@ class AuthApiContractTest {
         return java.util.stream.StreamSupport.stream(arrayNode.spliterator(), false)
                 .map(JsonNode::asText)
                 .toList();
+    }
+
+    private JsonNode currentSession(JsonNode sessionList) {
+        return java.util.stream.StreamSupport.stream(sessionList.at("/data/items").spliterator(), false)
+                .filter(item -> item.path("current").asBoolean())
+                .findFirst()
+                .orElseThrow();
+    }
+
+    private String currentSessionId(JsonNode sessionList) {
+        return currentSession(sessionList).path("id").asText();
+    }
+
+    private String nonCurrentSessionId(JsonNode sessionList) {
+        return java.util.stream.StreamSupport.stream(sessionList.at("/data/items").spliterator(), false)
+                .filter(item -> !item.path("current").asBoolean())
+                .findFirst()
+                .orElseThrow()
+                .path("id")
+                .asText();
     }
 }

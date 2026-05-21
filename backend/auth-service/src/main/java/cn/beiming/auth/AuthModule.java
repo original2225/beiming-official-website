@@ -94,6 +94,34 @@ class AuthController {
         return ok(mapOf("valid", true, "expiresAt", session.expiresAt.toString(), "user", store.userSummary(session.user)));
     }
 
+    @GetMapping("/me/sessions")
+    ResponseEntity<Map<String, Object>> sessions(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        CurrentSession session = store.requireSession(authorization);
+        return ok(store.currentUserSessions(session));
+    }
+
+    @DeleteMapping("/me/sessions/{sessionId}")
+    ResponseEntity<Map<String, Object>> revokeSession(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                                       @PathVariable String sessionId,
+                                                       @RequestBody(required = false) Map<String, Object> body) {
+        CurrentSession session = store.requireSession(authorization);
+        body = bodyOrEmpty(body);
+        store.revokeUserSession(session, sessionId, requiredString(body, "reason"));
+        return ok(null);
+    }
+
+    @PostMapping("/me/password")
+    ResponseEntity<Map<String, Object>> changePassword(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                                       @RequestBody(required = false) Map<String, Object> body) {
+        CurrentSession session = store.requireSession(authorization);
+        body = bodyOrEmpty(body);
+        String currentPassword = requiredString(body, "currentPassword");
+        String newPassword = requiredString(body, "newPassword");
+        validatePassword(newPassword);
+        store.changePassword(session, currentPassword, newPassword, requiredString(body, "reason"));
+        return ok(null);
+    }
+
     @PostMapping("/password-reset/request")
     ResponseEntity<Map<String, Object>> requestPasswordReset(@RequestBody(required = false) Map<String, Object> body) {
         body = bodyOrEmpty(body);
@@ -294,7 +322,8 @@ class AuthController {
     }
 
     static void validatePassword(String password) {
-        if (password.length() < 10 || password.length() > 128 || !password.matches(".*[A-Za-z].*") || !password.matches(".*\\d.*")) {
+        Set<String> commonWeakPasswords = Set.of("password123", "password1234", "qwerty12345", "admin123456", "welcome123", "letmein123");
+        if (password.length() < 10 || password.length() > 128 || !password.matches(".*[A-Za-z].*") || !password.matches(".*\\d.*") || commonWeakPasswords.contains(password.toLowerCase(Locale.ROOT))) {
             throw ApiException.badRequest("password");
         }
     }
@@ -633,6 +662,45 @@ class AuthStore {
         }
     }
 
+    synchronized Map<String, Object> currentUserSessions(CurrentSession current) {
+        List<Map<String, Object>> rows = sessions.values().stream()
+                .filter(session -> session.userId.equals(current.user.id))
+                .sorted(Comparator.comparing((SessionRecord session) -> session.createdAt).reversed())
+                .map(session -> sessionSummary(session, current.session.id))
+                .toList();
+        return AuthController.mapOf("items", rows);
+    }
+
+    synchronized void revokeUserSession(CurrentSession current, String sessionId, String reason) {
+        SessionRecord target = sessions.values().stream()
+                .filter(session -> session.id.equals(sessionId))
+                .findFirst()
+                .orElseThrow(() -> new ApiException(41106, HttpStatus.UNAUTHORIZED, "session not operable"));
+        if (!target.userId.equals(current.user.id) || target.expiresAt.isBefore(Instant.now())) {
+            throw new ApiException(41106, HttpStatus.UNAUTHORIZED, "session not operable");
+        }
+        if (!target.revoked) {
+            target.revoked = true;
+            audit("AUTH_SESSION_REVOKED", current.user, current.user, "SUCCESS", reason, null, sessionId);
+        }
+    }
+
+    synchronized void changePassword(CurrentSession current, String currentPassword, String newPassword, String reason) {
+        if (!encoder.matches(currentPassword, current.user.passwordHash)) {
+            throw new ApiException(41105, HttpStatus.UNAUTHORIZED, "current password incorrect");
+        }
+        if (encoder.matches(newPassword, current.user.passwordHash)) {
+            throw new ApiException(43001, HttpStatus.CONFLICT, "same password");
+        }
+        current.user.passwordHash = encoder.encode(newPassword);
+        current.user.updatedAt = Instant.now();
+        sessions.values().stream()
+                .filter(session -> session.userId.equals(current.user.id))
+                .filter(session -> !session.id.equals(current.session.id))
+                .forEach(session -> session.revoked = true);
+        audit("AUTH_PASSWORD_CHANGED", current.user, current.user, "SUCCESS", reason, null, null);
+    }
+
     synchronized void requestPasswordReset(String username) {
         int attempts = passwordResetAttempts.merge(username.toLowerCase(Locale.ROOT), 1, Integer::sum);
         if (attempts > 5) {
@@ -895,6 +963,7 @@ class AuthStore {
         if ("DELETED".equals(user.status)) {
             throw new ApiException(43116, HttpStatus.CONFLICT, "user deleted");
         }
+        session.lastSeenAt = Instant.now();
         return new CurrentSession(token, session, user, session.expiresAt);
     }
 
@@ -938,7 +1007,7 @@ class AuthStore {
         }
         String token = "ses_" + UUID.randomUUID();
         Instant expiresAt = Instant.now().plus(2, ChronoUnit.HOURS);
-        sessions.put(token, new SessionRecord(token, user.id, expiresAt));
+        sessions.put(token, new SessionRecord("ssn_" + UUID.randomUUID(), token, user.id, Instant.now(), expiresAt));
         return AuthController.mapOf("accessToken", token, "tokenType", "Bearer", "expiresAt", expiresAt.toString(), "user", userSummary(user));
     }
 
@@ -1004,6 +1073,17 @@ class AuthStore {
 
     private Map<String, Object> minecraftBindingMap(MinecraftBinding binding) {
         return AuthController.mapOf("minecraftId", binding.minecraftId, "minecraftUuid", binding.minecraftUuid, "verifiedAt", binding.verifiedAt.toString(), "source", binding.source);
+    }
+
+    private Map<String, Object> sessionSummary(SessionRecord session, String currentSessionId) {
+        return AuthController.mapOf(
+                "id", session.id,
+                "current", session.id.equals(currentSessionId),
+                "createdAt", session.createdAt.toString(),
+                "lastSeenAt", session.lastSeenAt.toString(),
+                "expiresAt", session.expiresAt.toString(),
+                "revoked", session.revoked
+        );
     }
 
     private void revokeSessions(String userId) {
@@ -1153,14 +1233,20 @@ class UserAccount {
 }
 
 class SessionRecord {
+    final String id;
     final String token;
     final String userId;
+    final Instant createdAt;
+    Instant lastSeenAt;
     Instant expiresAt;
     boolean revoked;
 
-    SessionRecord(String token, String userId, Instant expiresAt) {
+    SessionRecord(String id, String token, String userId, Instant createdAt, Instant expiresAt) {
+        this.id = id;
         this.token = token;
         this.userId = userId;
+        this.createdAt = createdAt;
+        this.lastSeenAt = createdAt;
         this.expiresAt = expiresAt;
     }
 }
