@@ -11,6 +11,7 @@ backend/*/target/
 
 *.log
 *.tmp
+*.tsbuildinfo
 tmp-*/
 
 .DS_Store

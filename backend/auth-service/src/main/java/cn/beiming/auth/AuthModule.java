@@ -6,6 +6,9 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.boot.ApplicationRunner;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -25,6 +28,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.filter.OncePerRequestFilter;
+import org.springframework.web.servlet.config.annotation.CorsRegistry;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 import java.io.IOException;
 import java.time.Instant;
@@ -315,6 +320,33 @@ class AuthController {
     }
 }
 
+@Configuration
+class AuthLocalWebConfig {
+    @Bean
+    WebMvcConfigurer authCorsConfigurer() {
+        return new WebMvcConfigurer() {
+            @Override
+            public void addCorsMappings(CorsRegistry registry) {
+                registry.addMapping("/api/v1/auth/**")
+                        .allowedOrigins(
+                                "http://localhost:5173",
+                                "http://127.0.0.1:5173",
+                                "http://localhost:5182",
+                                "http://127.0.0.1:5182"
+                        )
+                        .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
+                        .allowedHeaders("*")
+                        .exposedHeaders("X-Request-Id");
+            }
+        };
+    }
+
+    @Bean
+    ApplicationRunner authLocalSeedData(AuthStore store) {
+        return args -> store.seedLocalDevDataIfEmpty();
+    }
+}
+
 @Service
 class AuthStore {
     private static final Set<String> VALID_ROLES = Set.of("OWNER", "ADMIN", "HELPER", "USER");
@@ -385,6 +417,23 @@ class AuthStore {
 
     synchronized void seedMinecraftBinding(String username, String minecraftId, String minecraftUuid) {
         findByUsername(username).minecraftBinding = new MinecraftBinding(minecraftId, minecraftUuid, Instant.now(), "MANUAL_VERIFICATION");
+    }
+
+    synchronized void seedLocalDevDataIfEmpty() {
+        if (!usersById.isEmpty()) {
+            return;
+        }
+        seedOwner("owner", "Password12345");
+        seedUser("admin", "Password12345", Set.of("ADMIN"), Set.of(), "ACTIVE");
+        seedUser("helper", "Password12345", Set.of("HELPER"), Set.of(), "ACTIVE");
+        seedUser("user", "Password12345", Set.of("USER"), Set.of(), "ACTIVE");
+        seedUser("disabled", "Password12345", Set.of("USER"), Set.of(), "DISABLED");
+        seedUser("banned", "Password12345", Set.of("USER"), Set.of(), "BANNED");
+        seedUser("deleted", "Password12345", Set.of("USER"), Set.of(), "DELETED");
+        seedInvitation("PLAYER-CODE-1", "PLAYER", Set.of("USER"), Set.of(), 10, null, "owner");
+        seedInvitation("ADMIN-CODE-1", "ADMIN", Set.of("ADMIN"), Set.of(), 3, null, "owner");
+        seedInvitation("LAST-CODE-1", "PLAYER", Set.of("USER"), Set.of(), 1, null, "owner");
+        seedMinecraftBinding("user", "UsedName", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
     }
 
     synchronized int invitationUsedCount(String rawCode) {
