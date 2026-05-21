@@ -27,6 +27,10 @@ input {
   font: inherit;
 }
 
+select {
+  font: inherit;
+}
+
 button {
   cursor: pointer;
 }
@@ -502,7 +506,23 @@ button:disabled {
   outline: 0;
 }
 
+.field select {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 14px;
+  border: 1px solid #d3deec;
+  border-radius: 6px;
+  color: #111827;
+  background: #ffffff;
+  outline: 0;
+}
+
 .field input:focus {
+  border-color: #326df6;
+  box-shadow: 0 0 0 3px rgba(50, 109, 246, 0.13);
+}
+
+.field select:focus {
   border-color: #326df6;
   box-shadow: 0 0 0 3px rgba(50, 109, 246, 0.13);
 }
@@ -523,6 +543,142 @@ button:disabled {
   min-height: 48px;
   padding: 0 18px;
   font-size: 17px;
+}
+
+.invite-console {
+  margin-top: 34px;
+  padding-top: 30px;
+  border-top: 1px solid #dce5f2;
+}
+
+.invite-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.7fr) minmax(0, 1fr);
+  gap: 24px;
+  margin-top: 24px;
+}
+
+.invite-form,
+.invite-list {
+  border: 1px solid #dce5f2;
+  border-radius: 8px;
+  background: #fbfdff;
+}
+
+.invite-form {
+  padding: 24px;
+}
+
+.invite-list {
+  min-width: 0;
+  padding: 22px;
+}
+
+.invite-toolbar,
+.invite-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.invite-toolbar strong {
+  display: block;
+  font-size: 20px;
+}
+
+.invite-toolbar span {
+  display: block;
+  overflow: hidden;
+  max-width: 520px;
+  margin-top: 6px;
+  color: #60708d;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.invite-toolbar .ghost {
+  min-height: 42px;
+  padding: 0 16px;
+  font-size: 16px;
+}
+
+.invite-items {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.invite-item {
+  min-height: 72px;
+  padding: 14px 16px;
+  border: 1px solid #dce5f2;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.invite-item > div {
+  min-width: 0;
+}
+
+.invite-item strong,
+.invite-item span {
+  display: block;
+}
+
+.invite-item strong {
+  overflow: hidden;
+  color: #111827;
+  font-size: 19px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.invite-item span {
+  margin-top: 5px;
+  color: #60708d;
+  font-size: 14px;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  color: #2d8d57;
+  background: #e5f5ea;
+  font-size: 13px;
+}
+
+.status-pill.disabled,
+.status-pill.expired,
+.status-pill.exhausted {
+  color: #9a3412;
+  background: #ffedd5;
+}
+
+.icon-action {
+  display: inline-grid;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid #d2dce9;
+  border-radius: 6px;
+  color: #4b5871;
+  background: #ffffff;
+}
+
+.empty-state {
+  display: grid;
+  min-height: 160px;
+  place-items: center;
+  border: 1px dashed #cbd7e8;
+  border-radius: 8px;
+  color: #60708d;
+  background: #ffffff;
+  text-align: center;
 }
 
 .response-panel {
@@ -611,6 +767,10 @@ pre {
   }
 
   .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .invite-layout {
     grid-template-columns: 1fr;
   }
 }

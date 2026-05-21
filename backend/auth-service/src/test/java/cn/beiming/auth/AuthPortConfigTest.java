@@ -36,5 +36,11 @@ class AuthPortConfigTest {
                         .header("Access-Control-Request-Method", "POST"))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Access-Control-Allow-Origin", "http://127.0.0.1:5173"));
+
+        mvc.perform(options("/api/v1/auth/login")
+                        .header("Origin", "http://127.0.0.1:5174")
+                        .header("Access-Control-Request-Method", "POST"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Allow-Origin", "http://127.0.0.1:5174"));
     }
 }

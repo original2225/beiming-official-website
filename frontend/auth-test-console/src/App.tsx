@@ -1,6 +1,7 @@
 import {
   Activity,
   BadgeCheck,
+  Ban,
   Boxes,
   CheckCircle2,
   ChevronDown,
@@ -12,10 +13,12 @@ import {
   Link2,
   LogOut,
   Network,
+  Plus,
   RefreshCcw,
   Search,
   Server,
   ShieldCheck,
+  Ticket,
   UserRound,
   Users
 } from "lucide-react";
@@ -53,6 +56,33 @@ type SessionPayload = {
   tokenType: string;
   expiresAt: string;
   user: UserSummary;
+};
+
+type PagePayload<T> = {
+  items: T[];
+  page: number;
+  pageSize: number;
+  total: number;
+};
+
+type InvitationSummary = {
+  id: string;
+  codePrefix: string;
+  type: string;
+  status: string;
+  boundRoles: string[];
+  boundPermissions: string[];
+  maxUses: number;
+  usedCount: number;
+  expiresAt: string | null;
+  createdBy: string;
+  createdAt: string;
+  disabledAt: string | null;
+};
+
+type CreateInvitationResult = {
+  invitation: InvitationSummary;
+  rawCode: string;
 };
 
 type ServiceStatus = "checking" | "online" | "offline";
@@ -94,6 +124,15 @@ export default function App() {
     minecraftUuid: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     verificationCode: "local"
   });
+  const [invitationForm, setInvitationForm] = useState({
+    type: "PLAYER",
+    boundRoles: "USER",
+    boundPermissions: "",
+    maxUses: "3",
+    reason: "local auth test"
+  });
+  const [invitations, setInvitations] = useState<InvitationSummary[]>([]);
+  const [latestRawCode, setLatestRawCode] = useState("");
 
   const roleLabel = useMemo(() => currentUser?.roles.join(" / ") ?? "未登录", [currentUser]);
   const tokenPreview = token ? `${token.slice(0, 10)}...${token.slice(-6)}` : "空";
@@ -209,7 +248,41 @@ export default function App() {
   }
 
   async function listInvitations() {
-    await callApi("邀请码列表", "/admin/invitations?page=1&pageSize=6", { auth: true });
+    const { response, payload } = await callApi<PagePayload<InvitationSummary>>("邀请码列表", "/admin/invitations?page=1&pageSize=10", { auth: true });
+    if (response?.ok && payload.data) {
+      setInvitations(payload.data.items);
+    }
+  }
+
+  async function createInvitation(event: FormEvent) {
+    event.preventDefault();
+    const { response, payload } = await callApi<CreateInvitationResult>("创建邀请码", "/admin/invitations", {
+      method: "POST",
+      auth: true,
+      body: {
+        type: invitationForm.type,
+        boundRoles: csvValues(invitationForm.boundRoles),
+        boundPermissions: csvValues(invitationForm.boundPermissions),
+        maxUses: Number(invitationForm.maxUses),
+        reason: invitationForm.reason,
+        idempotencyKey: `ui-${Date.now()}`
+      }
+    });
+    if (response?.ok && payload.data) {
+      setLatestRawCode(payload.data.rawCode);
+      setInvitations((items) => [payload.data.invitation, ...items.filter((item) => item.id !== payload.data.invitation.id)]);
+    }
+  }
+
+  async function disableInvitation(invitationId: string) {
+    const { response, payload } = await callApi<InvitationSummary>("禁用邀请码", `/admin/invitations/${invitationId}/disable`, {
+      method: "PATCH",
+      auth: true,
+      body: { reason: "disabled from auth test console" }
+    });
+    if (response?.ok && payload.data) {
+      setInvitations((items) => items.map((item) => (item.id === invitationId ? payload.data : item)));
+    }
   }
 
   const responseCode = lastResponse ? String(lastResponse.code) : "NA";
@@ -240,6 +313,10 @@ export default function App() {
           <button className="tab">
             <ShieldCheck size={19} />
             会话
+          </button>
+          <button className="tab">
+            <Ticket size={19} />
+            邀请码
           </button>
           <button className="tab">
             <Code2 size={19} />
@@ -371,6 +448,67 @@ export default function App() {
                 退出
               </button>
             </div>
+
+            <section className="invite-console">
+              <div className="panel-title">
+                <Ticket size={22} />
+                <h2>邀请码管理</h2>
+              </div>
+
+              <div className="invite-layout">
+                <form onSubmit={createInvitation} className="invite-form">
+                  <SelectField
+                    label="类型"
+                    value={invitationForm.type}
+                    options={["PLAYER", "ADMIN"]}
+                    onChange={(type) => setInvitationForm({ ...invitationForm, type, boundRoles: type === "ADMIN" ? "ADMIN" : "USER" })}
+                  />
+                  <Field label="绑定角色" value={invitationForm.boundRoles} onChange={(boundRoles) => setInvitationForm({ ...invitationForm, boundRoles })} />
+                  <Field label="能力点" value={invitationForm.boundPermissions} onChange={(boundPermissions) => setInvitationForm({ ...invitationForm, boundPermissions })} />
+                  <Field label="次数" type="number" value={invitationForm.maxUses} onChange={(maxUses) => setInvitationForm({ ...invitationForm, maxUses })} />
+                  <Field label="原因" value={invitationForm.reason} onChange={(reason) => setInvitationForm({ ...invitationForm, reason })} />
+                  <button className="primary full" disabled={!token || busyAction === "创建邀请码"}>
+                    <Plus size={18} />
+                    创建邀请码
+                  </button>
+                </form>
+
+                <div className="invite-list">
+                  <div className="invite-toolbar">
+                    <div>
+                      <strong>最近邀请码</strong>
+                      <span>{latestRawCode || "创建成功后这里显示完整邀请码，仅本次可见"}</span>
+                    </div>
+                    <button className="ghost" onClick={listInvitations} disabled={!token || busyAction === "邀请码列表"}>
+                      <RefreshCcw size={17} />
+                      刷新
+                    </button>
+                  </div>
+
+                  <div className="invite-items">
+                    {invitations.length === 0 ? (
+                      <div className="empty-state">登录 OWNER 或 ADMIN 后刷新邀请码列表</div>
+                    ) : (
+                      invitations.map((invitation) => (
+                        <article className="invite-item" key={invitation.id}>
+                          <div>
+                            <strong>{invitation.codePrefix}</strong>
+                            <span>{invitation.type} · {invitation.boundRoles.join(" / ")}</span>
+                          </div>
+                          <div>
+                            <b className={`status-pill ${invitation.status.toLowerCase()}`}>{invitation.status}</b>
+                            <span>{invitation.usedCount}/{invitation.maxUses}</span>
+                          </div>
+                          <button className="icon-action" onClick={() => disableInvitation(invitation.id)} disabled={!token || invitation.status === "DISABLED" || busyAction === "禁用邀请码"}>
+                            <Ban size={17} />
+                          </button>
+                        </article>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            </section>
           </div>
 
           <aside className="panel response-panel">
@@ -391,6 +529,13 @@ export default function App() {
       </section>
     </main>
   );
+}
+
+function csvValues(value: string) {
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
@@ -428,6 +573,31 @@ function Field({
     <label className="field">
       <span>{label}</span>
       <input type={type} value={value} onChange={(event) => onChange(event.target.value)} />
+    </label>
+  );
+}
+
+function SelectField({
+  label,
+  value,
+  options,
+  onChange
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <select value={value} onChange={(event) => onChange(event.target.value)}>
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
     </label>
   );
 }
