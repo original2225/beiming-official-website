@@ -263,3 +263,13 @@
 修复动作：在 `AuthController` 新增当前用户会话列表、吊销指定会话和主动修改密码接口；在 `AuthStore` 为会话增加独立 `id`、`createdAt`、`lastSeenAt` 和摘要输出；成功认证时更新 `lastSeenAt`；实现只允许吊销当前用户自己的会话、重复吊销不重复审计、吊销当前会话立即失效；实现主动修改密码时校验当前密码、拒绝相同密码、更新哈希、吊销除当前会话外的其他会话并写入 `AUTH_PASSWORD_CHANGED`；在密码校验中拦截明显常见弱密码。
 
 复测结果：执行 `mvn test`，结果通过。`AuthApiContractTest` 46 个测试通过，失败 0，错误 0，跳过 0；`AuthPortConfigTest` 2 个测试通过，失败 0，错误 0，跳过 0；总计 48 个测试通过。提交前再次执行 `mvn test` 仍为 48 个测试通过，失败 0，错误 0，跳过 0；执行 `npm run test:e2e` 通过；执行 `npm run test:e2e:full` 通过，确认测试台调用真实后端未被破坏。剩余风险是本轮仍沿用 P0 内存存储，数据库持久化、真实事务、分布式限流、MFA 和审计查询接口尚未进入本批次实现，后续需要按同样闭环继续推进。
+
+### 2026-05-21 auth 开发完成后完整回归测试
+
+测试范围：`docs/contracts-auth.md` 0.2、本文档 0.2、`backend/auth-service` 全部契约测试和端口配置测试、`frontend/auth-test-console` 构建、基础 E2E 和真实后端完整联调。测试环境为 Windows 本地仓库，Java 21，Maven，Node/Vite，本机 Microsoft Edge，auth 后端端口 `8101`，测试台端口 `5174`。
+
+执行过程：先确认工作树状态为当前分支 `codex/auth-contract-tests-docs` 且无未提交改动；执行 `mvn test`，结果为 `AuthApiContractTest` 46 个测试通过、`AuthPortConfigTest` 2 个测试通过，总计 48 个测试通过，失败 0，错误 0，跳过 0；执行 `npm run test:e2e`，结果为 `auth test console e2e passed`；执行 `npm run build`，TypeScript 和 Vite 构建成功；执行 `npm run test:e2e:full`，真实后端完整联调通过。
+
+结果分析：本轮没有出现测试失败或新 bug。后端测试覆盖 auth API 文档中的统一响应、错误码、请求编号、分页、认证、注册、登录、退出、当前用户、会话校验、当前用户会话列表、会话吊销、主动修改密码、密码重置、Minecraft 绑定、后台用户、角色能力点、邀请码、状态流转、安全和审计要求。前端测试覆盖测试台渲染、导航、权限模型展示、邀请码操作、基础联调按钮和真实后端调用。
+
+修复动作：无。本轮没有失败测试。剩余风险保持上一轮结论，P0 内存存储仍未替换为数据库持久化，真实事务、分布式限流、MFA 和审计查询接口尚未进入本批次实现。
