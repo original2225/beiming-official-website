@@ -46,11 +46,13 @@ class NotificationApiContractTest {
             NOTIF-SEND-TPL-001 NOTIF-SEND-TPL-002 NOTIF-SEND-TPL-003 NOTIF-SEND-TPL-004 NOTIF-SEND-TPL-005 NOTIF-SEND-TPL-006 NOTIF-SEND-TPL-007 NOTIF-SEND-TPL-008 NOTIF-SEND-TPL-009 NOTIF-SEND-TPL-010 NOTIF-SEND-TPL-011 NOTIF-SEND-TPL-012 NOTIF-SEND-TPL-013 NOTIF-SEND-TPL-014 NOTIF-SEND-TPL-015 NOTIF-SEND-TPL-016
             NOTIF-TPL-LIST-001 NOTIF-TPL-LIST-002 NOTIF-TPL-LIST-003 NOTIF-TPL-LIST-004 NOTIF-TPL-LIST-005 NOTIF-TPL-LIST-006 NOTIF-TPL-LIST-007
             NOTIF-TPL-DETAIL-001 NOTIF-TPL-DETAIL-002 NOTIF-TPL-DETAIL-003 NOTIF-TPL-DETAIL-004
+            NOTIF-TPL-PREVIEW-001 NOTIF-TPL-PREVIEW-002 NOTIF-TPL-PREVIEW-003 NOTIF-TPL-PREVIEW-004 NOTIF-TPL-PREVIEW-005 NOTIF-TPL-PREVIEW-006 NOTIF-TPL-PREVIEW-007 NOTIF-TPL-PREVIEW-008 NOTIF-TPL-PREVIEW-009
             NOTIF-TPL-CREATE-001 NOTIF-TPL-CREATE-002 NOTIF-TPL-CREATE-003 NOTIF-TPL-CREATE-004 NOTIF-TPL-CREATE-005 NOTIF-TPL-CREATE-006 NOTIF-TPL-CREATE-007 NOTIF-TPL-CREATE-008 NOTIF-TPL-CREATE-009 NOTIF-TPL-CREATE-010 NOTIF-TPL-CREATE-011 NOTIF-TPL-CREATE-012 NOTIF-TPL-CREATE-013 NOTIF-TPL-CREATE-014
             NOTIF-TPL-PATCH-001 NOTIF-TPL-PATCH-002 NOTIF-TPL-PATCH-003 NOTIF-TPL-PATCH-004 NOTIF-TPL-PATCH-005 NOTIF-TPL-PATCH-006 NOTIF-TPL-PATCH-007 NOTIF-TPL-PATCH-008 NOTIF-TPL-PATCH-009 NOTIF-TPL-PATCH-010 NOTIF-TPL-PATCH-011
             NOTIF-TPL-DISABLE-001 NOTIF-TPL-DISABLE-002 NOTIF-TPL-DISABLE-003 NOTIF-TPL-DISABLE-004 NOTIF-TPL-DISABLE-005 NOTIF-TPL-DISABLE-006 NOTIF-TPL-DISABLE-007
             NOTIF-TPL-ENABLE-001 NOTIF-TPL-ENABLE-002 NOTIF-TPL-ENABLE-003 NOTIF-TPL-ENABLE-004 NOTIF-TPL-ENABLE-005 NOTIF-TPL-ENABLE-006 NOTIF-TPL-ENABLE-007
             NOTIF-AUDIT-001 NOTIF-AUDIT-002 NOTIF-AUDIT-003 NOTIF-AUDIT-004 NOTIF-AUDIT-005 NOTIF-AUDIT-006 NOTIF-AUDIT-007 NOTIF-AUDIT-008 NOTIF-AUDIT-009
+            NOTIF-OPS-SUMMARY-001 NOTIF-OPS-SUMMARY-002 NOTIF-OPS-SUMMARY-003 NOTIF-OPS-SUMMARY-004 NOTIF-OPS-SUMMARY-005 NOTIF-OPS-SUMMARY-006 NOTIF-OPS-SUMMARY-007
             NOTIF-SEC-001 NOTIF-SEC-002 NOTIF-SEC-003 NOTIF-SEC-004 NOTIF-SEC-005 NOTIF-SEC-006 NOTIF-SEC-007 NOTIF-SEC-008 NOTIF-SEC-009 NOTIF-SEC-010 NOTIF-SEC-011 NOTIF-SEC-012
             """;
 
@@ -80,8 +82,8 @@ class NotificationApiContractTest {
         Set<String> mapped = pattern.matcher(TEST_DOCUMENT_COVERAGE).results()
                 .map(java.util.regex.MatchResult::group)
                 .collect(java.util.stream.Collectors.toCollection(java.util.TreeSet::new));
-        assertThat(mapped).hasSize(200);
-        assertThat(TEST_DOCUMENT_COVERAGE).contains("NOTIF-COM-001", "NOTIF-AUTH-018", "NOTIF-CREATE-021", "NOTIF-SEC-012");
+        assertThat(mapped).hasSize(216);
+        assertThat(TEST_DOCUMENT_COVERAGE).contains("NOTIF-COM-001", "NOTIF-AUTH-018", "NOTIF-CREATE-021", "NOTIF-TPL-PREVIEW-009", "NOTIF-OPS-SUMMARY-007", "NOTIF-SEC-012");
     }
 
     @Test
@@ -587,6 +589,93 @@ class NotificationApiContractTest {
     }
 
     @Test
+    @DisplayName("NOTIF-TPL-PREVIEW renders templates without notification side effects")
+    void templatePreviewContract() throws Exception {
+        JsonNode before = performJson(get("/api/v1/notifications/admin/ops/summary")
+                .header("Authorization", bearer("admin-token")), 200);
+
+        JsonNode preview = performJson(post("/api/v1/notifications/admin/templates/preview")
+                .header("Authorization", bearer("helper-token")), previewBody("ENABLED_TEMPLATE"), 200);
+        assertThat(preview.at("/data/templateCode").asText()).isEqualTo("ENABLED_TEMPLATE");
+        assertThat(preview.at("/data/templateStatus").asText()).isEqualTo("ENABLED");
+        assertThat(preview.at("/data/sendable").asBoolean()).isTrue();
+        assertThat(preview.at("/data/title").asText()).contains("Steve");
+        assertThat(preview.at("/data/body").asText()).contains("PASS");
+        assertThat(preview.at("/data/templateVersion").asInt()).isGreaterThanOrEqualTo(1);
+        assertThat(preview.at("/data/createdNotification").asBoolean()).isFalse();
+
+        JsonNode disabled = performJson(post("/api/v1/notifications/admin/templates/preview")
+                .header("Authorization", bearer("admin-token")), previewBody("DISABLED_TEMPLATE"), 200);
+        assertThat(disabled.at("/data/templateStatus").asText()).isEqualTo("DISABLED");
+        assertThat(disabled.at("/data/sendable").asBoolean()).isFalse();
+
+        performJson(post("/api/v1/notifications/admin/templates/preview").header("Authorization", bearer("admin-token")),
+                previewBody("MISSING_TEMPLATE"), 404, 43301);
+
+        Map<String, Object> missingVar = previewBody("ENABLED_TEMPLATE");
+        missingVar.put("variables", Map.of("playerName", "Steve"));
+        performJson(post("/api/v1/notifications/admin/templates/preview").header("Authorization", bearer("admin-token")),
+                missingVar, 400, 43313);
+
+        Map<String, Object> unknownVar = previewBody("ENABLED_TEMPLATE");
+        unknownVar.put("variables", Map.of("playerName", "Steve", "result", "PASS", "unknown", "x"));
+        performJson(post("/api/v1/notifications/admin/templates/preview").header("Authorization", bearer("admin-token")),
+                unknownVar, 400, 43313);
+
+        store.markTemplateRenderBroken("BROKEN_TEMPLATE");
+        performJson(post("/api/v1/notifications/admin/templates/preview").header("Authorization", bearer("admin-token")),
+                previewBody("BROKEN_TEMPLATE"), 400, 43314);
+
+        performJson(post("/api/v1/notifications/admin/templates/preview").header("Authorization", bearer("user-token")),
+                previewBody("ENABLED_TEMPLATE"), 403, 42001);
+        performJson(post("/api/v1/notifications/admin/templates/preview"), previewBody("ENABLED_TEMPLATE"), 401, 41000);
+
+        JsonNode after = performJson(get("/api/v1/notifications/admin/ops/summary")
+                .header("Authorization", bearer("admin-token")), 200);
+        assertThat(after.at("/data/messagesTotal").asInt()).isEqualTo(before.at("/data/messagesTotal").asInt());
+        assertThat(after.at("/data/unreadTotal").asInt()).isEqualTo(before.at("/data/unreadTotal").asInt());
+        assertThat(after.at("/data/auditsTotal").asInt()).isEqualTo(before.at("/data/auditsTotal").asInt());
+    }
+
+    @Test
+    @DisplayName("NOTIF-OPS-SUMMARY exposes operational counts without sensitive data")
+    void opsSummaryContract() throws Exception {
+        JsonNode summary = performJson(get("/api/v1/notifications/admin/ops/summary")
+                .header("Authorization", bearer("admin-token")), 200);
+        assertThat(summary.at("/data/service").asText()).isEqualTo("notification");
+        assertThat(summary.at("/data/storageMode").asText()).isEqualTo("IN_MEMORY");
+        assertThat(summary.at("/data/authMode").asText()).isEqualTo("TEST_STUB");
+        assertThat(summary.at("/data/messagesTotal").asInt()).isGreaterThan(0);
+        assertThat(summary.at("/data/templatesTotal").asInt()).isGreaterThan(0);
+        assertThat(summary.at("/data/auditsTotal").asInt()).isGreaterThan(0);
+        assertThat(summary.at("/data/pendingExternalDeliveries").asInt()).isZero();
+        assertThat(java.util.stream.StreamSupport.stream(summary.at("/data/warnings").spliterator(), false)
+                .map(JsonNode::asText)
+                .toList()).contains("P0_IN_MEMORY_STORAGE", "P0_AUTH_STUB");
+        assertThat(summary.toString()).doesNotContain("Bearer", "token", "Notification body", "Result ${result}", "admin reason");
+
+        mvc.perform(get("/api/v1/notifications/admin/ops/summary")
+                        .header("Authorization", bearer("owner-token")))
+                .andExpect(status().isOk());
+        performJson(get("/api/v1/notifications/admin/ops/summary").header("Authorization", bearer("helper-token")), 403, 42001);
+        performJson(get("/api/v1/notifications/admin/ops/summary").header("Authorization", bearer("user-token")), 403, 42001);
+        performJson(get("/api/v1/notifications/admin/ops/summary"), 401, 41000);
+
+        int beforeMessages = summary.at("/data/messagesTotal").asInt();
+        int beforeArchived = summary.at("/data/archivedTotal").asInt();
+        JsonNode created = performJson(post("/api/v1/notifications/admin/messages")
+                .header("Authorization", bearer("admin-token")), messageBody(List.of("user"), "Ops Summary"), 201);
+        performJson(patch("/api/v1/notifications/me/" + created.at("/data/notificationId").asText() + "/archive")
+                .header("Authorization", bearer("user-token")), Map.of("reason", "ops"), 200);
+
+        JsonNode changed = performJson(get("/api/v1/notifications/admin/ops/summary")
+                .header("Authorization", bearer("admin-token")), 200);
+        assertThat(changed.at("/data/messagesTotal").asInt()).isEqualTo(beforeMessages + 1);
+        assertThat(changed.at("/data/archivedTotal").asInt()).isEqualTo(beforeArchived + 1);
+        assertThat(changed.at("/data/auditsTotal").asInt()).isGreaterThan(summary.at("/data/auditsTotal").asInt());
+    }
+
+    @Test
     @DisplayName("NOTIF-AUDIT and NOTIF-SEC cover audit reads, immutability, and module boundaries")
     void auditAndSecurityContract() throws Exception {
         String messageId = store.notificationId("unread-user");
@@ -708,6 +797,13 @@ class NotificationApiContractTest {
                 "sourceModule", "exam",
                 "sourceId", "exam-1",
                 "reason", "test"
+        );
+    }
+
+    private Map<String, Object> previewBody(String code) {
+        return mapOf(
+                "templateCode", code,
+                "variables", Map.of("playerName", "Steve", "result", "PASS")
         );
     }
 
