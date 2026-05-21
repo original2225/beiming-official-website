@@ -60,7 +60,7 @@ class AuthApiContractTest {
         store.seedInvitation("EXHAUSTED-CODE-1", "PLAYER", Set.of("USER"), Set.of(), 1, null, "owner");
         store.exhaustInvitationByCode("EXHAUSTED-CODE-1");
         store.seedInvitation("LAST-CODE-1", "PLAYER", Set.of("USER"), Set.of(), 1, null, "owner");
-        store.bindMinecraft("user", "UsedName", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+        store.seedMinecraftBinding("user", "UsedName", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
     }
 
     @Test
@@ -100,6 +100,43 @@ class AuthApiContractTest {
         mvc.perform(get("/api/v1/auth/me").header("Authorization", "Token bad"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value(41003));
+    }
+
+    @Test
+    @DisplayName("AUTH-COM-007/008/009/010 list endpoints use pagination, hide secrets, and write auditable request ids")
+    void commonPaginationSensitiveFieldsAndAuditContract() throws Exception {
+        String ownerToken = login("owner");
+
+        mvc.perform(get("/api/v1/auth/admin/invitations")
+                        .header("Authorization", bearer(ownerToken))
+                        .param("page", "1")
+                        .param("pageSize", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items").isArray())
+                .andExpect(jsonPath("$.data.page").value(1))
+                .andExpect(jsonPath("$.data.pageSize").value(2))
+                .andExpect(jsonPath("$.data.total").isNumber())
+                .andExpect(jsonPath("$.data.items[0].rawCode").doesNotExist());
+
+        mvc.perform(get("/api/v1/auth/admin/invitations")
+                        .header("Authorization", bearer(ownerToken))
+                        .param("page", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(40002));
+
+        mvc.perform(get("/api/v1/auth/admin/users/" + store.userId("user"))
+                        .header("Authorization", bearer(ownerToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.passwordHash").doesNotExist());
+
+        mvc.perform(patch("/api/v1/auth/admin/users/" + store.userId("user"))
+                        .header("Authorization", bearer(ownerToken))
+                        .header("X-Request-Id", "req-audit-check")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("displayName", "Audit User", "reason", "audit"))))
+                .andExpect(status().isOk());
+
+        assertThat(store.latestAuditRequestId("AUTH_USER_UPDATED")).isEqualTo("req-audit-check");
     }
 
     @Test
@@ -195,6 +232,23 @@ class AuthApiContractTest {
     }
 
     @Test
+    @DisplayName("AUTH-REG-016/018/019 register rate limit, owner protection, and request id contract")
+    void registerRateLimitOwnerProtectionAndRequestId() throws Exception {
+        store.seedInvitation("OWNER-CODE-1", "ADMIN", Set.of("OWNER"), Set.of(), 1, null, "owner");
+        performJson(post("/api/v1/auth/register").header("X-Request-Id", "req-owner-reg"), registerBody("OWNER-CODE-1", "owner_attempt"), 403, 42101);
+        store.resetRegisterAttempts();
+
+        for (int i = 0; i < 5; i++) {
+            Map<String, Object> body = registerBody("PLAYER-CODE-1", "rate_user_" + i);
+            performJson(post("/api/v1/auth/register").header("X-Request-Id", "req-rate-" + i), body, 201);
+        }
+
+        int before = store.invitationUsedCount("PLAYER-CODE-1");
+        performJson(post("/api/v1/auth/register").header("X-Request-Id", "req-rate-limit"), registerBody("PLAYER-CODE-1", "rate_user_limit"), 429, 44101);
+        assertThat(store.invitationUsedCount("PLAYER-CODE-1")).isEqualTo(before);
+    }
+
+    @Test
     @DisplayName("AUTH-REG-015 allows only one concurrent final invitation use")
     void registerProtectsConcurrentLastInvitationUse() throws Exception {
         CountDownLatch start = new CountDownLatch(1);
@@ -238,6 +292,21 @@ class AuthApiContractTest {
     }
 
     @Test
+    @DisplayName("AUTH-LOGIN-008/009 validates login fields and idempotent retry")
+    void loginFieldValidationAndIdempotency() throws Exception {
+        performJson(post("/api/v1/auth/login"), Map.of("username", "user"), 400, 40001);
+
+        Map<String, Object> body = new java.util.LinkedHashMap<>(Map.of(
+                "username", "user",
+                "password", "Password12345",
+                "idempotencyKey", "login-idem-1"
+        ));
+        JsonNode first = performJson(post("/api/v1/auth/login"), body, 200);
+        JsonNode second = performJson(post("/api/v1/auth/login"), body, 200);
+        assertThat(second.at("/data/accessToken").asText()).isEqualTo(first.at("/data/accessToken").asText());
+    }
+
+    @Test
     @DisplayName("AUTH-LOGIN-007 rate limits repeated login failures")
     void loginRateLimitDoesNotCreateSession() throws Exception {
         for (int i = 0; i < 5; i++) {
@@ -265,6 +334,23 @@ class AuthApiContractTest {
     }
 
     @Test
+    @DisplayName("AUTH-LOGOUT-002/003/004 repeat logout is idempotent and old token stays invalid")
+    void logoutIdempotencyAndFailureCases() throws Exception {
+        String token = login("user");
+
+        mvc.perform(post("/api/v1/auth/logout").header("Authorization", bearer(token)))
+                .andExpect(status().isOk());
+        mvc.perform(post("/api/v1/auth/logout").header("Authorization", bearer(token)))
+                .andExpect(status().isOk());
+        mvc.perform(post("/api/v1/auth/logout"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(41000));
+        mvc.perform(get("/api/v1/auth/me").header("Authorization", bearer(token)))
+                .andExpect(status().isUnauthorized());
+        assertThat(store.auditCount("AUTH_LOGOUT_SUCCESS")).isEqualTo(1);
+    }
+
+    @Test
     @DisplayName("AUTH-ME-001 and AUTH-VERIFY-001 return current authenticated user")
     void currentUserAndVerifySession() throws Exception {
         String token = login("user");
@@ -278,6 +364,24 @@ class AuthApiContractTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.valid").value(true))
                 .andExpect(jsonPath("$.data.user.username").value("user"));
+    }
+
+    @Test
+    @DisplayName("AUTH-ME-002/003/004/005 and AUTH-VERIFY-002 reject unusable sessions")
+    void currentUserAndVerifyRejectUnusableSessions() throws Exception {
+        String token = login("user");
+        store.expireSession(token);
+        mvc.perform(get("/api/v1/auth/me").header("Authorization", bearer(token)))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(41002));
+        mvc.perform(get("/api/v1/auth/session/verify").header("Authorization", bearer(token)))
+                .andExpect(status().isUnauthorized());
+
+        String activeToken = login("user");
+        store.setUserStatus("user", "DISABLED");
+        mvc.perform(get("/api/v1/auth/me").header("Authorization", bearer(activeToken)))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(41101));
     }
 
     @Test
@@ -316,6 +420,22 @@ class AuthApiContractTest {
     }
 
     @Test
+    @DisplayName("AUTH-PWD-004/007/009/010 password reset limit and invalid states")
+    void passwordResetLimitAndInvalidStateCases() throws Exception {
+        for (int i = 0; i < 5; i++) {
+            performJson(post("/api/v1/auth/password-reset/request"), Map.of("username", "user"), 200);
+        }
+        performJson(post("/api/v1/auth/password-reset/request"), Map.of("username", "user"), 429, 44102);
+
+        String expiredToken = store.createExpiredPasswordResetToken("user");
+        performJson(post("/api/v1/auth/password-reset/confirm"), Map.of("resetToken", expiredToken, "newPassword", "NewPassword12345"), 401, 41104);
+
+        String validToken = store.latestPasswordResetToken("user");
+        performJson(post("/api/v1/auth/password-reset/confirm"), Map.of("resetToken", validToken, "newPassword", "short"), 400, 40001);
+        performJson(post("/api/v1/auth/password-reset/confirm"), Map.of("resetToken", validToken, "newPassword", "Password12345"), 409, 43001);
+    }
+
+    @Test
     @DisplayName("AUTH-MC binds, rejects conflicts, and unbinds with audit")
     void minecraftBindingContract() throws Exception {
         String token = login("admin");
@@ -338,6 +458,49 @@ class AuthApiContractTest {
     }
 
     @Test
+    @DisplayName("AUTH-MC-002/003/004/005/006/007/010/011 cover binding failures and idempotency")
+    void minecraftBindingFailureAndIdempotencyCases() throws Exception {
+        mvc.perform(put("/api/v1/auth/me/minecraft-binding")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("minecraftId", "NoLogin", "minecraftUuid", "dddddddddddddddddddddddddddddddd", "verificationCode", "valid"))))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(41000));
+
+        String helperToken = login("helper");
+        performJson(put("/api/v1/auth/me/minecraft-binding").header("Authorization", bearer(helperToken)), Map.of(
+                "minecraftId", "bad id",
+                "minecraftUuid", "bad",
+                "verificationCode", "valid"
+        ), 400, 40001);
+
+        performJson(put("/api/v1/auth/me/minecraft-binding").header("Authorization", bearer(helperToken)), Map.of(
+                "minecraftId", "UsedName",
+                "minecraftUuid", "dddddddddddddddddddddddddddddddd",
+                "verificationCode", "valid"
+        ), 409, 43115);
+
+        performJson(put("/api/v1/auth/me/minecraft-binding").header("Authorization", bearer(helperToken)), Map.of(
+                "minecraftId", "HelperName",
+                "minecraftUuid", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "verificationCode", "valid"
+        ), 409, 43115);
+
+        performJson(put("/api/v1/auth/me/minecraft-binding").header("Authorization", bearer(helperToken)), Map.of(
+                "minecraftId", "HelperName",
+                "minecraftUuid", "dddddddddddddddddddddddddddddddd",
+                "verificationCode", "valid"
+        ), 200);
+        performJson(put("/api/v1/auth/me/minecraft-binding").header("Authorization", bearer(helperToken)), Map.of(
+                "minecraftId", "HelperName",
+                "minecraftUuid", "dddddddddddddddddddddddddddddddd",
+                "verificationCode", "valid"
+        ), 200);
+        assertThat(store.auditCount("AUTH_MINECRAFT_BOUND")).isEqualTo(1);
+
+        performJson(delete("/api/v1/auth/me/minecraft-binding").header("Authorization", bearer(helperToken)), Map.of(), 400, 40001);
+    }
+
+    @Test
     @DisplayName("AUTH-USER-LIST covers pagination, auth, permission, filter, and sort")
     void adminUserListContract() throws Exception {
         String adminToken = login("admin");
@@ -357,6 +520,41 @@ class AuthApiContractTest {
         mvc.perform(get("/api/v1/auth/admin/users").header("Authorization", bearer(adminToken)).param("page", "0"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(40002));
+    }
+
+    @Test
+    @DisplayName("AUTH-USER-DETAIL-001/002/003 and AUTH-USER-LIST-004/005/006/007 cover detail and list filters")
+    void adminUserDetailAndListFilterContract() throws Exception {
+        String adminToken = login("admin");
+        String userToken = login("user");
+
+        mvc.perform(get("/api/v1/auth/admin/users")
+                        .header("Authorization", bearer(adminToken))
+                        .param("keyword", "UsedName")
+                        .param("status", "ACTIVE")
+                        .param("role", "USER")
+                        .param("sort", "createdAt_desc"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].username").value("user"));
+
+        mvc.perform(get("/api/v1/auth/admin/users")
+                        .header("Authorization", bearer(adminToken))
+                        .param("status", "NOPE"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(40001));
+
+        mvc.perform(get("/api/v1/auth/admin/users/" + store.userId("user")).header("Authorization", bearer(adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.username").value("user"))
+                .andExpect(jsonPath("$.data.passwordHash").doesNotExist());
+
+        mvc.perform(get("/api/v1/auth/admin/users/missing-user").header("Authorization", bearer(adminToken)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value(43100));
+
+        mvc.perform(get("/api/v1/auth/admin/users/" + store.userId("user")).header("Authorization", bearer(userToken)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(42001));
     }
 
     @Test
@@ -388,6 +586,22 @@ class AuthApiContractTest {
     }
 
     @Test
+    @DisplayName("AUTH-USER-PATCH-003/004/005/007/008 cover user update failure rollback")
+    void adminUserPatchFailureCases() throws Exception {
+        String ownerToken = login("owner");
+        String adminToken = login("admin");
+        String userId = store.userId("user");
+
+        performJson(patch("/api/v1/auth/admin/users/" + userId).header("Authorization", bearer(adminToken)), Map.of("displayName", "No Reason"), 400, 40001);
+        performJson(patch("/api/v1/auth/admin/users/" + userId).header("Authorization", bearer(adminToken)), Map.of("displayName", "admin", "reason", "dup"), 409, 43111);
+        performJson(patch("/api/v1/auth/admin/users/missing").header("Authorization", bearer(adminToken)), Map.of("displayName", "Missing", "reason", "missing"), 404, 43100);
+        performJson(patch("/api/v1/auth/admin/users/" + store.userId("owner")).header("Authorization", bearer(ownerToken)), Map.of("status", "DISABLED", "reason", "bad"), 403, 42101);
+        performJson(patch("/api/v1/auth/admin/users/" + store.userId("deleted")).header("Authorization", bearer(ownerToken)), Map.of("status", "ACTIVE", "reason", "recover"), 409, 43116);
+
+        assertThat(store.displayName("user")).isEqualTo("user");
+    }
+
+    @Test
     @DisplayName("AUTH-ROLE only OWNER can modify roles and unique OWNER is protected")
     void rolePermissionContract() throws Exception {
         String ownerToken = login("owner");
@@ -413,6 +627,24 @@ class AuthApiContractTest {
         ), 403, 42101);
 
         assertThat(store.auditActions()).contains("AUTH_ROLE_PERMISSION_UPDATED");
+    }
+
+    @Test
+    @DisplayName("AUTH-ROLE-003/004/005/007/008 cover role failures and session downgrade")
+    void rolePermissionFailureAndDowngradeCases() throws Exception {
+        String ownerToken = login("owner");
+        String adminToken = login("admin");
+        String adminId = store.userId("admin");
+
+        performJson(put("/api/v1/auth/admin/users/" + adminId + "/roles"), Map.of("roles", List.of("USER"), "permissions", List.of(), "reason", "bad"), 401, 41000);
+        performJson(put("/api/v1/auth/admin/users/" + adminId + "/roles").header("Authorization", bearer(ownerToken)), Map.of("roles", List.of(), "permissions", List.of(), "reason", "bad"), 400, 40001);
+        performJson(put("/api/v1/auth/admin/users/" + adminId + "/roles").header("Authorization", bearer(ownerToken)), Map.of("roles", List.of("NOPE"), "permissions", List.of(), "reason", "bad"), 400, 40001);
+
+        performJson(put("/api/v1/auth/admin/users/" + adminId + "/roles").header("Authorization", bearer(ownerToken)), Map.of("roles", List.of("USER"), "permissions", List.of(), "reason", "downgrade"), 200);
+
+        mvc.perform(get("/api/v1/auth/admin/users").header("Authorization", bearer(adminToken)))
+                .andExpect(status().isUnauthorized());
+        assertThat(store.latestAuditAction()).isEqualTo("AUTH_ROLE_PERMISSION_UPDATED");
     }
 
     @Test
@@ -450,6 +682,44 @@ class AuthApiContractTest {
     }
 
     @Test
+    @DisplayName("AUTH-INV-CREATE-004/005/006/007/008/009/010 cover invitation validation and idempotency")
+    void invitationCreateFailureAndIdempotencyCases() throws Exception {
+        String adminToken = login("admin");
+        String ownerToken = login("owner");
+
+        performJson(post("/api/v1/auth/admin/invitations").header("Authorization", bearer(ownerToken)), Map.of(
+                "type", "PLAYER", "boundRoles", List.of("OWNER"), "maxUses", 1, "reason", "bad"
+        ), 403, 42101);
+        performJson(post("/api/v1/auth/admin/invitations").header("Authorization", bearer(adminToken)), Map.of(
+                "type", "PLAYER", "boundRoles", List.of("ADMIN"), "maxUses", 1, "reason", "bad"
+        ), 403, 42103);
+        performJson(post("/api/v1/auth/admin/invitations").header("Authorization", bearer(ownerToken)), Map.of(
+                "type", "PLAYER", "maxUses", 1, "reason", "bad"
+        ), 400, 40001);
+        performJson(post("/api/v1/auth/admin/invitations").header("Authorization", bearer(ownerToken)), Map.of(
+                "type", "PLAYER", "boundRoles", List.of("USER"), "maxUses", 0, "reason", "bad"
+        ), 400, 40001);
+        performJson(post("/api/v1/auth/admin/invitations").header("Authorization", bearer(ownerToken)), Map.of(
+                "type", "PLAYER", "boundRoles", List.of("USER"), "maxUses", 1, "expiresAt", "2020-01-01T00:00:00Z", "reason", "bad"
+        ), 400, 40001);
+
+        Map<String, Object> body = new java.util.LinkedHashMap<>(Map.of(
+                "type", "PLAYER",
+                "boundRoles", List.of("USER"),
+                "maxUses", 2,
+                "reason", "idem",
+                "idempotencyKey", "inv-idem-2"
+        ));
+        JsonNode first = performJson(post("/api/v1/auth/admin/invitations").header("Authorization", bearer(ownerToken)), body, 201);
+        JsonNode second = performJson(post("/api/v1/auth/admin/invitations").header("Authorization", bearer(ownerToken)), body, 201);
+        assertThat(second.at("/data/rawCode").asText()).isEqualTo(first.at("/data/rawCode").asText());
+
+        Map<String, Object> changed = new java.util.LinkedHashMap<>(body);
+        changed.put("maxUses", 3);
+        performJson(post("/api/v1/auth/admin/invitations").header("Authorization", bearer(ownerToken)), changed, 409, 43002);
+    }
+
+    @Test
     @DisplayName("AUTH-INV-DISABLE and AUTH-INV-USAGE enforce ownership and audit")
     void invitationDisableAndUsageContract() throws Exception {
         String adminToken = login("admin");
@@ -465,6 +735,59 @@ class AuthApiContractTest {
                 .andExpect(jsonPath("$.data.items").isArray());
 
         assertThat(store.auditCount("AUTH_INVITATION_DISABLED")).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("AUTH-INV-LIST-002/003/004/005/006 and AUTH-INV-DISABLE-004/006 and AUTH-INV-USAGE-002/003/004")
+    void invitationListDisableAndUsageFailureCases() throws Exception {
+        String ownerToken = login("owner");
+        String userToken = login("user");
+
+        mvc.perform(get("/api/v1/auth/admin/invitations"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(41000));
+        mvc.perform(get("/api/v1/auth/admin/invitations").header("Authorization", bearer(userToken)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(42001));
+        mvc.perform(get("/api/v1/auth/admin/invitations")
+                        .header("Authorization", bearer(ownerToken))
+                        .param("type", "PLAYER")
+                        .param("status", "ACTIVE")
+                        .param("createdBy", store.userId("owner")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].type").value("PLAYER"));
+
+        performJson(patch("/api/v1/auth/admin/invitations/missing/disable").header("Authorization", bearer(ownerToken)), Map.of("reason", "missing"), 404, 43101);
+        performJson(patch("/api/v1/auth/admin/invitations/" + store.invitationId("PLAYER-CODE-1") + "/disable").header("Authorization", bearer(ownerToken)), Map.of(), 400, 40001);
+
+        mvc.perform(get("/api/v1/auth/admin/invitations/missing/usage-records").header("Authorization", bearer(ownerToken)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value(43101));
+        mvc.perform(get("/api/v1/auth/admin/invitations/" + store.invitationId("PLAYER-CODE-1") + "/usage-records")
+                        .header("Authorization", bearer(ownerToken))
+                        .param("page", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(40002));
+    }
+
+    @Test
+    @DisplayName("AUTH-STATE-001/002/003/004/005/006/007/008/009 cover state transitions")
+    void stateTransitionContract() throws Exception {
+        JsonNode registered = performJson(post("/api/v1/auth/register"), registerBody("PLAYER-CODE-1", "state_user"), 201);
+        assertThat(registered.at("/data/user/status").asText()).isEqualTo("PENDING_PROFILE");
+
+        String ownerToken = login("owner");
+        performJson(patch("/api/v1/auth/admin/users/" + store.userId("disabled")).header("Authorization", bearer(ownerToken)), Map.of("status", "ACTIVE", "reason", "restore"), 200);
+        performJson(patch("/api/v1/auth/admin/users/" + store.userId("banned")).header("Authorization", bearer(ownerToken)), Map.of("status", "ACTIVE", "reason", "restore"), 200);
+        performJson(patch("/api/v1/auth/admin/users/" + store.userId("deleted")).header("Authorization", bearer(ownerToken)), Map.of("status", "ACTIVE", "reason", "restore"), 409, 43116);
+
+        assertThat(store.invitationStatus("DISABLED-CODE-1")).isEqualTo("DISABLED");
+        assertThat(store.invitationStatus("EXPIRED-CODE-1")).isEqualTo("EXPIRED");
+        assertThat(store.invitationStatus("EXHAUSTED-CODE-1")).isEqualTo("EXHAUSTED");
+
+        String adminToken = login("admin");
+        performJson(put("/api/v1/auth/admin/users/" + store.userId("admin") + "/roles").header("Authorization", bearer(ownerToken)), Map.of("roles", List.of("USER"), "permissions", List.of(), "reason", "downgrade"), 200);
+        mvc.perform(get("/api/v1/auth/admin/users").header("Authorization", bearer(adminToken))).andExpect(status().isUnauthorized());
     }
 
     @Test

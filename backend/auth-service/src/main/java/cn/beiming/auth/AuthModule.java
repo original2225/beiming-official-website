@@ -72,7 +72,7 @@ class AuthController {
 
     @PostMapping("/logout")
     ResponseEntity<Map<String, Object>> logout(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        CurrentSession session = store.requireSession(authorization);
+        CurrentSession session = store.requireSessionForLogout(authorization);
         store.logout(session);
         return ok(null);
     }
@@ -330,7 +330,10 @@ class AuthStore {
     private final List<AuditRecord> audits = java.util.Collections.synchronizedList(new ArrayList<>());
     private final Map<String, IdempotencyRecord> registerIdempotency = new ConcurrentHashMap<>();
     private final Map<String, IdempotencyRecord> invitationIdempotency = new ConcurrentHashMap<>();
+    private final Map<String, IdempotencyRecord> loginIdempotency = new ConcurrentHashMap<>();
     private final Map<String, Integer> loginFailures = new ConcurrentHashMap<>();
+    private final Map<String, Integer> registerAttempts = new ConcurrentHashMap<>();
+    private final Map<String, Integer> passwordResetAttempts = new ConcurrentHashMap<>();
 
     synchronized void reset() {
         usersById.clear();
@@ -342,7 +345,10 @@ class AuthStore {
         audits.clear();
         registerIdempotency.clear();
         invitationIdempotency.clear();
+        loginIdempotency.clear();
         loginFailures.clear();
+        registerAttempts.clear();
+        passwordResetAttempts.clear();
     }
 
     synchronized void seedOwner(String username, String password) {
@@ -371,6 +377,10 @@ class AuthStore {
     synchronized void exhaustInvitationByCode(String rawCode) {
         InvitationRecord invitation = invitationByRawCode(rawCode);
         invitation.usedCount = invitation.maxUses;
+    }
+
+    synchronized void seedMinecraftBinding(String username, String minecraftId, String minecraftUuid) {
+        findByUsername(username).minecraftBinding = new MinecraftBinding(minecraftId, minecraftUuid, Instant.now(), "MANUAL_VERIFICATION");
     }
 
     synchronized int invitationUsedCount(String rawCode) {
@@ -410,7 +420,49 @@ class AuthStore {
                 .token;
     }
 
+    synchronized String createExpiredPasswordResetToken(String username) {
+        UserAccount user = findByUsername(username);
+        String token = "rst_" + UUID.randomUUID();
+        passwordResets.put(token, new PasswordResetRecord(token, user.id, Instant.now().minus(2, ChronoUnit.HOURS), Instant.now().minus(1, ChronoUnit.HOURS)));
+        return token;
+    }
+
+    synchronized String latestAuditRequestId(String action) {
+        return audits.stream().filter(audit -> audit.action.equals(action)).reduce((first, second) -> second).orElseThrow().requestId;
+    }
+
+    synchronized String latestAuditAction() {
+        return audits.get(audits.size() - 1).action;
+    }
+
+    synchronized void expireSession(String token) {
+        SessionRecord session = sessions.get(token);
+        if (session != null) {
+            session.expiresAt = Instant.now().minusSeconds(1);
+        }
+    }
+
+    synchronized void setUserStatus(String username, String status) {
+        findByUsername(username).status = status;
+    }
+
+    synchronized String displayName(String username) {
+        return findByUsername(username).displayName;
+    }
+
+    synchronized String invitationStatus(String rawCode) {
+        return invitationStatus(invitationByRawCode(rawCode));
+    }
+
+    synchronized void resetRegisterAttempts() {
+        registerAttempts.clear();
+    }
+
     synchronized Map<String, Object> register(String rawCode, String username, String password, String displayName, String idempotencyKey) {
+        int attempts = registerAttempts.merge("global", 1, Integer::sum);
+        if (attempts > 5) {
+            throw new ApiException(44101, HttpStatus.TOO_MANY_REQUESTS, "too many register attempts");
+        }
         String signature = signature(rawCode, username, password, displayName);
         if (idempotencyKey != null) {
             IdempotencyRecord old = registerIdempotency.get(idempotencyKey);
@@ -452,6 +504,16 @@ class AuthStore {
     }
 
     synchronized Map<String, Object> login(String username, String password, String idempotencyKey) {
+        String signature = signature(username, password);
+        if (idempotencyKey != null) {
+            IdempotencyRecord old = loginIdempotency.get(idempotencyKey);
+            if (old != null) {
+                if (!old.signature.equals(signature)) {
+                    throw new ApiException(43002, HttpStatus.CONFLICT, "idempotency key conflict");
+                }
+                return old.payload;
+            }
+        }
         String key = username.toLowerCase(Locale.ROOT);
         if (loginFailures.getOrDefault(key, 0) >= 5) {
             audit("AUTH_LOGIN_RISK_BLOCKED", null, null, "FAILED", null, null, "too many attempts");
@@ -474,7 +536,11 @@ class AuthStore {
         loginFailures.remove(key);
         user.lastLoginAt = Instant.now();
         audit("AUTH_LOGIN_SUCCESS", user, user, "SUCCESS", null, null, null);
-        return sessionPayload(user);
+        Map<String, Object> payload = sessionPayload(user);
+        if (idempotencyKey != null) {
+            loginIdempotency.put(idempotencyKey, new IdempotencyRecord(signature, payload, null));
+        }
+        return payload;
     }
 
     synchronized void logout(CurrentSession current) {
@@ -485,6 +551,10 @@ class AuthStore {
     }
 
     synchronized void requestPasswordReset(String username) {
+        int attempts = passwordResetAttempts.merge(username.toLowerCase(Locale.ROOT), 1, Integer::sum);
+        if (attempts > 5) {
+            throw new ApiException(44102, HttpStatus.TOO_MANY_REQUESTS, "too many password reset attempts");
+        }
         UserAccount user = userIdByUsername.containsKey(username.toLowerCase(Locale.ROOT)) ? usersById.get(userIdByUsername.get(username.toLowerCase(Locale.ROOT))) : null;
         if (user != null && !"DELETED".equals(user.status)) {
             String token = "rst_" + UUID.randomUUID();
@@ -539,6 +609,15 @@ class AuthStore {
 
     synchronized Map<String, Object> listUsers(int page, int pageSize, String keyword, String status, String role, String sort) {
         validatePage(page, pageSize);
+        if (status != null && !Set.of("PENDING_PROFILE", "ACTIVE", "DISABLED", "BANNED", "DELETED").contains(status)) {
+            throw ApiException.badRequest("status");
+        }
+        if (role != null && !VALID_ROLES.contains(role)) {
+            throw ApiException.badRequest("role");
+        }
+        if (sort != null && !Set.of("createdAt_desc", "createdAt_asc", "lastLoginAt_desc", "updatedAt_desc").contains(sort)) {
+            throw new ApiException(40003, HttpStatus.BAD_REQUEST, "invalid sort");
+        }
         List<Map<String, Object>> rows = usersById.values().stream()
                 .filter(user -> keyword == null || user.username.contains(keyword) || user.displayName.contains(keyword) || (user.minecraftBinding != null && user.minecraftBinding.minecraftId.contains(keyword)))
                 .filter(user -> status == null || user.status.equals(status))
@@ -564,6 +643,9 @@ class AuthStore {
         }
         if (target.roles.contains("OWNER") && !actor.roles.contains("OWNER")) {
             throw new ApiException(42100, HttpStatus.FORBIDDEN, "cannot modify owner");
+        }
+        if (status != null && !Set.of("PENDING_PROFILE", "ACTIVE", "DISABLED", "BANNED", "DELETED").contains(status)) {
+            throw ApiException.badRequest("status");
         }
         if (target.roles.contains("OWNER") && Set.of("DISABLED", "BANNED", "DELETED").contains(status) && ownerCount() == 1) {
             throw new ApiException(42101, HttpStatus.FORBIDDEN, "cannot disable only owner");
@@ -608,6 +690,12 @@ class AuthStore {
 
     synchronized Map<String, Object> listInvitations(UserAccount actor, int page, int pageSize, String type, String status, String createdBy) {
         validatePage(page, pageSize);
+        if (type != null && !Set.of("PLAYER", "ADMIN").contains(type)) {
+            throw ApiException.badRequest("type");
+        }
+        if (status != null && !Set.of("ACTIVE", "DISABLED", "EXPIRED", "EXHAUSTED").contains(status)) {
+            throw ApiException.badRequest("status");
+        }
         List<Map<String, Object>> rows = invitationsById.values().stream()
                 .filter(invitation -> type == null || invitation.type.equals(type))
                 .filter(invitation -> status == null || invitationStatus(invitation).equals(status))
@@ -678,6 +766,14 @@ class AuthStore {
     }
 
     synchronized CurrentSession requireSession(String authorization) {
+        return requireSessionInternal(authorization, false);
+    }
+
+    synchronized CurrentSession requireSessionForLogout(String authorization) {
+        return requireSessionInternal(authorization, true);
+    }
+
+    private CurrentSession requireSessionInternal(String authorization, boolean allowRevoked) {
         if (authorization == null || authorization.isBlank()) {
             throw new ApiException(41000, HttpStatus.UNAUTHORIZED, "unauthenticated");
         }
@@ -689,7 +785,7 @@ class AuthStore {
         if (session == null) {
             throw new ApiException(41001, HttpStatus.UNAUTHORIZED, "invalid session");
         }
-        if (session.revoked) {
+        if (session.revoked && !allowRevoked) {
             throw new ApiException(41103, HttpStatus.UNAUTHORIZED, "session revoked");
         }
         if (session.expiresAt.isBefore(Instant.now())) {
@@ -947,7 +1043,7 @@ class UserAccount {
 class SessionRecord {
     final String token;
     final String userId;
-    final Instant expiresAt;
+    Instant expiresAt;
     boolean revoked;
 
     SessionRecord(String token, String userId, Instant expiresAt) {
