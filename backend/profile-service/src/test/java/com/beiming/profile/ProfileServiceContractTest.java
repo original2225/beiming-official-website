@@ -13,6 +13,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.ComponentScan;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -28,6 +29,9 @@ class ProfileServiceContractTest {
     int port;
 
     TestRestTemplate rest = new TestRestTemplate();
+
+    @Autowired
+    com.beiming.profile.service.ProfileService profileService;
 
     @Test
     void supportsPublicMemberListDetailAndSelfProfileUpdates() {
@@ -220,6 +224,29 @@ class ProfileServiceContractTest {
                 "joinedAt", Instant.now().toString()), internalAuth());
         assertThat(idempotentInternalResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(data(idempotentInternalResponse).get("displayName")).isEqualTo("白名单成员改");
+    }
+
+    @Test
+    void recordsAuditForProfileMutationsAndStatusReasons() {
+        long before = profileService.auditCount();
+        String groupId = createGroup("审计组", 40);
+        Map profile = createMember(adminAuth(), Map.of(
+                "authUserId", "user_audit_001",
+                "usernameSnapshot", "audit_one",
+                "displayName", "审计成员",
+                "minecraftId", "AuditMc",
+                "minecraftUuid", "00000000-0000-0000-0000-000000000006",
+                "memberGroupId", groupId,
+                "status", "ACTIVE",
+                "publicVisible", true,
+                "joinedAt", Instant.now().toString()));
+
+        patch("/api/v1/profile/me", Map.of("bio", "审计测试"), userAuth("user_audit_001"));
+        patch("/api/v1/profile/admin/members/" + profile.get("id") + "/status",
+                Map.of("status", "INACTIVE", "reason", "审计状态变更"), adminAuth());
+
+        assertThat(profileService.auditCount()).isGreaterThanOrEqualTo(before + 4);
+        assertThat(profileService.lastAuditReason()).isEqualTo("审计状态变更");
     }
 
     private String createGroup(String name, int sortOrder) {
