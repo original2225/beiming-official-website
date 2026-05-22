@@ -59,6 +59,7 @@ class ServerStatusApiContractTest {
     void everyDocumentedCaseHasCoverageMapping() {
         Set<String> mapped = new TreeSet<>();
         addRange(mapped, "SS-COM", 1, 21);
+        addRange(mapped, "SS-COM", 22, 24);
         addRange(mapped, "SS-PUB-OVERVIEW", 1, 12);
         addRange(mapped, "SS-PUB-INSTANCE", 1, 16);
         addRange(mapped, "SS-PUB-LINE", 1, 10);
@@ -66,14 +67,16 @@ class ServerStatusApiContractTest {
         addRange(mapped, "SS-PUB-OUTAGE", 1, 10);
         addRange(mapped, "SS-SOURCE", 1, 40);
         addRange(mapped, "SS-REFRESH", 1, 14);
+        addRange(mapped, "SS-REFRESH", 15, 15);
         addRange(mapped, "SS-LINE-ADMIN", 1, 37);
         addRange(mapped, "SS-OUTAGE-ADMIN", 1, 28);
         addRange(mapped, "SS-OUTAGE-STATE", 1, 21);
         addRange(mapped, "SS-AUDIT", 1, 8);
+        addRange(mapped, "SS-AUDIT", 9, 9);
         addRange(mapped, "SS-OPS", 1, 7);
         addRange(mapped, "SS-COMPAT", 1, 12);
         assertThat(mapped).contains("SS-COM-001", "SS-PUB-OVERVIEW-012", "SS-SOURCE-040", "SS-COMPAT-012");
-        assertThat(mapped).hasSize(250);
+        assertThat(mapped).hasSize(255);
     }
 
     @Test
@@ -227,13 +230,13 @@ class ServerStatusApiContractTest {
                 .header("Authorization", bearer("admin-token")), mapOf("reason", "changed", "idempotencyKey", "refresh-idem-1"), 409, 43002);
 
         collector.failNextUnavailable();
-        performJson(post("/api/v1/server-status/admin/sources/" + sourceId + "/refresh")
+        performJson(post("/api/v1/server-status/admin/sources/src-survival/refresh")
                 .header("Authorization", bearer("admin-token")), mapOf("reason", "collector unavailable"), 502, 46510);
         collector.failNextTimeout();
-        performJson(post("/api/v1/server-status/admin/sources/" + sourceId + "/refresh")
+        performJson(post("/api/v1/server-status/admin/sources/src-survival/refresh")
                 .header("Authorization", bearer("admin-token")), mapOf("reason", "collector timeout"), 504, 46511);
         store.failNextSnapshotWrite();
-        performJson(post("/api/v1/server-status/admin/sources/" + sourceId + "/refresh")
+        performJson(post("/api/v1/server-status/admin/sources/src-survival/refresh")
                 .header("Authorization", bearer("admin-token")), mapOf("reason", "snapshot fail"), 500, 51502);
     }
 
@@ -361,6 +364,13 @@ class ServerStatusApiContractTest {
                 .param("to", "2026-05-23T00:00:00Z"), 200);
         assertThat(valuesAt(audits, "/data/items", "targetType")).containsOnly("SOURCE");
         assertThat(audits.toString()).doesNotContain("DELETE_AUDIT");
+        JsonNode audit = audits.at("/data/items/0");
+        assertThat(audit.has("actorPermissions")).isTrue();
+        assertThat(audit.has("sourceIp")).isTrue();
+        assertThat(audit.has("paramsSummary")).isTrue();
+        assertThat(audit.has("beforeState")).isTrue();
+        assertThat(audit.has("afterState")).isTrue();
+        assertThat(audit.has("failureReason")).isTrue();
 
         JsonNode ops = performJson(get("/api/v1/server-status/admin/ops/summary").header("Authorization", bearer("admin-token")), 200);
         assertThat(ops.at("/data/service").asText()).isEqualTo("server-status");
@@ -422,6 +432,49 @@ class ServerStatusApiContractTest {
                 .header("Authorization", bearer("admin-token")), 200), "outageId", "outage-open");
         assertThat(unresolved.path("status").asText()).isEqualTo("OPEN");
         assertThat(unresolved.path("resolvedAt").isNull()).isTrue();
+    }
+
+    @Test
+    @DisplayName("SS-COM-022/023/024 and SS-REFRESH-009/015 harden validation, idempotency, and refresh guards")
+    void productionHardeningContract() throws Exception {
+        performJson(post("/api/v1/server-status/admin/sources")
+                .header("Authorization", bearer("admin-token")), mapOf(
+                "instanceName", "Bad Bool",
+                "instanceKind", "SURVIVAL",
+                "sourceType", "STUB",
+                "target", "bad-bool.example.com",
+                "publicVisible", "not-bool",
+                "reason", "bad bool"
+        ), 400, 40001);
+        performJson(post("/api/v1/server-status/admin/sources")
+                .header("Authorization", bearer("admin-token")), mapOf(
+                "instanceName", "Bad Time",
+                "instanceKind", "SURVIVAL",
+                "sourceType", "STUB",
+                "target", "bad-time.example.com",
+                "startedAt", "not-an-instant",
+                "reason", "bad time"
+        ), 400, 40001);
+
+        Map<String, Object> firstLineBody = validLineBody("stable-idem.example.com", "stable-line-key");
+        JsonNode firstLine = performJson(post("/api/v1/server-status/admin/lines")
+                .header("Authorization", bearer("admin-token")), firstLineBody, 201);
+        Map<String, Object> sameLineBodyDifferentOrder = reversedCopy(firstLineBody);
+        JsonNode secondLine = performJson(post("/api/v1/server-status/admin/lines")
+                .header("Authorization", bearer("admin-token")), sameLineBodyDifferentOrder, 201);
+        assertThat(secondLine.at("/data/lineId").asText()).isEqualTo(firstLine.at("/data/lineId").asText());
+
+        JsonNode firstRefresh = performJson(post("/api/v1/server-status/admin/sources/src-survival/refresh")
+                .header("Authorization", bearer("admin-token")), mapOf("reason", "first refresh"), 200);
+        performJson(post("/api/v1/server-status/admin/sources/src-survival/refresh")
+                .header("Authorization", bearer("admin-token")), mapOf("reason", "too soon"), 409, 43512);
+
+        JsonNode idempotentRefresh = performJson(post("/api/v1/server-status/admin/sources/src-creative/refresh")
+                .header("Authorization", bearer("admin-token")), mapOf("reason", "refresh idem", "idempotencyKey", "refresh-stable-key"), 200);
+        JsonNode idempotentRetry = performJson(post("/api/v1/server-status/admin/sources/src-creative/refresh")
+                .header("Authorization", bearer("admin-token")), mapOf("idempotencyKey", "refresh-stable-key", "reason", "refresh idem"), 200);
+        assertThat(idempotentRetry.at("/data/snapshotId").asText()).isEqualTo(idempotentRefresh.at("/data/snapshotId").asText());
+        assertThat(firstRefresh.at("/data/snapshotId").asText()).isNotBlank();
     }
 
     private JsonNode performJson(org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request,
@@ -544,6 +597,16 @@ class ServerStatusApiContractTest {
             map.put(String.valueOf(pairs[i]), pairs[i + 1]);
         }
         return map;
+    }
+
+    private Map<String, Object> reversedCopy(Map<String, Object> source) {
+        Map<String, Object> reversed = new LinkedHashMap<>();
+        List<Map.Entry<String, Object>> entries = new java.util.ArrayList<>(source.entrySet());
+        java.util.Collections.reverse(entries);
+        for (Map.Entry<String, Object> entry : entries) {
+            reversed.put(entry.getKey(), entry.getValue());
+        }
+        return reversed;
     }
 
     private List<String> values(JsonNode arrayNode) {
