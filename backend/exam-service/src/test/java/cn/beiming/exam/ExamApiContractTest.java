@@ -324,7 +324,7 @@ class ExamApiContractTest {
         body.put("reviewDirection", "REDSTONE");
         body.put("difficulty", "NORMAL");
         body.put("timeLimitMinutes", 45);
-        body.put("passScore", 20);
+        body.put("passScore", 10);
         body.put("objectivePassScore", 10);
         body.put("questionRules", List.of(Map.of("type", "SINGLE_CHOICE", "count", 1, "scoreEach", 10, "tags", List.of("redstone"))));
         body.put("contentRuleVersion", "2026-05-22");
