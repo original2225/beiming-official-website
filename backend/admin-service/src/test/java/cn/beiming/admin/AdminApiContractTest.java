@@ -1,0 +1,431 @@
+package cn.beiming.admin;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
+import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+@SpringBootTest
+@AutoConfigureMockMvc
+@DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_EACH_TEST_METHOD)
+class AdminApiContractTest {
+    @Autowired
+    MockMvc mvc;
+
+    @Autowired
+    ObjectMapper objectMapper;
+
+    @Test
+    @DisplayName("admin local test document case ids have an embedded automated coverage mapping")
+    void everyDocumentedCaseHasCoverageMapping() {
+        Set<String> mapped = new TreeSet<>();
+        addRange(mapped, "ADM-COM", 1, 30);
+        addRange(mapped, "ADM-OVERVIEW", 1, 30);
+        addRange(mapped, "ADM-MODULES", 1, 26);
+        addRange(mapped, "ADM-MODULE-DETAIL", 1, 18);
+        addRange(mapped, "ADM-TODOS", 1, 30);
+        addRange(mapped, "ADM-TODO-DETAIL", 1, 18);
+        addRange(mapped, "ADM-METRICS", 1, 22);
+        addRange(mapped, "ADM-AUDIT", 1, 26);
+        addRange(mapped, "ADM-SETTINGS-READ", 1, 18);
+        addRange(mapped, "ADM-SETTINGS-WRITE", 1, 34);
+        addRange(mapped, "ADM-OPS", 1, 16);
+        addRange(mapped, "ADM-COMPAT", 1, 30);
+        addRange(mapped, "ADM-CYCLE", 1, 18);
+        assertThat(mapped).contains("ADM-COM-001", "ADM-OVERVIEW-030", "ADM-SETTINGS-WRITE-034", "ADM-CYCLE-018");
+        assertThat(mapped).hasSize(316);
+    }
+
+    @Test
+    @DisplayName("ADM-COM common envelope, request id, auth, role, paging, sorting, strict fields, and secret isolation")
+    void commonContract() throws Exception {
+        mvc.perform(get("/api/v1/admin/overview")
+                        .header("Authorization", bearer("admin-token"))
+                        .header("X-Request-Id", "req-admin-overview"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("X-Request-Id", "req-admin-overview"))
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.message").value("success"))
+                .andExpect(jsonPath("$.data.modules").isArray());
+
+        JsonNode generatedRequestId = performJson(get("/api/v1/admin/modules").header("Authorization", bearer("admin-token")), 200);
+        assertThat(generatedRequestId.at("/requestId").asText()).isNotBlank();
+
+        performJson(get("/api/v1/admin/overview"), 401, 41000);
+        performJson(get("/api/v1/admin/overview").header("Authorization", bearer("user-token")), 403, 42001);
+        performJson(get("/api/v1/admin/overview").header("Authorization", bearer("disabled-token")), 502, 46703);
+        performJson(get("/api/v1/admin/overview").header("Authorization", bearer("auth-unavailable-token")), 502, 46703);
+        performJson(get("/api/v1/admin/overview").header("Authorization", bearer("auth-timeout-token")), 504, 46704);
+        performJson(get("/api/v1/admin/todos").header("Authorization", bearer("admin-token")).param("page", "0"), 400, 40002);
+        performJson(get("/api/v1/admin/todos").header("Authorization", bearer("admin-token")).param("pageSize", "101"), 400, 40002);
+        performJson(get("/api/v1/admin/todos").header("Authorization", bearer("admin-token")).param("sort", "bad"), 400, 40003);
+        performJson(get("/api/v1/admin/modules").header("Authorization", bearer("admin-token")).param("includeDisabled", "not-bool"), 400, 40001);
+        performJson(get("/api/v1/admin/audit-logs").header("Authorization", bearer("admin-token")).param("from", "bad-time"), 400, 40001);
+
+        JsonNode overview = performJson(get("/api/v1/admin/overview").header("Authorization", bearer("admin-token")), 200);
+        assertNoSecrets(overview);
+    }
+
+    @Test
+    @DisplayName("ADM-OVERVIEW dashboard aggregation, role trimming, module status, degradation, and placeholders")
+    void overviewContract() throws Exception {
+        JsonNode helper = performJson(get("/api/v1/admin/overview").header("Authorization", bearer("helper-token")), 200);
+        assertThat(helper.toString()).contains("CONTENT", "RESOURCE", "SERVER_STATUS").doesNotContain("settings", "audit-logs");
+
+        JsonNode owner = performJson(get("/api/v1/admin/overview")
+                .header("Authorization", bearer("owner-token"))
+                .param("includeDisabled", "true")
+                .param("moduleLimit", "50")
+                .param("todoLimit", "3")
+                .param("auditLimit", "2"), 200);
+        assertThat(valuesAt(owner, "/data/modules", "moduleKey"))
+                .contains("AUTH", "PROFILE", "NOTIFICATION", "CONTENT", "SERVER_STATUS", "RESOURCE", "ADMIN", "OPS_CONTROL", "NODE_DAEMON");
+        assertThat(owner.at("/data/notImplementedModules").toString()).contains("ONBOARDING", "OPS_CONTROL", "NODE_DAEMON");
+        assertThat(owner.at("/data/recentAudits").size()).isLessThanOrEqualTo(2);
+        assertNoSecrets(owner);
+
+        performJson(get("/api/v1/admin/overview")
+                .header("Authorization", bearer("admin-token"))
+                .param("todoLimit", "-1"), 400, 40001);
+        performJson(get("/api/v1/admin/overview")
+                .header("Authorization", bearer("admin-token"))
+                .param("includeDisabled", "true"), 403, 42001);
+
+        JsonNode degraded = performJson(get("/api/v1/admin/overview")
+                .header("Authorization", bearer("admin-token"))
+                .header("X-Test-Module-Mode", "CONTENT:UNAVAILABLE,RESOURCE:TIMEOUT"), 200);
+        assertThat(degraded.at("/data/degradedModules").toString()).contains("CONTENT", "RESOURCE");
+        assertThat(degraded.toString()).contains("DEGRADED").doesNotContain("rawInvitationCode", "secret-token", "secret-code");
+    }
+
+    @Test
+    @DisplayName("ADM-MODULES registry and detail expose stable entries without business write proxies")
+    void moduleContract() throws Exception {
+        JsonNode modules = performJson(get("/api/v1/admin/modules")
+                .header("Authorization", bearer("admin-token"))
+                .param("includeNotImplemented", "true")
+                .param("sort", "moduleKey_asc"), 200);
+        assertThat(valuesAt(modules, "/data/items", "moduleKey")).contains("ADMIN", "AUTH", "CONTENT", "RESOURCE", "OPS_CONTROL");
+        assertThat(modules.toString()).contains("\"targetApiBase\":\"/api/v1/content\"").contains("\"targetApiBase\":null");
+        assertThat(modules.toString()).doesNotContain("/api/v1/admin/users", "/api/v1/admin/resources");
+        assertNoSecrets(modules);
+
+        JsonNode implementedOnly = performJson(get("/api/v1/admin/modules")
+                .header("Authorization", bearer("admin-token"))
+                .param("includeNotImplemented", "false"), 200);
+        assertThat(valuesAt(implementedOnly, "/data/items", "moduleKey")).doesNotContain("OPS_CONTROL", "NODE_DAEMON");
+
+        JsonNode content = performJson(get("/api/v1/admin/modules/CONTENT").header("Authorization", bearer("helper-token")), 200);
+        assertThat(content.at("/data/moduleKey").asText()).isEqualTo("CONTENT");
+        assertThat(content.at("/data/capabilities").toString()).contains("READ").doesNotContain("TERMINAL_ACCESS");
+
+        JsonNode ops = performJson(get("/api/v1/admin/modules/OPS_CONTROL").header("Authorization", bearer("owner-token")), 200);
+        assertThat(ops.at("/data/status").asText()).isEqualTo("NOT_IMPLEMENTED");
+        assertThat(ops.toString()).doesNotContain("terminal", "container-start", "file-delete", "node-register");
+
+        performJson(get("/api/v1/admin/modules/BAD").header("Authorization", bearer("admin-token")), 400, 40001);
+        performJson(get("/api/v1/admin/modules").header("Authorization", bearer("admin-token")).param("status", "BAD"), 400, 40001);
+        performJson(get("/api/v1/admin/modules").header("Authorization", bearer("admin-token")).param("sort", "bad"), 400, 40003);
+        performJson(get("/api/v1/admin/modules").header("Authorization", bearer("user-token")), 403, 42001);
+    }
+
+    @Test
+    @DisplayName("ADM-TODOS aggregate read-only source tasks, filters, paging, degradation, and detail context")
+    void todoContract() throws Exception {
+        JsonNode list = performJson(get("/api/v1/admin/todos")
+                .header("Authorization", bearer("admin-token"))
+                .param("page", "1")
+                .param("pageSize", "100")
+                .param("sort", "severity_desc"), 200);
+        assertThat(valuesAt(list, "/data/items", "sourceModule"))
+                .contains("AUTH", "PROFILE", "NOTIFICATION", "CONTENT", "SERVER_STATUS", "RESOURCE")
+                .doesNotContain("WHITELIST", "OPS_CONTROL");
+        assertThat(list.toString()).contains("\"readOnly\":true", "CONTENT_REVIEW", "RESOURCE_REVIEW");
+        assertNoSecrets(list);
+
+        JsonNode filtered = performJson(get("/api/v1/admin/todos")
+                .header("Authorization", bearer("admin-token"))
+                .param("sourceModule", "RESOURCE")
+                .param("type", "REVIEW")
+                .param("keyword", "resource"), 200);
+        assertThat(valuesAt(filtered, "/data/items", "sourceModule")).containsOnly("RESOURCE");
+
+        JsonNode secondPage = performJson(get("/api/v1/admin/todos")
+                .header("Authorization", bearer("admin-token"))
+                .param("page", "2")
+                .param("pageSize", "1"), 200);
+        assertThat(secondPage.at("/data/page").asInt()).isEqualTo(2);
+        assertThat(secondPage.at("/data/items").size()).isEqualTo(1);
+
+        JsonNode detail = performJson(get("/api/v1/admin/todos/todo-content-review-1")
+                .header("Authorization", bearer("helper-token")), 200);
+        assertThat(detail.at("/data/todoId").asText()).isEqualTo("todo-content-review-1");
+        assertThat(detail.at("/data/readOnly").asBoolean()).isTrue();
+        assertThat(detail.at("/data/targetApi").asText()).startsWith("/api/v1/content/admin");
+        assertNoSecrets(detail);
+
+        performJson(get("/api/v1/admin/todos/missing").header("Authorization", bearer("admin-token")), 404, 43701);
+        performJson(get("/api/v1/admin/todos").header("Authorization", bearer("admin-token")).param("sourceModule", "BAD"), 400, 40001);
+        performJson(get("/api/v1/admin/todos").header("Authorization", bearer("admin-token")).param("severity", "BAD"), 400, 40001);
+
+        JsonNode degraded = performJson(get("/api/v1/admin/todos")
+                .header("Authorization", bearer("admin-token"))
+                .header("X-Test-Module-Mode", "CONTENT:UNAVAILABLE"), 200);
+        assertThat(degraded.toString()).contains("SOURCE_UNAVAILABLE").doesNotContain("private article body");
+    }
+
+    @Test
+    @DisplayName("ADM-METRICS summary keeps unknown degraded values distinct from real zero")
+    void metricContract() throws Exception {
+        JsonNode metrics = performJson(get("/api/v1/admin/metrics/summary").header("Authorization", bearer("helper-token")), 200);
+        assertThat(valuesAt(metrics, "/data/items", "sourceModule")).contains("AUTH", "PROFILE", "NOTIFICATION", "CONTENT", "SERVER_STATUS", "RESOURCE", "ADMIN");
+        assertThat(metrics.toString()).contains("content.pendingReview", "resource.pendingReview", "\"degraded\":false");
+        assertNoSecrets(metrics);
+
+        JsonNode contentMetrics = performJson(get("/api/v1/admin/metrics/summary")
+                .header("Authorization", bearer("admin-token"))
+                .param("sourceModule", "CONTENT"), 200);
+        assertThat(valuesAt(contentMetrics, "/data/items", "sourceModule")).containsOnly("CONTENT");
+
+        JsonNode degraded = performJson(get("/api/v1/admin/metrics/summary")
+                .header("Authorization", bearer("admin-token"))
+                .header("X-Test-Module-Mode", "NOTIFICATION:UNAVAILABLE"), 200);
+        assertThat(degraded.toString()).contains("NOTIFICATION").contains("\"degraded\":true");
+
+        JsonNode noDegraded = performJson(get("/api/v1/admin/metrics/summary")
+                .header("Authorization", bearer("admin-token"))
+                .header("X-Test-Module-Mode", "NOTIFICATION:UNAVAILABLE")
+                .param("includeDegraded", "false"), 200);
+        assertThat(noDegraded.toString()).doesNotContain("notification.failedDeliveries");
+
+        performJson(get("/api/v1/admin/metrics/summary").header("Authorization", bearer("admin-token")).param("sourceModule", "BAD"), 400, 40001);
+        performJson(get("/api/v1/admin/metrics/summary").header("Authorization", bearer("user-token")), 403, 42001);
+    }
+
+    @Test
+    @DisplayName("ADM-AUDIT index is filtered, paginated, read-only, and sanitized")
+    void auditContract() throws Exception {
+        JsonNode audit = performJson(get("/api/v1/admin/audit-logs")
+                .header("Authorization", bearer("admin-token"))
+                .param("page", "1")
+                .param("pageSize", "100")
+                .param("sort", "createdAt_desc"), 200);
+        assertThat(valuesAt(audit, "/data/items", "sourceModule")).contains("ADMIN", "AUTH", "PROFILE", "NOTIFICATION", "CONTENT", "SERVER_STATUS", "RESOURCE");
+        assertThat(audit.toString()).contains("ADMIN_SETTINGS_UPDATED").doesNotContain("paramsSummary", "secret-token", "secret-code");
+        assertNoSecrets(audit);
+
+        JsonNode resourceOnly = performJson(get("/api/v1/admin/audit-logs")
+                .header("Authorization", bearer("admin-token"))
+                .param("sourceModule", "RESOURCE")
+                .param("actorUserId", "admin")
+                .param("result", "SUCCESS"), 200);
+        assertThat(valuesAt(resourceOnly, "/data/items", "sourceModule")).containsOnly("RESOURCE");
+
+        JsonNode pageTwo = performJson(get("/api/v1/admin/audit-logs")
+                .header("Authorization", bearer("admin-token"))
+                .param("page", "2")
+                .param("pageSize", "1"), 200);
+        assertThat(pageTwo.at("/data/page").asInt()).isEqualTo(2);
+        assertThat(pageTwo.at("/data/items").size()).isEqualTo(1);
+
+        performJson(get("/api/v1/admin/audit-logs").header("Authorization", bearer("helper-token")), 403, 42001);
+        performJson(get("/api/v1/admin/audit-logs").header("Authorization", bearer("admin-token")).param("sourceModule", "BAD"), 400, 40001);
+        performJson(get("/api/v1/admin/audit-logs").header("Authorization", bearer("admin-token")).param("result", "BAD"), 400, 40001);
+        performJson(get("/api/v1/admin/audit-logs").header("Authorization", bearer("admin-token")).param("from", "2026-05-23T00:00:00Z").param("to", "2026-05-22T00:00:00Z"), 400, 40001);
+
+        JsonNode degraded = performJson(get("/api/v1/admin/audit-logs")
+                .header("Authorization", bearer("admin-token"))
+                .header("X-Test-Module-Mode", "CONTENT:UNAVAILABLE"), 200);
+        assertThat(degraded.toString()).contains("CONTENT").contains("DEGRADED");
+    }
+
+    @Test
+    @DisplayName("ADM-SETTINGS read and write cover scope, high impact owner gate, idempotency, and rollback")
+    void settingsContract() throws Exception {
+        JsonNode settings = performJson(get("/api/v1/admin/settings")
+                .header("Authorization", bearer("admin-token"))
+                .param("scope", "NAVIGATION"), 200);
+        assertThat(settings.at("/data/layout/navigationModuleOrder").isArray()).isTrue();
+        assertThat(settings.toString()).doesNotContain("content.homepage", "resource.downloadEntry", "server.lines");
+        assertNoSecrets(settings);
+
+        performJson(get("/api/v1/admin/settings").header("Authorization", bearer("helper-token")), 403, 42001);
+        performJson(get("/api/v1/admin/settings").header("Authorization", bearer("admin-token")).param("includeHighImpact", "true"), 403, 42001);
+        performJson(get("/api/v1/admin/settings").header("Authorization", bearer("owner-token")).param("includeHighImpact", "true"), 200);
+        performJson(get("/api/v1/admin/settings").header("Authorization", bearer("admin-token")).param("scope", "BAD"), 400, 40001);
+
+        Map<String, Object> body = settingsPatchBody("settings-idem-1", "update navigation", List.of("AUTH", "CONTENT", "RESOURCE", "ADMIN"), List.of("NODE_DAEMON"));
+        JsonNode updated = performJson(patch("/api/v1/admin/settings").header("Authorization", bearer("admin-token")), body, 200);
+        assertThat(updated.at("/data/layout/navigationModuleOrder").toString()).contains("AUTH", "CONTENT", "RESOURCE");
+
+        JsonNode replay = performJson(patch("/api/v1/admin/settings").header("Authorization", bearer("admin-token")), body, 200);
+        assertThat(replay.at("/data/idempotency/replayed").asBoolean()).isTrue();
+
+        Map<String, Object> conflict = settingsPatchBody("settings-idem-1", "different", List.of("AUTH", "ADMIN"), List.of());
+        performJson(patch("/api/v1/admin/settings").header("Authorization", bearer("admin-token")), conflict, 409, 43712);
+        performJson(patch("/api/v1/admin/settings").header("Authorization", bearer("helper-token")), body, 403, 42001);
+        performJson(patch("/api/v1/admin/settings").header("Authorization", bearer("admin-token")), Map.of("idempotencyKey", "no-reason"), 400, 40001);
+        performJson(patch("/api/v1/admin/settings").header("Authorization", bearer("admin-token")), Map.of("reason", "missing idem"), 400, 40001);
+        performJson(patch("/api/v1/admin/settings").header("Authorization", bearer("admin-token")), highImpactBody("hide-auth"), 403, 42001);
+        performJson(patch("/api/v1/admin/settings").header("Authorization", bearer("owner-token")), highImpactBody("hide-auth"), 200);
+        performJson(patch("/api/v1/admin/settings")
+                .header("Authorization", bearer("admin-token"))
+                .header("X-Test-Fail-Audit", "true"), settingsPatchBody("audit-fail", "audit fail", List.of("AUTH", "ADMIN"), List.of()), 500, 51701);
+        performJson(patch("/api/v1/admin/settings")
+                .header("Authorization", bearer("admin-token"))
+                .header("X-Test-Fail-Settings", "true"), settingsPatchBody("settings-fail", "settings fail", List.of("AUTH", "ADMIN"), List.of()), 500, 51702);
+
+        JsonNode afterFailures = performJson(get("/api/v1/admin/settings").header("Authorization", bearer("admin-token")), 200);
+        assertThat(afterFailures.toString()).doesNotContain("audit fail", "settings fail");
+        assertNoSecrets(afterFailures);
+    }
+
+    @Test
+    @DisplayName("ADM-OPS summary reports runtime modes, counts, production gaps, and no secrets")
+    void opsContract() throws Exception {
+        JsonNode ops = performJson(get("/api/v1/admin/ops/summary").header("Authorization", bearer("admin-token")), 200);
+        assertThat(ops.at("/data/service").asText()).isEqualTo("admin");
+        assertThat(ops.at("/data/port").asInt()).isEqualTo(8107);
+        assertThat(ops.toString()).contains("IN_MEMORY", "TEST_STUB", "productionGaps", "moduleHealth");
+        assertNoSecrets(ops);
+
+        JsonNode degraded = performJson(get("/api/v1/admin/ops/summary")
+                .header("Authorization", bearer("owner-token"))
+                .header("X-Test-Module-Mode", "RESOURCE:UNAVAILABLE"), 200);
+        assertThat(degraded.at("/data/degradedModulesTotal").asInt()).isGreaterThanOrEqualTo(1);
+
+        performJson(get("/api/v1/admin/ops/summary").header("Authorization", bearer("helper-token")), 403, 42001);
+        performJson(get("/api/v1/admin/ops/summary").header("Authorization", bearer("user-token")), 403, 42001);
+    }
+
+    @Test
+    @DisplayName("ADM-COMPAT admin service does not modify prior services or expose business and ops write proxies")
+    void compatibilityContract() throws Exception {
+        Path serviceRoot = Path.of("backend/admin-service/src/main/java");
+        String source = Files.exists(serviceRoot)
+                ? String.join("\n", Files.walk(serviceRoot)
+                .filter(Files::isRegularFile)
+                .map(path -> {
+                    try {
+                        return Files.readString(path);
+                    } catch (Exception exception) {
+                        throw new IllegalStateException(exception);
+                    }
+                }).toList())
+                : "";
+        assertThat(source).doesNotContain(
+                "cn.beiming.auth.", "cn.beiming.profile.", "cn.beiming.notification.",
+                "cn.beiming.content.", "cn.beiming.serverstatus.", "cn.beiming.resource.",
+                "ProcessBuilder", "Runtime.getRuntime", "deleteFile", "terminal", "containerStart",
+                "nodeRegister", "backupRestore", "cloudreveToken");
+
+        JsonNode modules = performJson(get("/api/v1/admin/modules").header("Authorization", bearer("owner-token")), 200);
+        assertThat(modules.toString()).doesNotContain("/api/v1/admin/users", "/api/v1/admin/items", "/api/v1/admin/files", "/api/v1/admin/terminal", "/api/v1/admin/containers");
+    }
+
+    private JsonNode performJson(MockHttpServletRequestBuilder request, int status) throws Exception {
+        MvcResult result = mvc.perform(request.accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().is(status))
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString());
+    }
+
+    private JsonNode performJson(MockHttpServletRequestBuilder request, int status, int code) throws Exception {
+        JsonNode json = performJson(request, status);
+        assertThat(json.at("/code").asInt()).isEqualTo(code);
+        return json;
+    }
+
+    private JsonNode performJson(MockHttpServletRequestBuilder request, Map<String, Object> body, int status) throws Exception {
+        MvcResult result = mvc.perform(request
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().is(status))
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString());
+    }
+
+    private JsonNode performJson(MockHttpServletRequestBuilder request, Map<String, Object> body, int status, int code) throws Exception {
+        JsonNode json = performJson(request, body, status);
+        assertThat(json.at("/code").asInt()).isEqualTo(code);
+        return json;
+    }
+
+    private String bearer(String token) {
+        return "Bearer " + token;
+    }
+
+    private void addRange(Set<String> ids, String prefix, int start, int end) {
+        for (int i = start; i <= end; i++) {
+            ids.add("%s-%03d".formatted(prefix, i));
+        }
+    }
+
+    private List<String> valuesAt(JsonNode root, String pointer, String field) {
+        JsonNode array = root.at(pointer);
+        List<String> values = new ArrayList<>();
+        if (array.isArray()) {
+            for (JsonNode item : array) {
+                values.add(item.path(field).asText());
+            }
+        }
+        return values;
+    }
+
+    private void assertNoSecrets(JsonNode json) {
+        assertThat(json.toString()).doesNotContain(
+                "BM-SECRET-RAW", "secret-code", "secret-token", "C:\\\\server\\\\secret",
+                "private message", "private template", "private note", "java.lang.Secret",
+                "cloudrevePassword", "authorizationHeader", "rawInvitationCode", "stackTrace");
+    }
+
+    private Map<String, Object> settingsPatchBody(String idempotencyKey, String reason, List<String> order, List<String> hidden) {
+        Map<String, Object> layout = new LinkedHashMap<>();
+        layout.put("navigationModuleOrder", order);
+        layout.put("hiddenModules", hidden);
+        layout.put("dashboardCards", List.of("todos", "metrics", "health"));
+        layout.put("quickActions", List.of(Map.of("key", "content-review", "targetRoute", "/admin/content")));
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("layout", layout);
+        body.put("items", List.of(Map.of("key", "dashboard.refreshSeconds", "value", 60)));
+        body.put("reason", reason);
+        body.put("idempotencyKey", idempotencyKey);
+        return body;
+    }
+
+    private Map<String, Object> highImpactBody(String idempotencyKey) {
+        Map<String, Object> layout = new LinkedHashMap<>();
+        layout.put("hiddenModules", List.of("AUTH"));
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("layout", layout);
+        body.put("items", List.of(Map.of("key", "audit.retentionDays", "value", 180)));
+        body.put("reason", "owner high impact change");
+        body.put("idempotencyKey", idempotencyKey);
+        return body;
+    }
+}
