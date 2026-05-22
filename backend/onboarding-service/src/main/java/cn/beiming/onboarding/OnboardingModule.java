@@ -135,6 +135,14 @@ class OnboardingController {
         return ok(store.application(actor, applicationId, request));
     }
 
+    @GetMapping("/admin/applications/{applicationId}/exam-handoff")
+    Map<String, Object> examHandoff(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                    @PathVariable String applicationId,
+                                    HttpServletRequest request) {
+        AuthContext actor = auth.requireAny(authorization, "ADMIN", "OWNER");
+        return ok(store.examHandoff(actor, applicationId, request));
+    }
+
     @PatchMapping("/admin/applications/{applicationId}/reset")
     Map<String, Object> reset(@RequestHeader(value = "Authorization", required = false) String authorization,
                               @PathVariable String applicationId,
@@ -211,6 +219,7 @@ class OnboardingStore {
     private final Map<String, IdempotencyRecord> idempotency = new ConcurrentHashMap<>();
     private final List<Map<String, Object>> audits = new ArrayList<>();
     private int idSeq = 2000;
+    private int handoffSnapshotsTotal;
 
     void seed() {
         ApplicationRecord inProgress = newRecord("app-in-progress", "seed-in-progress", "Seed Player", minecraft("SeedSteve", "uuid-seed"));
@@ -408,6 +417,42 @@ class OnboardingStore {
         return applicationView(app, null, defaultRule(), false, List.of());
     }
 
+    synchronized Map<String, Object> examHandoff(AuthContext actor, String applicationId, HttpServletRequest request) {
+        ApplicationRecord app = requireApplication(applicationId);
+        if ("BLOCKED".equals(app.status)) throw new OnboardingException(409, 43816, "application blocked");
+        if (!"READY_FOR_EXAM".equals(app.status)
+                || app.profileConfirmation == null
+                || app.ruleConfirmation == null
+                || app.reviewDirection == null) {
+            throw new OnboardingException(409, 43811, "exam handoff prerequisites missing");
+        }
+        if (!completeBinding(app.minecraftBinding)) throw new OnboardingException(409, 43813, "Minecraft identity missing");
+        requireProfileSnapshotForHandoff(request);
+        RuleSummary rule = requireRuleForWrite(actor, request);
+        if (!rule.ruleVersion().equals(string(app.ruleConfirmation.get("ruleVersion")))) {
+            throw new OnboardingException(409, 43814, "rule version expired");
+        }
+        handoffSnapshotsTotal++;
+        return mapOf(
+                "applicationId", app.applicationId,
+                "userId", app.userId,
+                "displayNameSnapshot", app.displayName,
+                "minecraftBindingSnapshot", app.minecraftBinding,
+                "profileConfirmation", app.profileConfirmation,
+                "ruleConfirmation", app.ruleConfirmation,
+                "reviewDirection", app.reviewDirection,
+                "status", app.status,
+                "readyForExam", true,
+                "handoffAllowed", true,
+                "targetModule", "EXAM",
+                "targetModuleStatus", "NOT_IMPLEMENTED",
+                "blocked", false,
+                "blockedReason", null,
+                "handoffVersion", 1,
+                "generatedAt", NOW
+        );
+    }
+
     synchronized Map<String, Object> reset(AuthContext actor, String applicationId, Map<String, Object> body, HttpServletRequest request) {
         validateReason(body);
         validateIdempotencyKey(body);
@@ -525,6 +570,8 @@ class OnboardingStore {
         data.put("applicationsTotal", applications.size());
         data.put("blockedTotal", blocked);
         data.put("readyForExamTotal", ready);
+        data.put("stateMachineMode", "EXPLICIT_P0");
+        data.put("handoffSnapshotsTotal", handoffSnapshotsTotal);
         data.put("auditsTotal", audits.size());
         data.put("idempotencyRecordsTotal", idempotency.size());
         data.put("lastAuditAt", audits.isEmpty() ? null : audits.get(audits.size() - 1).get("createdAt"));
@@ -662,6 +709,13 @@ class OnboardingStore {
 
     private void requireProfileWrite(AuthContext user, HttpServletRequest request) {
         String mode = profileMode(user, request);
+        if ("UNAVAILABLE".equals(mode)) throw new OnboardingException(502, 46810, "profile unavailable");
+        if ("TIMEOUT".equals(mode)) throw new OnboardingException(504, 46811, "profile timeout");
+        if ("BAD".equals(mode)) throw new OnboardingException(502, 46812, "profile incompatible");
+    }
+
+    private void requireProfileSnapshotForHandoff(HttpServletRequest request) {
+        String mode = dependencyMode(null, request, "PROFILE");
         if ("UNAVAILABLE".equals(mode)) throw new OnboardingException(502, 46810, "profile unavailable");
         if ("TIMEOUT".equals(mode)) throw new OnboardingException(504, 46811, "profile timeout");
         if ("BAD".equals(mode)) throw new OnboardingException(502, 46812, "profile incompatible");
