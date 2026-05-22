@@ -34,7 +34,9 @@ class ContentApiContractTest {
             CONTENT-HOME-001 CONTENT-HOME-002 CONTENT-HOME-003 CONTENT-HOME-004 CONTENT-HOME-005 CONTENT-HOME-006 CONTENT-HOME-007 CONTENT-HOME-008 CONTENT-HOME-009 CONTENT-HOME-010
             CONTENT-PUB-LIST-001 CONTENT-PUB-LIST-002 CONTENT-PUB-LIST-003 CONTENT-PUB-LIST-004 CONTENT-PUB-LIST-005 CONTENT-PUB-LIST-006 CONTENT-PUB-LIST-007 CONTENT-PUB-LIST-008 CONTENT-PUB-LIST-009 CONTENT-PUB-LIST-010 CONTENT-PUB-LIST-011 CONTENT-PUB-LIST-012 CONTENT-PUB-LIST-013 CONTENT-PUB-LIST-014 CONTENT-PUB-LIST-015 CONTENT-PUB-LIST-016 CONTENT-PUB-LIST-017 CONTENT-PUB-LIST-018 CONTENT-PUB-LIST-019 CONTENT-PUB-LIST-020
             CONTENT-PUB-DETAIL-001 CONTENT-PUB-DETAIL-002 CONTENT-PUB-DETAIL-003 CONTENT-PUB-DETAIL-004 CONTENT-PUB-DETAIL-005 CONTENT-PUB-DETAIL-006 CONTENT-PUB-DETAIL-007 CONTENT-PUB-DETAIL-008 CONTENT-PUB-DETAIL-009 CONTENT-PUB-DETAIL-010
+            CONTENT-PREVIEW-ADMIN-001 CONTENT-PREVIEW-ADMIN-002 CONTENT-PREVIEW-ADMIN-003 CONTENT-PREVIEW-ADMIN-004 CONTENT-PREVIEW-ADMIN-005 CONTENT-PREVIEW-ADMIN-006 CONTENT-PREVIEW-ADMIN-007 CONTENT-PREVIEW-ADMIN-008 CONTENT-PREVIEW-001 CONTENT-PREVIEW-002 CONTENT-PREVIEW-003 CONTENT-PREVIEW-004 CONTENT-PREVIEW-005 CONTENT-PREVIEW-006 CONTENT-PREVIEW-007
             CONTENT-PUB-CAT-001 CONTENT-PUB-CAT-002 CONTENT-PUB-TAG-001 CONTENT-PUB-TAG-002 CONTENT-PUB-TOPIC-001 CONTENT-PUB-TOPIC-002 CONTENT-PUB-TOPIC-003 CONTENT-PUB-TOPIC-004 CONTENT-PUB-TOPIC-005 CONTENT-PUB-TOPIC-006 CONTENT-PUB-TOPIC-007 CONTENT-PUB-SEO-001 CONTENT-PUB-SEO-002 CONTENT-PUB-SEO-003 CONTENT-PUB-SEO-004
+            CONTENT-SITEMAP-001 CONTENT-SITEMAP-002 CONTENT-SITEMAP-003 CONTENT-SITEMAP-004 CONTENT-SITEMAP-005 CONTENT-SITEMAP-006 CONTENT-SITEMAP-007
             CONTENT-ADMIN-LIST-001 CONTENT-ADMIN-LIST-002 CONTENT-ADMIN-LIST-003 CONTENT-ADMIN-LIST-004 CONTENT-ADMIN-LIST-005 CONTENT-ADMIN-LIST-006 CONTENT-ADMIN-LIST-007 CONTENT-ADMIN-DETAIL-001 CONTENT-ADMIN-DETAIL-002 CONTENT-ADMIN-DETAIL-003
             CONTENT-ITEM-CREATE-001 CONTENT-ITEM-CREATE-002 CONTENT-ITEM-CREATE-003 CONTENT-ITEM-CREATE-004 CONTENT-ITEM-CREATE-005 CONTENT-ITEM-CREATE-006 CONTENT-ITEM-CREATE-007 CONTENT-ITEM-CREATE-008 CONTENT-ITEM-CREATE-009 CONTENT-ITEM-CREATE-010 CONTENT-ITEM-CREATE-011 CONTENT-ITEM-CREATE-012 CONTENT-ITEM-CREATE-013 CONTENT-ITEM-CREATE-014 CONTENT-ITEM-CREATE-015 CONTENT-ITEM-CREATE-016
             CONTENT-ITEM-PATCH-001 CONTENT-ITEM-PATCH-002 CONTENT-ITEM-PATCH-003 CONTENT-ITEM-PATCH-004 CONTENT-ITEM-PATCH-005 CONTENT-ITEM-PATCH-006 CONTENT-ITEM-PATCH-007 CONTENT-ITEM-PATCH-008
@@ -204,6 +206,15 @@ class ContentApiContractTest {
         store.disableSeo("/news");
         assertThat(performJson(get("/api/v1/content/seo").param("route", "/news"), 200).at("/data/seoId").isNull()).isTrue();
         performJson(get("/api/v1/content/seo").param("route", "bad"), 400, 40001);
+
+        JsonNode sitemap = performJson(get("/api/v1/content/seo/sitemap"), 200);
+        assertThat(valuesAt(sitemap, "/data/items", "route")).contains("/", "/items/guide-article", "/topics/spring-topic")
+                .doesNotContain("/items/draft-only", "/items/offline-only", "/items/private-only", "/items/member-only", "/items/future-only", "/items/expired-only");
+        assertThat(valuesAt(sitemap, "/data/items", "targetType")).contains("HOME", "CONTENT", "TOPIC");
+        assertThat(sitemap.toString()).doesNotContain("body", "adminNote", "reviewOpinion", "notificationStatus", "idempotencyKey");
+        JsonNode contentSitemap = performJson(get("/api/v1/content/seo/sitemap").param("type", "CONTENT"), 200);
+        assertThat(valuesAt(contentSitemap, "/data/items", "targetType")).containsOnly("CONTENT");
+        performJson(get("/api/v1/content/seo/sitemap").param("type", "BAD"), 400, 40001);
     }
 
     @Test
@@ -274,6 +285,55 @@ class ContentApiContractTest {
         performJson(patch("/api/v1/content/admin/items/missing").header("Authorization", bearer("admin-token")), mapOf("title", "No", "reason", "missing"), 404, 43400);
         performJson(patch("/api/v1/content/admin/items/" + store.contentIdBySlug("archived-only")).header("Authorization", bearer("admin-token")), mapOf("title", "No", "reason", "archived"), 409, 43410);
         performJson(patch("/api/v1/content/admin/items/" + first.at("/data/contentId").asText()).header("Authorization", bearer("admin-token")), mapOf("slug", "guide-article", "reason", "dup"), 409, 43411);
+    }
+
+    @Test
+    @DisplayName("CONTENT-PREVIEW creates audited preview tokens and exposes draft-safe public preview")
+    void contentPreviewContract() throws Exception {
+        String draftId = store.contentIdBySlug("draft-only");
+        JsonNode token = performJson(post("/api/v1/content/admin/items/" + draftId + "/preview-token")
+                .header("Authorization", bearer("admin-token")), mapOf("expiresInMinutes", 30, "reason", "preview draft"), 201);
+        assertThat(token.at("/data/token").asText()).isNotBlank();
+        assertThat(token.at("/data/previewUrl").asText()).contains("/api/v1/content/items/" + draftId + "/preview?token=");
+        assertThat(token.at("/data/expiresAt").asText()).isNotBlank();
+
+        JsonNode preview = performJson(get("/api/v1/content/items/" + draftId + "/preview")
+                .param("token", token.at("/data/token").asText()), 200);
+        assertThat(preview.at("/data/contentId").asText()).isEqualTo(draftId);
+        assertThat(preview.at("/data/body").asText()).isNotBlank();
+        assertThat(preview.toString()).doesNotContain("adminNote", "reviewOpinion", "notificationStatus", "idempotencyKey");
+
+        String pendingId = store.contentIdBySlug("pending-only");
+        JsonNode ownerToken = performJson(post("/api/v1/content/admin/items/" + pendingId + "/preview-token")
+                .header("Authorization", bearer("owner-token")), mapOf("reason", "preview pending"), 201);
+        performJson(get("/api/v1/content/items/" + pendingId + "/preview")
+                .param("token", ownerToken.at("/data/token").asText()), 200);
+
+        performJson(post("/api/v1/content/admin/items/" + draftId + "/preview-token")
+                .header("Authorization", bearer("helper-token")), mapOf("reason", "helper"), 403, 42001);
+        performJson(post("/api/v1/content/admin/items/missing/preview-token")
+                .header("Authorization", bearer("admin-token")), mapOf("reason", "missing"), 404, 43400);
+        performJson(post("/api/v1/content/admin/items/" + store.contentIdBySlug("archived-only") + "/preview-token")
+                .header("Authorization", bearer("admin-token")), mapOf("reason", "archived"), 409, 43410);
+        performJson(post("/api/v1/content/admin/items/" + draftId + "/preview-token")
+                .header("Authorization", bearer("admin-token")), mapOf("expiresInMinutes", 1, "reason", "bad"), 400, 40001);
+
+        performJson(get("/api/v1/content/items/" + draftId + "/preview"), 404, 43419);
+        performJson(get("/api/v1/content/items/" + draftId + "/preview").param("token", "bad-token"), 404, 43419);
+        performJson(get("/api/v1/content/items/" + store.contentIdBySlug("guide-article") + "/preview")
+                .param("token", token.at("/data/token").asText()), 404, 43419);
+        store.expirePreviewToken(token.at("/data/token").asText());
+        performJson(get("/api/v1/content/items/" + draftId + "/preview")
+                .param("token", token.at("/data/token").asText()), 404, 43419);
+
+        JsonNode audit = performJson(get("/api/v1/content/admin/items/" + draftId + "/audit-logs")
+                .header("Authorization", bearer("admin-token")), 200);
+        assertThat(valuesAt(audit, "/data/items", "action")).contains("CONTENT_ITEM_PREVIEW_TOKEN_CREATED");
+        assertThat(audit.toString()).doesNotContain(token.at("/data/token").asText());
+
+        store.failNextAudit();
+        performJson(post("/api/v1/content/admin/items/" + draftId + "/preview-token")
+                .header("Authorization", bearer("admin-token")), mapOf("reason", "audit fail"), 500, 51401);
     }
 
     @Test

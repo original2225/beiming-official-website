@@ -88,6 +88,12 @@ class ContentController {
         return ok(store.publicItems(query));
     }
 
+    @GetMapping("/items/{contentId}/preview")
+    Map<String, Object> previewItem(@PathVariable String contentId,
+                                    @RequestParam(required = false) String token) {
+        return ok(store.previewItem(contentId, token));
+    }
+
     @GetMapping("/items/{contentId}")
     Map<String, Object> publicItem(@PathVariable String contentId) {
         return ok(store.publicItem(contentId));
@@ -128,6 +134,11 @@ class ContentController {
         return ok(store.publicSeo(route));
     }
 
+    @GetMapping("/seo/sitemap")
+    Map<String, Object> publicSitemap(@RequestParam Map<String, String> query) {
+        return ok(mapOf("items", store.publicSitemap(query)));
+    }
+
     @GetMapping("/admin/items")
     Map<String, Object> adminItems(@RequestHeader(value = "Authorization", required = false) String authorization,
                                    @RequestParam Map<String, String> query) {
@@ -155,6 +166,14 @@ class ContentController {
                                   @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
         return ok(store.patchItem(actor, profile, contentId, body));
+    }
+
+    @PostMapping("/admin/items/{contentId}/preview-token")
+    ResponseEntity<Map<String, Object>> createPreviewToken(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                                           @PathVariable String contentId,
+                                                           @RequestBody Map<String, Object> body) {
+        AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
+        return ResponseEntity.status(HttpStatus.CREATED).body(okData(store.createPreviewToken(actor, contentId, body)));
     }
 
     @PatchMapping("/admin/items/{contentId}/submit-review")
@@ -473,6 +492,7 @@ class ContentStore {
     private final Map<String, SeoRecord> seo = new LinkedHashMap<>();
     private final Map<Integer, HomeConfig> publishedHomeVersions = new LinkedHashMap<>();
     private final Map<String, List<ContentItemVersionRecord>> itemVersions = new LinkedHashMap<>();
+    private final Map<String, PreviewTokenRecord> previewTokens = new LinkedHashMap<>();
     private final Map<String, IdempotencyRecord> idempotency = new ConcurrentHashMap<>();
     private final List<ContentAudit> audits = new ArrayList<>();
     private HomeConfig draftHome;
@@ -489,6 +509,7 @@ class ContentStore {
         seo.clear();
         publishedHomeVersions.clear();
         itemVersions.clear();
+        previewTokens.clear();
         idempotency.clear();
         audits.clear();
         draftHome = null;
@@ -622,6 +643,40 @@ class ContentStore {
         return seo.values().stream().filter(record -> record.enabled && record.route.equals(route)).findFirst().map(this::seoMap).orElse(defaultSeo(route));
     }
 
+    synchronized Map<String, Object> previewItem(String contentId, String token) {
+        if (token == null || token.isBlank()) throw new ContentException(43419, HttpStatus.NOT_FOUND, "preview token not found");
+        ContentItem item = requireItem(contentId);
+        PreviewTokenRecord record = previewTokens.get(token);
+        if (record == null || !record.contentId.equals(contentId) || !record.expiresAt.isAfter(now()) || Set.of("ARCHIVED", "DELETED").contains(item.status)) {
+            throw new ContentException(43419, HttpStatus.NOT_FOUND, "preview token not found");
+        }
+        return detailMap(item);
+    }
+
+    synchronized List<Map<String, Object>> publicSitemap(Map<String, String> query) {
+        String type = query.get("type");
+        if (type != null && !Set.of("HOME", "CONTENT", "TOPIC").contains(type)) throw new ContentException(40001, HttpStatus.BAD_REQUEST, "validation failed");
+        List<Map<String, Object>> entries = new ArrayList<>();
+        if (type == null || "HOME".equals(type)) {
+            if (publishedHome != null) entries.add(sitemapEntry("/", "HOME", null, publishedHome.publishedAt, "daily", 1.0));
+        }
+        if (type == null || "CONTENT".equals(type)) {
+            items.values().stream()
+                    .filter(this::publicVisible)
+                    .sorted(itemComparator("updatedAt_desc"))
+                    .map(item -> sitemapEntry("/items/" + item.slug, "CONTENT", item.contentId, item.updatedAt, "weekly", 0.8))
+                    .forEach(entries::add);
+        }
+        if (type == null || "TOPIC".equals(type)) {
+            topics.values().stream()
+                    .filter(this::publicTopicVisible)
+                    .sorted(topicComparator("updatedAt_desc"))
+                    .map(topic -> sitemapEntry("/topics/" + topic.slug, "TOPIC", topic.topicId, topic.updatedAt, "weekly", 0.7))
+                    .forEach(entries::add);
+        }
+        return entries;
+    }
+
     synchronized Map<String, Object> adminItems(Map<String, String> query) {
         Query page = query(query, Set.of("createdAt_desc", "updatedAt_desc", "publishedAt_desc", "title_asc"), "createdAt_desc");
         List<Map<String, Object>> rows = items.values().stream()
@@ -697,6 +752,22 @@ class ContentStore {
         recordVersion(item, actor.userId, "UPDATED", body.get("reason"), null);
         audit(actor.userId, "CONTENT_ITEM_UPDATED", body.get("reason"), item.contentId, "SUCCESS");
         return adminItemMap(item);
+    }
+
+    synchronized Map<String, Object> createPreviewToken(AuthUser actor, String contentId, Map<String, Object> body) {
+        ContentItem item = requireItem(contentId);
+        requireReason(body);
+        if (Set.of("ARCHIVED", "DELETED").contains(item.status)) throw new ContentException(43410, HttpStatus.CONFLICT, "content state conflict");
+        int expiresInMinutes = optionalInt(body, "expiresInMinutes", 30);
+        if (expiresInMinutes < 5 || expiresInMinutes > 1440) throw new ContentException(40001, HttpStatus.BAD_REQUEST, "validation failed");
+        Instant createdAt = now();
+        Instant expiresAt = createdAt.plus(expiresInMinutes, ChronoUnit.MINUTES);
+        checkAudit();
+        String token = "preview_" + UUID.randomUUID();
+        PreviewTokenRecord record = new PreviewTokenRecord(contentId, token, expiresAt, createdAt);
+        previewTokens.put(token, record);
+        audit(actor.userId, "CONTENT_ITEM_PREVIEW_TOKEN_CREATED", body.get("reason"), contentId, "SUCCESS", mapOf("expiresAt", string(expiresAt)));
+        return previewTokenMap(record);
     }
 
     synchronized Map<String, Object> submitReview(AuthUser actor, String contentId, Map<String, Object> body) {
@@ -1286,6 +1357,11 @@ class ContentStore {
         return audits.stream().map(audit -> audit.action).toList();
     }
 
+    void expirePreviewToken(String token) {
+        PreviewTokenRecord record = previewTokens.get(token);
+        if (record != null) previewTokens.put(token, new PreviewTokenRecord(record.contentId, record.token, now().minus(1, ChronoUnit.MINUTES), record.createdAt));
+    }
+
     void failNextAudit() {
         failNextAudit = true;
     }
@@ -1408,6 +1484,16 @@ class ContentStore {
         map.put("visibleUntil", string(item.visibleUntil));
         map.put("createdAt", string(item.createdAt));
         return map;
+    }
+
+    private Map<String, Object> previewTokenMap(PreviewTokenRecord record) {
+        return mapOf("contentId", record.contentId, "token", record.token, "previewUrl", "/api/v1/content/items/" + record.contentId + "/preview?token=" + record.token,
+                "expiresAt", string(record.expiresAt), "createdAt", string(record.createdAt));
+    }
+
+    private Map<String, Object> sitemapEntry(String route, String targetType, String targetId, Instant lastModifiedAt, String changeFrequency, double priority) {
+        return mapOf("route", route, "targetType", targetType, "targetId", targetId, "lastModifiedAt", string(lastModifiedAt == null ? now() : lastModifiedAt),
+                "changeFrequency", changeFrequency, "priority", priority);
     }
 
     private Map<String, Object> adminItemMap(ContentItem item) {
@@ -2052,6 +2138,20 @@ class IdempotencyRecord {
     IdempotencyRecord(String fingerprint, Map<String, Object> result) {
         this.fingerprint = fingerprint;
         this.result = result;
+    }
+}
+
+class PreviewTokenRecord {
+    final String contentId;
+    final String token;
+    final Instant expiresAt;
+    final Instant createdAt;
+
+    PreviewTokenRecord(String contentId, String token, Instant expiresAt, Instant createdAt) {
+        this.contentId = contentId;
+        this.token = token;
+        this.expiresAt = expiresAt;
+        this.createdAt = createdAt;
     }
 }
 
