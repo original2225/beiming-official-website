@@ -261,6 +261,7 @@
 | `43922` | 409 | 模板状态不允许该操作。 |
 | `43923` | 409 | 人工阅卷分数超出题目分值。 |
 | `43924` | 409 | 只有通过结果可生成 whitelist 交接快照。 |
+| `43925` | 409 | 考试结果已经生成下游交接快照，不允许直接修正。 |
 | `46900` | 502 | auth 认证上下文不可用。 |
 | `46901` | 504 | auth 认证上下文调用超时。 |
 | `46902` | 502 | auth 认证上下文字段或枚举不兼容 exam 契约。 |
@@ -298,16 +299,19 @@
 | 后台考试列表 | GET | `/api/v1/exams/admin/sessions` | 是 | `HELPER`、`ADMIN` 或 `OWNER` | LOW |
 | 后台考试详情 | GET | `/api/v1/exams/admin/sessions/{sessionId}` | 是 | `HELPER`、`ADMIN` 或 `OWNER` | LOW |
 | 人工阅卷 | PATCH | `/api/v1/exams/admin/sessions/{sessionId}/manual-review` | 是 | `ADMIN` 或 `OWNER` | MEDIUM |
+| 结果修正 | PATCH | `/api/v1/exams/admin/sessions/{sessionId}/result-correction` | 是 | `ADMIN` 或 `OWNER` | MEDIUM |
 | 要求补充 | PATCH | `/api/v1/exams/admin/sessions/{sessionId}/request-supplement` | 是 | `ADMIN` 或 `OWNER` | MEDIUM |
 | 取消考试 | PATCH | `/api/v1/exams/admin/sessions/{sessionId}/cancel` | 是 | `ADMIN` 或 `OWNER` | MEDIUM |
 | whitelist 交接快照 | GET | `/api/v1/exams/admin/sessions/{sessionId}/whitelist-handoff` | 是 | `ADMIN` 或 `OWNER` | LOW |
 | 后台题目列表 | GET | `/api/v1/exams/admin/question-bank/questions` | 是 | `HELPER`、`ADMIN` 或 `OWNER` | LOW |
+| 题目版本历史 | GET | `/api/v1/exams/admin/question-bank/questions/{questionId}/versions` | 是 | `HELPER`、`ADMIN` 或 `OWNER` | LOW |
 | 创建题目 | POST | `/api/v1/exams/admin/question-bank/questions` | 是 | `ADMIN` 或 `OWNER` | MEDIUM |
 | 修改题目 | PATCH | `/api/v1/exams/admin/question-bank/questions/{questionId}` | 是 | `ADMIN` 或 `OWNER` | MEDIUM |
 | 归档题目 | PATCH | `/api/v1/exams/admin/question-bank/questions/{questionId}/archive` | 是 | `ADMIN` 或 `OWNER` | MEDIUM |
 | 模板列表 | GET | `/api/v1/exams/admin/paper-templates` | 是 | `HELPER`、`ADMIN` 或 `OWNER` | LOW |
 | 创建模板 | POST | `/api/v1/exams/admin/paper-templates` | 是 | `ADMIN` 或 `OWNER` | MEDIUM |
 | 修改模板 | PATCH | `/api/v1/exams/admin/paper-templates/{templateId}` | 是 | `ADMIN` 或 `OWNER` | MEDIUM |
+| 模板发布预检 | GET | `/api/v1/exams/admin/paper-templates/{templateId}/publish-preview` | 是 | `HELPER`、`ADMIN` 或 `OWNER` | LOW |
 | 发布模板 | PATCH | `/api/v1/exams/admin/paper-templates/{templateId}/publish` | 是 | `ADMIN` 或 `OWNER` | MEDIUM |
 | 归档模板 | PATCH | `/api/v1/exams/admin/paper-templates/{templateId}/archive` | 是 | `ADMIN` 或 `OWNER` | MEDIUM |
 | exam 审计列表 | GET | `/api/v1/exams/admin/audit-logs` | 是 | `ADMIN` 或 `OWNER` | LOW |
@@ -464,6 +468,25 @@
 
 业务规则：只允许 `PENDING_MANUAL_REVIEW` 或 `SUPPLEMENT_SUBMITTED`。阅卷人不能修改客观题原始答案和客观题得分。最终总分达到通过线且 `result=PASSED` 时状态为 `MANUAL_PASSED`，结果为 `PASSED`；否则状态为 `MANUAL_FAILED`，结果为 `FAILED`。审计失败或状态写入失败时不得改变结果。通知失败不回滚，但必须记录。
 
+### 结果修正
+
+`PATCH /api/v1/exams/admin/sessions/{sessionId}/result-correction`
+
+请求字段：
+
+| 字段 | 类型 | 必填 | 规则 |
+| --- | --- | --- | --- |
+| `manualScores` | object[] | 否 | 只允许修正简答题得分，不能超过题目分值。全客观自动判分考试可不传。 |
+| `result` | string | 是 | `PASSED` 或 `FAILED`。 |
+| `publicComment` | string | 是 | 1 到 1000 位，说明修正后给考生可见的结论。 |
+| `internalNote` | string | 否 | 最多 1000 位。 |
+| `reason` | string | 是 | 1 到 200 位，必须说明修正原因。 |
+| `idempotencyKey` | string | 否 | 8 到 80 位，同一操作者 24 小时内有效。 |
+
+成功响应 HTTP `200`，`data` 为更新后的 `ExamSession`。
+
+业务规则：只允许修正 `AUTO_PASSED`、`AUTO_FAILED`、`MANUAL_PASSED` 或 `MANUAL_FAILED` 的最终结果。已取消、已过期、待阅卷、需补充或补充已提交的考试不得走结果修正，返回 `43913`。已经生成 whitelist 交接快照的考试不得直接修正，返回 `43925`，后续如需撤销应由 whitelist 自己的契约处理下游状态。结果修正不得修改原始答卷和客观题得分；修正简答题时必须重新计算总分。修正为通过时总分必须达到 `passScore`，修正为失败时可以因为分数不足或复核原因失败。成功后写入 `EXAM_RESULT_CORRECTED` 审计，`manualReview` 中追加 `correction=true`、`correctedFromStatus`、`correctedFromResult` 和修正人快照。通知失败不回滚，但必须记录 `notificationStatus=FAILED`。
+
 ### 要求补充
 
 `PATCH /api/v1/exams/admin/sessions/{sessionId}/request-supplement`
@@ -524,6 +547,22 @@
 | `sort` | string | 否 | 允许 `updatedAt_desc`、`createdAt_desc`、`score_desc`、`type_asc`。默认 `updatedAt_desc`。 |
 
 成功响应 HTTP `200`，分页 `items` 为 `ExamQuestion[]`。`HELPER` 可读题目和答案，用于阅卷准备，但不能修改题库。
+
+### 题目版本历史
+
+`GET /api/v1/exams/admin/question-bank/questions/{questionId}/versions`
+
+查询参数：
+
+| 字段 | 类型 | 必填 | 规则 |
+| --- | --- | --- | --- |
+| `page` | integer | 否 | 默认 `1`。 |
+| `pageSize` | integer | 否 | 默认 `20`，最大 `100`。 |
+| `sort` | string | 否 | 允许 `version_desc`、`version_asc`。默认 `version_desc`。 |
+
+成功响应 HTTP `200`，分页 `items` 为 `ExamQuestion[]` 的后台视图，包含每个历史版本的题干、选项、正确答案、参考答案、分值、标签、状态和时间字段。题目不存在返回 `43902`。
+
+业务规则：修改题干、选项、答案、参考答案、分值、方向、难度或题型时必须保留旧版本，并让版本历史可查询。历史版本只能读取，不能通过版本历史接口修改或删除。已生成试卷仍使用创建时冻结的题目版本；题目版本历史用于后台复核争议、审计题库变化和解释历史试卷来源。`HELPER` 可读版本历史但不能修改题库。读取版本历史不强制写审计，响应不得包含前序服务内部字段、token、请求头或异常堆栈。
 
 ### 创建题目
 
@@ -614,6 +653,41 @@
 `PATCH /api/v1/exams/admin/paper-templates/{templateId}`
 
 请求字段同创建模板，均可选，但 `reason` 必填。成功响应 HTTP `200`。修改已发布模板时必须创建新版本并回到 `DRAFT`，旧版本仍供历史试卷追溯。
+
+### 模板发布预检
+
+`GET /api/v1/exams/admin/paper-templates/{templateId}/publish-preview`
+
+成功响应 HTTP `200`，`data` 为发布预检结果。
+
+```json
+{
+  "templateId": "tpl-redstone",
+  "templateVersion": 1,
+  "status": "DRAFT",
+  "readyToPublish": true,
+  "totalScore": 50,
+  "objectiveTotalScore": 20,
+  "manualTotalScore": 30,
+  "contentRuleStatus": "VALID",
+  "rules": [
+    {
+      "type": "SINGLE_CHOICE",
+      "count": 1,
+      "scoreEach": 10,
+      "tags": ["redstone"],
+      "matchedQuestionCount": 4,
+      "enough": true
+    }
+  ],
+  "samplePaper": {
+    "questions": []
+  },
+  "warnings": []
+}
+```
+
+业务规则：发布预检只读，不改变模板状态，不写发布审计，不占用幂等键。它必须复用正式发布的题库足量、题型、标签、分值、content 版本可用性和归档题过滤规则。题库不足时仍返回 HTTP `200`，但 `readyToPublish=false`，对应规则 `enough=false`，`warnings` 包含稳定原因；模板不存在返回 `43903`，已归档模板返回 `43922`。`contentRuleVersion` 不为空且 content 不可用时，预检返回 `readyToPublish=false` 和 `contentRuleStatus=UNAVAILABLE`，不得把错误吞成可发布。`samplePaper.questions` 使用后台可见题目摘要，供管理员确认题型和分值分布；不得包含前序服务内部字段、通知正文、token、请求头或异常堆栈。
 
 ### 发布模板
 
@@ -715,13 +789,13 @@
 
 客观题判分固定为完全匹配。单选、判断只有选中唯一正确选项才得分。多选必须选项集合完全等于正确集合才得分，漏选、错选、多选均 0 分。简答题不自动通过，只由人工阅卷给分。
 
-创建考试、保存草稿、提交考试、补充答案、人工阅卷、要求补充、取消考试、创建题目、修改题目、归档题目、创建模板、修改模板、发布模板和归档模板支持 `idempotencyKey`。同一操作者、同一幂等键、同一请求体重复提交时返回同一结果；相同幂等键搭配不同请求体返回 `43919`。请求体指纹必须基于结构化 JSON 规范化结果，所有嵌套对象按字段名递归排序。
+创建考试、保存草稿、提交考试、补充答案、人工阅卷、结果修正、要求补充、取消考试、创建题目、修改题目、归档题目、创建模板、修改模板、发布模板和归档模板支持 `idempotencyKey`。同一操作者、同一幂等键、同一请求体重复提交时返回同一结果；相同幂等键搭配不同请求体返回 `43919`。请求体指纹必须基于结构化 JSON 规范化结果，所有嵌套对象按字段名递归排序。
 
 并发创建同一用户同一 `applicationId` 下只能产生一个未结束考试。并发提交同一考试只能有一个成功判分结果。并发人工阅卷必须以服务端当前状态为准，不能产生两个最终结果。读取接口允许读到更新前或更新后的完整状态，不能返回半更新对象。
 
 ## 审计要求
 
-必须审计的动作包括创建考试、过期推进、保存草稿失败、提交考试、自动判分通过、自动判分失败、进入人工阅卷、人工阅卷通过、人工阅卷失败、要求补充、补充提交、后台取消、题目创建、题目修改、题目归档、模板创建、模板修改、模板发布、模板归档、依赖降级导致操作不可继续、通知失败和审计写入失败。
+必须审计的动作包括创建考试、过期推进、保存草稿失败、提交考试、自动判分通过、自动判分失败、进入人工阅卷、人工阅卷通过、人工阅卷失败、结果修正、要求补充、补充提交、后台取消、题目创建、题目修改、题目归档、模板创建、模板修改、模板发布、模板归档、依赖降级导致操作不可继续、通知失败和审计写入失败。
 
 后台写操作必须记录 `reason`、操作者、目标对象、操作前状态、操作后状态、请求编号、参数摘要和结果。审计字段继承公共契约。审计不得泄露 token、完整请求头、正确答案给考生、参考答案给考生、内部备注给 `HELPER` 或考生、完整通知正文、content 正文、异常堆栈或前序服务内部路径。
 
