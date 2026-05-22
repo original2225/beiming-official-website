@@ -1,6 +1,6 @@
 # 北冥官网 onboarding API 契约
 
-版本：0.1
+版本：0.2
 
 ## 文档定位
 
@@ -155,6 +155,27 @@ P0 端口固定为 `8108`。自检摘要必须返回该端口。
 | `enabled` | boolean | 是 | 当前是否可点击进入。 |
 | `disabledReason` | string 或 null | 是 | 不可用原因。 |
 
+### OnboardingExamHandoffSnapshot
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `applicationId` | string | 是 | 入服流程实例 ID。 |
+| `userId` | string | 是 | auth 用户 ID。 |
+| `displayNameSnapshot` | string | 是 | auth 展示名快照。 |
+| `minecraftBindingSnapshot` | object | 是 | Minecraft 绑定快照，字段兼容 auth 的 `MinecraftBinding`。 |
+| `profileConfirmation` | ProfileConfirmation | 是 | 资料确认记录。 |
+| `ruleConfirmation` | RuleConfirmation | 是 | 规则确认记录。 |
+| `reviewDirection` | string | 是 | 审核方向。 |
+| `status` | string | 是 | 当前必须为 `READY_FOR_EXAM`。 |
+| `readyForExam` | boolean | 是 | 是否满足 exam 可读取前置条件。 |
+| `handoffAllowed` | boolean | 是 | 是否允许后续 exam 读取并创建考试流程。P0 在 exam 未实现时仍可为 `true`，但不代表考试已开始。 |
+| `targetModule` | string | 是 | 固定为 `EXAM`。 |
+| `targetModuleStatus` | string | 是 | P0 固定为 `NOT_IMPLEMENTED`，后续 exam 闭环后可变更为 `AVAILABLE` 或 `WAITING_MODULE`。 |
+| `blocked` | boolean | 是 | 当前流程是否被后台阻塞。 |
+| `blockedReason` | string 或 null | 是 | 阻塞摘要。 |
+| `handoffVersion` | integer | 是 | 交接快照版本，从 `1` 开始，后续字段兼容扩展时递增。 |
+| `generatedAt` | string | 是 | 生成快照时间。 |
+
 ### OnboardingAuditLog
 
 审计字段继承公共契约，允许补充 `applicationId`、`stateFrom`、`stateTo`、`stepKey`、`reviewDirection`、`ruleVersion`、`idempotencyKey`、`notificationStatus` 和 `dependencyStatus`。审计日志不得通过 onboarding API 删除。
@@ -206,6 +227,7 @@ P0 端口固定为 `8108`。自检摘要必须返回该端口。
 | 当前用户下一步入口 | GET | `/api/v1/onboarding/me/next-action` | 是 | 当前用户 | LOW |
 | 后台流程列表 | GET | `/api/v1/onboarding/admin/applications` | 是 | `HELPER`、`ADMIN` 或 `OWNER` | LOW |
 | 后台流程详情 | GET | `/api/v1/onboarding/admin/applications/{applicationId}` | 是 | `HELPER`、`ADMIN` 或 `OWNER` | LOW |
+| 考试交接快照 | GET | `/api/v1/onboarding/admin/applications/{applicationId}/exam-handoff` | 是 | `ADMIN` 或 `OWNER` | LOW |
 | 后台重置流程 | PATCH | `/api/v1/onboarding/admin/applications/{applicationId}/reset` | 是 | `ADMIN` 或 `OWNER` | MEDIUM |
 | 后台阻塞流程 | PATCH | `/api/v1/onboarding/admin/applications/{applicationId}/block` | 是 | `ADMIN` 或 `OWNER` | MEDIUM |
 | 后台解除阻塞 | PATCH | `/api/v1/onboarding/admin/applications/{applicationId}/unblock` | 是 | `ADMIN` 或 `OWNER` | MEDIUM |
@@ -335,6 +357,20 @@ P0 端口固定为 `8108`。自检摘要必须返回该端口。
 
 成功响应 HTTP `200`，`data` 为 `OnboardingApplication`。流程不存在返回 `43800`。后台详情不得返回访问令牌、完整请求头、Minecraft 验证凭据、通知正文、content 正文、后台审计参数全文或异常堆栈。
 
+### 考试交接快照
+
+`GET /api/v1/onboarding/admin/applications/{applicationId}/exam-handoff`
+
+成功响应 HTTP `200`，`data` 为 `OnboardingExamHandoffSnapshot`。
+
+权限规则：只有 `ADMIN` 和 `OWNER` 可读取。`HELPER` 返回 `42001`，未登录返回 `41000`。
+
+业务规则：该接口只提供后续 `exam` 创建考试流程所需的只读快照，不创建试卷，不推进 onboarding 状态，不写考试记录，不写白名单申请。流程不存在返回 `43800`。流程被后台阻塞返回 `43816`。流程未达到 `READY_FOR_EXAM`、资料确认缺失、规则确认缺失、审核方向缺失、Minecraft 绑定快照不完整或规则版本已过期时返回 `43811` 或 `43814`，不得返回可用交接快照。P0 因 exam 未实现时，`targetModuleStatus` 固定为 `NOT_IMPLEMENTED`，但 `handoffAllowed` 可以为 `true`，表示 onboarding 自身前置条件已经满足。
+
+降级规则：auth 是强依赖，认证上下文不可用、超时或字段不兼容时返回 `46800`、`46801` 或 `46802`。content 当前规则不可用时，如果无法确认已保存规则版本仍有效，返回 `46820` 或 `46821`，不得生成交接快照。profile 不可用时，若无法确认当前用户没有 `ACTIVE` 或 `INACTIVE` 成员档案，返回 `46810` 或 `46811`。
+
+审计要求：交接快照读取是低风险读取，不强制写审计，不得增加 `auditsTotal`。后续 exam 创建考试流程时必须在 exam 自己的契约和审计中记录来源 `applicationId` 和 `handoffVersion`。
+
 ### 后台重置流程
 
 `PATCH /api/v1/onboarding/admin/applications/{applicationId}/reset`
@@ -428,6 +464,8 @@ P0 端口固定为 `8108`。自检摘要必须返回该端口。
     "applicationsTotal": 8,
     "blockedTotal": 1,
     "readyForExamTotal": 2,
+    "stateMachineMode": "EXPLICIT_P0",
+    "handoffSnapshotsTotal": 0,
     "auditsTotal": 20,
     "idempotencyRecordsTotal": 5,
     "lastAuditAt": "2026-05-22T12:00:00Z",
@@ -444,7 +482,7 @@ P0 端口固定为 `8108`。自检摘要必须返回该端口。
 }
 ```
 
-权限规则：只有 `ADMIN` 和 `OWNER` 可访问。自检摘要不得返回 token、请求头、Minecraft 验证凭据、通知正文、content 正文、后台备注全文、审计参数全文或异常堆栈。
+权限规则：只有 `ADMIN` 和 `OWNER` 可访问。`stateMachineMode` 固定为 `EXPLICIT_P0`，表示流程推进集中按契约状态机判定。`handoffSnapshotsTotal` 统计本进程生成过的 exam 交接快照次数。自检摘要不得返回 token、请求头、Minecraft 验证凭据、通知正文、content 正文、后台备注全文、审计参数全文或异常堆栈。
 
 ## 状态、幂等和并发
 
