@@ -56,18 +56,21 @@ class ExamApiContractTest {
         addRange(mapped, "EXAM-ME-RESULT", 1, 26);
         addRange(mapped, "EXAM-ADMIN-SESSIONS", 1, 38);
         addRange(mapped, "EXAM-MANUAL", 1, 38);
+        addRange(mapped, "EXAM-CORRECTION", 1, 26);
         addRange(mapped, "EXAM-SUPPLEMENT-ADMIN", 1, 26);
         addRange(mapped, "EXAM-CANCEL", 1, 24);
         addRange(mapped, "EXAM-HANDOFF", 1, 24);
         addRange(mapped, "EXAM-QBANK", 1, 48);
+        addRange(mapped, "EXAM-QVERS", 1, 20);
         addRange(mapped, "EXAM-TEMPLATE", 1, 48);
+        addRange(mapped, "EXAM-TEMPLATE-PREVIEW", 1, 20);
         addRange(mapped, "EXAM-AUDIT", 1, 26);
         addRange(mapped, "EXAM-OPS", 1, 20);
         addRange(mapped, "EXAM-DEPS", 1, 44);
         addRange(mapped, "EXAM-COMPAT", 1, 30);
         addRange(mapped, "EXAM-PORT", 1, 4);
-        assertThat(mapped).contains("EXAM-COM-001", "EXAM-HANDOFF-024", "EXAM-PORT-004");
-        assertThat(mapped).hasSize(646);
+        assertThat(mapped).contains("EXAM-COM-001", "EXAM-CORRECTION-026", "EXAM-QVERS-020", "EXAM-TEMPLATE-PREVIEW-020", "EXAM-PORT-004");
+        assertThat(mapped).hasSize(712);
     }
 
     @Test
@@ -255,6 +258,96 @@ class ExamApiContractTest {
                 "cn.beiming.auth.", "cn.beiming.profile.", "cn.beiming.notification.", "cn.beiming.content.", "cn.beiming.onboarding.",
                 "Repository", "JdbcTemplate", "ProcessBuilder", "Runtime.getRuntime", "node-daemon",
                 "cloudreveToken", "terminal", "container", "backupRestore", "file-manager");
+    }
+
+    @Test
+    @DisplayName("EXAM-CORRECTION EXAM-QVERS EXAM-TEMPLATE-PREVIEW cover result correction, question history, and publish precheck")
+    void enhancedAdminExamOperationsContract() throws Exception {
+        JsonNode question = performJson(post("/api/v1/exams/admin/question-bank/questions").header("Authorization", bearer("admin-token")),
+                questionBody("history create"), 201);
+        String questionId = question.at("/data/questionId").asText();
+        performJson(patch("/api/v1/exams/admin/question-bank/questions/" + questionId).header("Authorization", bearer("admin-token")),
+                Map.of("stem", "历史版本 2", "reason", "history update 1", "idempotencyKey", "question-history-update-1"), 200);
+        performJson(patch("/api/v1/exams/admin/question-bank/questions/" + questionId).header("Authorization", bearer("admin-token")),
+                Map.of("score", 12, "reason", "history update 2", "idempotencyKey", "question-history-update-2"), 200);
+
+        JsonNode versions = performJson(get("/api/v1/exams/admin/question-bank/questions/" + questionId + "/versions")
+                .header("Authorization", bearer("helper-token")), 200);
+        assertThat(versions.at("/data/total").asInt()).isEqualTo(3);
+        assertThat(versions.at("/data/items/0/version").asInt()).isEqualTo(3);
+        assertThat(versions.at("/data/items/2/version").asInt()).isEqualTo(1);
+        assertThat(versions.toString()).contains("correctOptionIds");
+        performJson(get("/api/v1/exams/admin/question-bank/questions/" + questionId + "/versions")
+                .header("Authorization", bearer("user-token")), 403, 42001);
+        performJson(get("/api/v1/exams/admin/question-bank/questions/missing/versions")
+                .header("Authorization", bearer("admin-token")), 404, 43902);
+
+        JsonNode template = performJson(post("/api/v1/exams/admin/paper-templates").header("Authorization", bearer("admin-token")),
+                templateBody("Preview redstone"), 201);
+        String templateId = template.at("/data/templateId").asText();
+        JsonNode preview = performJson(get("/api/v1/exams/admin/paper-templates/" + templateId + "/publish-preview")
+                .header("Authorization", bearer("helper-token")), 200);
+        assertThat(preview.at("/data/readyToPublish").asBoolean()).isTrue();
+        assertThat(preview.at("/data/status").asText()).isEqualTo("DRAFT");
+        assertThat(preview.at("/data/rules/0/matchedQuestionCount").asInt()).isGreaterThanOrEqualTo(1);
+        assertThat(preview.at("/data/samplePaper/questions").size()).isEqualTo(1);
+
+        JsonNode unchanged = performJson(get("/api/v1/exams/admin/paper-templates").header("Authorization", bearer("admin-token"))
+                .param("status", "DRAFT"), 200);
+        assertThat(unchanged.toString()).contains(templateId);
+
+        JsonNode unavailablePreview = performJson(get("/api/v1/exams/admin/paper-templates/" + templateId + "/publish-preview")
+                .header("Authorization", bearer("admin-token"))
+                .header("X-Test-Dependency-Mode", "CONTENT:UNAVAILABLE"), 200);
+        assertThat(unavailablePreview.at("/data/readyToPublish").asBoolean()).isFalse();
+        assertThat(unavailablePreview.at("/data/contentRuleStatus").asText()).isEqualTo("UNAVAILABLE");
+
+        Map<String, Object> insufficientTemplate = templateBody("Preview insufficient");
+        insufficientTemplate.put("questionRules", List.of(Map.of("type", "SINGLE_CHOICE", "count", 1, "scoreEach", 10, "tags", List.of("missing-tag"))));
+        JsonNode insufficient = performJson(post("/api/v1/exams/admin/paper-templates").header("Authorization", bearer("admin-token")),
+                insufficientTemplate, 201);
+        JsonNode insufficientPreview = performJson(get("/api/v1/exams/admin/paper-templates/" + insufficient.at("/data/templateId").asText() + "/publish-preview")
+                .header("Authorization", bearer("admin-token")), 200);
+        assertThat(insufficientPreview.at("/data/readyToPublish").asBoolean()).isFalse();
+        assertThat(insufficientPreview.at("/data/rules/0/enough").asBoolean()).isFalse();
+
+        JsonNode created = performJson(post("/api/v1/exams/me/sessions").header("Authorization", bearer("ready-token")),
+                Map.of("applicationId", "app-ready", "idempotencyKey", "correction-create-1"), 201);
+        String sessionId = created.at("/data/sessionId").asText();
+        performJson(post("/api/v1/exams/me/sessions/" + sessionId + "/submit").header("Authorization", bearer("ready-token")),
+                Map.of("idempotencyKey", "correction-submit-1", "answers", answers()), 200);
+        performJson(patch("/api/v1/exams/admin/sessions/" + sessionId + "/manual-review").header("Authorization", bearer("admin-token")),
+                Map.of("idempotencyKey", "correction-review-1", "manualScores", List.of(Map.of("questionId", "q-redstone-short", "score", 0, "comment", "needs correction")), "result", "FAILED", "publicComment", "未通过", "internalNote", "first private note", "reason", "manual fail"), 200);
+
+        Map<String, Object> correctionBody = Map.of("idempotencyKey", "correction-pass-1",
+                "manualScores", List.of(Map.of("questionId", "q-redstone-short", "score", 30, "comment", "corrected")),
+                "result", "PASSED", "publicComment", "复核通过", "internalNote", "correction private note", "reason", "score correction");
+        JsonNode corrected = performJson(patch("/api/v1/exams/admin/sessions/" + sessionId + "/result-correction")
+                .header("Authorization", bearer("admin-token")), correctionBody, 200);
+        assertThat(corrected.at("/data/status").asText()).isEqualTo("MANUAL_PASSED");
+        assertThat(corrected.at("/data/result").asText()).isEqualTo("PASSED");
+        assertThat(corrected.at("/data/manualReview/correction").asBoolean()).isTrue();
+        assertThat(corrected.at("/data/scoreSummary/objectiveScore").asInt()).isEqualTo(20);
+
+        JsonNode correctionReplay = performJson(patch("/api/v1/exams/admin/sessions/" + sessionId + "/result-correction")
+                .header("Authorization", bearer("admin-token")), correctionBody, 200);
+        assertThat(correctionReplay.at("/data/manualReview/reviewId").asText()).isEqualTo(corrected.at("/data/manualReview/reviewId").asText());
+
+        JsonNode userResult = performJson(get("/api/v1/exams/me/sessions/" + sessionId + "/result").header("Authorization", bearer("ready-token")), 200);
+        assertThat(userResult.toString()).doesNotContain("correction private note", "internalNote");
+
+        JsonNode audit = performJson(get("/api/v1/exams/admin/audit-logs").header("Authorization", bearer("admin-token"))
+                .param("action", "EXAM_RESULT_CORRECTED"), 200);
+        assertThat(audit.at("/data/total").asInt()).isEqualTo(1);
+
+        JsonNode auto = performJson(post("/api/v1/exams/me/sessions").header("Authorization", bearer("general-token")),
+                Map.of("applicationId", "app-general", "idempotencyKey", "handoff-correction-create-1"), 201);
+        String autoId = auto.at("/data/sessionId").asText();
+        performJson(post("/api/v1/exams/me/sessions/" + autoId + "/submit").header("Authorization", bearer("general-token")),
+                Map.of("idempotencyKey", "handoff-correction-submit-1", "answers", generalAnswers()), 200);
+        performJson(get("/api/v1/exams/admin/sessions/" + autoId + "/whitelist-handoff").header("Authorization", bearer("admin-token")), 200);
+        performJson(patch("/api/v1/exams/admin/sessions/" + autoId + "/result-correction").header("Authorization", bearer("admin-token")),
+                Map.of("idempotencyKey", "handoff-correction-fail-1", "result", "FAILED", "publicComment", "handoff already generated", "reason", "late correction"), 409, 43925);
     }
 
     private JsonNode performJson(MockHttpServletRequestBuilder builder, int status) throws Exception {

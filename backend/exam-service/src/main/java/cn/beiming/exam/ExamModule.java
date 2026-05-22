@@ -157,6 +157,15 @@ class ExamController {
         return ok(store.manualReview(actor, sessionId, bodyOrEmpty(body), request));
     }
 
+    @PatchMapping("/admin/sessions/{sessionId}/result-correction")
+    Map<String, Object> resultCorrection(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                         @PathVariable String sessionId,
+                                         @RequestBody(required = false) Map<String, Object> body,
+                                         HttpServletRequest request) {
+        ExamUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
+        return ok(store.resultCorrection(actor, sessionId, bodyOrEmpty(body), request));
+    }
+
     @PatchMapping("/admin/sessions/{sessionId}/request-supplement")
     Map<String, Object> requestSupplement(@RequestHeader(value = "Authorization", required = false) String authorization,
                                           @PathVariable String sessionId,
@@ -189,6 +198,15 @@ class ExamController {
                                   HttpServletRequest request) {
         ExamUser actor = auth.requireAny(authorization, "HELPER", "ADMIN", "OWNER");
         return ok(store.questions(actor, query, request));
+    }
+
+    @GetMapping("/admin/question-bank/questions/{questionId}/versions")
+    Map<String, Object> questionVersions(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                         @PathVariable String questionId,
+                                         @RequestParam Map<String, String> query,
+                                         HttpServletRequest request) {
+        ExamUser actor = auth.requireAny(authorization, "HELPER", "ADMIN", "OWNER");
+        return ok(store.questionVersions(actor, questionId, query, request));
     }
 
     @PostMapping("/admin/question-bank/questions")
@@ -240,6 +258,14 @@ class ExamController {
                                        HttpServletRequest request) {
         ExamUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
         return ok(store.updateTemplate(actor, templateId, bodyOrEmpty(body), request));
+    }
+
+    @GetMapping("/admin/paper-templates/{templateId}/publish-preview")
+    Map<String, Object> publishPreview(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                       @PathVariable String templateId,
+                                       HttpServletRequest request) {
+        ExamUser actor = auth.requireAny(authorization, "HELPER", "ADMIN", "OWNER");
+        return ok(store.publishPreview(actor, templateId, request));
     }
 
     @PatchMapping("/admin/paper-templates/{templateId}/publish")
@@ -309,8 +335,10 @@ class ExamStore {
     private final Map<String, ExamSessionRecord> sessions = new ConcurrentHashMap<>();
     private final Map<String, String> currentByUser = new ConcurrentHashMap<>();
     private final Map<String, ExamQuestionRecord> questions = new ConcurrentHashMap<>();
+    private final Map<String, List<ExamQuestionRecord>> questionVersions = new ConcurrentHashMap<>();
     private final Map<String, PaperTemplateRecord> templates = new ConcurrentHashMap<>();
     private final Map<String, IdempotencyRecord> idempotency = new ConcurrentHashMap<>();
+    private final Set<String> whitelistHandoffGenerated = ConcurrentHashMap.newKeySet();
     private final List<Map<String, Object>> audits = new ArrayList<>();
     private int idSeq = 3000;
     private int whitelistHandoffSnapshotsTotal;
@@ -556,6 +584,42 @@ class ExamStore {
         return view;
     }
 
+    synchronized Map<String, Object> resultCorrection(ExamUser actor, String sessionId, Map<String, Object> body, HttpServletRequest request) {
+        validateReason(body);
+        validateIdempotencyKey(body);
+        IdempotencyRecord replay = replay(actor.userId(), "CORRECTION:" + sessionId, body);
+        if (replay != null) return replay.value();
+        ExamSessionRecord session = requireSession(sessionId);
+        if (!Set.of("AUTO_PASSED", "AUTO_FAILED", "MANUAL_PASSED", "MANUAL_FAILED").contains(session.status)) {
+            throw new ExamException(409, 43913, "result not correctable");
+        }
+        if (whitelistHandoffGenerated.contains(sessionId)) throw new ExamException(409, 43925, "handoff already generated");
+        String result = validateEnum(body, "result", Set.of("PASSED", "FAILED"));
+        String publicComment = validateRequiredString(body, "publicComment", 1, 1000);
+        List<Map<String, Object>> scores = body.get("manualScores") instanceof List<?> ? objectList(body, "manualScores") : List.of();
+        int manual = scores.isEmpty() ? (session.manualScore == null ? 0 : session.manualScore) : validateManualScores(session, scores);
+        int total = session.objectiveScore + manual;
+        boolean passed = "PASSED".equals(result);
+        if (passed && total < session.passScore) throw new ExamException(409, 43913, "corrected score below pass line");
+        failBeforeWrite(request);
+        String beforeStatus = session.status;
+        String beforeResult = session.result;
+        session.manualScore = session.manualRequired ? manual : null;
+        session.totalScore = total;
+        session.finalPassed = passed;
+        session.status = passed ? (session.manualRequired ? "MANUAL_PASSED" : "AUTO_PASSED") : (session.manualRequired ? "MANUAL_FAILED" : "AUTO_FAILED");
+        session.result = passed ? "PASSED" : "FAILED";
+        session.passedAt = passed ? NOW : null;
+        session.reviewedAt = NOW;
+        session.updatedAt = NOW;
+        session.notificationStatus = notificationStatus(request);
+        session.manualReview = mapOf("reviewId", "review-" + (++idSeq), "reviewerUserId", actor.userId(), "reviewerDisplayNameSnapshot", actor.displayName(), "manualScores", scores, "publicComment", publicComment, "internalNote", string(body.get("internalNote")), "result", result, "reviewedAt", NOW, "correction", true, "correctedFromStatus", beforeStatus, "correctedFromResult", beforeResult);
+        audit(actor, "EXAM_SESSION", session.sessionId, "EXAM_RESULT_CORRECTED", "MEDIUM", beforeStatus, session.status, string(body.get("reason")));
+        Map<String, Object> view = sessionView(session, true);
+        remember(actor.userId(), "CORRECTION:" + sessionId, body, view);
+        return view;
+    }
+
     synchronized Map<String, Object> requestSupplement(ExamUser actor, String sessionId, Map<String, Object> body, HttpServletRequest request) {
         validateReason(body);
         validateIdempotencyKey(body);
@@ -618,6 +682,7 @@ class ExamStore {
         ExamSessionRecord session = requireSession(sessionId);
         if (!Set.of("AUTO_PASSED", "MANUAL_PASSED").contains(session.status)) throw new ExamException(409, 43924, "not passed");
         whitelistHandoffSnapshotsTotal++;
+        whitelistHandoffGenerated.add(sessionId);
         return mapOf("sessionId", session.sessionId, "applicationId", session.applicationId, "handoffVersion", 1, "onboardingHandoffVersion", session.onboardingHandoffVersion, "userId", session.userId, "minecraftBindingSnapshot", session.minecraftBinding, "reviewDirection", session.reviewDirection, "attemptType", session.attemptType, "result", "PASSED", "scoreSummary", scoreSummary(session), "passedAt", session.passedAt == null ? NOW : session.passedAt, "reviewerSnapshot", reviewerSnapshot(session), "generatedAt", NOW);
     }
 
@@ -640,6 +705,18 @@ class ExamStore {
                 .filter(question -> keyword == null || question.stem.toLowerCase().contains(keyword) || question.tags.stream().anyMatch(t -> t.toLowerCase().contains(keyword)))
                 .map(question -> questionView(question, true))
                 .sorted(questionComparator(sort))
+                .toList();
+        return pageRows(rows, page, pageSize);
+    }
+
+    synchronized Map<String, Object> questionVersions(ExamUser actor, String questionId, Map<String, String> query, HttpServletRequest request) {
+        if (!questions.containsKey(questionId)) throw new ExamException(404, 43902, "question not found");
+        int page = page(query);
+        int pageSize = pageSize(query);
+        String sort = sort(query, Set.of("version_desc", "version_asc"), "version_desc");
+        List<Map<String, Object>> rows = questionVersions.getOrDefault(questionId, List.of()).stream()
+                .sorted((left, right) -> "version_asc".equals(sort) ? Integer.compare(left.version, right.version) : Integer.compare(right.version, left.version))
+                .map(question -> questionView(question, true))
                 .toList();
         return pageRows(rows, page, pageSize);
     }
@@ -672,6 +749,7 @@ class ExamStore {
         updated.version = old.version + 1;
         updated.updatedAt = NOW;
         questions.put(questionId, updated);
+        rememberQuestionVersion(updated);
         audit(actor, "EXAM_QUESTION", questionId, "EXAM_QUESTION_UPDATED", "MEDIUM", old.status, updated.status, string(body.get("reason")));
         Map<String, Object> view = questionView(updated, true);
         remember(actor.userId(), "UPDATE_QUESTION:" + questionId, body, view);
@@ -745,6 +823,12 @@ class ExamStore {
         Map<String, Object> view = templateView(template);
         remember(actor.userId(), "UPDATE_TEMPLATE:" + templateId, body, view);
         return view;
+    }
+
+    synchronized Map<String, Object> publishPreview(ExamUser actor, String templateId, HttpServletRequest request) {
+        PaperTemplateRecord template = requireTemplate(templateId);
+        if ("ARCHIVED".equals(template.status)) throw new ExamException(409, 43922, "template archived");
+        return publishPreviewView(template, request);
     }
 
     synchronized Map<String, Object> publishTemplate(ExamUser actor, String templateId, Map<String, Object> body, HttpServletRequest request) {
@@ -842,19 +926,23 @@ class ExamStore {
             int count = intValue(rule.get("count"), 1, 100, 40001);
             @SuppressWarnings("unchecked")
             List<String> tags = rule.get("tags") instanceof List<?> list ? list.stream().map(Object::toString).toList() : List.of();
-            List<ExamQuestionRecord> matches = questions.values().stream()
-                    .filter(q -> "ACTIVE".equals(q.status))
-                    .filter(q -> template.reviewDirection.equals(q.reviewDirection))
-                    .filter(q -> template.difficulty.equals(q.difficulty))
-                    .filter(q -> type.equals(q.type))
-                    .filter(q -> tags.isEmpty() || q.tags.stream().anyMatch(tags::contains))
-                    .sorted(Comparator.comparing(q -> q.questionId))
+            List<ExamQuestionRecord> matches = matchingQuestions(template, type, tags)
                     .limit(count)
                     .toList();
             if (matches.size() < count) return List.of();
             selected.addAll(matches);
         }
         return selected;
+    }
+
+    private java.util.stream.Stream<ExamQuestionRecord> matchingQuestions(PaperTemplateRecord template, String type, List<String> tags) {
+        return questions.values().stream()
+                .filter(q -> "ACTIVE".equals(q.status))
+                .filter(q -> template.reviewDirection.equals(q.reviewDirection))
+                .filter(q -> template.difficulty.equals(q.difficulty))
+                .filter(q -> type.equals(q.type))
+                .filter(q -> tags.isEmpty() || q.tags.stream().anyMatch(tags::contains))
+                .sorted(Comparator.comparing(q -> q.questionId));
     }
 
     private void validateAnswers(ExamSessionRecord session, List<Map<String, Object>> answers, boolean requireAll, boolean supplementOnly) {
@@ -1020,6 +1108,36 @@ class ExamStore {
         return mapOf("templateId", template.templateId, "version", template.version, "name", template.name, "reviewDirection", template.reviewDirection, "difficulty", template.difficulty, "status", template.status, "timeLimitMinutes", template.timeLimitMinutes, "passScore", template.passScore, "objectivePassScore", template.objectivePassScore, "questionRules", template.questionRules, "contentRuleVersion", template.contentRuleVersion, "retakeCooldownHours", template.retakeCooldownHours, "createdAt", template.createdAt, "updatedAt", template.updatedAt, "publishedAt", template.publishedAt);
     }
 
+    private Map<String, Object> publishPreviewView(PaperTemplateRecord template, HttpServletRequest request) {
+        boolean contentUnavailable = template.contentRuleVersion != null && "CONTENT:UNAVAILABLE".equals(request.getHeader("X-Test-Dependency-Mode"));
+        List<String> warnings = new ArrayList<>();
+        List<Map<String, Object>> rules = new ArrayList<>();
+        List<ExamQuestionRecord> sample = new ArrayList<>();
+        int totalScore = 0;
+        int objectiveScore = 0;
+        int manualScore = 0;
+        boolean enough = true;
+        for (Map<String, Object> rule : template.questionRules) {
+            String type = string(rule.get("type"));
+            int count = ((Number) rule.get("count")).intValue();
+            int scoreEach = ((Number) rule.get("scoreEach")).intValue();
+            List<String> tags = rule.get("tags") instanceof List<?> list ? list.stream().map(Object::toString).toList() : List.of();
+            List<ExamQuestionRecord> matches = matchingQuestions(template, type, tags).toList();
+            boolean ruleEnough = matches.size() >= count;
+            if (!ruleEnough) {
+                enough = false;
+                warnings.add("QUESTION_BANK_NOT_ENOUGH:" + type);
+            }
+            totalScore += count * scoreEach;
+            if ("SHORT_TEXT".equals(type)) manualScore += count * scoreEach;
+            else objectiveScore += count * scoreEach;
+            sample.addAll(matches.stream().limit(count).toList());
+            rules.add(mapOf("type", type, "count", count, "scoreEach", scoreEach, "tags", tags, "matchedQuestionCount", matches.size(), "enough", ruleEnough));
+        }
+        if (contentUnavailable) warnings.add("CONTENT_RULE_UNAVAILABLE");
+        return mapOf("templateId", template.templateId, "templateVersion", template.version, "status", template.status, "readyToPublish", enough && !contentUnavailable, "totalScore", totalScore, "objectiveTotalScore", objectiveScore, "manualTotalScore", manualScore, "contentRuleStatus", contentUnavailable ? "UNAVAILABLE" : "VALID", "rules", rules, "samplePaper", mapOf("questions", sample.stream().map(q -> questionView(q, true)).toList()), "warnings", warnings);
+    }
+
     private Map<String, Object> reviewerSnapshot(ExamSessionRecord session) {
         if (session.manualReview == null) return null;
         return mapOf("userId", session.manualReview.get("reviewerUserId"), "displayName", session.manualReview.get("reviewerDisplayNameSnapshot"));
@@ -1129,6 +1247,11 @@ class ExamStore {
 
     private void addQuestion(ExamQuestionRecord question) {
         questions.put(question.questionId, question);
+        rememberQuestionVersion(question);
+    }
+
+    private void rememberQuestionVersion(ExamQuestionRecord question) {
+        questionVersions.computeIfAbsent(question.questionId, ignored -> new ArrayList<>()).add(copyQuestion(question));
     }
 
     private void audit(ExamUser actor, String targetType, String targetId, String action, String risk, String before, String after, String reason) {
