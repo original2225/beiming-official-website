@@ -18,6 +18,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -475,6 +477,26 @@ class ServerStatusApiContractTest {
                 .header("Authorization", bearer("admin-token")), mapOf("idempotencyKey", "refresh-stable-key", "reason", "refresh idem"), 200);
         assertThat(idempotentRetry.at("/data/snapshotId").asText()).isEqualTo(idempotentRefresh.at("/data/snapshotId").asText());
         assertThat(firstRefresh.at("/data/snapshotId").asText()).isNotBlank();
+    }
+
+    @Test
+    @DisplayName("SS-REFRESH-008 rejects concurrent refresh for the same source")
+    void concurrentRefreshForSameSourceReturnsConflict() throws Exception {
+        collector.pauseNextCollect();
+        CompletableFuture<JsonNode> firstRefresh = CompletableFuture.supplyAsync(() -> {
+            try {
+                return performJson(post("/api/v1/server-status/admin/sources/src-survival/refresh")
+                        .header("Authorization", bearer("admin-token")), mapOf("reason", "slow refresh"), 200);
+            } catch (Exception exception) {
+                throw new RuntimeException(exception);
+            }
+        });
+
+        collector.awaitPausedCollect();
+        performJson(post("/api/v1/server-status/admin/sources/src-survival/refresh")
+                .header("Authorization", bearer("admin-token")), mapOf("reason", "parallel refresh"), 409, 43512);
+        collector.releasePausedCollect();
+        assertThat(firstRefresh.get(5, TimeUnit.SECONDS).at("/data/snapshotId").asText()).isNotBlank();
     }
 
     private JsonNode performJson(org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request,

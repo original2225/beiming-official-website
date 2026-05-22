@@ -37,6 +37,8 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 @Configuration
 class ServerStatusModule {
@@ -268,12 +270,18 @@ class ServerStatusController {
 }
 
 class ServerStatusStore {
+    private static final Duration CREATE_IDEMPOTENCY_TTL = Duration.ofHours(24);
+    private static final Duration REFRESH_IDEMPOTENCY_TTL = Duration.ofMinutes(10);
+    private static final Duration REFRESH_COOLDOWN = Duration.ofMinutes(10);
+
     private final Map<String, StatusSourceRecord> sources = new LinkedHashMap<>();
     private final Map<String, LineRecord> lines = new LinkedHashMap<>();
     private final Map<String, SnapshotRecord> snapshots = new LinkedHashMap<>();
     private final Map<String, OutageRecord> outages = new LinkedHashMap<>();
     private final List<AuditRecord> audits = new ArrayList<>();
     private final Map<String, IdempotencyRecord> idempotency = new ConcurrentHashMap<>();
+    private final Set<String> activeRefreshes = ConcurrentHashMap.newKeySet();
+    private final Map<String, Instant> lastManualRefreshAt = new ConcurrentHashMap<>();
     private boolean failNextAudit;
     private boolean failNextSnapshotWrite;
     private int sequence = 100;
@@ -285,6 +293,8 @@ class ServerStatusStore {
         outages.clear();
         audits.clear();
         idempotency.clear();
+        activeRefreshes.clear();
+        lastManualRefreshAt.clear();
         failNextAudit = false;
         failNextSnapshotWrite = false;
         sequence = 100;
@@ -433,7 +443,7 @@ class ServerStatusStore {
     Map<String, Object> createSource(AuthUser actor, Map<String, Object> body) {
         String idempotencyKey = optionalString(body, "idempotencyKey");
         if (idempotencyKey != null) {
-            IdempotencyRecord existing = idempotency.get("source:" + actor.userId + ":" + idempotencyKey);
+            IdempotencyRecord existing = idempotencyRecord("source:" + actor.userId + ":" + idempotencyKey);
             if (existing != null) return existing.same(body);
         }
         String instanceName = requiredString(body, "instanceName", 2, 80);
@@ -453,7 +463,7 @@ class ServerStatusStore {
         writeAudit(actor, "SOURCE", id, "SERVER_STATUS_SOURCE_CREATED", reason);
         sources.put(id, source);
         Map<String, Object> result = adminSourceView(source);
-        if (idempotencyKey != null) idempotency.put("source:" + actor.userId + ":" + idempotencyKey, new IdempotencyRecord(body, result));
+        if (idempotencyKey != null) idempotency.put("source:" + actor.userId + ":" + idempotencyKey, new IdempotencyRecord(body, result, now().plus(CREATE_IDEMPOTENCY_TTL)));
         return result;
     }
 
@@ -529,20 +539,30 @@ class ServerStatusStore {
         if (!"ENABLED".equals(source.configStatus)) throw error(43510, HttpStatus.CONFLICT, "source state conflict");
         String idempotencyKey = optionalString(body, "idempotencyKey");
         if (idempotencyKey != null) {
-            IdempotencyRecord existing = idempotency.get("refresh:" + actor.userId + ":" + idempotencyKey);
+            IdempotencyRecord existing = idempotencyRecord("refresh:" + actor.userId + ":" + idempotencyKey);
             if (existing != null) return existing.same(body);
         }
-        SnapshotRecord snapshot = collector.collect(source);
-        if (failNextSnapshotWrite) {
-            failNextSnapshotWrite = false;
-            throw error(51502, HttpStatus.INTERNAL_SERVER_ERROR, "snapshot write failed");
+        if (!activeRefreshes.add(sourceId)) throw error(43512, HttpStatus.CONFLICT, "refresh already in progress");
+        try {
+            Instant lastRefresh = lastManualRefreshAt.get(sourceId);
+            if (idempotencyKey == null && lastRefresh != null && lastRefresh.plus(REFRESH_COOLDOWN).isAfter(now())) {
+                throw error(43512, HttpStatus.CONFLICT, "refresh too frequent");
+            }
+            SnapshotRecord snapshot = collector.collect(source);
+            if (failNextSnapshotWrite) {
+                failNextSnapshotWrite = false;
+                throw error(51502, HttpStatus.INTERNAL_SERVER_ERROR, "snapshot write failed");
+            }
+            writeAudit(actor, "SOURCE", sourceId, "SERVER_STATUS_SOURCE_REFRESHED", reason);
+            snapshots.put(snapshot.snapshotId, snapshot);
+            source.updatedAt = now();
+            lastManualRefreshAt.put(sourceId, now());
+            Map<String, Object> result = snapshotView(snapshot);
+            if (idempotencyKey != null) idempotency.put("refresh:" + actor.userId + ":" + idempotencyKey, new IdempotencyRecord(body, result, now().plus(REFRESH_IDEMPOTENCY_TTL)));
+            return result;
+        } finally {
+            activeRefreshes.remove(sourceId);
         }
-        writeAudit(actor, "SOURCE", sourceId, "SERVER_STATUS_SOURCE_REFRESHED", reason);
-        snapshots.put(snapshot.snapshotId, snapshot);
-        source.updatedAt = now();
-        Map<String, Object> result = snapshotView(snapshot);
-        if (idempotencyKey != null) idempotency.put("refresh:" + actor.userId + ":" + idempotencyKey, new IdempotencyRecord(body, result));
-        return result;
     }
 
     Map<String, Object> adminLines(Map<String, String> query) {
@@ -562,7 +582,7 @@ class ServerStatusStore {
     Map<String, Object> createLine(AuthUser actor, Map<String, Object> body) {
         String idempotencyKey = optionalString(body, "idempotencyKey");
         if (idempotencyKey != null) {
-            IdempotencyRecord existing = idempotency.get("line:" + actor.userId + ":" + idempotencyKey);
+            IdempotencyRecord existing = idempotencyRecord("line:" + actor.userId + ":" + idempotencyKey);
             if (existing != null) return existing.same(body);
         }
         String name = requiredString(body, "name", 2, 80);
@@ -580,7 +600,7 @@ class ServerStatusStore {
         writeAudit(actor, "LINE", id, "SERVER_STATUS_LINE_CREATED", reason);
         lines.put(id, line);
         Map<String, Object> result = adminLineView(line);
-        if (idempotencyKey != null) idempotency.put("line:" + actor.userId + ":" + idempotencyKey, new IdempotencyRecord(body, result));
+        if (idempotencyKey != null) idempotency.put("line:" + actor.userId + ":" + idempotencyKey, new IdempotencyRecord(body, result, now().plus(CREATE_IDEMPOTENCY_TTL)));
         return result;
     }
 
@@ -666,7 +686,7 @@ class ServerStatusStore {
     Map<String, Object> createOutage(AuthUser actor, Map<String, Object> body) {
         String idempotencyKey = optionalString(body, "idempotencyKey");
         if (idempotencyKey != null) {
-            IdempotencyRecord existing = idempotency.get("outage:" + actor.userId + ":" + idempotencyKey);
+            IdempotencyRecord existing = idempotencyRecord("outage:" + actor.userId + ":" + idempotencyKey);
             if (existing != null) return existing.same(body);
         }
         String title = requiredString(body, "title", 2, 120);
@@ -686,7 +706,7 @@ class ServerStatusStore {
         writeAudit(actor, "OUTAGE", id, "SERVER_STATUS_OUTAGE_CREATED", reason);
         outages.put(id, outage);
         Map<String, Object> result = adminOutageView(outage);
-        if (idempotencyKey != null) idempotency.put("outage:" + actor.userId + ":" + idempotencyKey, new IdempotencyRecord(body, result));
+        if (idempotencyKey != null) idempotency.put("outage:" + actor.userId + ":" + idempotencyKey, new IdempotencyRecord(body, result, now().plus(CREATE_IDEMPOTENCY_TTL)));
         return result;
     }
 
@@ -956,8 +976,9 @@ class ServerStatusStore {
 
     private Map<String, Object> auditView(AuditRecord audit) {
         return mapOf("id", audit.id, "requestId", audit.requestId, "actorUserId", audit.actorUserId, "actorRole", audit.actorRole,
-                "targetType", audit.targetType, "targetId", audit.targetId, "action", audit.action, "riskLevel", "MEDIUM",
-                "reason", audit.reason, "result", audit.result, "createdAt", string(audit.createdAt));
+                "actorPermissions", List.of(audit.actorRole), "sourceIp", null, "targetType", audit.targetType, "targetId", audit.targetId,
+                "action", audit.action, "riskLevel", "MEDIUM", "reason", audit.reason, "paramsSummary", null, "beforeState", null,
+                "afterState", null, "result", audit.result, "failureReason", null, "createdAt", string(audit.createdAt));
     }
 
     private void writeAudit(AuthUser actor, String targetType, String targetId, String action, String reason) {
@@ -1137,12 +1158,21 @@ class ServerStatusStore {
 
     private boolean optionalBoolean(Map<String, Object> body, String field, boolean fallback) {
         Object value = body.get(field);
-        return value == null ? fallback : Boolean.parseBoolean(String.valueOf(value));
+        if (value == null) return fallback;
+        if (value instanceof Boolean bool) return bool;
+        String text = String.valueOf(value);
+        if ("true".equals(text)) return true;
+        if ("false".equals(text)) return false;
+        throw error(40001, HttpStatus.BAD_REQUEST, "validation failed");
     }
 
     private Instant optionalInstant(Map<String, Object> body, String field) {
         String value = optionalString(body, field);
-        return value == null ? null : Instant.parse(value);
+        try {
+            return value == null ? null : Instant.parse(value);
+        } catch (RuntimeException exception) {
+            throw error(40001, HttpStatus.BAD_REQUEST, "validation failed");
+        }
     }
 
     private Instant requiredInstant(Map<String, Object> body, String field) {
@@ -1174,7 +1204,18 @@ class ServerStatusStore {
     }
 
     private boolean boolMatch(String expected, boolean actual) {
-        return expected == null || Boolean.parseBoolean(expected) == actual;
+        if (expected == null) return true;
+        if (!"true".equals(expected) && !"false".equals(expected)) throw error(40001, HttpStatus.BAD_REQUEST, "validation failed");
+        return Boolean.parseBoolean(expected) == actual;
+    }
+
+    private IdempotencyRecord idempotencyRecord(String key) {
+        IdempotencyRecord record = idempotency.get(key);
+        if (record != null && record.expiresAt.isBefore(now())) {
+            idempotency.remove(key);
+            return null;
+        }
+        return record;
     }
 
     private int number(Object value) {
@@ -1206,11 +1247,15 @@ class TestStatusCollector {
     private boolean failUnavailable;
     private boolean failTimeout;
     private boolean failPublicUnavailable;
+    private CountDownLatch collectPaused;
+    private CountDownLatch collectRelease;
 
     void reset() {
         failUnavailable = false;
         failTimeout = false;
         failPublicUnavailable = false;
+        collectPaused = null;
+        collectRelease = null;
     }
 
     SnapshotRecord collect(StatusSourceRecord source) {
@@ -1222,6 +1267,7 @@ class TestStatusCollector {
             failTimeout = false;
             throw new ServerStatusException(46511, HttpStatus.GATEWAY_TIMEOUT, "collector timeout");
         }
+        awaitReleaseIfPaused();
         Instant now = Instant.now().truncatedTo(ChronoUnit.MILLIS);
         return new SnapshotRecord("snap-" + UUID.randomUUID(), source.sourceId, source.instanceId, "line-main", "MANUAL_REFRESH", "ONLINE", "AVAILABLE", "1.21.1", "Beiming refreshed", 36, 80, 24, 27, now, false);
     }
@@ -1244,6 +1290,42 @@ class TestStatusCollector {
 
     void failNextPublicCheckUnavailable() {
         failPublicUnavailable = true;
+    }
+
+    void pauseNextCollect() {
+        collectPaused = new CountDownLatch(1);
+        collectRelease = new CountDownLatch(1);
+    }
+
+    void awaitPausedCollect() {
+        try {
+            if (collectPaused == null || !collectPaused.await(5, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("collector did not pause");
+            }
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("collector pause interrupted", exception);
+        }
+    }
+
+    void releasePausedCollect() {
+        if (collectRelease != null) collectRelease.countDown();
+    }
+
+    private void awaitReleaseIfPaused() {
+        CountDownLatch paused = collectPaused;
+        CountDownLatch release = collectRelease;
+        if (paused == null || release == null) return;
+        paused.countDown();
+        try {
+            if (!release.await(5, TimeUnit.SECONDS)) throw new ServerStatusException(46511, HttpStatus.GATEWAY_TIMEOUT, "collector timeout");
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new ServerStatusException(46511, HttpStatus.GATEWAY_TIMEOUT, "collector interrupted");
+        } finally {
+            collectPaused = null;
+            collectRelease = null;
+        }
     }
 }
 
@@ -1396,15 +1478,37 @@ class Query {
 class IdempotencyRecord {
     final String fingerprint;
     final Map<String, Object> result;
+    final Instant expiresAt;
 
-    IdempotencyRecord(Map<String, Object> body, Map<String, Object> result) {
-        this.fingerprint = body.toString();
+    IdempotencyRecord(Map<String, Object> body, Map<String, Object> result, Instant expiresAt) {
+        this.fingerprint = canonical(body);
         this.result = new LinkedHashMap<>(result);
+        this.expiresAt = expiresAt;
     }
 
     Map<String, Object> same(Map<String, Object> body) {
-        if (!fingerprint.equals(body.toString())) throw new ServerStatusException(43002, HttpStatus.CONFLICT, "idempotency key conflict");
+        if (!fingerprint.equals(canonical(body))) throw new ServerStatusException(43002, HttpStatus.CONFLICT, "idempotency key conflict");
         return new LinkedHashMap<>(result);
+    }
+
+    private static String canonical(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            return map.entrySet().stream()
+                    .sorted(Comparator.comparing(entry -> String.valueOf(entry.getKey())))
+                    .map(entry -> quote(String.valueOf(entry.getKey())) + ":" + canonical(entry.getValue()))
+                    .collect(java.util.stream.Collectors.joining(",", "{", "}"));
+        }
+        if (value instanceof Iterable<?> iterable) {
+            List<String> items = new ArrayList<>();
+            for (Object item : iterable) items.add(canonical(item));
+            return items.stream().collect(java.util.stream.Collectors.joining(",", "[", "]"));
+        }
+        if (value instanceof String text) return quote(text);
+        return String.valueOf(value);
+    }
+
+    private static String quote(String text) {
+        return "\"" + text.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
     }
 }
 
