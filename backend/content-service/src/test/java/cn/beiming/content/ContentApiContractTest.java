@@ -39,6 +39,7 @@ class ContentApiContractTest {
             CONTENT-ITEM-CREATE-001 CONTENT-ITEM-CREATE-002 CONTENT-ITEM-CREATE-003 CONTENT-ITEM-CREATE-004 CONTENT-ITEM-CREATE-005 CONTENT-ITEM-CREATE-006 CONTENT-ITEM-CREATE-007 CONTENT-ITEM-CREATE-008 CONTENT-ITEM-CREATE-009 CONTENT-ITEM-CREATE-010 CONTENT-ITEM-CREATE-011 CONTENT-ITEM-CREATE-012 CONTENT-ITEM-CREATE-013 CONTENT-ITEM-CREATE-014 CONTENT-ITEM-CREATE-015 CONTENT-ITEM-CREATE-016
             CONTENT-ITEM-PATCH-001 CONTENT-ITEM-PATCH-002 CONTENT-ITEM-PATCH-003 CONTENT-ITEM-PATCH-004 CONTENT-ITEM-PATCH-005 CONTENT-ITEM-PATCH-006 CONTENT-ITEM-PATCH-007 CONTENT-ITEM-PATCH-008
             CONTENT-STATE-001 CONTENT-STATE-002 CONTENT-STATE-003 CONTENT-STATE-004 CONTENT-STATE-005 CONTENT-STATE-006 CONTENT-STATE-007 CONTENT-STATE-008 CONTENT-STATE-009 CONTENT-STATE-010 CONTENT-STATE-011 CONTENT-STATE-012 CONTENT-STATE-013 CONTENT-STATE-014 CONTENT-STATE-015 CONTENT-STATE-016 CONTENT-STATE-017 CONTENT-STATE-018 CONTENT-STATE-019 CONTENT-STATE-020 CONTENT-STATE-021 CONTENT-STATE-022 CONTENT-STATE-023 CONTENT-STATE-024 CONTENT-STATE-025 CONTENT-STATE-026 CONTENT-STATE-027 CONTENT-STATE-028
+            CONTENT-VERSION-001 CONTENT-VERSION-002 CONTENT-VERSION-003 CONTENT-VERSION-004 CONTENT-VERSION-005 CONTENT-VERSION-006 CONTENT-VERSION-007 CONTENT-VERSION-008 CONTENT-VERSION-009 CONTENT-VERSION-010 CONTENT-VERSION-011 CONTENT-VERSION-012 CONTENT-VERSION-013
             CONTENT-AUDIT-001 CONTENT-AUDIT-002 CONTENT-AUDIT-003 CONTENT-AUDIT-004 CONTENT-AUDIT-005
             CONTENT-ADMIN-HOME-001 CONTENT-ADMIN-HOME-002 CONTENT-ADMIN-HOME-003 CONTENT-ADMIN-HOME-004 CONTENT-ADMIN-HOME-005 CONTENT-ADMIN-HOME-006 CONTENT-ADMIN-HOME-007 CONTENT-ADMIN-HOME-008 CONTENT-ADMIN-HOME-009 CONTENT-ADMIN-HOME-010 CONTENT-ADMIN-HOME-011 CONTENT-ADMIN-HOME-012 CONTENT-ADMIN-HOME-013 CONTENT-ADMIN-HOME-014
             CONTENT-CAT-001 CONTENT-CAT-002 CONTENT-CAT-003 CONTENT-CAT-004 CONTENT-CAT-005 CONTENT-CAT-006 CONTENT-CAT-007 CONTENT-CAT-008 CONTENT-CAT-009 CONTENT-CAT-010
@@ -322,6 +323,79 @@ class ContentApiContractTest {
         String pendingChanges = store.contentIdBySlug("pending-changes");
         performJson(patch("/api/v1/content/admin/items/" + pendingChanges + "/request-changes").header("Authorization", bearer("admin-token")), mapOf("reviewOpinion", "fix", "reason", "changes"), 200);
         assertThat(store.itemStatus(pendingChanges)).isEqualTo("NEEDS_CHANGES");
+    }
+
+    @Test
+    @DisplayName("CONTENT-VERSION preserves item history, restores old snapshots as draft, and hides history publicly")
+    void contentVersionContract() throws Exception {
+        JsonNode created = performJson(post("/api/v1/content/admin/items")
+                .header("Authorization", bearer("admin-token")), validContentBody("version-history"), 201);
+        String contentId = created.at("/data/contentId").asText();
+
+        JsonNode initialVersions = performJson(get("/api/v1/content/admin/items/" + contentId + "/versions")
+                .header("Authorization", bearer("admin-token")), 200);
+        assertThat(initialVersions.at("/data/items/0/version").asInt()).isEqualTo(1);
+        assertThat(initialVersions.at("/data/items/0/sourceAction").asText()).isEqualTo("CREATED");
+        assertThat(initialVersions.at("/data/items/0/snapshot/title").asText()).isEqualTo("Title version-history");
+        performJson(get("/api/v1/content/admin/items/" + contentId + "/versions/1")
+                .header("Authorization", bearer("owner-token")), 200);
+        performJson(get("/api/v1/content/admin/items/" + contentId + "/versions")
+                .header("Authorization", bearer("helper-token")), 403, 42001);
+        performJson(get("/api/v1/content/admin/items/missing/versions")
+                .header("Authorization", bearer("admin-token")), 404, 43400);
+        performJson(get("/api/v1/content/admin/items/" + contentId + "/versions/99")
+                .header("Authorization", bearer("admin-token")), 404, 43417);
+
+        performJson(patch("/api/v1/content/admin/items/" + contentId)
+                .header("Authorization", bearer("admin-token")), mapOf("title", "Updated version title", "reason", "patch version"), 200);
+        JsonNode patchedVersions = performJson(get("/api/v1/content/admin/items/" + contentId + "/versions")
+                .header("Authorization", bearer("admin-token")), 200);
+        assertThat(patchedVersions.at("/data/items/0/version").asInt()).isEqualTo(2);
+        assertThat(patchedVersions.at("/data/items/0/sourceAction").asText()).isEqualTo("UPDATED");
+        assertThat(patchedVersions.at("/data/items/0/snapshot/title").asText()).isEqualTo("Updated version title");
+
+        performJson(patch("/api/v1/content/admin/items/" + contentId + "/submit-review")
+                .header("Authorization", bearer("admin-token")), mapOf("reason", "submit version"), 200);
+        performJson(patch("/api/v1/content/admin/items/" + contentId + "/approve")
+                .header("Authorization", bearer("admin-token")), mapOf("reviewOpinion", "ok", "reason", "approve version"), 200);
+        performJson(patch("/api/v1/content/admin/items/" + contentId + "/publish")
+                .header("Authorization", bearer("admin-token")), mapOf("reason", "publish version"), 200);
+        JsonNode publishedVersions = performJson(get("/api/v1/content/admin/items/" + contentId + "/versions")
+                .header("Authorization", bearer("admin-token")), 200);
+        assertThat(publishedVersions.at("/data/items/0/version").asInt()).isEqualTo(3);
+        assertThat(publishedVersions.at("/data/items/0/sourceAction").asText()).isEqualTo("PUBLISHED");
+        assertThat(performJson(get("/api/v1/content/items/" + contentId), 200).toString()).doesNotContain("versions", "sourceAction", "restoredFromVersion");
+
+        performJson(patch("/api/v1/content/admin/items/" + contentId + "/versions/1/restore")
+                .header("Authorization", bearer("admin-token")), mapOf(), 400, 40001);
+        JsonNode restored = performJson(patch("/api/v1/content/admin/items/" + contentId + "/versions/1/restore")
+                .header("Authorization", bearer("admin-token")), mapOf("reason", "restore version"), 200);
+        assertThat(restored.at("/data/title").asText()).isEqualTo("Title version-history");
+        assertThat(restored.at("/data/status").asText()).isEqualTo("DRAFT");
+        assertThat(restored.at("/data/publishedAt").isNull()).isTrue();
+        assertThat(restored.at("/data/reviewOpinion").isNull()).isTrue();
+
+        JsonNode restoredVersions = performJson(get("/api/v1/content/admin/items/" + contentId + "/versions")
+                .header("Authorization", bearer("admin-token")), 200);
+        assertThat(restoredVersions.at("/data/items/0/version").asInt()).isEqualTo(4);
+        assertThat(restoredVersions.at("/data/items/0/sourceAction").asText()).isEqualTo("RESTORED");
+        assertThat(restoredVersions.at("/data/items/0/restoredFromVersion").asInt()).isEqualTo(1);
+        JsonNode audit = performJson(get("/api/v1/content/admin/items/" + contentId + "/audit-logs")
+                .header("Authorization", bearer("admin-token")), 200);
+        assertThat(audit.toString()).contains("CONTENT_ITEM_VERSION_RESTORED");
+
+        performJson(patch("/api/v1/content/admin/items/" + store.contentIdBySlug("archived-only") + "/versions/1/restore")
+                .header("Authorization", bearer("admin-token")), mapOf("reason", "archived restore"), 409, 43418);
+
+        JsonNode conflict = performJson(post("/api/v1/content/admin/items")
+                .header("Authorization", bearer("admin-token")), validContentBody("version-conflict-original"), 201);
+        String conflictId = conflict.at("/data/contentId").asText();
+        performJson(patch("/api/v1/content/admin/items/" + conflictId)
+                .header("Authorization", bearer("admin-token")), mapOf("slug", "version-conflict-current", "reason", "change slug"), 200);
+        performJson(post("/api/v1/content/admin/items")
+                .header("Authorization", bearer("admin-token")), validContentBody("version-conflict-original"), 201);
+        performJson(patch("/api/v1/content/admin/items/" + conflictId + "/versions/1/restore")
+                .header("Authorization", bearer("admin-token")), mapOf("reason", "restore conflict"), 409, 43411);
     }
 
     @Test
