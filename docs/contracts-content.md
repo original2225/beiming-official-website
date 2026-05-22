@@ -1,6 +1,6 @@
 # 北冥官网 content API 契约
 
-版本：0.2
+版本：0.3
 
 ## 文档定位
 
@@ -245,6 +245,27 @@ auth 上下文不可用返回 `46420`，auth 调用超时返回 `46421`，auth �
 | `canonicalUrl` | string 或 null | 是 | canonical URL。 |
 | `updatedAt` | string | 是 | 更新时间。 |
 
+### SiteMapEntry
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `route` | string | 是 | 公开站内路径。 |
+| `targetType` | string | 是 | `HOME`、`CONTENT` 或 `TOPIC`。 |
+| `targetId` | string 或 null | 是 | 内容 ID 或专题 ID，首页为 `null`。 |
+| `lastModifiedAt` | string | 是 | 最近更新时间，用于搜索引擎增量抓取。 |
+| `changeFrequency` | string | 是 | `daily`、`weekly` 或 `monthly`。 |
+| `priority` | number | 是 | 0 到 1，首页优先级最高。 |
+
+### ContentPreviewToken
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `contentId` | string | 是 | 预览目标内容 ID。 |
+| `token` | string | 是 | 预览令牌，只返回一次，不写入审计明文。 |
+| `previewUrl` | string | 是 | 可直接访问的预览接口路径。 |
+| `expiresAt` | string | 是 | 令牌过期时间。 |
+| `createdAt` | string | 是 | 创建时间。 |
+
 ### ContentAuditLog
 
 审计字段继承公共契约，允许补充 `contentId`、`homeConfigId`、`topicId`、`seoId`、`idempotencyKey`、`notificationStatus`、`profileSnapshotStatus`、`stateFrom`、`stateTo`、`version`、`sourceVersion` 和 `newVersion`。审计日志不得通过 content API 删除。
@@ -268,6 +289,7 @@ auth 上下文不可用返回 `46420`，auth 调用超时返回 `46421`，auth �
 | `43416` | 409 | SEO 路由冲突。 |
 | `43417` | 404 | 内容版本不存在。 |
 | `43418` | 409 | 内容版本状态不允许当前操作。 |
+| `43419` | 404 | 内容预览令牌不存在、过期或不匹配。 |
 | `46400` | 502 | profile 成员快照不可用。 |
 | `46401` | 504 | profile 成员快照调用超时。 |
 | `46402` | 502 | profile 成员快照不兼容 content 契约。 |
@@ -290,16 +312,19 @@ auth 上下文不可用返回 `46420`，auth 调用超时返回 `46421`，auth �
 | 公开内容列表 | GET | `/api/v1/content/items` | 否 | 无 | LOW |
 | 公开内容详情 | GET | `/api/v1/content/items/{contentId}` | 否 | 无 | LOW |
 | 公开 slug 内容详情 | GET | `/api/v1/content/items/by-slug/{slug}` | 否 | 无 | LOW |
+| 内容令牌预览 | GET | `/api/v1/content/items/{contentId}/preview` | 否 | 预览令牌 | LOW |
 | 公开分类列表 | GET | `/api/v1/content/categories` | 否 | 无 | LOW |
 | 公开标签列表 | GET | `/api/v1/content/tags` | 否 | 无 | LOW |
 | 公开专题列表 | GET | `/api/v1/content/topics` | 否 | 无 | LOW |
 | 公开专题详情 | GET | `/api/v1/content/topics/{topicId}` | 否 | 无 | LOW |
 | 公开 slug 专题详情 | GET | `/api/v1/content/topics/by-slug/{slug}` | 否 | 无 | LOW |
 | 公开 SEO 配置 | GET | `/api/v1/content/seo` | 否 | 无 | LOW |
+| 公开站点地图 | GET | `/api/v1/content/seo/sitemap` | 否 | 无 | LOW |
 | 后台内容列表 | GET | `/api/v1/content/admin/items` | 是 | `HELPER`、`ADMIN` 或 `OWNER` | LOW |
 | 后台内容详情 | GET | `/api/v1/content/admin/items/{contentId}` | 是 | `HELPER`、`ADMIN` 或 `OWNER` | LOW |
 | 创建内容 | POST | `/api/v1/content/admin/items` | 是 | `ADMIN` 或 `OWNER` | MEDIUM |
 | 修改内容 | PATCH | `/api/v1/content/admin/items/{contentId}` | 是 | `ADMIN` 或 `OWNER` | MEDIUM |
+| 创建内容预览令牌 | POST | `/api/v1/content/admin/items/{contentId}/preview-token` | 是 | `ADMIN` 或 `OWNER` | MEDIUM |
 | 提交审核 | PATCH | `/api/v1/content/admin/items/{contentId}/submit-review` | 是 | `ADMIN` 或 `OWNER` | MEDIUM |
 | 审核通过 | PATCH | `/api/v1/content/admin/items/{contentId}/approve` | 是 | `ADMIN` 或 `OWNER` | MEDIUM |
 | 审核拒绝 | PATCH | `/api/v1/content/admin/items/{contentId}/reject` | 是 | `ADMIN` 或 `OWNER` | MEDIUM |
@@ -387,6 +412,20 @@ auth 上下文不可用返回 `46420`，auth 调用超时返回 `46421`，auth �
 
 业务规则：slug 必须匹配公开可见内容。slug 不存在返回 `43400`。slug 对应内容不可公开时返回 `43412` 或 `43400`，同一版本内保持一致。
 
+### 内容令牌预览
+
+`GET /api/v1/content/items/{contentId}/preview`
+
+查询参数：
+
+| 字段 | 类型 | 必填 | 规则 |
+| --- | --- | --- | --- |
+| `token` | string | 是 | 后台创建的预览令牌。 |
+
+成功响应 HTTP `200`，`data` 为 `ContentItemDetail`。
+
+业务规则：预览令牌只用于后台人员检查未公开内容展示效果，不要求登录，但必须携带有效令牌。令牌不存在、过期、目标内容不匹配或目标内容已归档、已软删除时返回 `43419`。预览响应可以返回 `DRAFT`、`PENDING_REVIEW`、`REJECTED`、`NEEDS_CHANGES`、`OFFLINE` 和 `APPROVED` 内容的正文，但不得返回 `adminNote`、`reviewOpinion`、审计字段、通知结果、幂等键或成员敏感字段。预览接口不得改变内容状态，不得写发布审计。
+
 ### 公开分类列表
 
 `GET /api/v1/content/categories`
@@ -436,6 +475,20 @@ auth 上下文不可用返回 `46420`，auth 调用超时返回 `46421`，auth �
 成功响应 HTTP `200`，`data` 为 `SeoPayload`。
 
 业务规则：命中启用 SEO 配置时返回该配置。未配置时返回模块默认 SEO，`seoId` 为 `null`，不得返回后台草稿、禁用配置或审核信息。route 非法返回 `40001`。
+
+### 公开站点地图
+
+`GET /api/v1/content/seo/sitemap`
+
+查询参数：
+
+| 字段 | 类型 | 必填 | 规则 |
+| --- | --- | --- | --- |
+| `type` | string | 否 | 允许 `CONTENT`、`TOPIC`、`HOME`，不传返回全部。 |
+
+成功响应 HTTP `200`，`data.items` 为 `SiteMapEntry[]`。
+
+业务规则：站点地图只返回公开可见的首页、内容和专题路径。草稿、待审核、已拒绝、需修改、下架、归档、软删除、`PRIVATE`、`MEMBER_ONLY`、未到可见时间或已超过可见时间的数据不得进入站点地图。站点地图不得返回正文、后台字段、审计字段、通知结果、幂等键或内部引用失败原因。`type` 非法返回 `40001`。首页配置不存在时可以只返回内容和专题，不得伪造不存在的业务路径。
 
 ## 后台内容接口
 
@@ -513,6 +566,25 @@ auth 上下文不可用返回 `46420`，auth 调用超时返回 `46421`，auth �
 业务规则：不存在返回 `43400`。`ARCHIVED` 和 `DELETED` 不允许修改，返回 `43410`。已发布内容修改后仍保持原公开版本，除非实现选择单版本模型；P0 允许单版本模型，但修改已发布内容必须写审计，公开接口不得返回半更新对象。slug 冲突返回 `43411`。分类、标签和 profile 快照规则同创建。
 
 审计要求：成功写入 `CONTENT_ITEM_UPDATED`，记录变更前后摘要和原因。审计失败不得改变内容。
+
+### 创建内容预览令牌
+
+`POST /api/v1/content/admin/items/{contentId}/preview-token`
+
+请求字段：
+
+| 字段 | 类型 | 必填 | 规则 |
+| --- | --- | --- | --- |
+| `expiresInMinutes` | integer | 否 | 默认 `30`，最小 `5`，最大 `1440`。 |
+| `reason` | string | 是 | 1 到 200 位，创建预览令牌原因。 |
+
+成功响应 HTTP `201`，`data` 为 `ContentPreviewToken`。
+
+权限规则：只有 `ADMIN` 和 `OWNER` 可以创建预览令牌。`HELPER` 和 `USER` 返回 `42001`，未登录返回 `41000`。
+
+业务规则：内容不存在返回 `43400`。`ARCHIVED` 和 `DELETED` 内容不能创建预览令牌，返回 `43410`。同一内容可以创建多个未过期令牌。令牌只用于读取预览，不允许修改内容状态，也不能绕过后台写权限。响应体返回令牌明文，审计日志不得保存令牌明文。
+
+审计要求：成功写入 `CONTENT_ITEM_PREVIEW_TOKEN_CREATED`，记录目标内容、过期时间和原因。审计失败返回 `51401`，不得创建令牌。
 
 ### 提交审核
 
@@ -1127,4 +1199,4 @@ auth 认证上下文失败时，后台接口不得使用旧用户上下文继续
 
 `content` API 文档按 `docs/contracts-content.md` 独立存在，并由 `.local-docs/tests-content.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求和模块验收口径。
 
-`content` 完成时必须满足以下条件：全部接口按本文档实现；公开接口不泄露后台字段；后台接口按角色限制；首页配置由后端返回且公开首页支持局部降级；成员作品只保存 profile 快照且不直接读 profile 数据库；审核通知按强制或辅助规则处理；分类、标签、专题、SEO、状态流转、幂等、审计和自检摘要都有自动化测试；`.local-docs/tests-content.md` 中全部测试用例都有对应自动化验证；未实现时自动化测试必须先失败；实现后 content 全部测试通过；auth、profile 和 notification 前序服务回归测试通过；没有修改前序服务稳定接口；没有把 `.local-docs/` 提交到仓库。
+`content` 完成时必须满足以下条件：全部接口按本文档实现；公开接口不泄露后台字段；后台接口按角色限制；首页配置由后端返回且公开首页支持局部降级；成员作品只保存 profile 快照且不直接读 profile 数据库；审核通知按强制或辅助规则处理；分类、标签、专题、SEO、站点地图、预览令牌、状态流转、幂等、审计和自检摘要都有自动化测试；`.local-docs/tests-content.md` 中全部测试用例都有对应自动化验证；未实现时自动化测试必须先失败；实现后 content 全部测试通过；auth、profile 和 notification 前序服务回归测试通过；没有修改前序服务稳定接口；没有把 `.local-docs/` 提交到仓库。
