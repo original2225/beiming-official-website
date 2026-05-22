@@ -204,8 +204,15 @@
 | --- | --- | --- | --- |
 | `dashboardCards` | string[] | 是 | 看板卡片顺序。 |
 | `navigationModuleOrder` | string[] | 是 | 导航模块顺序。 |
-| `hiddenModules` | string[] | 是 | 隐藏模块键。 |
-| `quickActions` | object[] | 是 | 快捷入口，只能指向已实现且当前用户有权访问的来源模块路由。 |
+| `hiddenModules` | string[] | 是 | 隐藏模块键。默认模块列表和总览不得返回被隐藏模块；只有 `OWNER` 使用 `includeDisabled=true` 时可以看到被隐藏模块，状态为 `DISABLED`。 |
+| `quickActions` | AdminQuickAction[] | 是 | 快捷入口，只能指向已实现且当前用户有权访问的来源模块路由。 |
+
+### AdminQuickAction
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `key` | string | 是 | 快捷入口键，格式为小写字母、数字和短横线，同一布局内唯一。 |
+| `targetRoute` | string | 是 | 必须指向已实现模块的后台入口或其下级路由，例如 `/admin/content`。不得指向未实现模块、运维真实操作、外部 URL 或 `/api` 路径。 |
 
 ### AdminOverview
 
@@ -316,7 +323,7 @@
 
 成功响应 HTTP `200`，`data.items` 为 `AdminModuleEntry[]`。
 
-业务规则：已实现模块必须包含 `AUTH`、`PROFILE`、`NOTIFICATION`、`CONTENT`、`SERVER_STATUS`、`RESOURCE` 和 `ADMIN`。未实现模块必须以 `NOT_IMPLEMENTED` 占位返回，但 `targetApiBase` 为 `null`，能力只允许 `ENTRY` 或 `OPS_PLACEHOLDER`。禁用模块默认不返回，除非 `OWNER` 传 `includeDisabled=true`。
+业务规则：已实现模块必须包含 `AUTH`、`PROFILE`、`NOTIFICATION`、`CONTENT`、`SERVER_STATUS`、`RESOURCE` 和 `ADMIN`。未实现模块必须以 `NOT_IMPLEMENTED` 占位返回，但 `targetApiBase` 为 `null`，能力只允许 `ENTRY` 或 `OPS_PLACEHOLDER`。被 `hiddenModules` 隐藏的模块视为 admin 自有配置禁用，默认不返回；只有 `OWNER` 传 `includeDisabled=true` 时可返回，且状态必须为 `DISABLED`。
 
 ### 模块详情
 
@@ -409,7 +416,7 @@
 
 权限规则：只有 `ADMIN` 和 `OWNER` 可访问。`HELPER` 返回 `42001`。
 
-业务规则：审计索引是只读摘要，不是审计主数据。admin 不提供删除、修改或恢复审计索引的接口。返回结果必须脱敏，不能返回访问令牌、完整请求头、邀请码原文、Cloudreve 密码、内部文件路径、通知正文、模板正文、审计参数全文或异常堆栈。
+业务规则：审计索引是只读摘要，不是审计主数据。admin 不提供删除、修改或恢复审计索引的接口。`from` 和 `to` 必须按来源审计 `createdAt` 做闭区间过滤，不能只校验格式后忽略范围。返回结果必须脱敏，不能返回访问令牌、完整请求头、邀请码原文、Cloudreve 密码、内部文件路径、通知正文、模板正文、审计参数全文或异常堆栈。
 
 降级规则：某个来源模块审计不可用时，列表仍返回可用来源和 admin 自身审计，并在响应中标记来源模块降级。若请求指定的唯一来源模块不可用，可返回 `46700` 或空分页加降级摘要；同一实现版本内必须固定并写入测试。
 
@@ -428,7 +435,7 @@
 
 成功响应 HTTP `200`，`data` 为 `AdminSettingsSnapshot`。
 
-业务规则：只返回 admin 自有配置，例如模块菜单显隐、导航排序、看板卡片排序、快捷入口、模块降级展示策略、审计索引保留天数和聚合刷新间隔。不得返回或修改 auth 角色、profile 成员状态、notification 模板、content 首页配置、resource 下载入口、server-status 线路配置或任何 ops-control 运维配置。
+业务规则：只返回 admin 自有配置，例如模块菜单显隐、导航排序、看板卡片排序、快捷入口、模块降级展示策略、审计索引保留天数和聚合刷新间隔。`quickActions` 必须按当前用户权限和模块显隐过滤，不能返回当前用户无权访问、已隐藏、未实现或不可用模块的入口。不得返回或修改 auth 角色、profile 成员状态、notification 模板、content 首页配置、resource 下载入口、server-status 线路配置或任何 ops-control 运维配置。
 
 敏感字段：P0 不允许通过该接口返回敏感明文。若未来出现敏感配置，只能返回 `sensitive=true` 和脱敏摘要。
 
@@ -449,7 +456,7 @@
 
 权限规则：普通配置允许 `ADMIN` 或 `OWNER` 修改。`audit.retentionDays`、全局模块禁用、隐藏 `AUTH`、隐藏 `ADMIN`、隐藏全部前序模块、调整未实现运维入口可见性等高影响配置只允许 `OWNER` 修改。`HELPER` 和 `USER` 返回 `42001`。
 
-业务规则：配置键必须属于 admin 已声明配置。未知键返回 `43700` 或 `40001`。配置值类型必须匹配 `valueType`。同一 `idempotencyKey`、同一操作者、同一请求体重复提交返回同一结果。相同幂等键搭配不同请求体返回 `43712`。配置写入和审计写入必须全有或全无，任一失败返回 `51701` 或 `51702`，不得半更新。
+业务规则：配置键必须属于 admin 已声明配置。未知键返回 `43700` 或 `40001`。配置值类型必须匹配 `valueType`。`layout.quickActions` 必须是 `AdminQuickAction[]`，每个入口必须指向已实现、未隐藏且当前操作者有权访问的后台模块路由；指向未实现模块、运维真实操作、外部 URL、`/api` 路径或缺少必填字段时返回 `40001` 或 `43713`，同一实现版本内固定。`layout.hiddenModules` 隐藏模块后，默认模块注册表、总览和设置快照中的模块列表必须同步体现禁用状态。同一 `idempotencyKey`、同一操作者、同一请求体重复提交返回同一结果。相同幂等键搭配不同请求体返回 `43712`。配置写入和审计写入必须全有或全无，任一失败返回 `51701` 或 `51702`，不得半更新。
 
 审计要求：成功写入 `ADMIN_SETTINGS_UPDATED`，记录变更配置键、变更前后摘要、操作者、原因和风险等级。高影响配置写入风险等级为 `MEDIUM`，后续如涉及运维入口真实启用，应升级到 `HIGH` 或 `CRITICAL` 并转交 `ops-control`。
 
@@ -471,7 +478,7 @@
 
 模块状态由 admin 自有配置和模块适配器结果共同决定。模块未实现时为 `NOT_IMPLEMENTED`。模块被 admin 自有配置关闭时为 `DISABLED`。模块适配器成功返回兼容摘要时为 `AVAILABLE`。适配器部分失败或来源模块自检报告降级时为 `DEGRADED`。适配器不可达或超时时为 `UNAVAILABLE`。
 
-配置更新支持 `idempotencyKey`。同一操作者、同一幂等键、同一请求体重复提交时返回同一个结果；相同幂等键搭配不同请求体返回 `43712`。请求体指纹必须基于结构化 JSON 规范化结果，不能受字段顺序影响。
+配置更新支持 `idempotencyKey`。同一操作者、同一幂等键、同一请求体重复提交时返回同一个结果；相同幂等键搭配不同请求体返回 `43712`。请求体指纹必须基于结构化 JSON 规范化结果，所有嵌套对象都要按字段名递归排序，不能受任意层级的字段顺序影响。
 
 配置更新、审计写入和幂等记录写入必须保持一致。并发更新同一配置时必须以服务端当前状态为准，不能产生半更新快照。实现可以使用版本号、更新时间或事务锁保证配置键唯一和幂等记录唯一。
 
