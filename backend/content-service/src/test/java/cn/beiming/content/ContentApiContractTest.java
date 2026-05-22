@@ -524,14 +524,31 @@ class ContentApiContractTest {
         assertThat(performJson(post("/api/v1/content/admin/topics").header("Authorization", bearer("admin-token")), topicBody("summer-topic", "topic-idem-1"), 201).at("/data/topicId").asText()).isEqualTo(topic.at("/data/topicId").asText());
         performJson(post("/api/v1/content/admin/topics").header("Authorization", bearer("admin-token")), topicBody("spring-topic", null), 409, 43411);
         performJson(post("/api/v1/content/admin/topics").header("Authorization", bearer("admin-token")), mapOf("title", "x", "reason", "bad"), 400, 40001);
+        Map<String, Object> missingRefTopicBody = topicBody("missing-ref-topic", null);
+        missingRefTopicBody.put("contentIds", List.of("missing-content"));
+        JsonNode missingRefTopic = performJson(post("/api/v1/content/admin/topics").header("Authorization", bearer("admin-token")), missingRefTopicBody, 201);
+        assertThat(values(missingRefTopic.at("/data/contentIds"))).contains("missing-content");
+        performJson(patch("/api/v1/content/admin/topics/" + topic.at("/data/topicId").asText()).header("Authorization", bearer("admin-token")), mapOf("slug", "spring-topic", "reason", "slug conflict"), 409, 43411);
+        JsonNode privateTopic = performJson(patch("/api/v1/content/admin/topics/" + topic.at("/data/topicId").asText()).header("Authorization", bearer("admin-token")), mapOf("visibility", "PRIVATE", "reason", "private"), 200);
+        assertThat(privateTopic.at("/data/visibility").asText()).isEqualTo("PRIVATE");
         performJson(patch("/api/v1/content/admin/topics/" + topic.at("/data/topicId").asText()).header("Authorization", bearer("admin-token")), mapOf("title", "Summer Topic Updated", "reason", "patch"), 200);
         performJson(patch("/api/v1/content/admin/topics/" + topic.at("/data/topicId").asText() + "/publish").header("Authorization", bearer("admin-token")), mapOf("reason", "publish"), 200);
+        long publishAudits = countAuditAction("CONTENT_TOPIC_PUBLISHED");
         performJson(patch("/api/v1/content/admin/topics/" + topic.at("/data/topicId").asText() + "/publish").header("Authorization", bearer("admin-token")), mapOf("reason", "again"), 200);
+        assertThat(countAuditAction("CONTENT_TOPIC_PUBLISHED")).isEqualTo(publishAudits);
         performJson(patch("/api/v1/content/admin/topics/" + topic.at("/data/topicId").asText() + "/offline").header("Authorization", bearer("admin-token")), mapOf("reason", "offline"), 200);
+        assertThat(store.auditActions()).contains("CONTENT_TOPIC_OFFLINED");
         performJson(patch("/api/v1/content/admin/topics/" + topic.at("/data/topicId").asText() + "/archive").header("Authorization", bearer("admin-token")), mapOf("reason", "archive"), 200);
+        long archiveAudits = countAuditAction("CONTENT_TOPIC_ARCHIVED");
+        performJson(patch("/api/v1/content/admin/topics/" + topic.at("/data/topicId").asText() + "/archive").header("Authorization", bearer("admin-token")), mapOf("reason", "archive again"), 200);
+        assertThat(countAuditAction("CONTENT_TOPIC_ARCHIVED")).isEqualTo(archiveAudits);
+        performJson(patch("/api/v1/content/admin/topics/" + topic.at("/data/topicId").asText()).header("Authorization", bearer("admin-token")), mapOf("title", "Nope", "reason", "archived"), 409, 43414);
         performJson(patch("/api/v1/content/admin/topics/" + store.topicIdBySlug("spring-topic") + "/archive").header("Authorization", bearer("admin-token")), mapOf("reason", "bad"), 409, 43414);
         JsonNode draftTopic = performJson(post("/api/v1/content/admin/topics").header("Authorization", bearer("admin-token")), topicBody("delete-topic", null), 201);
         performJson(patch("/api/v1/content/admin/topics/" + draftTopic.at("/data/topicId").asText() + "/delete").header("Authorization", bearer("admin-token")), mapOf("reason", "delete"), 200);
+        long deleteAudits = countAuditAction("CONTENT_TOPIC_DELETED");
+        performJson(patch("/api/v1/content/admin/topics/" + draftTopic.at("/data/topicId").asText() + "/delete").header("Authorization", bearer("admin-token")), mapOf("reason", "delete again"), 200);
+        assertThat(countAuditAction("CONTENT_TOPIC_DELETED")).isEqualTo(deleteAudits);
 
         performJson(get("/api/v1/content/admin/seo").header("Authorization", bearer("helper-token")), 200);
         JsonNode routeSeo = performJson(get("/api/v1/content/admin/seo")
@@ -544,11 +561,25 @@ class ContentApiContractTest {
         assertThat(valuesAt(keywordSeo, "/data/items", "route")).contains("/news");
         JsonNode seo = performJson(put("/api/v1/content/admin/seo/by-route").header("Authorization", bearer("admin-token")), seoBody("/topic", "seo-idem-1"), 200);
         assertThat(seo.at("/data/route").asText()).isEqualTo("/topic");
+        assertThat(store.auditActions()).contains("CONTENT_SEO_CREATED");
         performJson(put("/api/v1/content/admin/seo/by-route").header("Authorization", bearer("admin-token")), seoBody("/topic", "seo-idem-1"), 200);
+        Map<String, Object> updatedSeo = seoBody("/topic", null);
+        updatedSeo.put("title", "SEO Topic Updated");
+        performJson(put("/api/v1/content/admin/seo/by-route").header("Authorization", bearer("admin-token")), updatedSeo, 200);
+        assertThat(store.auditActions()).contains("CONTENT_SEO_UPDATED");
         performJson(put("/api/v1/content/admin/seo/by-route").header("Authorization", bearer("admin-token")), seoBody("bad", null), 400, 40001);
         Map<String, Object> badRobots = seoBody("/bad-robots", null);
         badRobots.put("robots", "BAD");
         performJson(put("/api/v1/content/admin/seo/by-route").header("Authorization", bearer("admin-token")), badRobots, 400, 40001);
+        Map<String, Object> badSeoTitle = seoBody("/bad-title", null);
+        badSeoTitle.put("title", "x");
+        performJson(put("/api/v1/content/admin/seo/by-route").header("Authorization", bearer("admin-token")), badSeoTitle, 400, 40001);
+        Map<String, Object> badKeywords = seoBody("/bad-keywords", null);
+        badKeywords.put("keywords", java.util.stream.IntStream.range(0, 21).mapToObj(i -> "kw" + i).toList());
+        performJson(put("/api/v1/content/admin/seo/by-route").header("Authorization", bearer("admin-token")), badKeywords, 400, 40001);
+        Map<String, Object> badCanonical = seoBody("/bad-canonical", null);
+        badCanonical.put("canonicalUrl", "https://example.com/" + "a".repeat(501));
+        performJson(put("/api/v1/content/admin/seo/by-route").header("Authorization", bearer("admin-token")), badCanonical, 400, 40001);
         performJson(put("/api/v1/content/admin/seo/by-route").header("Authorization", bearer("admin-token")), seoBody("/changed", "seo-idem-1"), 409, 43002);
         performJson(get("/api/v1/content/admin/seo/" + seo.at("/data/seoId").asText()).header("Authorization", bearer("helper-token")), 200);
         performJson(get("/api/v1/content/admin/seo/missing").header("Authorization", bearer("helper-token")), 404, 43403);
@@ -724,5 +755,9 @@ class ContentApiContractTest {
         return java.util.stream.StreamSupport.stream(root.at(arrayPointer).spliterator(), false)
                 .map(item -> item.path(fieldName).asText())
                 .toList();
+    }
+
+    private long countAuditAction(String action) {
+        return store.auditActions().stream().filter(action::equals).count();
     }
 }

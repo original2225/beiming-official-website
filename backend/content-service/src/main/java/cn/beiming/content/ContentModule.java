@@ -1071,12 +1071,15 @@ class ContentStore {
         requireReason(body);
         String slug = requiredString(body, "slug");
         String title = requiredString(body, "title");
-        if (title.length() < 2 || !validSlug(slug)) throw new ContentException(40001, HttpStatus.BAD_REQUEST, "validation failed");
+        validateTopicTitle(title);
+        if (!validSlug(slug)) throw new ContentException(40001, HttpStatus.BAD_REQUEST, "validation failed");
         if (topicIdBySlug(slug) != null) throw new ContentException(43411, HttpStatus.CONFLICT, "slug conflict");
-        List<String> contentIds = stringList(body.get("contentIds"));
-        for (String contentId : contentIds) requireItem(contentId);
+        List<String> contentIds = topicContentIds(body.get("contentIds"));
+        String visibility = enumValue(body, "visibility", Set.of("PUBLIC", "MEMBER_ONLY", "PRIVATE"), "PUBLIC");
+        String coverUrl = optionalUrl(body, "coverUrl");
+        Map<String, Object> seo = map(body.get("seo"));
         checkAudit();
-        TopicRecord topic = new TopicRecord("topic_" + UUID.randomUUID(), slug, title, optionalString(body, "summary"), optionalUrl(body, "coverUrl"), "DRAFT", optionalString(body, "visibility", "PUBLIC"), new ArrayList<>(contentIds), map(body.get("seo")), null, now(), now(), null);
+        TopicRecord topic = new TopicRecord("topic_" + UUID.randomUUID(), slug, title, optionalString(body, "summary"), coverUrl, "DRAFT", visibility, new ArrayList<>(contentIds), seo, null, now(), now(), null);
         topics.put(topic.topicId, topic);
         audit(actor.userId, "CONTENT_TOPIC_CREATED", body.get("reason"), topic.topicId, "SUCCESS");
         Map<String, Object> result = topicMap(topic);
@@ -1087,9 +1090,28 @@ class ContentStore {
     synchronized Map<String, Object> patchTopic(AuthUser actor, String topicId, Map<String, Object> body) {
         TopicRecord topic = requireTopic(topicId);
         requireReason(body);
-        if (body.containsKey("title")) topic.title = requiredString(body, "title");
-        if (body.containsKey("summary")) topic.summary = optionalString(body, "summary");
-        if (body.containsKey("contentIds")) topic.contentIds = new ArrayList<>(stringList(body.get("contentIds")));
+        if (Set.of("ARCHIVED", "DELETED").contains(topic.status)) throw new ContentException(43414, HttpStatus.CONFLICT, "topic state conflict");
+        String slug = body.containsKey("slug") ? requiredString(body, "slug") : null;
+        if (slug != null) {
+            if (!validSlug(slug)) throw new ContentException(40001, HttpStatus.BAD_REQUEST, "validation failed");
+            String existingTopicId = topicIdBySlug(slug);
+            if (existingTopicId != null && !existingTopicId.equals(topicId)) throw new ContentException(43411, HttpStatus.CONFLICT, "slug conflict");
+        }
+        String title = body.containsKey("title") ? requiredString(body, "title") : null;
+        if (title != null) validateTopicTitle(title);
+        String summary = body.containsKey("summary") ? optionalString(body, "summary") : topic.summary;
+        String coverUrl = body.containsKey("coverUrl") ? optionalUrl(body, "coverUrl") : topic.coverUrl;
+        String visibility = body.containsKey("visibility") ? enumValue(body, "visibility", Set.of("PUBLIC", "MEMBER_ONLY", "PRIVATE")) : topic.visibility;
+        List<String> contentIds = body.containsKey("contentIds") ? topicContentIds(body.get("contentIds")) : topic.contentIds;
+        Map<String, Object> seo = body.containsKey("seo") ? map(body.get("seo")) : topic.seo;
+        checkAudit();
+        if (slug != null) topic.slug = slug;
+        if (title != null) topic.title = title;
+        topic.summary = summary;
+        topic.coverUrl = coverUrl;
+        topic.visibility = visibility;
+        topic.contentIds = new ArrayList<>(contentIds);
+        topic.seo = seo;
         topic.updatedAt = now();
         audit(actor.userId, "CONTENT_TOPIC_UPDATED", body.get("reason"), topicId, "SUCCESS");
         return topicMap(topic);
@@ -1114,14 +1136,17 @@ class ContentStore {
         if (!"APPROVED".equals(topic.status)) throw new ContentException(43414, HttpStatus.CONFLICT, "topic state conflict");
         topic.status = "OFFLINE";
         topic.updatedAt = now();
-        audit(actor.userId, "CONTENT_TOPIC_OFFLINE", body.get("reason"), topicId, "SUCCESS");
+        audit(actor.userId, "CONTENT_TOPIC_OFFLINED", body.get("reason"), topicId, "SUCCESS");
         return topicMap(topic);
     }
 
     synchronized Map<String, Object> archiveTopic(AuthUser actor, String topicId, Map<String, Object> body) {
         TopicRecord topic = requireTopic(topicId);
         requireReason(body);
+        if ("ARCHIVED".equals(topic.status)) return topicMap(topic);
         if ("APPROVED".equals(topic.status) && topic.publishedAt != null) throw new ContentException(43414, HttpStatus.CONFLICT, "topic state conflict");
+        if (!Set.of("DRAFT", "OFFLINE").contains(topic.status)) throw new ContentException(43414, HttpStatus.CONFLICT, "topic state conflict");
+        checkAudit();
         topic.status = "ARCHIVED";
         topic.updatedAt = now();
         audit(actor.userId, "CONTENT_TOPIC_ARCHIVED", body.get("reason"), topicId, "SUCCESS");
@@ -1131,7 +1156,9 @@ class ContentStore {
     synchronized Map<String, Object> deleteTopic(AuthUser actor, String topicId, Map<String, Object> body) {
         TopicRecord topic = requireTopic(topicId);
         requireReason(body);
+        if ("DELETED".equals(topic.status)) return topicMap(topic);
         if ("APPROVED".equals(topic.status) && topic.publishedAt != null) throw new ContentException(43414, HttpStatus.CONFLICT, "topic state conflict");
+        checkAudit();
         topic.status = "DELETED";
         topic.deletedAt = now();
         topic.updatedAt = now();
@@ -1163,22 +1190,29 @@ class ContentStore {
         String route = requiredString(body, "route");
         validateRoute(route);
         String robots = enumValue(body, "robots", Set.of("INDEX_FOLLOW", "NOINDEX_FOLLOW", "NOINDEX_NOFOLLOW"));
+        String title = requiredString(body, "title");
+        String description = requiredString(body, "description");
+        validateSeoText(title, description);
+        List<String> keywords = seoKeywords(body.get("keywords"));
+        String coverUrl = optionalUrl(body, "coverUrl");
+        String canonicalUrl = seoCanonicalUrl(body);
         checkAudit();
         SeoRecord record = seo.values().stream().filter(s -> s.route.equals(route)).findFirst().orElse(null);
+        boolean created = record == null;
         if (record == null) {
-            record = new SeoRecord("seo_" + UUID.randomUUID(), route, requiredString(body, "title"), requiredString(body, "description"), stringList(body.get("keywords")), optionalUrl(body, "coverUrl"), robots, optionalString(body, "canonicalUrl"), true, now());
+            record = new SeoRecord("seo_" + UUID.randomUUID(), route, title, description, keywords, coverUrl, robots, canonicalUrl, true, now());
             seo.put(record.seoId, record);
         } else {
-            record.title = requiredString(body, "title");
-            record.description = requiredString(body, "description");
-            record.keywords = stringList(body.get("keywords"));
-            record.coverUrl = optionalUrl(body, "coverUrl");
+            record.title = title;
+            record.description = description;
+            record.keywords = keywords;
+            record.coverUrl = coverUrl;
             record.robots = robots;
-            record.canonicalUrl = optionalString(body, "canonicalUrl");
+            record.canonicalUrl = canonicalUrl;
             record.enabled = true;
             record.updatedAt = now();
         }
-        audit(actor.userId, "CONTENT_SEO_SAVED", body.get("reason"), record.seoId, "SUCCESS");
+        audit(actor.userId, created ? "CONTENT_SEO_CREATED" : "CONTENT_SEO_UPDATED", body.get("reason"), record.seoId, "SUCCESS");
         Map<String, Object> result = seoMap(record);
         remember(idemKey, body, result);
         return result;
@@ -1652,6 +1686,33 @@ class ContentStore {
 
     private void validateRoute(String route) {
         if (route == null || !route.startsWith("/") || route.length() > 200) throw new ContentException(40001, HttpStatus.BAD_REQUEST, "validation failed");
+    }
+
+    private void validateTopicTitle(String title) {
+        if (title.length() < 2 || title.length() > 120) throw new ContentException(40001, HttpStatus.BAD_REQUEST, "validation failed");
+    }
+
+    private List<String> topicContentIds(Object raw) {
+        List<String> contentIds = stringList(raw);
+        if (contentIds.size() > 50) throw new ContentException(40001, HttpStatus.BAD_REQUEST, "validation failed");
+        return contentIds;
+    }
+
+    private List<String> seoKeywords(Object raw) {
+        List<String> keywords = stringList(raw);
+        if (keywords.size() > 20 || keywords.stream().anyMatch(keyword -> keyword.length() > 40)) throw new ContentException(40001, HttpStatus.BAD_REQUEST, "validation failed");
+        return keywords;
+    }
+
+    private void validateSeoText(String title, String description) {
+        if (title.length() < 2 || title.length() > 80 || description.length() > 200) throw new ContentException(40001, HttpStatus.BAD_REQUEST, "validation failed");
+    }
+
+    private String seoCanonicalUrl(Map<String, Object> body) {
+        String canonicalUrl = optionalString(body, "canonicalUrl");
+        if (canonicalUrl == null || canonicalUrl.isBlank()) return null;
+        if (canonicalUrl.length() > 500 || !(canonicalUrl.startsWith("http://") || canonicalUrl.startsWith("https://"))) throw new ContentException(40001, HttpStatus.BAD_REQUEST, "validation failed");
+        return canonicalUrl;
     }
 
     private List<String> tagIds(Map<String, Object> body) {
