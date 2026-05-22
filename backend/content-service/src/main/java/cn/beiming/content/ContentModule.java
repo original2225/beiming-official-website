@@ -289,9 +289,10 @@ class ContentController {
     }
 
     @GetMapping("/admin/categories")
-    Map<String, Object> adminCategories(@RequestHeader(value = "Authorization", required = false) String authorization) {
+    Map<String, Object> adminCategories(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                         @RequestParam Map<String, String> query) {
         auth.requireAny(authorization, "HELPER", "ADMIN", "OWNER");
-        return ok(mapOf("items", store.adminCategories()));
+        return ok(mapOf("items", store.adminCategories(query)));
     }
 
     @PostMapping("/admin/categories")
@@ -318,9 +319,10 @@ class ContentController {
     }
 
     @GetMapping("/admin/tags")
-    Map<String, Object> adminTags(@RequestHeader(value = "Authorization", required = false) String authorization) {
+    Map<String, Object> adminTags(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                  @RequestParam Map<String, String> query) {
         auth.requireAny(authorization, "HELPER", "ADMIN", "OWNER");
-        return ok(mapOf("items", store.adminTags()));
+        return ok(mapOf("items", store.adminTags(query)));
     }
 
     @PostMapping("/admin/tags")
@@ -934,8 +936,13 @@ class ContentStore {
         return mapOf("published", homeView(publishedHome));
     }
 
-    synchronized List<Map<String, Object>> adminCategories() {
-        return categories.values().stream().sorted(Comparator.comparingInt(category -> category.sortOrder)).map(this::categoryMap).toList();
+    synchronized List<Map<String, Object>> adminCategories(Map<String, String> query) {
+        boolean includeArchived = !"false".equalsIgnoreCase(query.getOrDefault("includeArchived", "true"));
+        return categories.values().stream()
+                .filter(category -> includeArchived || !category.archived)
+                .sorted(Comparator.comparingInt(category -> category.sortOrder))
+                .map(this::categoryMap)
+                .toList();
     }
 
     synchronized Map<String, Object> createCategory(AuthUser actor, Map<String, Object> body) {
@@ -985,8 +992,13 @@ class ContentStore {
         return categoryMap(category);
     }
 
-    synchronized List<Map<String, Object>> adminTags() {
-        return tags.values().stream().sorted(Comparator.comparing(tag -> tag.name)).map(this::tagMap).toList();
+    synchronized List<Map<String, Object>> adminTags(Map<String, String> query) {
+        boolean includeArchived = !"false".equalsIgnoreCase(query.getOrDefault("includeArchived", "true"));
+        return tags.values().stream()
+                .filter(tag -> includeArchived || !tag.archived)
+                .sorted(Comparator.comparing(tag -> tag.name))
+                .map(this::tagMap)
+                .toList();
     }
 
     synchronized Map<String, Object> createTag(AuthUser actor, Map<String, Object> body) {
@@ -1035,8 +1047,17 @@ class ContentStore {
     }
 
     synchronized Map<String, Object> adminTopics(Map<String, String> query) {
-        Query page = query(query, Set.of("publishedAt_desc", "updatedAt_desc", "title_asc"), "updatedAt_desc");
-        return page(topics.values().stream().sorted(topicComparator(page.sort)).map(this::topicMap).toList(), page.page, page.pageSize);
+        Query page = query(query, Set.of("createdAt_desc", "publishedAt_desc", "updatedAt_desc", "title_asc"), "updatedAt_desc");
+        String status = query.get("status");
+        String visibility = query.get("visibility");
+        String keyword = query.get("keyword");
+        return page(topics.values().stream()
+                .filter(topic -> match(status, topic.status))
+                .filter(topic -> match(visibility, topic.visibility))
+                .filter(topic -> keyword(topic.slug + " " + topic.title + " " + topic.summary, keyword))
+                .sorted(topicComparator(page.sort))
+                .map(this::topicMap)
+                .toList(), page.page, page.pageSize);
     }
 
     synchronized Map<String, Object> adminTopic(String topicId) {
@@ -1120,7 +1141,14 @@ class ContentStore {
 
     synchronized Map<String, Object> adminSeoList(Map<String, String> query) {
         Query page = query(query, Set.of("updatedAt_desc", "route_asc"), "updatedAt_desc");
-        return page(seo.values().stream().sorted(seoComparator(page.sort)).map(this::seoMap).toList(), page.page, page.pageSize);
+        String route = query.get("route");
+        String keyword = query.get("keyword");
+        return page(seo.values().stream()
+                .filter(record -> match(route, record.route))
+                .filter(record -> keyword(record.route + " " + record.title + " " + record.description + " " + String.join(" ", record.keywords), keyword))
+                .sorted(seoComparator(page.sort))
+                .map(this::seoMap)
+                .toList(), page.page, page.pageSize);
     }
 
     synchronized Map<String, Object> adminSeo(String seoId) {
@@ -1489,6 +1517,7 @@ class ContentStore {
     private Comparator<TopicRecord> topicComparator(String sort) {
         return switch (sort) {
             case "title_asc" -> Comparator.comparing(topic -> topic.title);
+            case "createdAt_desc" -> Comparator.comparing((TopicRecord topic) -> topic.createdAt).reversed();
             case "publishedAt_desc" -> Comparator.comparing((TopicRecord topic) -> topic.publishedAt == null ? Instant.EPOCH : topic.publishedAt).reversed();
             default -> Comparator.comparing((TopicRecord topic) -> topic.updatedAt).reversed();
         };

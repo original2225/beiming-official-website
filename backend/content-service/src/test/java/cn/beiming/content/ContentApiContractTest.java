@@ -460,7 +460,12 @@ class ContentApiContractTest {
     @Test
     @DisplayName("CONTENT-CAT and CONTENT-TAG cover management, idempotency, conflicts, references, and archive")
     void categoryAndTagContract() throws Exception {
-        performJson(get("/api/v1/content/admin/categories").header("Authorization", bearer("helper-token")), 200);
+        JsonNode adminCategories = performJson(get("/api/v1/content/admin/categories").header("Authorization", bearer("helper-token")), 200);
+        assertThat(valuesAt(adminCategories, "/data/items", "slug")).contains("archived-category");
+        JsonNode activeCategories = performJson(get("/api/v1/content/admin/categories")
+                .header("Authorization", bearer("helper-token"))
+                .param("includeArchived", "false"), 200);
+        assertThat(valuesAt(activeCategories, "/data/items", "slug")).contains("news").doesNotContain("archived-category");
         JsonNode category = performJson(post("/api/v1/content/admin/categories").header("Authorization", bearer("admin-token")),
                 categoryBody("Builds", "builds", "cat-idem-1"), 201);
         assertThat(category.at("/data/slug").asText()).isEqualTo("builds");
@@ -474,7 +479,12 @@ class ContentApiContractTest {
         performJson(patch("/api/v1/content/admin/categories/" + category.at("/data/categoryId").asText() + "/archive").header("Authorization", bearer("admin-token")), mapOf("reason", "archive"), 200);
         performJson(patch("/api/v1/content/admin/categories/" + store.categoryId("news") + "/archive").header("Authorization", bearer("admin-token")), mapOf("reason", "used"), 409, 43415);
 
-        performJson(get("/api/v1/content/admin/tags").header("Authorization", bearer("helper-token")), 200);
+        JsonNode adminTags = performJson(get("/api/v1/content/admin/tags").header("Authorization", bearer("helper-token")), 200);
+        assertThat(valuesAt(adminTags, "/data/items", "slug")).contains("archived-tag");
+        JsonNode activeTags = performJson(get("/api/v1/content/admin/tags")
+                .header("Authorization", bearer("helper-token"))
+                .param("includeArchived", "false"), 200);
+        assertThat(valuesAt(activeTags, "/data/items", "slug")).contains("guide").doesNotContain("archived-tag");
         JsonNode tag = performJson(post("/api/v1/content/admin/tags").header("Authorization", bearer("admin-token")),
                 tagBody("Spotlight", "spotlight", "tag-idem-1"), 201);
         assertThat(performJson(post("/api/v1/content/admin/tags").header("Authorization", bearer("admin-token")),
@@ -491,6 +501,21 @@ class ContentApiContractTest {
     @DisplayName("CONTENT-TOPIC-ADMIN and CONTENT-SEO-ADMIN cover topic and seo management")
     void topicAndSeoAdminContract() throws Exception {
         performJson(get("/api/v1/content/admin/topics").header("Authorization", bearer("helper-token")), 200);
+        JsonNode draftTopics = performJson(get("/api/v1/content/admin/topics")
+                .header("Authorization", bearer("helper-token"))
+                .param("status", "DRAFT"), 200);
+        assertThat(valuesAt(draftTopics, "/data/items", "slug")).contains("draft-topic").doesNotContain("spring-topic");
+        JsonNode publicTopics = performJson(get("/api/v1/content/admin/topics")
+                .header("Authorization", bearer("helper-token"))
+                .param("visibility", "PUBLIC"), 200);
+        assertThat(valuesAt(publicTopics, "/data/items", "visibility")).containsOnly("PUBLIC");
+        JsonNode keywordTopics = performJson(get("/api/v1/content/admin/topics")
+                .header("Authorization", bearer("helper-token"))
+                .param("keyword", "Spring"), 200);
+        assertThat(valuesAt(keywordTopics, "/data/items", "slug")).contains("spring-topic").doesNotContain("draft-topic");
+        performJson(get("/api/v1/content/admin/topics")
+                .header("Authorization", bearer("helper-token"))
+                .param("sort", "createdAt_desc"), 200);
         performJson(get("/api/v1/content/admin/topics/" + store.topicIdBySlug("spring-topic")).header("Authorization", bearer("helper-token")), 200);
         performJson(get("/api/v1/content/admin/topics/missing").header("Authorization", bearer("helper-token")), 404, 43402);
 
@@ -509,6 +534,14 @@ class ContentApiContractTest {
         performJson(patch("/api/v1/content/admin/topics/" + draftTopic.at("/data/topicId").asText() + "/delete").header("Authorization", bearer("admin-token")), mapOf("reason", "delete"), 200);
 
         performJson(get("/api/v1/content/admin/seo").header("Authorization", bearer("helper-token")), 200);
+        JsonNode routeSeo = performJson(get("/api/v1/content/admin/seo")
+                .header("Authorization", bearer("helper-token"))
+                .param("route", "/news"), 200);
+        assertThat(valuesAt(routeSeo, "/data/items", "route")).containsExactly("/news");
+        JsonNode keywordSeo = performJson(get("/api/v1/content/admin/seo")
+                .header("Authorization", bearer("helper-token"))
+                .param("keyword", "News"), 200);
+        assertThat(valuesAt(keywordSeo, "/data/items", "route")).contains("/news");
         JsonNode seo = performJson(put("/api/v1/content/admin/seo/by-route").header("Authorization", bearer("admin-token")), seoBody("/topic", "seo-idem-1"), 200);
         assertThat(seo.at("/data/route").asText()).isEqualTo("/topic");
         performJson(put("/api/v1/content/admin/seo/by-route").header("Authorization", bearer("admin-token")), seoBody("/topic", "seo-idem-1"), 200);
