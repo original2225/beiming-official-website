@@ -54,17 +54,18 @@ class OnboardingApiContractTest {
         addRange(mapped, "ONB-NEXT", 1, 22);
         addRange(mapped, "ONB-ADMIN-LIST", 1, 24);
         addRange(mapped, "ONB-ADMIN-DETAIL", 1, 18);
+        addRange(mapped, "ONB-HANDOFF", 1, 22);
         addRange(mapped, "ONB-ADMIN-RESET", 1, 32);
         addRange(mapped, "ONB-ADMIN-BLOCK", 1, 26);
         addRange(mapped, "ONB-ADMIN-UNBLOCK", 1, 26);
         addRange(mapped, "ONB-AUDIT", 1, 26);
-        addRange(mapped, "ONB-OPS", 1, 18);
+        addRange(mapped, "ONB-OPS", 1, 20);
         addRange(mapped, "ONB-DEPS", 1, 40);
         addRange(mapped, "ONB-COMPAT", 1, 34);
         addRange(mapped, "ONB-HARDEN", 1, 30);
         addRange(mapped, "ONB-CYCLE", 1, 18);
-        assertThat(mapped).contains("ONB-COM-001", "ONB-ADVANCE-040", "ONB-OPS-018", "ONB-CYCLE-018");
-        assertThat(mapped).hasSize(548);
+        assertThat(mapped).contains("ONB-COM-001", "ONB-HANDOFF-022", "ONB-OPS-020", "ONB-CYCLE-018");
+        assertThat(mapped).hasSize(572);
     }
 
     @Test
@@ -329,6 +330,62 @@ class OnboardingApiContractTest {
         performJson(get("/api/v1/onboarding/admin/ops/summary").header("Authorization", bearer("helper-token")), 403, 42001);
         performJson(get("/api/v1/onboarding/admin/ops/summary").header("Authorization", bearer("admin-token")).header("X-Test-Fail-Store", "true"), 500, 51800);
         assertNoSecrets(ops);
+    }
+
+    @Test
+    @DisplayName("ONB-HANDOFF exposes a read-only exam handoff snapshot without creating downstream state")
+    void examHandoffContract() throws Exception {
+        JsonNode beforeOps = performJson(get("/api/v1/onboarding/admin/ops/summary").header("Authorization", bearer("admin-token")), 200);
+        JsonNode beforeAudit = performJson(get("/api/v1/onboarding/admin/audit-logs").header("Authorization", bearer("admin-token")), 200);
+
+        JsonNode handoff = performJson(get("/api/v1/onboarding/admin/applications/app-ready/exam-handoff")
+                .header("Authorization", bearer("admin-token")), 200);
+        assertThat(handoff.at("/data/applicationId").asText()).isEqualTo("app-ready");
+        assertThat(handoff.at("/data/userId").asText()).isEqualTo("seed-ready");
+        assertThat(handoff.at("/data/status").asText()).isEqualTo("READY_FOR_EXAM");
+        assertThat(handoff.at("/data/readyForExam").asBoolean()).isTrue();
+        assertThat(handoff.at("/data/handoffAllowed").asBoolean()).isTrue();
+        assertThat(handoff.at("/data/targetModule").asText()).isEqualTo("EXAM");
+        assertThat(handoff.at("/data/targetModuleStatus").asText()).isEqualTo("NOT_IMPLEMENTED");
+        assertThat(handoff.at("/data/handoffVersion").asInt()).isEqualTo(1);
+        assertThat(handoff.at("/data/reviewDirection").asText()).isEqualTo("REDSTONE");
+        assertThat(handoff.at("/data/minecraftBindingSnapshot/minecraftId").asText()).isEqualTo("ReadySteve");
+        assertThat(handoff.at("/data/profileConfirmation/confirmed").asBoolean()).isTrue();
+        assertThat(handoff.at("/data/ruleConfirmation/ruleVersion").asText()).isEqualTo("2026-05-22");
+        assertNoSecrets(handoff);
+
+        JsonNode afterOps = performJson(get("/api/v1/onboarding/admin/ops/summary").header("Authorization", bearer("admin-token")), 200);
+        JsonNode afterAudit = performJson(get("/api/v1/onboarding/admin/audit-logs").header("Authorization", bearer("admin-token")), 200);
+        assertThat(afterOps.at("/data/handoffSnapshotsTotal").asInt()).isEqualTo(beforeOps.at("/data/handoffSnapshotsTotal").asInt() + 1);
+        assertThat(afterOps.at("/data/stateMachineMode").asText()).isEqualTo("EXPLICIT_P0");
+        assertThat(afterAudit.at("/data/total").asInt()).isEqualTo(beforeAudit.at("/data/total").asInt());
+
+        JsonNode detail = performJson(get("/api/v1/onboarding/admin/applications/app-ready")
+                .header("Authorization", bearer("admin-token")), 200);
+        assertThat(detail.at("/data/status").asText()).isEqualTo("READY_FOR_EXAM");
+        assertThat(detail.toString()).doesNotContain("examId", "whitelistApplicationId", "attendanceScore");
+
+        performJson(get("/api/v1/onboarding/admin/applications/app-ready/exam-handoff")
+                .header("Authorization", bearer("owner-token")), 200);
+        performJson(get("/api/v1/onboarding/admin/applications/app-ready/exam-handoff")
+                .header("Authorization", bearer("helper-token")), 403, 42001);
+        performJson(get("/api/v1/onboarding/admin/applications/app-ready/exam-handoff")
+                .header("Authorization", bearer("user-token")), 403, 42001);
+        performJson(get("/api/v1/onboarding/admin/applications/app-ready/exam-handoff"), 401, 41000);
+        performJson(get("/api/v1/onboarding/admin/applications/missing/exam-handoff")
+                .header("Authorization", bearer("admin-token")), 404, 43800);
+        performJson(get("/api/v1/onboarding/admin/applications/app-in-progress/exam-handoff")
+                .header("Authorization", bearer("admin-token")), 409, 43811);
+        performJson(get("/api/v1/onboarding/admin/applications/app-blocked/exam-handoff")
+                .header("Authorization", bearer("admin-token")), 409, 43816);
+        performJson(get("/api/v1/onboarding/admin/applications/app-ready/exam-handoff")
+                .header("Authorization", bearer("auth-unavailable-token")), 502, 46800);
+        performJson(get("/api/v1/onboarding/admin/applications/app-ready/exam-handoff")
+                .header("Authorization", bearer("admin-token"))
+                .header("X-Test-Dependency-Mode", "CONTENT:UNAVAILABLE"), 502, 46820);
+        performJson(get("/api/v1/onboarding/admin/applications/app-ready/exam-handoff")
+                .header("Authorization", bearer("admin-token"))
+                .header("X-Test-Dependency-Mode", "PROFILE:UNAVAILABLE"), 502, 46810);
     }
 
     @Test
