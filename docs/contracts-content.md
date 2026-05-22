@@ -1,6 +1,6 @@
 # 北冥官网 content API 契约
 
-版本：0.1
+版本：0.2
 
 ## 文档定位
 
@@ -728,15 +728,346 @@ auth 上下文不可用返回 `46420`，auth 调用超时返回 `46421`，auth �
 
 成功响应 HTTP `200`，返回回滚后的已发布配置。目标版本不存在返回 `43404`。回滚必须写审计。
 
-## 分类、标签、专题和 SEO 后台接口
+## 后台分类接口
 
-分类和标签创建支持 `idempotencyKey`。同一操作者、同一幂等键、同一请求体重复提交时返回同一结果；幂等键搭配不同请求体返回 `43002`。分类名称、分类 slug、标签名称和标签 slug 在未归档数据内唯一，冲突返回 `43001` 或 `43411`。仍被未归档内容引用的分类或标签不能归档，返回 `43415`。重复归档保持幂等，不重复写审计。
+### 后台分类列表
 
-专题创建字段包括 `slug`、`title`、`summary`、`coverUrl`、`visibility`、`contentIds`、`seo`、`reason` 和 `idempotencyKey`。专题默认 `DRAFT`。`DRAFT`、`OFFLINE` 可发布为 `APPROVED` 并写入 `publishedAt`。已发布专题下架后为 `OFFLINE`。`DRAFT`、`OFFLINE` 可归档。已发布专题必须先下架再归档或软删除。专题公开接口只展示公开可见内容引用。
+`GET /api/v1/content/admin/categories`
 
-SEO 列表支持分页、`route`、`keyword` 和 `sort=updatedAt_desc|route_asc`。`PUT /api/v1/content/admin/seo/by-route` 按路由创建或覆盖 SEO 配置，请求字段为 `route`、`title`、`description`、`keywords`、`coverUrl`、`robots`、`canonicalUrl`、`reason` 和 `idempotencyKey`。同一路由只能有一条启用配置。禁用 SEO 后公开 SEO 接口返回默认 SEO。
+查询参数：
 
-所有后台写操作必须写审计。审计失败返回 `51401`，业务数据不得变化。
+| 字段 | 类型 | 必填 | 规则 |
+| --- | --- | --- | --- |
+| `includeArchived` | boolean | 否 | 默认 `true`，后台可查看归档分类。 |
+
+成功响应 HTTP `200`，`data.items` 为 `ContentCategory[]`，按 `sortOrder`、`name` 稳定排序。
+
+权限规则：`HELPER`、`ADMIN` 和 `OWNER` 可访问。`USER` 返回 `42001`。未登录返回 `41000`。
+
+业务规则：后台分类列表可以返回归档分类，但不得返回审计原因、幂等键或内部错误摘要。
+
+### 创建分类
+
+`POST /api/v1/content/admin/categories`
+
+请求字段：
+
+| 字段 | 类型 | 必填 | 规则 |
+| --- | --- | --- | --- |
+| `name` | string | 是 | 2 到 40 位，同一未归档分类中唯一。 |
+| `slug` | string | 是 | 3 到 80 位，只允许小写字母、数字和短横线，同一未归档分类中唯一。 |
+| `description` | string 或 null | 否 | 最多 200 位。 |
+| `sortOrder` | integer | 否 | 默认 `100`。 |
+| `reason` | string | 是 | 1 到 200 位，创建原因。 |
+| `idempotencyKey` | string | 否 | 创建重试幂等键，24 小时内有效。 |
+
+成功响应 HTTP `201`，`data` 为 `ContentCategory`。
+
+业务规则：分类名称或 slug 与未归档分类冲突时返回 `43001` 或 `43411`，实现必须在同一版本内固定冲突码。归档分类的名称或 slug 是否允许复用由实现决定，但必须写入测试，且不得恢复为两个未归档同名分类。
+
+幂等规则：同一操作者、同一 `idempotencyKey`、同一请求体重复提交时返回同一分类。相同幂等键搭配不同请求体返回 `43002`。
+
+审计要求：成功写入 `CONTENT_CATEGORY_CREATED`。审计失败返回 `51401`，不得创建分类。
+
+### 修改分类
+
+`PATCH /api/v1/content/admin/categories/{categoryId}`
+
+请求字段：
+
+| 字段 | 类型 | 必填 | 规则 |
+| --- | --- | --- | --- |
+| `name` | string | 否 | 2 到 40 位。 |
+| `slug` | string | 否 | 3 到 80 位，只允许小写字母、数字和短横线。 |
+| `description` | string 或 null | 否 | 最多 200 位。 |
+| `sortOrder` | integer | 否 | 展示排序。 |
+| `reason` | string | 是 | 1 到 200 位，修改原因。 |
+
+成功响应 HTTP `200`，`data` 为更新后的 `ContentCategory`。
+
+业务规则：分类不存在返回 `43401`。名称或 slug 冲突返回 `43001` 或 `43411`。已归档分类允许修改展示说明和排序，但不得通过修改接口取消归档。
+
+审计要求：成功写入 `CONTENT_CATEGORY_UPDATED`，记录变更前后摘要和原因。审计失败时不得改变分类。
+
+### 归档分类
+
+`PATCH /api/v1/content/admin/categories/{categoryId}/archive`
+
+请求字段：
+
+| 字段 | 类型 | 必填 | 规则 |
+| --- | --- | --- | --- |
+| `reason` | string | 是 | 1 到 200 位，归档原因。 |
+
+成功响应 HTTP `200`，`data` 为归档后的 `ContentCategory`。
+
+业务规则：分类不存在返回 `43401`。仍被未归档、未软删除内容引用时返回 `43415`。重复归档已归档分类返回成功，保持幂等，不重复写审计。归档后公开分类列表不得返回该分类。
+
+审计要求：首次归档写入 `CONTENT_CATEGORY_ARCHIVED`。
+
+## 后台标签接口
+
+### 后台标签列表
+
+`GET /api/v1/content/admin/tags`
+
+查询参数：
+
+| 字段 | 类型 | 必填 | 规则 |
+| --- | --- | --- | --- |
+| `includeArchived` | boolean | 否 | 默认 `true`，后台可查看归档标签。 |
+
+成功响应 HTTP `200`，`data.items` 为 `ContentTag[]`，按 `name` 稳定排序。
+
+权限规则：`HELPER`、`ADMIN` 和 `OWNER` 可访问。`USER` 返回 `42001`。未登录返回 `41000`。
+
+### 创建标签
+
+`POST /api/v1/content/admin/tags`
+
+请求字段：
+
+| 字段 | 类型 | 必填 | 规则 |
+| --- | --- | --- | --- |
+| `name` | string | 是 | 1 到 24 位，同一未归档标签中唯一。 |
+| `slug` | string | 是 | 2 到 80 位，只允许小写字母、数字和短横线，同一未归档标签中唯一。 |
+| `reason` | string | 是 | 1 到 200 位，创建原因。 |
+| `idempotencyKey` | string | 否 | 创建重试幂等键，24 小时内有效。 |
+
+成功响应 HTTP `201`，`data` 为 `ContentTag`。
+
+业务规则：标签名称或 slug 冲突返回 `43001` 或 `43411`，实现必须在测试中固定返回码。字段非法返回 `40001`。
+
+幂等规则：同一操作者、同一 `idempotencyKey`、同一请求体重复提交时返回同一标签。相同幂等键搭配不同请求体返回 `43002`。
+
+审计要求：成功写入 `CONTENT_TAG_CREATED`。审计失败返回 `51401`，不得创建标签。
+
+### 修改标签
+
+`PATCH /api/v1/content/admin/tags/{tagId}`
+
+请求字段：
+
+| 字段 | 类型 | 必填 | 规则 |
+| --- | --- | --- | --- |
+| `name` | string | 否 | 1 到 24 位。 |
+| `slug` | string | 否 | 2 到 80 位，只允许小写字母、数字和短横线。 |
+| `reason` | string | 是 | 1 到 200 位，修改原因。 |
+
+成功响应 HTTP `200`，`data` 为更新后的 `ContentTag`。
+
+业务规则：标签不存在返回 `43405`。名称或 slug 冲突返回 `43001` 或 `43411`。已归档标签不得通过修改接口取消归档。
+
+审计要求：成功写入 `CONTENT_TAG_UPDATED`，记录变更前后摘要和原因。审计失败时不得改变标签。
+
+### 归档标签
+
+`PATCH /api/v1/content/admin/tags/{tagId}/archive`
+
+请求字段：
+
+| 字段 | 类型 | 必填 | 规则 |
+| --- | --- | --- | --- |
+| `reason` | string | 是 | 1 到 200 位，归档原因。 |
+
+成功响应 HTTP `200`，`data` 为归档后的 `ContentTag`。
+
+业务规则：标签不存在返回 `43405`。仍被未归档、未软删除内容引用时返回 `43415`。重复归档已归档标签返回成功，保持幂等，不重复写审计。归档后公开标签列表不得返回该标签。
+
+审计要求：首次归档写入 `CONTENT_TAG_ARCHIVED`。
+
+## 后台专题接口
+
+### 后台专题列表
+
+`GET /api/v1/content/admin/topics`
+
+查询参数：
+
+| 字段 | 类型 | 必填 | 规则 |
+| --- | --- | --- | --- |
+| `page` | integer | 否 | 默认 `1`。 |
+| `pageSize` | integer | 否 | 默认 `20`，最大 `100`。 |
+| `status` | string | 否 | 任一 `ContentStatus`。 |
+| `visibility` | string | 否 | 任一 `ContentVisibility`。 |
+| `keyword` | string | 否 | 匹配标题、摘要或 slug，最多 80 位。 |
+| `sort` | string | 否 | 允许 `createdAt_desc`、`updatedAt_desc`、`publishedAt_desc`、`title_asc`。 |
+
+成功响应 HTTP `200`，分页 `items` 为 `TopicPage[]`。
+
+权限规则：`HELPER`、`ADMIN` 和 `OWNER` 可访问。`USER` 返回 `42001`。未登录返回 `41000`。
+
+### 后台专题详情
+
+`GET /api/v1/content/admin/topics/{topicId}`
+
+成功响应 HTTP `200`，`data` 为 `TopicPage`，允许包含后台引用校验摘要。
+
+业务规则：专题不存在返回 `43402`。后台详情不得返回幂等键或审计参数摘要。
+
+### 创建专题
+
+`POST /api/v1/content/admin/topics`
+
+请求字段：
+
+| 字段 | 类型 | 必填 | 规则 |
+| --- | --- | --- | --- |
+| `slug` | string | 是 | 3 到 120 位，只允许小写字母、数字、短横线和斜杠，不能以斜杠结尾。 |
+| `title` | string | 是 | 2 到 120 位。 |
+| `summary` | string 或 null | 否 | 最多 300 位。 |
+| `coverUrl` | string 或 null | 否 | http、https 或站内资源路径，最多 500 位。 |
+| `visibility` | string | 否 | 默认 `PUBLIC`。 |
+| `contentIds` | string[] | 否 | 专题引用内容 ID，最多 50 个。 |
+| `seo` | object 或 null | 否 | 专题 SEO。 |
+| `reason` | string | 是 | 1 到 200 位，创建原因。 |
+| `idempotencyKey` | string | 否 | 创建重试幂等键，24 小时内有效。 |
+
+成功响应 HTTP `201`，`data` 为 `TopicPage`，状态默认为 `DRAFT`。
+
+业务规则：slug 在未软删除专题中唯一，冲突返回 `43411`。`contentIds` 引用不存在内容时，P0 允许保存草稿并在后台详情和预览中记录引用问题；发布时必须只展示可公开引用，公开接口不得泄露引用失败原因。字段非法返回 `40001`。
+
+幂等规则：同一操作者、同一 `idempotencyKey`、同一请求体重复提交时返回同一专题。相同幂等键搭配不同请求体返回 `43002`。
+
+审计要求：成功写入 `CONTENT_TOPIC_CREATED`。审计失败返回 `51401`，不得创建专题。
+
+### 修改专题
+
+`PATCH /api/v1/content/admin/topics/{topicId}`
+
+请求字段同创建专题，除 `reason` 必填外其余字段按需修改。
+
+成功响应 HTTP `200`，`data` 为更新后的 `TopicPage`。
+
+业务规则：专题不存在返回 `43402`。`ARCHIVED` 和 `DELETED` 专题不允许修改，返回 `43414`。slug 冲突返回 `43411`。已发布专题修改后必须保证公开接口不返回半更新状态；P0 可以采用单版本模型，但必须写审计。
+
+审计要求：成功写入 `CONTENT_TOPIC_UPDATED`，记录变更前后摘要和原因。审计失败时不得改变专题。
+
+### 发布专题
+
+`PATCH /api/v1/content/admin/topics/{topicId}/publish`
+
+请求字段：
+
+| 字段 | 类型 | 必填 | 规则 |
+| --- | --- | --- | --- |
+| `reason` | string | 是 | 1 到 200 位，发布原因。 |
+
+成功响应 HTTP `200`，`data` 为更新后的 `TopicPage`。
+
+状态流转：`DRAFT` 和 `OFFLINE` 可发布为 `APPROVED`，并写入或更新 `publishedAt`。重复发布已 `APPROVED` 专题返回成功，保持幂等，不重复写审计。`ARCHIVED` 和 `DELETED` 返回 `43414`。
+
+审计要求：首次发布写入 `CONTENT_TOPIC_PUBLISHED`。
+
+### 下架专题
+
+`PATCH /api/v1/content/admin/topics/{topicId}/offline`
+
+请求字段：
+
+| 字段 | 类型 | 必填 | 规则 |
+| --- | --- | --- | --- |
+| `reason` | string | 是 | 1 到 200 位，下架原因。 |
+
+成功响应 HTTP `200`，`data` 为更新后的 `TopicPage`。
+
+状态流转：`APPROVED` 可流转为 `OFFLINE`，并从公开专题接口消失。重复下架 `OFFLINE` 专题返回成功，保持幂等，不重复写审计。`DRAFT`、`ARCHIVED` 和 `DELETED` 返回 `43414`。
+
+审计要求：首次下架写入 `CONTENT_TOPIC_OFFLINED`。
+
+### 归档专题
+
+`PATCH /api/v1/content/admin/topics/{topicId}/archive`
+
+请求字段同下架专题。
+
+成功响应 HTTP `200`，`data` 为更新后的 `TopicPage`。
+
+状态流转：`DRAFT` 和 `OFFLINE` 可流转为 `ARCHIVED`。已公开 `APPROVED` 专题必须先下架再归档，直接归档返回 `43414`。重复归档返回成功，保持幂等，不重复写审计。
+
+审计要求：首次归档写入 `CONTENT_TOPIC_ARCHIVED`。
+
+### 软删除专题
+
+`PATCH /api/v1/content/admin/topics/{topicId}/delete`
+
+请求字段同下架专题。
+
+成功响应 HTTP `200`，`data` 为更新后的 `TopicPage`。
+
+业务规则：只做软删除，状态为 `DELETED`。已公开 `APPROVED` 专题必须先下架再软删除，直接删除返回 `43414`。重复软删除返回成功，保持幂等，不重复写审计。真实删除不在 P0 content API 中提供。
+
+审计要求：首次软删除写入 `CONTENT_TOPIC_DELETED`。
+
+## 后台 SEO 接口
+
+### 后台 SEO 列表
+
+`GET /api/v1/content/admin/seo`
+
+查询参数：
+
+| 字段 | 类型 | 必填 | 规则 |
+| --- | --- | --- | --- |
+| `page` | integer | 否 | 默认 `1`。 |
+| `pageSize` | integer | 否 | 默认 `20`，最大 `100`。 |
+| `route` | string | 否 | 精确匹配站内路由。 |
+| `keyword` | string | 否 | 匹配标题、描述或关键词，最多 80 位。 |
+| `sort` | string | 否 | 允许 `updatedAt_desc`、`route_asc`。 |
+
+成功响应 HTTP `200`，分页 `items` 为 `SeoPayload[]`。
+
+权限规则：`HELPER`、`ADMIN` 和 `OWNER` 可访问。`USER` 返回 `42001`。未登录返回 `41000`。
+
+### 后台 SEO 详情
+
+`GET /api/v1/content/admin/seo/{seoId}`
+
+成功响应 HTTP `200`，`data` 为 `SeoPayload`。
+
+业务规则：SEO 配置不存在返回 `43403`。后台详情不得返回审计参数摘要或幂等键。
+
+### 保存路由 SEO
+
+`PUT /api/v1/content/admin/seo/by-route`
+
+请求字段：
+
+| 字段 | 类型 | 必填 | 规则 |
+| --- | --- | --- | --- |
+| `route` | string | 是 | 站内路由，以 `/` 开头，最多 200 位。 |
+| `title` | string | 是 | SEO 标题，2 到 80 位。 |
+| `description` | string | 是 | SEO 描述，1 到 200 位。 |
+| `keywords` | string[] | 否 | 最多 20 个关键词，每个最多 40 位。 |
+| `coverUrl` | string 或 null | 否 | 分享封面，http、https 或站内资源路径。 |
+| `robots` | string | 是 | 任一 `SeoRobots`。 |
+| `canonicalUrl` | string 或 null | 否 | canonical URL，最多 500 位。 |
+| `reason` | string | 是 | 1 到 200 位，保存原因。 |
+| `idempotencyKey` | string | 否 | 保存重试幂等键，24 小时内有效。 |
+
+成功响应 HTTP `200`，`data` 为启用后的 `SeoPayload`。
+
+业务规则：同一路由只能有一条启用 SEO 配置。路由不存在时创建；路由已存在时覆盖启用配置并更新 `updatedAt`。route 非法、robots 非法、URL 非法或关键词超限返回 `40001`。保存后公开 SEO 接口命中该配置。
+
+幂等规则：同一操作者、同一 `idempotencyKey`、同一请求体重复提交时返回同一 SEO 配置。相同幂等键搭配不同请求体返回 `43002`。
+
+审计要求：创建时写入 `CONTENT_SEO_CREATED`，覆盖时写入 `CONTENT_SEO_UPDATED`。审计失败返回 `51401`，不得改变 SEO 配置。
+
+### 禁用路由 SEO
+
+`PATCH /api/v1/content/admin/seo/{seoId}/disable`
+
+请求字段：
+
+| 字段 | 类型 | 必填 | 规则 |
+| --- | --- | --- | --- |
+| `reason` | string | 是 | 1 到 200 位，禁用原因。 |
+
+成功响应 HTTP `200`，`data` 为禁用后的 `SeoPayload`。
+
+业务规则：SEO 配置不存在返回 `43403`。重复禁用已禁用配置返回成功，保持幂等，不重复写审计。禁用后公开 SEO 接口返回模块默认 SEO，`seoId` 为 `null`。
+
+审计要求：首次禁用写入 `CONTENT_SEO_DISABLED`。
 
 ## content 自检摘要
 
