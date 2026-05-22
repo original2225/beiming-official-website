@@ -333,6 +333,7 @@ class ResourceStore {
     private final Map<String, List<Map<String, Object>>> versions = new ConcurrentHashMap<>();
     private final Map<String, Map<String, Object>> idem = new ConcurrentHashMap<>();
     private final List<Map<String, Object>> audits = new ArrayList<>();
+    private final List<Map<String, Object>> downloadRecords = new ArrayList<>();
     private int idSeq = 1000;
 
     void seed() {
@@ -384,7 +385,7 @@ class ResourceStore {
         future.put("visibleFrom", "2099-01-01T00:00:00Z");
         Map<String, Object> expired = addSeedResource("res-visible-expired", "visible-expired-pack", "CLIENT_PACK", "PUBLIC", "PUBLISHED", "cat-client", List.of("p0"));
         expired.put("visibleUntil", "2020-01-01T00:00:00Z");
-        audit("res-public-client", "RESOURCE_PUBLISHED", "SUCCESS");
+        audit(null, "res-public-client", "RESOURCE_PUBLISHED", "SUCCESS", null, resource("res-public-client"), "seed");
     }
 
     private void seedDownloadCase(String id, String slug, String versionId, String entryStatus, String cloudMode) {
@@ -401,9 +402,9 @@ class ResourceStore {
                 .filter(this::isPublicVisible)
                 .filter(item -> matches(query, item))
                 .map(this::publicSummary)
-                .sorted(Comparator.comparing(map -> map.get("title").toString()))
+                .sorted(resourceComparator(query.getOrDefault("sort", "publishedAt_desc")))
                 .toList();
-        return pageResult(items);
+        return pageResult(query, items);
     }
 
     Map<String, Object> publicResource(String id) {
@@ -518,7 +519,8 @@ class ResourceStore {
         ticket.put("degradeReasons", degraded ? List.of("CLOUDREVE_UNAVAILABLE_STALE_SNAPSHOT") : List.of());
         ticket.put("maskedPasswordRequired", Boolean.TRUE.equals(entry.get("passwordRequired")));
         ticket.put("createdAt", now());
-        audit(resourceId, "RESOURCE_DOWNLOADED", degraded ? "DEGRADED" : "SUCCESS");
+        recordDownload(user, ticket, str(body.get("clientLabel")), degraded ? "DEGRADED" : "SUCCESS");
+        audit(user, resourceId, "RESOURCE_DOWNLOADED", degraded ? "DEGRADED" : "SUCCESS", null, ticket, "download");
         if (key != null) {
             idempotent("download:" + key, body, ticket);
         }
@@ -531,8 +533,9 @@ class ResourceStore {
         List<Map<String, Object>> items = resources.values().stream()
                 .filter(item -> query.entrySet().stream().allMatch(entry -> matchesAdmin(entry.getKey(), entry.getValue(), item)))
                 .map(this::adminItemMap)
+                .sorted(resourceComparator(query.getOrDefault("sort", "updatedAt_desc")))
                 .toList();
-        return pageResult(items);
+        return pageResult(query, items);
     }
 
     Map<String, Object> adminItem(String resourceId) {
@@ -564,7 +567,7 @@ class ResourceStore {
         item.put("createdBy", actor.id());
         item.put("updatedBy", actor.id());
         resources.put(id, item);
-        audit(id, "RESOURCE_CREATED", "SUCCESS");
+        audit(actor, id, "RESOURCE_CREATED", "SUCCESS", null, item, str(body.get("reason")));
         Map<String, Object> result = adminItemMap(item);
         if (key != null) {
             idempotent("item:" + actor.id() + ":" + key, body, result);
@@ -589,10 +592,11 @@ class ResourceStore {
             throw new ApiException(404, 43601, "category not found");
         }
         validateResourceBody(body, false);
+        Map<String, Object> before = snapshot(item);
         copyResourceFields(body, item);
         item.put("updatedBy", actor.id());
         item.put("updatedAt", now());
-        audit(resourceId, "RESOURCE_UPDATED", "SUCCESS");
+        audit(actor, resourceId, "RESOURCE_UPDATED", "SUCCESS", before, item, str(body.get("reason")));
         return adminItemMap(item);
     }
 
@@ -634,6 +638,7 @@ class ResourceStore {
         if (next == null) {
             throw new ApiException(409, 43610, "resource state conflict");
         }
+        Map<String, Object> before = snapshot(item);
         item.put("status", next);
         item.put("updatedBy", actor.id());
         item.put("updatedAt", now());
@@ -643,7 +648,7 @@ class ResourceStore {
         if ("failed".equals(request.getHeader("X-Test-Notification-Mode"))) {
             item.put("notificationStatus", "FAILED");
         }
-        audit(resourceId, "RESOURCE_" + action.toUpperCase().replace("-", "_"), "SUCCESS");
+        audit(actor, resourceId, "RESOURCE_" + action.toUpperCase().replace("-", "_"), "SUCCESS", before, item, str(body.get("reason")));
         return adminItemMap(item);
     }
 
@@ -675,7 +680,7 @@ class ResourceStore {
         version.put("createdBy", actor.id());
         version.put("updatedBy", actor.id());
         addVersion(resourceId, version);
-        audit(resourceId, "RESOURCE_VERSION_CREATED", "SUCCESS");
+        audit(actor, resourceId, "RESOURCE_VERSION_CREATED", "SUCCESS", null, version, str(body.get("reason")));
         Map<String, Object> result = adminVersion(version);
         if (key != null) idempotent("version:" + resourceId + ":" + key, body, result);
         return result;
@@ -695,10 +700,11 @@ class ResourceStore {
             }
         }
         validateVersionBody(body, false);
+        Map<String, Object> before = snapshot(version);
         copyVersionFields(body, version);
         version.put("updatedBy", actor.id());
         version.put("updatedAt", now());
-        audit(resourceId, "RESOURCE_VERSION_UPDATED", "SUCCESS");
+        audit(actor, resourceId, "RESOURCE_VERSION_UPDATED", "SUCCESS", before, version, str(body.get("reason")));
         return adminVersion(version);
     }
 
@@ -706,6 +712,7 @@ class ResourceStore {
         validateReason(body);
         failAudit(request);
         Map<String, Object> version = version(resourceId, versionId);
+        Map<String, Object> before = snapshot(version);
         if (enable) {
             if (version.get("downloadEntry") == null) throw new ApiException(404, 43603, "download entry not found");
             if (!"ACTIVE".equals(entry(version).get("status"))) throw new ApiException(409, 43613, "entry unavailable");
@@ -715,7 +722,7 @@ class ResourceStore {
         }
         version.put("updatedBy", actor.id());
         version.put("updatedAt", now());
-        audit(resourceId, enable ? "RESOURCE_VERSION_ENABLED" : "RESOURCE_VERSION_DISABLED", "SUCCESS");
+        audit(actor, resourceId, enable ? "RESOURCE_VERSION_ENABLED" : "RESOURCE_VERSION_DISABLED", "SUCCESS", before, version, str(body.get("reason")));
         return adminVersion(version);
     }
 
@@ -749,7 +756,7 @@ class ResourceStore {
         category.put("description", body.get("description"));
         category.put("icon", body.get("icon"));
         category.put("sortOrder", intValue(body.getOrDefault("sortOrder", 100), 100));
-        audit(id, "RESOURCE_CATEGORY_CREATED", "SUCCESS");
+        audit(actor, id, "RESOURCE_CATEGORY_CREATED", "SUCCESS", null, category, str(body.get("reason")));
         Map<String, Object> result = categoryPublic(category);
         if (key != null) idempotent("category:" + key, body, result);
         return result;
@@ -760,6 +767,7 @@ class ResourceStore {
         failAudit(request);
         Map<String, Object> category = category(categoryId);
         validateCategoryBody(body, false);
+        Map<String, Object> before = snapshot(category);
         if (body.containsKey("slug")) {
             String slug = str(body.get("slug"));
             if (categories.values().stream().anyMatch(cat -> !categoryId.equals(cat.get("categoryId")) && slug.equals(cat.get("slug")) && !Boolean.TRUE.equals(cat.get("archived")))) {
@@ -773,7 +781,7 @@ class ResourceStore {
         if (body.containsKey("sortOrder")) category.put("sortOrder", intValue(body.get("sortOrder"), 100));
         if (body.containsKey("enabled")) category.put("enabled", bool(body.get("enabled")));
         category.put("updatedAt", now());
-        audit(categoryId, "RESOURCE_CATEGORY_UPDATED", "SUCCESS");
+        audit(actor, categoryId, "RESOURCE_CATEGORY_UPDATED", "SUCCESS", before, category, str(body.get("reason")));
         return categoryPublic(category);
     }
 
@@ -783,9 +791,10 @@ class ResourceStore {
         Map<String, Object> category = category(categoryId);
         boolean used = resources.values().stream().anyMatch(item -> categoryId.equals(item.get("categoryId")) && !Set.of("ARCHIVED", "DELETED").contains(item.get("status")));
         if (used) throw new ApiException(409, 43615, "category in use");
+        Map<String, Object> before = snapshot(category);
         category.put("archived", true);
         category.put("archivedAt", now());
-        audit(categoryId, "RESOURCE_CATEGORY_ARCHIVED", "SUCCESS");
+        audit(actor, categoryId, "RESOURCE_CATEGORY_ARCHIVED", "SUCCESS", before, category, str(body.get("reason")));
         return categoryPublic(category);
     }
 
@@ -797,8 +806,9 @@ class ResourceStore {
         List<Map<String, Object>> items = audits.stream()
                 .filter(audit -> resourceId.equals(audit.get("targetId")))
                 .filter(audit -> !query.containsKey("action") || query.get("action").equals(audit.get("action")))
+                .sorted(auditComparator(query.getOrDefault("sort", "createdAt_desc")))
                 .toList();
-        return pageResult(items);
+        return pageResult(query, items);
     }
 
     Map<String, Object> opsSummary() {
@@ -814,11 +824,13 @@ class ResourceStore {
                 "versionsTotal", versions.values().stream().mapToInt(List::size).sum(),
                 "categoriesTotal", categories.size(),
                 "downloadEntriesTotal", versions.values().stream().flatMap(List::stream).filter(v -> v.get("downloadEntry") != null).count(),
-                "downloadRecordsTotal", audits.stream().filter(a -> "RESOURCE_DOWNLOADED".equals(a.get("action"))).count(),
+                "downloadRecordsTotal", downloadRecords.size(),
                 "auditsTotal", audits.size(),
+                "idempotencyRecordsTotal", idem.size(),
                 "lastAuditAt", audits.isEmpty() ? null : audits.get(audits.size() - 1).get("createdAt"),
-                "lastDownloadAt", null,
-                "warnings", List.of("P0_IN_MEMORY_STORAGE", "P0_AUTH_STUB"));
+                "lastDownloadAt", downloadRecords.isEmpty() ? null : downloadRecords.get(downloadRecords.size() - 1).get("createdAt"),
+                "warnings", List.of("P0_IN_MEMORY_STORAGE", "P0_AUTH_STUB"),
+                "productionGaps", List.of("PERSISTENCE_NOT_ENABLED", "AUTH_ADAPTER_STUB", "PROFILE_ADAPTER_STUB", "NOTIFICATION_ADAPTER_STUB", "CLOUDREVE_API_NOT_ENABLED"));
     }
 
     private boolean matches(Map<String, String> query, Map<String, Object> item) {
@@ -923,14 +935,43 @@ class ResourceStore {
         return result;
     }
 
-    private Map<String, Object> pageResult(List<Map<String, Object>> items) {
-        return mapOf("items", items, "page", 1, "pageSize", 20, "total", items.size());
+    private Map<String, Object> pageResult(Map<String, String> query, List<Map<String, Object>> items) {
+        int page = intParam(query.getOrDefault("page", "1"), "page");
+        int pageSize = intParam(query.getOrDefault("pageSize", "20"), "pageSize");
+        int from = Math.min((page - 1) * pageSize, items.size());
+        int to = Math.min(from + pageSize, items.size());
+        return mapOf("items", items.subList(from, to), "page", page, "pageSize", pageSize, "total", items.size());
     }
 
     private void page(Map<String, String> query) {
-        int page = Integer.parseInt(query.getOrDefault("page", "1"));
-        int pageSize = Integer.parseInt(query.getOrDefault("pageSize", "20"));
+        int page = intParam(query.getOrDefault("page", "1"), "page");
+        int pageSize = intParam(query.getOrDefault("pageSize", "20"), "pageSize");
         if (page < 1 || pageSize < 1 || pageSize > 100) throw new ApiException(400, 40002, "invalid page");
+    }
+
+    private int intParam(String value, String field) {
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException ex) {
+            throw new ApiException(400, "pageSize".equals(field) || "page".equals(field) ? 40002 : 40001, "invalid " + field);
+        }
+    }
+
+    private Comparator<Map<String, Object>> resourceComparator(String sort) {
+        Comparator<Map<String, Object>> byId = Comparator.comparing(map -> str(map.getOrDefault("resourceId", "")));
+        return switch (sort) {
+            case "title_asc" -> Comparator.comparing((Map<String, Object> map) -> str(map.getOrDefault("title", ""))).thenComparing(byId);
+            case "createdAt_desc" -> Comparator.comparing((Map<String, Object> map) -> str(map.getOrDefault("createdAt", ""))).reversed().thenComparing(byId);
+            case "updatedAt_desc", "downloadUpdatedAt_desc" -> Comparator.comparing((Map<String, Object> map) -> str(map.getOrDefault("updatedAt", ""))).reversed().thenComparing(byId);
+            case "publishedAt_desc" -> Comparator.comparing((Map<String, Object> map) -> str(map.getOrDefault("publishedAt", ""))).reversed().thenComparing(byId);
+            default -> byId;
+        };
+    }
+
+    private Comparator<Map<String, Object>> auditComparator(String sort) {
+        Comparator<Map<String, Object>> byId = Comparator.comparing(map -> str(map.getOrDefault("id", "")));
+        Comparator<Map<String, Object>> byCreatedAt = Comparator.comparing(map -> str(map.getOrDefault("createdAt", "")));
+        return "createdAt_asc".equals(sort) ? byCreatedAt.thenComparing(byId) : byCreatedAt.reversed().thenComparing(byId);
     }
 
     private void requireSort(Map<String, String> query, Set<String> allowed) {
@@ -1002,7 +1043,10 @@ class ResourceStore {
         if (create && (str(body.get("title")) == null || str(body.get("slug")) == null || str(body.get("type")) == null || str(body.get("visibility")) == null)) throw new ApiException(400, 40001, "invalid resource");
         if (body.containsKey("slug") && !str(body.get("slug")).matches("[a-z0-9/-]{3,120}")) throw new ApiException(400, 40001, "invalid slug");
         if (body.containsKey("title") && str(body.get("title")).isBlank()) throw new ApiException(400, 40001, "invalid title");
-        if (body.containsKey("visibleFrom") && body.containsKey("visibleUntil") && Instant.parse(str(body.get("visibleUntil"))).isBefore(Instant.parse(str(body.get("visibleFrom"))))) throw new ApiException(400, 40001, "invalid time");
+        if (body.containsKey("coverUrl") && !validPublicUrl(str(body.get("coverUrl")))) throw new ApiException(400, 40001, "invalid coverUrl");
+        Instant visibleFrom = body.containsKey("visibleFrom") ? parseInstant(str(body.get("visibleFrom")), "visibleFrom") : null;
+        Instant visibleUntil = body.containsKey("visibleUntil") ? parseInstant(str(body.get("visibleUntil")), "visibleUntil") : null;
+        if (visibleFrom != null && visibleUntil != null && visibleUntil.isBefore(visibleFrom)) throw new ApiException(400, 40001, "invalid time");
         if (body.containsKey("tags") && list(body.get("tags")).size() > 20) throw new ApiException(400, 40001, "too many tags");
     }
 
@@ -1013,6 +1057,9 @@ class ResourceStore {
         if (body.containsKey("downloadEntry")) {
             Map<String, Object> entry = map(body.get("downloadEntry"));
             if (str(entry.get("provider")) == null || str(entry.get("status")) == null || (entry.get("shareUrl") == null && entry.get("url") == null)) throw new ApiException(400, 40001, "invalid entry");
+            String url = str(entry.getOrDefault("shareUrl", entry.get("url")));
+            if (!validPublicUrl(url)) throw new ApiException(400, 40001, "invalid entry url");
+            parseInstant(str(entry.get("expiresAt")), "expiresAt");
         }
     }
 
@@ -1021,6 +1068,19 @@ class ResourceStore {
         if (body.containsKey("slug") && !str(body.get("slug")).matches("[a-z0-9-]{2,80}")) throw new ApiException(400, 40001, "invalid slug");
         if (body.containsKey("name") && str(body.get("name")).length() < 2) throw new ApiException(400, 40001, "invalid name");
         if (body.containsKey("icon") && str(body.get("icon")) != null && str(body.get("icon")).length() > 120) throw new ApiException(400, 40001, "invalid icon");
+    }
+
+    private Instant parseInstant(String value, String field) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            return Instant.parse(value);
+        } catch (Exception ex) {
+            throw new ApiException(400, 40001, "invalid " + field);
+        }
+    }
+
+    private boolean validPublicUrl(String value) {
+        return value == null || value.startsWith("http://") || value.startsWith("https://") || value.startsWith("/");
     }
 
     private void checkProfile(String memberId) {
@@ -1090,13 +1150,50 @@ class ResourceStore {
 
     private String stable(Object value) {
         if (value instanceof Map<?, ?> map) {
-            return new java.util.TreeMap<>(map).toString();
+            StringBuilder builder = new StringBuilder("{");
+            boolean first = true;
+            for (Object key : new java.util.TreeSet<>(map.keySet())) {
+                if (!first) builder.append(',');
+                first = false;
+                builder.append(key).append(':').append(stable(map.get(key)));
+            }
+            return builder.append('}').toString();
+        }
+        if (value instanceof List<?> list) {
+            StringBuilder builder = new StringBuilder("[");
+            for (int i = 0; i < list.size(); i++) {
+                if (i > 0) builder.append(',');
+                builder.append(stable(list.get(i)));
+            }
+            return builder.append(']').toString();
         }
         return Objects.toString(value);
     }
 
-    private void audit(String targetId, String action, String result) {
-        audits.add(mapOf("id", "audit-" + (++idSeq), "requestId", ResourceController.currentRequestId(), "actorUserId", "admin", "actorRole", "ADMIN", "actorPermissions", List.of(), "sourceIp", null, "targetType", "RESOURCE", "targetId", targetId, "action", action, "riskLevel", "MEDIUM", "reason", "contract", "paramsSummary", Map.of(), "beforeState", null, "afterState", null, "result", result, "failureReason", null, "createdAt", now()));
+    private void recordDownload(AuthUser user, Map<String, Object> ticket, String clientLabel, String result) {
+        downloadRecords.add(mapOf(
+                "ticketId", ticket.get("ticketId"),
+                "resourceId", ticket.get("resourceId"),
+                "versionId", ticket.get("versionId"),
+                "downloadEntryId", ticket.get("downloadEntryId"),
+                "actorUserId", user == null ? null : user.id(),
+                "anonymous", user == null,
+                "clientLabel", clientLabel,
+                "provider", ticket.get("provider"),
+                "result", result,
+                "degraded", ticket.get("degraded"),
+                "requestId", ResourceController.currentRequestId(),
+                "createdAt", now()));
+    }
+
+    private Map<String, Object> snapshot(Map<String, Object> value) {
+        return new LinkedHashMap<>(value);
+    }
+
+    private void audit(AuthUser actor, String targetId, String action, String result, Map<String, Object> before, Map<String, Object> after, String reason) {
+        String actorId = actor == null ? "anonymous" : actor.id();
+        String actorRole = actor == null || actor.roles().isEmpty() ? "ANONYMOUS" : actor.roles().iterator().next();
+        audits.add(mapOf("id", "audit-" + (++idSeq), "requestId", ResourceController.currentRequestId(), "actorUserId", actorId, "actorRole", actorRole, "actorPermissions", List.of(), "sourceIp", null, "targetType", "RESOURCE", "targetId", targetId, "action", action, "riskLevel", "MEDIUM", "reason", reason == null ? "contract" : reason, "paramsSummary", Map.of(), "beforeState", before, "afterState", after, "result", result, "failureReason", null, "createdAt", now()));
     }
 
     private String title(String slug) {
