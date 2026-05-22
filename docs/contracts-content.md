@@ -139,6 +139,19 @@ auth 上下文不可用返回 `46420`，auth 调用超时返回 `46421`，auth �
 | `updatedAt` | string | 是 | 更新时间。 |
 | `deletedAt` | string 或 null | 是 | 软删除时间。 |
 
+### ContentItemVersion
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `contentId` | string | 是 | 内容 ID。 |
+| `version` | integer | 是 | 内容版本号，从 1 开始递增。 |
+| `sourceAction` | string | 是 | 产生版本的动作，如 `CREATED`、`UPDATED`、`PUBLISHED`、`RESTORED`。 |
+| `snapshot` | AdminContentItem | 是 | 该版本的后台内容快照。 |
+| `createdBy` | string | 是 | 创建该版本的用户 ID。 |
+| `createdAt` | string | 是 | 版本创建时间。 |
+| `reason` | string 或 null | 是 | 创建该版本的操作原因。 |
+| `restoredFromVersion` | integer 或 null | 是 | 如果该版本来自恢复操作，记录来源版本。 |
+
 ### ContentCategory
 
 | 字段 | 类型 | 必填 | 说明 |
@@ -234,7 +247,7 @@ auth 上下文不可用返回 `46420`，auth 调用超时返回 `46421`，auth �
 
 ### ContentAuditLog
 
-审计字段继承公共契约，允许补充 `contentId`、`homeConfigId`、`topicId`、`seoId`、`idempotencyKey`、`notificationStatus`、`profileSnapshotStatus`、`stateFrom`、`stateTo` 和 `version`。审计日志不得通过 content API 删除。
+审计字段继承公共契约，允许补充 `contentId`、`homeConfigId`、`topicId`、`seoId`、`idempotencyKey`、`notificationStatus`、`profileSnapshotStatus`、`stateFrom`、`stateTo`、`version`、`sourceVersion` 和 `newVersion`。审计日志不得通过 content API 删除。
 
 ## content 错误码
 
@@ -253,6 +266,8 @@ auth 上下文不可用返回 `46420`，auth 调用超时返回 `46421`，auth �
 | `43414` | 409 | 专题状态不允许当前操作。 |
 | `43415` | 409 | 分类或标签仍被内容引用，不能归档。 |
 | `43416` | 409 | SEO 路由冲突。 |
+| `43417` | 404 | 内容版本不存在。 |
+| `43418` | 409 | 内容版本状态不允许当前操作。 |
 | `46400` | 502 | profile 成员快照不可用。 |
 | `46401` | 504 | profile 成员快照调用超时。 |
 | `46402` | 502 | profile 成员快照不兼容 content 契约。 |
@@ -293,6 +308,9 @@ auth 上下文不可用返回 `46420`，auth 调用超时返回 `46421`，auth �
 | 下架内容 | PATCH | `/api/v1/content/admin/items/{contentId}/offline` | 是 | `ADMIN` 或 `OWNER` | MEDIUM |
 | 归档内容 | PATCH | `/api/v1/content/admin/items/{contentId}/archive` | 是 | `ADMIN` 或 `OWNER` | MEDIUM |
 | 软删除内容 | PATCH | `/api/v1/content/admin/items/{contentId}/delete` | 是 | `ADMIN` 或 `OWNER` | MEDIUM |
+| 内容版本列表 | GET | `/api/v1/content/admin/items/{contentId}/versions` | 是 | `ADMIN` 或 `OWNER` | LOW |
+| 内容版本详情 | GET | `/api/v1/content/admin/items/{contentId}/versions/{version}` | 是 | `ADMIN` 或 `OWNER` | LOW |
+| 恢复内容版本 | PATCH | `/api/v1/content/admin/items/{contentId}/versions/{version}/restore` | 是 | `ADMIN` 或 `OWNER` | MEDIUM |
 | 内容审计列表 | GET | `/api/v1/content/admin/items/{contentId}/audit-logs` | 是 | `ADMIN` 或 `OWNER` | LOW |
 | 后台首页配置详情 | GET | `/api/v1/content/admin/home` | 是 | `HELPER`、`ADMIN` 或 `OWNER` | LOW |
 | 保存首页草稿配置 | PUT | `/api/v1/content/admin/home` | 是 | `ADMIN` 或 `OWNER` | MEDIUM |
@@ -613,6 +631,34 @@ auth 上下文不可用返回 `46420`，auth 调用超时返回 `46421`，auth �
 成功响应 HTTP `200`，`data` 为更新后的 `AdminContentItem`。
 
 业务规则：只做软删除，状态为 `DELETED`，写入 `deletedAt`。已公开内容必须先下架。重复软删除返回成功，保持幂等，不重复写审计。真实删除不在 P0 content API 中提供。
+
+### 内容版本列表
+
+`GET /api/v1/content/admin/items/{contentId}/versions`
+
+查询参数为公共分页参数，默认按 `version_desc` 排序。成功响应 HTTP `200`，分页 `items` 为 `ContentItemVersion[]`。只有 `ADMIN` 和 `OWNER` 可访问。`HELPER` 返回 `42001`。内容不存在返回 `43400`。
+
+业务规则：内容创建时必须生成第 1 个版本。每次成功创建、修改、发布和恢复内容都必须生成新版本。提交审核、审核通过、审核拒绝、要求修改、下架、归档和软删除只改变状态流转，不强制生成内容版本，但必须写审计。公开接口不得返回版本历史。
+
+### 内容版本详情
+
+`GET /api/v1/content/admin/items/{contentId}/versions/{version}`
+
+成功响应 HTTP `200`，`data` 为 `ContentItemVersion`。内容不存在返回 `43400`。版本不存在返回 `43417`。只有 `ADMIN` 和 `OWNER` 可访问。`HELPER` 返回 `42001`。
+
+### 恢复内容版本
+
+`PATCH /api/v1/content/admin/items/{contentId}/versions/{version}/restore`
+
+请求字段：
+
+| 字段 | 类型 | 必填 | 规则 |
+| --- | --- | --- | --- |
+| `reason` | string | 是 | 1 到 200 位，恢复原因。 |
+
+成功响应 HTTP `200`，`data` 为恢复后的 `AdminContentItem`。
+
+业务规则：恢复不会修改历史版本本身，而是把目标版本的可编辑字段复制到当前内容并生成一个新的当前版本。可编辑字段包括 `type`、`slug`、`title`、`summary`、`body`、`coverUrl`、`categoryId`、`tagIds`、`visibility`、`memberSnapshot`、`seo`、`adminNote`、`visibleFrom` 和 `visibleUntil`。恢复后状态必须为 `DRAFT`，`publishedAt`、`submittedAt`、`reviewedAt`、`reviewOpinion`、`notificationStatus` 和 `deletedAt` 清空，必须重新走审核和发布流程。当前内容为 `ARCHIVED` 或 `DELETED` 时返回 `43418`。目标版本不存在返回 `43417`。恢复时如果目标版本 slug 已被其他未删除内容占用，返回 `43411`。恢复成功写审计 `CONTENT_ITEM_VERSION_RESTORED`，审计中记录来源版本和新版本号。
 
 ### 内容审计列表
 
