@@ -268,6 +268,23 @@ P0 支持 `CLOUDREVE_SHARE`、`EXTERNAL_URL` 和 `LOCAL_STUB` 三类下载入口
 | `degradeReasons` | string[] | 是 | 降级原因。 |
 | `createdAt` | string | 是 | 解析时间。 |
 
+### ResourceDownloadRecordSummary
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `ticketId` | string | 是 | 下载解析记录 ID。 |
+| `resourceId` | string | 是 | 资源 ID。 |
+| `versionId` | string | 是 | 版本 ID。 |
+| `downloadEntryId` | string 或 null | 是 | 下载入口 ID。 |
+| `actorUserId` | string 或 null | 是 | 登录用户 ID，匿名下载为 `null`。 |
+| `anonymous` | boolean | 是 | 是否匿名下载。 |
+| `clientLabel` | string 或 null | 是 | 客户端标识摘要。 |
+| `provider` | string 或 null | 是 | 下载提供方。 |
+| `result` | string | 是 | `DownloadRecordResult`。 |
+| `degraded` | boolean | 是 | 是否降级返回。 |
+| `requestId` | string | 是 | 请求编号。 |
+| `createdAt` | string | 是 | 记录时间。 |
+
 ### ResourceMaintainerSnapshot
 
 | 字段 | 类型 | 必填 | 说明 |
@@ -285,7 +302,7 @@ P0 支持 `CLOUDREVE_SHARE`、`EXTERNAL_URL` 和 `LOCAL_STUB` 三类下载入口
 
 ### ResourceOpsSummary
 
-自检摘要至少包含 `service`、`storageMode`、`authMode`、`profileMode`、`notificationMode`、`cloudreveMode`、`resourcesTotal`、`publishedResourcesTotal`、`versionsTotal`、`categoriesTotal`、`downloadEntriesTotal`、`downloadRecordsTotal`、`auditsTotal`、`lastAuditAt`、`lastDownloadAt` 和 `warnings`。不得返回 token、请求头、后台备注、审核意见、分享密码、Cloudreve 管理凭据、内部文件路径或审计原因全文。
+自检摘要至少包含 `service`、`storageMode`、`authMode`、`profileMode`、`notificationMode`、`cloudreveMode`、`resourcesTotal`、`publishedResourcesTotal`、`versionsTotal`、`categoriesTotal`、`downloadEntriesTotal`、`downloadRecordsTotal`、`auditsTotal`、`idempotencyRecordsTotal`、`lastAuditAt`、`lastDownloadAt`、`warnings` 和 `productionGaps`。不得返回 token、请求头、后台备注、审核意见、分享密码、Cloudreve 管理凭据、内部文件路径或审计原因全文。
 
 ## resource 错误码
 
@@ -431,9 +448,9 @@ P0 支持 `CLOUDREVE_SHARE`、`EXTERNAL_URL` 和 `LOCAL_STUB` 三类下载入口
 
 权限规则：`PUBLIC` 资源允许未登录解析。`AUTHENTICATED` 资源必须登录，未登录返回 `41000`。`MEMBER_ONLY` 资源必须登录且 profile 判断成员状态允许下载，非成员返回 `42001` 或 `42002`。`ADMIN_ONLY` 资源只允许 `ADMIN` 或 `OWNER`，普通用户返回 `42001`，公开接口不得泄露后台资源细节。
 
-业务规则：资源必须为 `PUBLISHED`，版本必须为 `ENABLED`，下载入口必须为 `ACTIVE` 且未过期。解析成功写入下载记录摘要，至少记录用户或匿名摘要、资源、版本、入口、provider、结果、请求编号和时间。下载记录写入失败返回 `51602`，不得假装成功。
+业务规则：资源必须为 `PUBLISHED`，版本必须为 `ENABLED`，下载入口必须为 `ACTIVE` 且未过期。解析成功写入 `ResourceDownloadRecordSummary`，至少记录用户或匿名摘要、资源、版本、入口、provider、结果、请求编号和时间。受限下载拒绝、Cloudreve 降级、Cloudreve 失败和下载记录写入失败也必须留下审计或下载记录摘要。下载记录写入失败返回 `51602`，不得假装成功。
 
-幂等规则：同一访问者、同一资源版本、同一 `idempotencyKey` 和同一请求体重复提交时返回同一个 `ticketId` 和下载结果，不重复增加下载记录。相同幂等键搭配不同请求体返回 `43612`。
+幂等规则：同一访问者、同一资源版本、同一 `idempotencyKey` 和同一请求体重复提交时返回同一个 `ticketId` 和下载结果，不重复增加下载记录。相同幂等键搭配不同请求体返回 `43612`。幂等指纹必须使用字段名排序后的稳定 JSON 语义，嵌套对象和数组也必须稳定计算，不能依赖 Java `Map.toString()` 或浏览器字段顺序。下载解析幂等记录有效期为 10 分钟，创建类幂等记录有效期为 24 小时。
 
 失败降级：Cloudreve 不可用时，如果可使用旧快照，返回成功但 `degraded=true`、`stale=true`。没有可用旧快照时返回 `46630` 或 `46631`。过期、禁用或不可用入口返回 `43613`。
 
@@ -446,6 +463,8 @@ P0 支持 `CLOUDREVE_SHARE`、`EXTERNAL_URL` 和 `LOCAL_STUB` 三类下载入口
 查询参数包括 `page`、`pageSize`、`keyword`、`type`、`status`、`visibility`、`categoryId`、`tag`、`createdBy`、`maintainerMemberId` 和 `sort`。`sort` 允许 `createdAt_desc`、`updatedAt_desc`、`publishedAt_desc`、`title_asc`。成功响应 HTTP `200`，分页 `items` 为 `AdminResourceItem[]`。
 
 权限规则：`HELPER`、`ADMIN` 和 `OWNER` 可访问。`USER` 返回 `42001`。未登录返回 `41000`。
+
+分页规则：分页接口必须按过滤后的全集计算 `total`，按请求的 `page` 和 `pageSize` 返回切片。空页返回空数组，不得回退第一页。默认 `page=1`、`pageSize=20`。公开资源列表默认按 `publishedAt_desc`，后台资源列表默认按 `updatedAt_desc`，审计列表默认按 `createdAt_desc`。排序字段相同必须追加稳定 ID 排序，避免翻页重复或遗漏。
 
 ### 后台资源详情
 
@@ -667,7 +686,7 @@ P0 支持 `CLOUDREVE_SHARE`、`EXTERNAL_URL` 和 `LOCAL_STUB` 三类下载入口
 
 成功响应 HTTP `200`，`data` 为 `ResourceOpsSummary`。
 
-业务规则：自检摘要用于后台确认 `resource` 当前运行模式、数据规模、适配层状态和生产化缺口。P0 可返回 `storageMode=IN_MEMORY`、`authMode=TEST_STUB`、`profileMode=TEST_STUB`、`notificationMode=TEST_STUB` 和 `cloudreveMode=LINK_ONLY_STUB`。摘要不得返回 token、请求头、分享密码、后台备注、内部路径或审计原因全文。读取失败返回 `51600`，不得伪造健康。
+业务规则：自检摘要用于后台确认 `resource` 当前运行模式、数据规模、适配层状态和生产化缺口。P0 可返回 `storageMode=IN_MEMORY`、`authMode=TEST_STUB`、`profileMode=TEST_STUB`、`notificationMode=TEST_STUB` 和 `cloudreveMode=LINK_ONLY_STUB`。`productionGaps` 至少说明真实持久化、真实认证适配、真实 profile 适配、真实 notification 适配和 Cloudreve API 深度同步是否未启用。摘要不得返回 token、请求头、分享密码、后台备注、内部路径或审计原因全文。读取失败返回 `51600`，不得伪造健康。
 
 ## 状态、幂等和并发
 
@@ -681,11 +700,13 @@ P0 支持 `CLOUDREVE_SHARE`、`EXTERNAL_URL` 和 `LOCAL_STUB` 三类下载入口
 
 并发创建相同资源 slug、分类 slug、分类名称或同一资源版本名时只能一个请求成功，其余返回冲突。公开读取接口允许读到更新前或更新后的完整状态，但不能返回半更新对象。
 
+请求校验必须优先于业务写入。枚举、时间、URL、布尔值、长度、数字范围和可信字段都必须返回 `40001` 或对应公共错误，不得落入 `51600`。后台写接口请求体出现 `createdBy`、`updatedBy`、`submittedBy`、`reviewedBy`、`publishedBy`、`offlineBy`、`archivedBy`、`deletedBy`、`disabledBy`、`maintainerSnapshot`、`downloadRecordsTotal`、`auditsTotal` 等服务端字段时，必须返回字段校验失败或忽略并以服务端上下文为准；生产实现推荐返回字段级 `errors`，P0 至少不得信任这些字段。
+
 ## 审计要求
 
 必须审计的动作包括创建资源、修改资源、提交审核、审核通过、审核拒绝、要求修改、发布、下架、归档、软删除、创建版本、修改版本、禁用版本、启用版本、创建分类、修改分类、归档分类、下载解析失败、受限下载拒绝、Cloudreve 降级和下载记录写入失败。
 
-后台写操作必须记录 `reason`。审计字段继承公共契约。审计写入失败时，后台写操作不得假装成功，必须返回 `51601` 或 `51600`，并保持业务数据不变。
+后台写操作必须记录调用者、`reason`、操作前状态、操作后状态、请求编号和结果。审计字段继承公共契约。审计写入失败时，后台写操作不得假装成功，必须返回 `51601` 或 `51600`，并保持业务数据不变。
 
 公开读取不强制写审计。下载解析必须写下载记录摘要。受限下载拒绝可以写低风险审计或下载拒绝记录，但不得暴露敏感资源是否存在给无权限用户。
 
