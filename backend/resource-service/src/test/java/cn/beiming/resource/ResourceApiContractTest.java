@@ -59,8 +59,9 @@ class ResourceApiContractTest {
         addRange(mapped, "RES-AUDIT", 1, 8);
         addRange(mapped, "RES-OPS", 1, 8);
         addRange(mapped, "RES-COMPAT", 1, 21);
+        addRange(mapped, "RES-HARDEN", 1, 16);
         assertThat(mapped).contains("RES-COM-001", "RES-DOWNLOAD-033", "RES-STATE-061", "RES-COMPAT-021");
-        assertThat(mapped).hasSize(347);
+        assertThat(mapped).hasSize(363);
     }
 
     @Test
@@ -388,6 +389,81 @@ class ResourceApiContractTest {
         assertThat(contentBoundary.toString()).doesNotContain("container", "terminal", "node-daemon", "file-manager", "MCSM_INSTANCE");
     }
 
+    @Test
+    @DisplayName("RES-HARDEN covers pagination, canonical idempotency, trusted fields, audit detail, download records, and self-check gaps")
+    void hardeningContract() throws Exception {
+        JsonNode firstPage = performJson(get("/api/v1/resources").param("page", "1").param("pageSize", "1"), 200);
+        JsonNode secondPage = performJson(get("/api/v1/resources").param("page", "2").param("pageSize", "1"), 200);
+        assertThat(firstPage.at("/data/page").asInt()).isEqualTo(1);
+        assertThat(firstPage.at("/data/pageSize").asInt()).isEqualTo(1);
+        assertThat(firstPage.at("/data/items").size()).isEqualTo(1);
+        assertThat(secondPage.at("/data/page").asInt()).isEqualTo(2);
+        assertThat(secondPage.at("/data/items").size()).isEqualTo(1);
+        assertThat(secondPage.at("/data/items/0/resourceId").asText()).isNotEqualTo(firstPage.at("/data/items/0/resourceId").asText());
+        JsonNode emptyPage = performJson(get("/api/v1/resources").param("page", "99").param("pageSize", "20"), 200);
+        assertThat(emptyPage.at("/data/page").asInt()).isEqualTo(99);
+        assertThat(emptyPage.at("/data/items").size()).isEqualTo(0);
+
+        JsonNode adminPage = performJson(get("/api/v1/resources/admin/items")
+                .header("Authorization", bearer("admin-token"))
+                .param("page", "2")
+                .param("pageSize", "2"), 200);
+        assertThat(adminPage.at("/data/page").asInt()).isEqualTo(2);
+        assertThat(adminPage.at("/data/items").size()).isLessThanOrEqualTo(2);
+
+        Map<String, Object> trustedBody = with(validResourceBody("trusted-owner"), "createdBy", "browser");
+        trustedBody.put("updatedBy", "browser");
+        JsonNode trusted = performJson(post("/api/v1/resources/admin/items").header("Authorization", bearer("owner-token")), trustedBody, 201);
+        assertThat(trusted.at("/data/createdBy").asText()).isEqualTo("owner");
+        assertThat(trusted.at("/data/updatedBy").asText()).isEqualTo("owner");
+
+        performJson(post("/api/v1/resources/admin/items").header("Authorization", bearer("admin-token")),
+                with(validResourceBody("bad-instant"), "visibleUntil", "not-an-instant"), 400, 40001);
+        performJson(post("/api/v1/resources/admin/items").header("Authorization", bearer("admin-token")),
+                with(validResourceBody("bad-url"), "coverUrl", "ftp://example.com/file.png"), 400, 40001);
+
+        JsonNode audit = performJson(get("/api/v1/resources/admin/items/" + trusted.at("/data/resourceId").asText() + "/audit-logs")
+                .header("Authorization", bearer("owner-token"))
+                .param("page", "1")
+                .param("pageSize", "1"), 200);
+        assertThat(audit.at("/data/pageSize").asInt()).isEqualTo(1);
+        assertThat(audit.at("/data/items").size()).isEqualTo(1);
+        assertThat(audit.at("/data/items/0/actorUserId").asText()).isEqualTo("owner");
+        assertThat(audit.at("/data/items/0/afterState").isMissingNode()).isFalse();
+        assertThat(audit.at("/data/items/0/afterState").isNull()).isFalse();
+
+        Map<String, Object> firstVersion = validVersionBody("nested-idem");
+        firstVersion.put("idempotencyKey", "nested-idem-key");
+        JsonNode version = performJson(post("/api/v1/resources/admin/items/res-draft/versions")
+                .header("Authorization", bearer("admin-token")), firstVersion, 201);
+        Map<String, Object> secondVersion = validVersionBody("nested-idem");
+        secondVersion.put("downloadEntry", reorderedDownloadEntry("https://cloud.example.com/s/nested-idem"));
+        secondVersion.put("idempotencyKey", "nested-idem-key");
+        JsonNode versionAgain = performJson(post("/api/v1/resources/admin/items/res-draft/versions")
+                .header("Authorization", bearer("admin-token")), secondVersion, 201);
+        assertThat(versionAgain.at("/data/versionId").asText()).isEqualTo(version.at("/data/versionId").asText());
+        Map<String, Object> conflictingVersion = validVersionBody("nested-idem");
+        conflictingVersion.put("downloadEntry", reorderedDownloadEntry("https://cloud.example.com/s/nested-idem-other"));
+        conflictingVersion.put("idempotencyKey", "nested-idem-key");
+        performJson(post("/api/v1/resources/admin/items/res-draft/versions")
+                .header("Authorization", bearer("admin-token")), conflictingVersion, 409, 43612);
+
+        JsonNode beforeDownload = performJson(get("/api/v1/resources/admin/ops/summary")
+                .header("Authorization", bearer("admin-token")), 200);
+        JsonNode download = performJson(post("/api/v1/resources/res-public-client/versions/ver-client-1/download"),
+                Map.of("idempotencyKey", "record-idem", "clientLabel", "launcher"), 200);
+        JsonNode replay = performJson(post("/api/v1/resources/res-public-client/versions/ver-client-1/download"),
+                Map.of("clientLabel", "launcher", "idempotencyKey", "record-idem"), 200);
+        assertThat(replay.at("/data/ticketId").asText()).isEqualTo(download.at("/data/ticketId").asText());
+        JsonNode afterDownload = performJson(get("/api/v1/resources/admin/ops/summary")
+                .header("Authorization", bearer("admin-token")), 200);
+        assertThat(afterDownload.at("/data/downloadRecordsTotal").asLong()).isEqualTo(beforeDownload.at("/data/downloadRecordsTotal").asLong() + 1);
+        assertThat(afterDownload.at("/data/lastDownloadAt").isNull()).isFalse();
+        assertThat(afterDownload.at("/data/idempotencyRecordsTotal").asInt()).isGreaterThan(0);
+        assertThat(afterDownload.at("/data/productionGaps").isArray()).isTrue();
+        assertThat(afterDownload.toString()).doesNotContain("token", "sharePassword", "internalPath", "adminNote", "contract test");
+    }
+
     private JsonNode performJson(MockHttpServletRequestBuilder builder, int status) throws Exception {
         MvcResult result = mvc.perform(builder.accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().is(status))
@@ -474,6 +550,17 @@ class ResourceApiContractTest {
         entry.put("status", "ACTIVE");
         entry.put("expiresAt", "2026-12-31T00:00:00Z");
         entry.put("adminNote", "entry note");
+        return entry;
+    }
+
+    private Map<String, Object> reorderedDownloadEntry(String url) {
+        Map<String, Object> entry = new LinkedHashMap<>();
+        entry.put("adminNote", "entry note");
+        entry.put("expiresAt", "2026-12-31T00:00:00Z");
+        entry.put("status", "ACTIVE");
+        entry.put("shareUrl", url);
+        entry.put("displayName", "Cloudreve");
+        entry.put("provider", "CLOUDREVE_SHARE");
         return entry;
     }
 
