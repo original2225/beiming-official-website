@@ -221,6 +221,31 @@ class ContentController {
         return ok(store.softDelete(actor, contentId, body));
     }
 
+    @GetMapping("/admin/items/{contentId}/versions")
+    Map<String, Object> itemVersions(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                     @PathVariable String contentId,
+                                     @RequestParam Map<String, String> query) {
+        auth.requireAny(authorization, "ADMIN", "OWNER");
+        return ok(store.itemVersions(contentId, query));
+    }
+
+    @GetMapping("/admin/items/{contentId}/versions/{version}")
+    Map<String, Object> itemVersion(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                    @PathVariable String contentId,
+                                    @PathVariable int version) {
+        auth.requireAny(authorization, "ADMIN", "OWNER");
+        return ok(store.itemVersion(contentId, version));
+    }
+
+    @PatchMapping("/admin/items/{contentId}/versions/{version}/restore")
+    Map<String, Object> restoreItemVersion(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                           @PathVariable String contentId,
+                                           @PathVariable int version,
+                                           @RequestBody Map<String, Object> body) {
+        AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
+        return ok(store.restoreItemVersion(actor, contentId, version, body));
+    }
+
     @GetMapping("/admin/items/{contentId}/audit-logs")
     Map<String, Object> auditLogs(@RequestHeader(value = "Authorization", required = false) String authorization,
                                   @PathVariable String contentId,
@@ -445,6 +470,7 @@ class ContentStore {
     private final Map<String, TopicRecord> topics = new LinkedHashMap<>();
     private final Map<String, SeoRecord> seo = new LinkedHashMap<>();
     private final Map<Integer, HomeConfig> publishedHomeVersions = new LinkedHashMap<>();
+    private final Map<String, List<ContentItemVersionRecord>> itemVersions = new LinkedHashMap<>();
     private final Map<String, IdempotencyRecord> idempotency = new ConcurrentHashMap<>();
     private final List<ContentAudit> audits = new ArrayList<>();
     private HomeConfig draftHome;
@@ -460,6 +486,7 @@ class ContentStore {
         topics.clear();
         seo.clear();
         publishedHomeVersions.clear();
+        itemVersions.clear();
         idempotency.clear();
         audits.clear();
         draftHome = null;
@@ -523,6 +550,7 @@ class ContentStore {
     private ContentItem seedItem(String slug, String type, String status, String visibility, String title, String summary, String body, String categoryId, List<String> tagIds, boolean published, String authorUserId, Map<String, Object> memberSnapshot) {
         ContentItem item = new ContentItem("content_" + slug.replace("/", "_"), type, status, visibility, slug, title, summary, body, "/covers/" + slug + ".png", categoryId, new ArrayList<>(tagIds), authorUserId, authorUserId == null ? null : "User", memberSnapshot, seoPayload(null, "/content/" + slug), "admin note", null, null, null, null, published ? now().minus(2, ChronoUnit.HOURS) : null, null, null, "seed", "seed", now(), now(), null);
         items.put(item.contentId, item);
+        recordVersion(item, "seed", "CREATED", "seed", null);
         return item;
     }
 
@@ -630,6 +658,7 @@ class ContentStore {
         item.updatedBy = actor.userId;
         item.memberSnapshot = memberSnapshot(profile, item.type, optionalString(body, "memberId"));
         items.put(item.contentId, item);
+        recordVersion(item, actor.userId, "CREATED", body.get("reason"), null);
         audit(actor.userId, "CONTENT_ITEM_CREATED", body.get("reason"), item.contentId, "SUCCESS");
         Map<String, Object> result = adminItemMap(item);
         remember(idemKey, body, result);
@@ -663,6 +692,7 @@ class ContentStore {
         if (body.containsKey("memberId")) item.memberSnapshot = memberSnapshot(profile, item.type, optionalString(body, "memberId"));
         item.updatedBy = actor.userId;
         item.updatedAt = now();
+        recordVersion(item, actor.userId, "UPDATED", body.get("reason"), null);
         audit(actor.userId, "CONTENT_ITEM_UPDATED", body.get("reason"), item.contentId, "SUCCESS");
         return adminItemMap(item);
     }
@@ -742,7 +772,66 @@ class ContentStore {
             item.notificationStatus = "FAILED:" + exception.getMessage();
         }
         item.updatedAt = now();
+        recordVersion(item, actor.userId, "PUBLISHED", body.get("reason"), null);
         audit(actor.userId, "CONTENT_ITEM_PUBLISHED", body.get("reason"), item.contentId, "SUCCESS");
+        return adminItemMap(item);
+    }
+
+    synchronized Map<String, Object> itemVersions(String contentId, Map<String, String> query) {
+        requireItem(contentId);
+        Query page = query(query, Set.of("version_desc", "version_asc"), "version_desc");
+        Comparator<ContentItemVersionRecord> comparator = Comparator.comparingInt(record -> record.version);
+        if ("version_desc".equals(page.sort)) comparator = comparator.reversed();
+        List<Map<String, Object>> rows = itemVersions.getOrDefault(contentId, List.of()).stream()
+                .sorted(comparator)
+                .map(this::versionMap)
+                .toList();
+        return page(rows, page.page, page.pageSize);
+    }
+
+    synchronized Map<String, Object> itemVersion(String contentId, int version) {
+        requireItem(contentId);
+        return versionMap(requireVersion(contentId, version));
+    }
+
+    synchronized Map<String, Object> restoreItemVersion(AuthUser actor, String contentId, int version, Map<String, Object> body) {
+        ContentItem item = requireItem(contentId);
+        requireReason(body);
+        if (Set.of("ARCHIVED", "DELETED").contains(item.status)) {
+            throw new ContentException(43418, HttpStatus.CONFLICT, "content version state conflict");
+        }
+        ContentItemVersionRecord record = requireVersion(contentId, version);
+        String existing = contentIdBySlug(record.snapshot.slug);
+        if (existing != null && !existing.equals(contentId)) {
+            throw new ContentException(43411, HttpStatus.CONFLICT, "slug conflict");
+        }
+        checkAudit();
+        ContentItem snapshot = record.snapshot;
+        item.visibility = snapshot.visibility;
+        item.slug = snapshot.slug;
+        item.title = snapshot.title;
+        item.summary = snapshot.summary;
+        item.body = snapshot.body;
+        item.coverUrl = snapshot.coverUrl;
+        item.categoryId = snapshot.categoryId;
+        item.tagIds = new ArrayList<>(snapshot.tagIds);
+        item.memberSnapshot = copyMap(snapshot.memberSnapshot);
+        item.seo = copyMap(snapshot.seo);
+        item.adminNote = snapshot.adminNote;
+        item.visibleFrom = snapshot.visibleFrom;
+        item.visibleUntil = snapshot.visibleUntil;
+        item.status = "DRAFT";
+        item.submittedAt = null;
+        item.reviewedAt = null;
+        item.publishedAt = null;
+        item.reviewOpinion = null;
+        item.notificationStatus = null;
+        item.deletedAt = null;
+        item.updatedBy = actor.userId;
+        item.updatedAt = now();
+        int newVersion = recordVersion(item, actor.userId, "RESTORED", body.get("reason"), version);
+        audit(actor.userId, "CONTENT_ITEM_VERSION_RESTORED", body.get("reason"), item.contentId, "SUCCESS",
+                mapOf("sourceVersion", version, "newVersion", newVersion));
         return adminItemMap(item);
     }
 
@@ -1268,6 +1357,37 @@ class ContentStore {
                 "updatedBy", item.updatedBy, "createdAt", string(item.createdAt), "updatedAt", string(item.updatedAt), "deletedAt", string(item.deletedAt));
     }
 
+    private Map<String, Object> versionMap(ContentItemVersionRecord record) {
+        return mapOf("contentId", record.contentId, "version", record.version, "sourceAction", record.sourceAction,
+                "snapshot", adminItemMap(record.snapshot), "createdBy", record.createdBy, "createdAt", string(record.createdAt),
+                "reason", record.reason, "restoredFromVersion", record.restoredFromVersion);
+    }
+
+    private int recordVersion(ContentItem item, String actorUserId, String sourceAction, Object reason, Integer restoredFromVersion) {
+        List<ContentItemVersionRecord> records = itemVersions.computeIfAbsent(item.contentId, ignored -> new ArrayList<>());
+        int version = records.size() + 1;
+        records.add(new ContentItemVersionRecord(item.contentId, version, sourceAction, copyItem(item), actorUserId, now(), reason == null ? null : String.valueOf(reason), restoredFromVersion));
+        return version;
+    }
+
+    private ContentItemVersionRecord requireVersion(String contentId, int version) {
+        return itemVersions.getOrDefault(contentId, List.of()).stream()
+                .filter(record -> record.version == version)
+                .findFirst()
+                .orElseThrow(() -> new ContentException(43417, HttpStatus.NOT_FOUND, "content version not found"));
+    }
+
+    private ContentItem copyItem(ContentItem item) {
+        return new ContentItem(item.contentId, item.type, item.status, item.visibility, item.slug, item.title, item.summary, item.body, item.coverUrl, item.categoryId,
+                new ArrayList<>(item.tagIds), item.authorUserId, item.authorDisplayNameSnapshot, copyMap(item.memberSnapshot), copyMap(item.seo), item.adminNote,
+                item.reviewOpinion, item.notificationStatus, item.submittedAt, item.reviewedAt, item.publishedAt, item.visibleFrom, item.visibleUntil,
+                item.createdBy, item.updatedBy, item.createdAt, item.updatedAt, item.deletedAt);
+    }
+
+    private Map<String, Object> copyMap(Map<String, Object> source) {
+        return source == null ? null : map(source);
+    }
+
     private Map<String, Object> categoryMap(ContentCategoryRecord category) {
         return mapOf("categoryId", category.categoryId, "name", category.name, "slug", category.slug, "description", category.description, "sortOrder", category.sortOrder,
                 "archived", category.archived, "createdAt", string(category.createdAt), "updatedAt", string(category.updatedAt));
@@ -1331,8 +1451,10 @@ class ContentStore {
     }
 
     private Map<String, Object> auditMap(ContentAudit audit) {
-        return mapOf("id", audit.id, "requestId", audit.requestId, "actorUserId", audit.actorUserId, "actorRole", audit.actorRole, "targetType", audit.targetType,
+        Map<String, Object> result = mapOf("id", audit.id, "requestId", audit.requestId, "actorUserId", audit.actorUserId, "actorRole", audit.actorRole, "targetType", audit.targetType,
                 "targetId", audit.targetId, "action", audit.action, "riskLevel", "MEDIUM", "reason", audit.reason, "result", audit.result, "createdAt", string(audit.createdAt));
+        result.putAll(audit.details);
+        return result;
     }
 
     private Map<String, Object> page(List<Map<String, Object>> rows, int page, int pageSize) {
@@ -1377,7 +1499,11 @@ class ContentStore {
     }
 
     private void audit(String actorUserId, String action, Object reason, String targetId, String result) {
-        audits.add(new ContentAudit("aud_" + UUID.randomUUID(), RequestIdFilter.currentRequestId(), actorUserId, "ADMIN", "content", targetId, action, String.valueOf(reason), result, now()));
+        audit(actorUserId, action, reason, targetId, result, Map.of());
+    }
+
+    private void audit(String actorUserId, String action, Object reason, String targetId, String result, Map<String, Object> details) {
+        audits.add(new ContentAudit("aud_" + UUID.randomUUID(), RequestIdFilter.currentRequestId(), actorUserId, "ADMIN", "content", targetId, action, String.valueOf(reason), result, now(), details));
     }
 
     private void checkAudit() {
@@ -1839,6 +1965,28 @@ class IdempotencyRecord {
     }
 }
 
+class ContentItemVersionRecord {
+    final String contentId;
+    final int version;
+    final String sourceAction;
+    final ContentItem snapshot;
+    final String createdBy;
+    final Instant createdAt;
+    final String reason;
+    final Integer restoredFromVersion;
+
+    ContentItemVersionRecord(String contentId, int version, String sourceAction, ContentItem snapshot, String createdBy, Instant createdAt, String reason, Integer restoredFromVersion) {
+        this.contentId = contentId;
+        this.version = version;
+        this.sourceAction = sourceAction;
+        this.snapshot = snapshot;
+        this.createdBy = createdBy;
+        this.createdAt = createdAt;
+        this.reason = reason;
+        this.restoredFromVersion = restoredFromVersion;
+    }
+}
+
 class ContentItem {
     final String contentId;
     final String type;
@@ -2030,8 +2178,9 @@ class ContentAudit {
     final String reason;
     final String result;
     final Instant createdAt;
+    final Map<String, Object> details;
 
-    ContentAudit(String id, String requestId, String actorUserId, String actorRole, String targetType, String targetId, String action, String reason, String result, Instant createdAt) {
+    ContentAudit(String id, String requestId, String actorUserId, String actorRole, String targetType, String targetId, String action, String reason, String result, Instant createdAt, Map<String, Object> details) {
         this.id = id;
         this.requestId = requestId;
         this.actorUserId = actorUserId;
@@ -2042,5 +2191,6 @@ class ContentAudit {
         this.reason = reason;
         this.result = result;
         this.createdAt = createdAt;
+        this.details = new LinkedHashMap<>(details);
     }
 }
