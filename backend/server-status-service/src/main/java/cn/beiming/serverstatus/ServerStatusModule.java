@@ -459,50 +459,68 @@ class ServerStatusStore {
 
     Map<String, Object> patchSource(AuthUser actor, String sourceId, Map<String, Object> body) {
         StatusSourceRecord source = requireSource(sourceId);
-        String reason = requiredReason(body);
-        if ("ARCHIVED".equals(source.configStatus) && body.containsKey("target")) throw error(43510, HttpStatus.CONFLICT, "source state conflict");
-        if (body.containsKey("target")) {
-            String target = requiredString(body, "target", 1, 500);
-            if (sources.values().stream().anyMatch(item -> !item.sourceId.equals(sourceId) && !"ARCHIVED".equals(item.configStatus) && item.target.equals(target))) throw error(43511, HttpStatus.CONFLICT, "source conflict");
-            source.target = target;
+        StatusSourceRecord backup = copy(source);
+        try {
+            String reason = requiredReason(body);
+            if ("ARCHIVED".equals(source.configStatus) && body.containsKey("target")) throw error(43510, HttpStatus.CONFLICT, "source state conflict");
+            if (body.containsKey("target")) {
+                String target = requiredString(body, "target", 1, 500);
+                if (sources.values().stream().anyMatch(item -> !item.sourceId.equals(sourceId) && !"ARCHIVED".equals(item.configStatus) && item.target.equals(target))) throw error(43511, HttpStatus.CONFLICT, "source conflict");
+                source.target = target;
+            }
+            if (body.containsKey("instanceName")) source.instanceName = requiredString(body, "instanceName", 2, 80);
+            if (body.containsKey("displayName")) source.displayName = requiredString(body, "displayName", 2, 80);
+            if (body.containsKey("sourceType")) source.sourceType = requiredEnum(body, "sourceType", Set.of("MINECRAFT_PING", "HTTP_HEALTH", "MANUAL", "STUB"));
+            if (body.containsKey("instanceKind")) source.instanceKind = requiredEnum(body, "instanceKind", Set.of("SURVIVAL", "CREATIVE", "TEST", "LOBBY", "OTHER"));
+            if (body.containsKey("publicVisible")) source.publicVisible = optionalBoolean(body, "publicVisible", source.publicVisible);
+            if (body.containsKey("sortOrder")) source.sortOrder = integer(body, "sortOrder");
+            if (body.containsKey("timeoutMs")) source.timeoutMs = optionalInt(body, "timeoutMs", source.timeoutMs, 500, 10000);
+            source.updatedBy = actor.userId;
+            source.updatedAt = now();
+            writeAudit(actor, "SOURCE", sourceId, "SERVER_STATUS_SOURCE_UPDATED", reason);
+            return adminSourceView(source);
+        } catch (RuntimeException exception) {
+            sources.put(sourceId, backup);
+            throw exception;
         }
-        if (body.containsKey("instanceName")) source.instanceName = requiredString(body, "instanceName", 2, 80);
-        if (body.containsKey("displayName")) source.displayName = requiredString(body, "displayName", 2, 80);
-        if (body.containsKey("sourceType")) source.sourceType = requiredEnum(body, "sourceType", Set.of("MINECRAFT_PING", "HTTP_HEALTH", "MANUAL", "STUB"));
-        if (body.containsKey("instanceKind")) source.instanceKind = requiredEnum(body, "instanceKind", Set.of("SURVIVAL", "CREATIVE", "TEST", "LOBBY", "OTHER"));
-        if (body.containsKey("publicVisible")) source.publicVisible = optionalBoolean(body, "publicVisible", source.publicVisible);
-        if (body.containsKey("sortOrder")) source.sortOrder = integer(body, "sortOrder");
-        if (body.containsKey("timeoutMs")) source.timeoutMs = optionalInt(body, "timeoutMs", source.timeoutMs, 500, 10000);
-        source.updatedBy = actor.userId;
-        source.updatedAt = now();
-        writeAudit(actor, "SOURCE", sourceId, "SERVER_STATUS_SOURCE_UPDATED", reason);
-        return adminSourceView(source);
     }
 
     Map<String, Object> disableSource(AuthUser actor, String sourceId, Map<String, Object> body) {
         StatusSourceRecord source = requireSource(sourceId);
-        String reason = requiredReason(body);
-        if ("ARCHIVED".equals(source.configStatus)) throw error(43510, HttpStatus.CONFLICT, "source state conflict");
-        if (!"DISABLED".equals(source.configStatus)) {
-            source.configStatus = "DISABLED";
-            source.updatedBy = actor.userId;
-            source.updatedAt = now();
-            writeAudit(actor, "SOURCE", sourceId, "SERVER_STATUS_SOURCE_DISABLED", reason);
+        StatusSourceRecord backup = copy(source);
+        try {
+            String reason = requiredReason(body);
+            if ("ARCHIVED".equals(source.configStatus)) throw error(43510, HttpStatus.CONFLICT, "source state conflict");
+            if (!"DISABLED".equals(source.configStatus)) {
+                source.configStatus = "DISABLED";
+                source.updatedBy = actor.userId;
+                source.updatedAt = now();
+                writeAudit(actor, "SOURCE", sourceId, "SERVER_STATUS_SOURCE_DISABLED", reason);
+            }
+            return adminSourceView(source);
+        } catch (RuntimeException exception) {
+            sources.put(sourceId, backup);
+            throw exception;
         }
-        return adminSourceView(source);
     }
 
     Map<String, Object> enableSource(AuthUser actor, String sourceId, Map<String, Object> body) {
         StatusSourceRecord source = requireSource(sourceId);
-        String reason = requiredReason(body);
-        if ("ARCHIVED".equals(source.configStatus)) throw error(43510, HttpStatus.CONFLICT, "source state conflict");
-        if (!"ENABLED".equals(source.configStatus)) {
-            source.configStatus = "ENABLED";
-            source.updatedBy = actor.userId;
-            source.updatedAt = now();
-            writeAudit(actor, "SOURCE", sourceId, "SERVER_STATUS_SOURCE_ENABLED", reason);
+        StatusSourceRecord backup = copy(source);
+        try {
+            String reason = requiredReason(body);
+            if ("ARCHIVED".equals(source.configStatus)) throw error(43510, HttpStatus.CONFLICT, "source state conflict");
+            if (!"ENABLED".equals(source.configStatus)) {
+                source.configStatus = "ENABLED";
+                source.updatedBy = actor.userId;
+                source.updatedAt = now();
+                writeAudit(actor, "SOURCE", sourceId, "SERVER_STATUS_SOURCE_ENABLED", reason);
+            }
+            return adminSourceView(source);
+        } catch (RuntimeException exception) {
+            sources.put(sourceId, backup);
+            throw exception;
         }
-        return adminSourceView(source);
     }
 
     Map<String, Object> refreshSource(AuthUser actor, TestStatusCollector collector, String sourceId, Map<String, Object> body) {
@@ -568,48 +586,66 @@ class ServerStatusStore {
 
     Map<String, Object> patchLine(AuthUser actor, String lineId, Map<String, Object> body) {
         LineRecord line = requireLine(lineId);
-        String reason = requiredReason(body);
-        if ("ARCHIVED".equals(line.configStatus) && body.containsKey("checkTarget")) throw error(43510, HttpStatus.CONFLICT, "line state conflict");
-        if (body.containsKey("entryAddress")) {
-            String entryAddress = requiredString(body, "entryAddress", 1, 255);
-            if (lines.values().stream().anyMatch(item -> !item.lineId.equals(lineId) && !"ARCHIVED".equals(item.configStatus) && item.entryAddress.equals(entryAddress))) throw error(43511, HttpStatus.CONFLICT, "line conflict");
-            line.entryAddress = entryAddress;
+        LineRecord backup = copy(line);
+        try {
+            String reason = requiredReason(body);
+            if ("ARCHIVED".equals(line.configStatus) && body.containsKey("checkTarget")) throw error(43510, HttpStatus.CONFLICT, "line state conflict");
+            if (body.containsKey("entryAddress")) {
+                String entryAddress = requiredString(body, "entryAddress", 1, 255);
+                if (lines.values().stream().anyMatch(item -> !item.lineId.equals(lineId) && !"ARCHIVED".equals(item.configStatus) && item.entryAddress.equals(entryAddress))) throw error(43511, HttpStatus.CONFLICT, "line conflict");
+                line.entryAddress = entryAddress;
+            }
+            if (body.containsKey("name")) line.name = requiredString(body, "name", 2, 80);
+            if (body.containsKey("checkTarget")) line.checkTarget = requiredString(body, "checkTarget", 1, 500);
+            if (body.containsKey("description")) line.description = optionalStringMax(body, "description", 300);
+            if (body.containsKey("publicVisible")) line.publicVisible = optionalBoolean(body, "publicVisible", line.publicVisible);
+            if (body.containsKey("sortOrder")) line.sortOrder = integer(body, "sortOrder");
+            line.updatedBy = actor.userId;
+            line.updatedAt = now();
+            writeAudit(actor, "LINE", lineId, "SERVER_STATUS_LINE_UPDATED", reason);
+            return adminLineView(line);
+        } catch (RuntimeException exception) {
+            lines.put(lineId, backup);
+            throw exception;
         }
-        if (body.containsKey("name")) line.name = requiredString(body, "name", 2, 80);
-        if (body.containsKey("checkTarget")) line.checkTarget = requiredString(body, "checkTarget", 1, 500);
-        if (body.containsKey("description")) line.description = optionalStringMax(body, "description", 300);
-        if (body.containsKey("publicVisible")) line.publicVisible = optionalBoolean(body, "publicVisible", line.publicVisible);
-        if (body.containsKey("sortOrder")) line.sortOrder = integer(body, "sortOrder");
-        line.updatedBy = actor.userId;
-        line.updatedAt = now();
-        writeAudit(actor, "LINE", lineId, "SERVER_STATUS_LINE_UPDATED", reason);
-        return adminLineView(line);
     }
 
     Map<String, Object> disableLine(AuthUser actor, String lineId, Map<String, Object> body) {
         LineRecord line = requireLine(lineId);
-        String reason = requiredReason(body);
-        if ("ARCHIVED".equals(line.configStatus)) throw error(43510, HttpStatus.CONFLICT, "line state conflict");
-        if (!"DISABLED".equals(line.configStatus)) {
-            line.configStatus = "DISABLED";
-            line.updatedBy = actor.userId;
-            line.updatedAt = now();
-            writeAudit(actor, "LINE", lineId, "SERVER_STATUS_LINE_DISABLED", reason);
+        LineRecord backup = copy(line);
+        try {
+            String reason = requiredReason(body);
+            if ("ARCHIVED".equals(line.configStatus)) throw error(43510, HttpStatus.CONFLICT, "line state conflict");
+            if (!"DISABLED".equals(line.configStatus)) {
+                line.configStatus = "DISABLED";
+                line.updatedBy = actor.userId;
+                line.updatedAt = now();
+                writeAudit(actor, "LINE", lineId, "SERVER_STATUS_LINE_DISABLED", reason);
+            }
+            return adminLineView(line);
+        } catch (RuntimeException exception) {
+            lines.put(lineId, backup);
+            throw exception;
         }
-        return adminLineView(line);
     }
 
     Map<String, Object> enableLine(AuthUser actor, String lineId, Map<String, Object> body) {
         LineRecord line = requireLine(lineId);
-        String reason = requiredReason(body);
-        if ("ARCHIVED".equals(line.configStatus)) throw error(43510, HttpStatus.CONFLICT, "line state conflict");
-        if (!"ENABLED".equals(line.configStatus)) {
-            line.configStatus = "ENABLED";
-            line.updatedBy = actor.userId;
-            line.updatedAt = now();
-            writeAudit(actor, "LINE", lineId, "SERVER_STATUS_LINE_ENABLED", reason);
+        LineRecord backup = copy(line);
+        try {
+            String reason = requiredReason(body);
+            if ("ARCHIVED".equals(line.configStatus)) throw error(43510, HttpStatus.CONFLICT, "line state conflict");
+            if (!"ENABLED".equals(line.configStatus)) {
+                line.configStatus = "ENABLED";
+                line.updatedBy = actor.userId;
+                line.updatedAt = now();
+                writeAudit(actor, "LINE", lineId, "SERVER_STATUS_LINE_ENABLED", reason);
+            }
+            return adminLineView(line);
+        } catch (RuntimeException exception) {
+            lines.put(lineId, backup);
+            throw exception;
         }
-        return adminLineView(line);
     }
 
     Map<String, Object> adminOutages(Map<String, String> query) {
@@ -656,70 +692,94 @@ class ServerStatusStore {
 
     Map<String, Object> patchOutage(AuthUser actor, String outageId, Map<String, Object> body) {
         OutageRecord outage = requireOutage(outageId);
-        String reason = requiredReason(body);
-        if ("ARCHIVED".equals(outage.status)) throw error(43510, HttpStatus.CONFLICT, "outage state conflict");
-        if (body.containsKey("publicMessage")) outage.publicMessage = requiredString(body, "publicMessage", 1, 1000);
-        if (body.containsKey("internalReason")) outage.internalReason = optionalStringMax(body, "internalReason", 1000);
-        if (body.containsKey("adminNote")) outage.adminNote = optionalStringMax(body, "adminNote", 1000);
-        if (body.containsKey("instanceId")) {
-            String instanceId = optionalString(body, "instanceId");
-            if (instanceId != null && sourceByInstance(instanceId) == null) throw error(43500, HttpStatus.NOT_FOUND, "server instance not found");
-            outage.instanceId = instanceId;
+        OutageRecord backup = copy(outage);
+        try {
+            String reason = requiredReason(body);
+            if ("ARCHIVED".equals(outage.status)) throw error(43510, HttpStatus.CONFLICT, "outage state conflict");
+            if (body.containsKey("publicMessage")) outage.publicMessage = requiredString(body, "publicMessage", 1, 1000);
+            if (body.containsKey("internalReason")) outage.internalReason = optionalStringMax(body, "internalReason", 1000);
+            if (body.containsKey("adminNote")) outage.adminNote = optionalStringMax(body, "adminNote", 1000);
+            if (body.containsKey("instanceId")) {
+                String instanceId = optionalString(body, "instanceId");
+                if (instanceId != null && sourceByInstance(instanceId) == null) throw error(43500, HttpStatus.NOT_FOUND, "server instance not found");
+                outage.instanceId = instanceId;
+            }
+            if (body.containsKey("lineId")) {
+                String lineId = optionalString(body, "lineId");
+                if (lineId != null && !lines.containsKey(lineId)) throw error(43501, HttpStatus.NOT_FOUND, "server line not found");
+                outage.lineId = lineId;
+            }
+            outage.updatedBy = actor.userId;
+            outage.updatedAt = now();
+            writeAudit(actor, "OUTAGE", outageId, "SERVER_STATUS_OUTAGE_UPDATED", reason);
+            return adminOutageView(outage);
+        } catch (RuntimeException exception) {
+            outages.put(outageId, backup);
+            throw exception;
         }
-        if (body.containsKey("lineId")) {
-            String lineId = optionalString(body, "lineId");
-            if (lineId != null && !lines.containsKey(lineId)) throw error(43501, HttpStatus.NOT_FOUND, "server line not found");
-            outage.lineId = lineId;
-        }
-        outage.updatedBy = actor.userId;
-        outage.updatedAt = now();
-        writeAudit(actor, "OUTAGE", outageId, "SERVER_STATUS_OUTAGE_UPDATED", reason);
-        return adminOutageView(outage);
     }
 
     Map<String, Object> acknowledgeOutage(AuthUser actor, String outageId, Map<String, Object> body) {
         OutageRecord outage = requireOutage(outageId);
-        String reason = requiredReason(body);
-        if ("RESOLVED".equals(outage.status) || "ARCHIVED".equals(outage.status)) throw error(43510, HttpStatus.CONFLICT, "outage state conflict");
-        if (!"ACKNOWLEDGED".equals(outage.status)) {
-            outage.status = "ACKNOWLEDGED";
-            outage.acknowledgedBy = actor.userId;
-            outage.acknowledgedAt = now();
-            outage.updatedAt = now();
-            writeAudit(actor, "OUTAGE", outageId, "SERVER_STATUS_OUTAGE_ACKNOWLEDGED", reason);
+        OutageRecord backup = copy(outage);
+        try {
+            String reason = requiredReason(body);
+            if ("RESOLVED".equals(outage.status) || "ARCHIVED".equals(outage.status)) throw error(43510, HttpStatus.CONFLICT, "outage state conflict");
+            if (!"ACKNOWLEDGED".equals(outage.status)) {
+                outage.status = "ACKNOWLEDGED";
+                outage.acknowledgedBy = actor.userId;
+                outage.acknowledgedAt = now();
+                outage.updatedAt = now();
+                writeAudit(actor, "OUTAGE", outageId, "SERVER_STATUS_OUTAGE_ACKNOWLEDGED", reason);
+            }
+            return adminOutageView(outage);
+        } catch (RuntimeException exception) {
+            outages.put(outageId, backup);
+            throw exception;
         }
-        return adminOutageView(outage);
     }
 
     Map<String, Object> resolveOutage(AuthUser actor, String outageId, Map<String, Object> body) {
         OutageRecord outage = requireOutage(outageId);
-        String reason = requiredReason(body);
-        if ("ARCHIVED".equals(outage.status)) throw error(43510, HttpStatus.CONFLICT, "outage state conflict");
-        if (!"RESOLVED".equals(outage.status)) {
-            Instant resolvedAt = body.containsKey("resolvedAt") ? requiredInstant(body, "resolvedAt") : now();
-            if (resolvedAt.isBefore(outage.startedAt)) throw error(40001, HttpStatus.BAD_REQUEST, "validation failed");
-            if (body.containsKey("publicMessage")) outage.publicMessage = requiredString(body, "publicMessage", 1, 1000);
-            outage.status = "RESOLVED";
-            outage.resolvedAt = resolvedAt;
-            outage.resolvedBy = actor.userId;
-            outage.updatedAt = now();
-            writeAudit(actor, "OUTAGE", outageId, "SERVER_STATUS_OUTAGE_RESOLVED", reason);
+        OutageRecord backup = copy(outage);
+        try {
+            String reason = requiredReason(body);
+            if ("ARCHIVED".equals(outage.status)) throw error(43510, HttpStatus.CONFLICT, "outage state conflict");
+            if (!"RESOLVED".equals(outage.status)) {
+                Instant resolvedAt = body.containsKey("resolvedAt") ? requiredInstant(body, "resolvedAt") : now();
+                if (resolvedAt.isBefore(outage.startedAt)) throw error(40001, HttpStatus.BAD_REQUEST, "validation failed");
+                if (body.containsKey("publicMessage")) outage.publicMessage = requiredString(body, "publicMessage", 1, 1000);
+                outage.status = "RESOLVED";
+                outage.resolvedAt = resolvedAt;
+                outage.resolvedBy = actor.userId;
+                outage.updatedAt = now();
+                writeAudit(actor, "OUTAGE", outageId, "SERVER_STATUS_OUTAGE_RESOLVED", reason);
+            }
+            return adminOutageView(outage);
+        } catch (RuntimeException exception) {
+            outages.put(outageId, backup);
+            throw exception;
         }
-        return adminOutageView(outage);
     }
 
     Map<String, Object> archiveOutage(AuthUser actor, String outageId, Map<String, Object> body) {
         OutageRecord outage = requireOutage(outageId);
-        String reason = requiredReason(body);
-        if ("OPEN".equals(outage.status) || "ACKNOWLEDGED".equals(outage.status)) throw error(43510, HttpStatus.CONFLICT, "outage state conflict");
-        if (!"ARCHIVED".equals(outage.status)) {
-            outage.status = "ARCHIVED";
-            outage.archivedBy = actor.userId;
-            outage.archivedAt = now();
-            outage.updatedAt = now();
-            writeAudit(actor, "OUTAGE", outageId, "SERVER_STATUS_OUTAGE_ARCHIVED", reason);
+        OutageRecord backup = copy(outage);
+        try {
+            String reason = requiredReason(body);
+            if ("OPEN".equals(outage.status) || "ACKNOWLEDGED".equals(outage.status)) throw error(43510, HttpStatus.CONFLICT, "outage state conflict");
+            if (!"ARCHIVED".equals(outage.status)) {
+                outage.status = "ARCHIVED";
+                outage.archivedBy = actor.userId;
+                outage.archivedAt = now();
+                outage.updatedAt = now();
+                writeAudit(actor, "OUTAGE", outageId, "SERVER_STATUS_OUTAGE_ARCHIVED", reason);
+            }
+            return adminOutageView(outage);
+        } catch (RuntimeException exception) {
+            outages.put(outageId, backup);
+            throw exception;
         }
-        return adminOutageView(outage);
     }
 
     Map<String, Object> auditLogs(Map<String, String> query) {
@@ -744,6 +804,28 @@ class ServerStatusStore {
                 "sourcesTotal", sources.size(), "instancesTotal", sources.size(), "linesTotal", lines.size(), "snapshotsTotal", snapshots.size(),
                 "outagesTotal", outages.size(), "auditsTotal", audits.size(), "lastSnapshotAt", string(latestSnapshotTime()),
                 "lastAuditAt", audits.isEmpty() ? null : string(audits.getLast().createdAt), "warnings", List.of("P0_IN_MEMORY_STORAGE", "P0_TEST_COLLECTOR"));
+    }
+
+    private StatusSourceRecord copy(StatusSourceRecord source) {
+        return new StatusSourceRecord(source.sourceId, source.instanceId, source.displayName, source.instanceName,
+                source.instanceKind, source.sourceType, source.configStatus, source.publicVisible, source.primary,
+                source.target, source.timeoutMs, source.sortOrder, source.startedAt, source.adminNote,
+                source.createdBy, source.updatedBy, source.createdAt, source.updatedAt);
+    }
+
+    private LineRecord copy(LineRecord line) {
+        return new LineRecord(line.lineId, line.name, line.entryAddress, line.checkTarget, line.description,
+                line.configStatus, line.currentStatus, line.publicVisible, line.primary, line.sortOrder,
+                line.latencyMs, line.packetLossPercent, line.adminNote, line.createdBy, line.updatedBy,
+                line.createdAt, line.updatedAt);
+    }
+
+    private OutageRecord copy(OutageRecord outage) {
+        return new OutageRecord(outage.outageId, outage.title, outage.publicMessage, outage.status, outage.severity,
+                outage.instanceId, outage.lineId, outage.startedAt, outage.resolvedAt, outage.acknowledgedBy,
+                outage.resolvedBy, outage.archivedBy, outage.acknowledgedAt, outage.archivedAt,
+                outage.internalReason, outage.adminNote, outage.publicVisible, outage.createdBy, outage.updatedBy,
+                outage.createdAt, outage.updatedAt, outage.deletedAt);
     }
 
     void clearSnapshots() {

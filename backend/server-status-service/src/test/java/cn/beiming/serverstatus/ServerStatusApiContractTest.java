@@ -380,6 +380,50 @@ class ServerStatusApiContractTest {
         assertThat(store.exposesOpsControlRoutes()).isFalse();
     }
 
+    @Test
+    @DisplayName("SS-COM-019/SS-SOURCE-026/SS-LINE-ADMIN-024/SS-OUTAGE-ADMIN-027 audit failures roll back mutating updates")
+    void mutatingUpdatesRollBackWhenAuditFails() throws Exception {
+        store.failNextAudit();
+        performJson(patch("/api/v1/server-status/admin/sources/src-survival")
+                .header("Authorization", bearer("admin-token")), mapOf("instanceName", "Mutated Survival", "publicVisible", false, "reason", "audit fail"), 500, 51501);
+        JsonNode source = findItem(performJson(get("/api/v1/server-status/admin/sources")
+                .header("Authorization", bearer("admin-token")), 200), "sourceId", "src-survival");
+        assertThat(source.path("instanceName").asText()).isEqualTo("Survival");
+        assertThat(source.path("publicVisible").asBoolean()).isTrue();
+
+        store.seedTestData();
+        store.failNextAudit();
+        performJson(patch("/api/v1/server-status/admin/sources/src-survival/disable")
+                .header("Authorization", bearer("admin-token")), mapOf("reason", "audit fail"), 500, 51501);
+        assertThat(valuesAt(performJson(get("/api/v1/server-status/instances"), 200), "/data/items", "instanceId")).contains("inst-survival");
+
+        store.seedTestData();
+        store.failNextAudit();
+        performJson(patch("/api/v1/server-status/admin/lines/line-main")
+                .header("Authorization", bearer("admin-token")), mapOf("description", "Mutated line", "publicVisible", false, "reason", "audit fail"), 500, 51501);
+        JsonNode line = findItem(performJson(get("/api/v1/server-status/admin/lines")
+                .header("Authorization", bearer("admin-token")), 200), "lineId", "line-main");
+        assertThat(line.path("description").asText()).isEqualTo("Main public line");
+        assertThat(line.path("publicVisible").asBoolean()).isTrue();
+
+        store.seedTestData();
+        store.failNextAudit();
+        performJson(patch("/api/v1/server-status/admin/outages/outage-open")
+                .header("Authorization", bearer("admin-token")), mapOf("publicMessage", "Mutated outage", "reason", "audit fail"), 500, 51501);
+        JsonNode outage = findItem(performJson(get("/api/v1/server-status/admin/outages")
+                .header("Authorization", bearer("admin-token")), 200), "outageId", "outage-open");
+        assertThat(outage.path("publicMessage").asText()).isEqualTo("Maintenance public message");
+
+        store.seedTestData();
+        store.failNextAudit();
+        performJson(patch("/api/v1/server-status/admin/outages/outage-open/resolve")
+                .header("Authorization", bearer("admin-token")), mapOf("reason", "audit fail"), 500, 51501);
+        JsonNode unresolved = findItem(performJson(get("/api/v1/server-status/admin/outages")
+                .header("Authorization", bearer("admin-token")), 200), "outageId", "outage-open");
+        assertThat(unresolved.path("status").asText()).isEqualTo("OPEN");
+        assertThat(unresolved.path("resolvedAt").isNull()).isTrue();
+    }
+
     private JsonNode performJson(org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request,
                                  int expectedStatus) throws Exception {
         MvcResult result = mvc.perform(request)
@@ -512,6 +556,13 @@ class ServerStatusApiContractTest {
         return java.util.stream.StreamSupport.stream(root.at(arrayPointer).spliterator(), false)
                 .map(item -> item.path(fieldName).asText())
                 .toList();
+    }
+
+    private JsonNode findItem(JsonNode root, String fieldName, String expected) {
+        return java.util.stream.StreamSupport.stream(root.at("/data/items").spliterator(), false)
+                .filter(item -> expected.equals(item.path(fieldName).asText()))
+                .findFirst()
+                .orElseThrow();
     }
 
     private long countAuditAction(String action) {
