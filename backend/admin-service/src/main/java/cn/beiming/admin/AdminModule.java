@@ -239,7 +239,7 @@ class AdminStore {
             if (!includeNotImplemented && NOT_IMPLEMENTED.contains(config.key)) {
                 continue;
             }
-            if (!includeDisabled && !config.enabled) {
+            if (!includeDisabled && (!config.enabled || hiddenModules().contains(config.key))) {
                 continue;
             }
             Map<String, Object> row = moduleEntry(actor, config.key, request);
@@ -419,9 +419,10 @@ class AdminStore {
         row.put("moduleKey", moduleKey);
         row.put("name", moduleName(moduleKey));
         row.put("description", moduleName(moduleKey) + " management entry.");
-        row.put("status", !config.enabled ? "DISABLED" : health.get("status"));
+        boolean disabled = !config.enabled || hiddenModules().contains(moduleKey);
+        row.put("status", disabled ? "DISABLED" : health.get("status"));
         row.put("implemented", IMPLEMENTED.contains(moduleKey));
-        row.put("enabled", config.enabled);
+        row.put("enabled", !disabled);
         row.put("requiredRoles", requiredRoles(moduleKey));
         row.put("requiredPermissions", requiredPermissions(moduleKey));
         row.put("frontendRoute", "/admin/" + moduleKey.toLowerCase().replace('_', '-'));
@@ -528,6 +529,7 @@ class AdminStore {
                 .filter(row -> query.get("riskLevel") == null || query.get("riskLevel").equals(row.get("riskLevel")))
                 .filter(row -> query.get("targetType") == null || query.get("targetType").equals(row.get("targetType")))
                 .filter(row -> query.get("targetId") == null || query.get("targetId").equals(row.get("targetId")))
+                .filter(row -> inTimeRange(row, query))
                 .toList();
     }
 
@@ -540,13 +542,31 @@ class AdminStore {
                 .toList();
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("items", items);
-        data.put("layout", new LinkedHashMap<>(layout));
+        data.put("layout", layoutSnapshot(actor));
         data.put("modules", modules(actor, Map.of("includeNotImplemented", "true"), currentRequest()));
         data.put("updatedAt", NOW);
         if (idem != null) {
             data.put("idempotency", idem);
         }
         return data;
+    }
+
+    private Map<String, Object> layoutSnapshot(AuthUser actor) {
+        Map<String, Object> snapshot = new LinkedHashMap<>(layout);
+        Object quickActions = snapshot.get("quickActions");
+        if (quickActions instanceof List<?> list) {
+            snapshot.put("quickActions", list.stream()
+                    .filter(item -> item instanceof Map<?, ?> action && quickActionVisible(action, actor))
+                    .map(item -> {
+                        Map<?, ?> action = (Map<?, ?>) item;
+                        Map<String, Object> row = new LinkedHashMap<>();
+                        row.put("key", action.get("key"));
+                        row.put("targetRoute", action.get("targetRoute"));
+                        return row;
+                    })
+                    .toList());
+        }
+        return snapshot;
     }
 
     private void applySettings(Map<String, Object> body, AuthUser actor) {
@@ -590,9 +610,72 @@ class AdminStore {
                 layout.put("dashboardCards", stringList(patch.get("dashboardCards")));
             }
             if (patch.containsKey("quickActions")) {
-                layout.put("quickActions", patch.get("quickActions"));
+                layout.put("quickActions", quickActions(patch.get("quickActions"), actor));
             }
         }
+    }
+
+    private List<Map<String, Object>> quickActions(Object value, AuthUser actor) {
+        if (!(value instanceof List<?> list)) {
+            throw new AdminException(400, 40001, "invalid quick actions");
+        }
+        Set<String> keys = new HashSet<>();
+        List<Map<String, Object>> actions = new ArrayList<>();
+        for (Object raw : list) {
+            if (!(raw instanceof Map<?, ?> action)) {
+                throw new AdminException(400, 40001, "invalid quick action");
+            }
+            Object keyValue = action.get("key");
+            Object routeValue = action.get("targetRoute");
+            if (!(keyValue instanceof String key) || !key.matches("[a-z0-9-]{1,80}") || !keys.add(key)) {
+                throw new AdminException(400, 40001, "invalid quick action key");
+            }
+            if (!(routeValue instanceof String route) || route.isBlank() || route.startsWith("/api") || route.startsWith("http://") || route.startsWith("https://")) {
+                throw new AdminException(400, 40001, "invalid quick action route");
+            }
+            String moduleKey = moduleKeyForRoute(route);
+            if (moduleKey == null || !quickActionVisible(action, actor)) {
+                throw new AdminException(409, 43713, "quick action unavailable");
+            }
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("key", key);
+            row.put("targetRoute", route);
+            actions.add(row);
+        }
+        return actions;
+    }
+
+    private boolean quickActionVisible(Map<?, ?> action, AuthUser actor) {
+        Object routeValue = action.get("targetRoute");
+        if (!(routeValue instanceof String route)) {
+            return false;
+        }
+        String moduleKey = moduleKeyForRoute(route);
+        return moduleKey != null
+                && IMPLEMENTED.contains(moduleKey)
+                && !hiddenModules().contains(moduleKey)
+                && actor.hasAny(requiredRoles(moduleKey).toArray(String[]::new));
+    }
+
+    private String moduleKeyForRoute(String route) {
+        if (!route.startsWith("/admin/")) {
+            return null;
+        }
+        for (String moduleKey : MODULE_KEYS) {
+            String moduleRoute = "/admin/" + moduleKey.toLowerCase().replace('_', '-');
+            if (route.equals(moduleRoute) || route.startsWith(moduleRoute + "/")) {
+                return moduleKey;
+            }
+        }
+        return null;
+    }
+
+    private boolean inTimeRange(Map<String, Object> row, Map<String, String> query) {
+        Instant createdAt = Instant.parse(row.get("createdAt").toString());
+        if (query.containsKey("from") && createdAt.isBefore(Instant.parse(query.get("from")))) {
+            return false;
+        }
+        return !query.containsKey("to") || !createdAt.isAfter(Instant.parse(query.get("to")));
     }
 
     private boolean highImpact(Map<String, Object> body) {
@@ -804,6 +887,21 @@ class AdminStore {
         return new ArrayList<>(moduleModes(request).keySet());
     }
 
+    private Set<String> hiddenModules() {
+        Object value = layout.get("hiddenModules");
+        if (!(value instanceof List<?> list)) {
+            return Set.of();
+        }
+        Set<String> hidden = new HashSet<>();
+        for (Object item : list) {
+            String key = Objects.toString(item, "");
+            if (MODULE_KEYS.contains(key)) {
+                hidden.add(key);
+            }
+        }
+        return hidden;
+    }
+
     private Map<String, String> moduleModes(HttpServletRequest request) {
         if (request == null || request.getHeader("X-Test-Module-Mode") == null) {
             return Map.of();
@@ -820,12 +918,36 @@ class AdminStore {
 
     private String canonical(Object value) {
         if (value instanceof Map<?, ?> map) {
-            return new TreeStableMap(map).toString();
+            StringBuilder builder = new StringBuilder("{");
+            map.entrySet().stream()
+                    .sorted(Comparator.comparing(entry -> Objects.toString(entry.getKey())))
+                    .forEach(entry -> builder
+                            .append(Objects.toString(entry.getKey()))
+                            .append('=')
+                            .append(canonical(entry.getValue()))
+                            .append(';'));
+            return builder.append('}').toString();
         }
         if (value instanceof List<?> list) {
-            return list.stream().map(this::canonical).toList().toString();
+            StringBuilder builder = new StringBuilder("[");
+            for (Object item : list) {
+                builder.append(canonical(item)).append(';');
+            }
+            return builder.append(']').toString();
         }
-        return Objects.toString(value);
+        if (value instanceof String text) {
+            return "s:" + text;
+        }
+        if (value instanceof Number number) {
+            return "n:" + number;
+        }
+        if (value instanceof Boolean bool) {
+            return "b:" + bool;
+        }
+        if (value == null) {
+            return "null";
+        }
+        return "o:" + Objects.toString(value);
     }
 
     private HttpServletRequest currentRequest() {

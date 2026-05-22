@@ -256,6 +256,11 @@ class AdminApiContractTest {
         performJson(get("/api/v1/admin/audit-logs").header("Authorization", bearer("admin-token")).param("sourceModule", "BAD"), 400, 40001);
         performJson(get("/api/v1/admin/audit-logs").header("Authorization", bearer("admin-token")).param("result", "BAD"), 400, 40001);
         performJson(get("/api/v1/admin/audit-logs").header("Authorization", bearer("admin-token")).param("from", "2026-05-23T00:00:00Z").param("to", "2026-05-22T00:00:00Z"), 400, 40001);
+        JsonNode futureRange = performJson(get("/api/v1/admin/audit-logs")
+                .header("Authorization", bearer("admin-token"))
+                .param("from", "2027-01-01T00:00:00Z")
+                .param("to", "2027-12-31T23:59:59Z"), 200);
+        assertThat(futureRange.at("/data/total").asInt()).isZero();
 
         JsonNode degraded = performJson(get("/api/v1/admin/audit-logs")
                 .header("Authorization", bearer("admin-token"))
@@ -302,6 +307,31 @@ class AdminApiContractTest {
         JsonNode afterFailures = performJson(get("/api/v1/admin/settings").header("Authorization", bearer("admin-token")), 200);
         assertThat(afterFailures.toString()).doesNotContain("audit fail", "settings fail");
         assertNoSecrets(afterFailures);
+    }
+
+    @Test
+    @DisplayName("ADM-HARDENING hidden modules, quick actions, and nested idempotency are enforced")
+    void hardeningContract() throws Exception {
+        JsonNode hidden = performJson(patch("/api/v1/admin/settings").header("Authorization", bearer("admin-token")), hideResourceBody("hide-resource-1"), 200);
+        assertThat(hidden.at("/data/layout/hiddenModules").toString()).contains("RESOURCE");
+
+        JsonNode adminModules = performJson(get("/api/v1/admin/modules").header("Authorization", bearer("admin-token")), 200);
+        assertThat(valuesAt(adminModules, "/data/items", "moduleKey")).doesNotContain("RESOURCE");
+
+        JsonNode ownerModules = performJson(get("/api/v1/admin/modules")
+                .header("Authorization", bearer("owner-token"))
+                .param("includeDisabled", "true"), 200);
+        assertThat(ownerModules.toString()).contains("\"moduleKey\":\"RESOURCE\"", "\"status\":\"DISABLED\"");
+
+        performJson(patch("/api/v1/admin/settings").header("Authorization", bearer("admin-token")), invalidQuickActionBody("bad-quick-action"), 409, 43713);
+
+        Map<String, Object> first = nestedIdempotencyBody("nested-idem-1", true);
+        JsonNode updated = performJson(patch("/api/v1/admin/settings").header("Authorization", bearer("admin-token")), first, 200);
+        assertThat(updated.at("/data/idempotency/replayed").asBoolean()).isFalse();
+
+        Map<String, Object> sameDifferentOrder = nestedIdempotencyBody("nested-idem-1", false);
+        JsonNode replay = performJson(patch("/api/v1/admin/settings").header("Authorization", bearer("admin-token")), sameDifferentOrder, 200);
+        assertThat(replay.at("/data/idempotency/replayed").asBoolean()).isTrue();
     }
 
     @Test
@@ -425,6 +455,45 @@ class AdminApiContractTest {
         body.put("layout", layout);
         body.put("items", List.of(Map.of("key", "audit.retentionDays", "value", 180)));
         body.put("reason", "owner high impact change");
+        body.put("idempotencyKey", idempotencyKey);
+        return body;
+    }
+
+    private Map<String, Object> hideResourceBody(String idempotencyKey) {
+        Map<String, Object> layout = new LinkedHashMap<>();
+        layout.put("hiddenModules", List.of("RESOURCE"));
+        layout.put("quickActions", List.of(Map.of("key", "content-review", "targetRoute", "/admin/content")));
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("layout", layout);
+        body.put("reason", "hide resource from navigation");
+        body.put("idempotencyKey", idempotencyKey);
+        return body;
+    }
+
+    private Map<String, Object> invalidQuickActionBody(String idempotencyKey) {
+        Map<String, Object> layout = new LinkedHashMap<>();
+        layout.put("quickActions", List.of(Map.of("key", "ops-control", "targetRoute", "/admin/ops-control/terminal")));
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("layout", layout);
+        body.put("reason", "invalid quick action");
+        body.put("idempotencyKey", idempotencyKey);
+        return body;
+    }
+
+    private Map<String, Object> nestedIdempotencyBody(String idempotencyKey, boolean keyFirst) {
+        Map<String, Object> action = new LinkedHashMap<>();
+        if (keyFirst) {
+            action.put("key", "content-review");
+            action.put("targetRoute", "/admin/content");
+        } else {
+            action.put("targetRoute", "/admin/content");
+            action.put("key", "content-review");
+        }
+        Map<String, Object> layout = new LinkedHashMap<>();
+        layout.put("quickActions", List.of(action));
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("layout", layout);
+        body.put("reason", "nested idempotency order");
         body.put("idempotencyKey", idempotencyKey);
         return body;
     }
