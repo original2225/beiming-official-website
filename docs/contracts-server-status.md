@@ -40,6 +40,8 @@
 
 auth 上下文不可用返回 `46500`，auth 调用超时返回 `46501`，auth 返回字段缺失或枚举不兼容返回 `46502`。`server-status` 不能导入 auth 的内存存储、实体、Repository 或测试种子实现。
 
+布尔字段只能接收 JSON boolean 或字符串 `true`、`false`。时间字段必须是合法 ISO 8601 instant。布尔值和时间格式不合法时返回 `40001`，不得落入 `51500`。
+
 ## 枚举
 
 | 枚举 | 取值 | 说明 |
@@ -192,6 +194,8 @@ auth 上下文不可用返回 `46500`，auth 调用超时返回 `46501`，auth �
 ### ServerStatusAuditLog
 
 审计字段继承公共契约，允许补充 `sourceId`、`lineId`、`outageId`、`snapshotId`、`idempotencyKey`、`stateFrom`、`stateTo` 和 `collectorStatus`。审计日志不得通过 server-status API 删除。
+
+审计列表返回字段必须至少包含公共契约要求的 `id`、`requestId`、`actorUserId`、`actorRole`、`actorPermissions`、`sourceIp`、`targetType`、`targetId`、`action`、`riskLevel`、`reason`、`paramsSummary`、`beforeState`、`afterState`、`result`、`failureReason` 和 `createdAt`。P0 内存实现拿不到来源 IP 或状态摘要时可以返回 `null`，但字段必须存在，方便后续持久化实现无破坏升级。
 
 ### ServerStatusOpsSummary
 
@@ -402,6 +406,8 @@ auth 上下文不可用返回 `46500`，auth 调用超时返回 `46501`，auth �
 
 业务规则：只有 `ENABLED` 状态源可刷新。刷新过于频繁、相同状态源已有刷新进行中或同一幂等键请求体冲突返回 `43512` 或 `43002`。采集不可用返回 `46510`，采集超时返回 `46511`。采集失败不能写入伪造成功快照。快照写入失败返回 `51502`。刷新成功写入 `SERVER_STATUS_SOURCE_REFRESHED` 审计。
 
+手动刷新必须以状态源为粒度加锁。同一状态源已有刷新进行中时，后续刷新请求返回 `43512`。无幂等键的连续刷新必须受冷却窗口限制，P0 默认冷却窗口为 10 分钟。携带相同 `idempotencyKey` 且请求体一致的重试应优先返回第一次刷新结果，不受冷却窗口影响。
+
 ## 后台线路接口
 
 ### 后台线路列表
@@ -536,6 +542,8 @@ auth 上下文不可用返回 `46500`，auth 调用超时返回 `46501`，auth �
 宕机记录状态流转为 `OPEN` 到 `ACKNOWLEDGED` 或 `RESOLVED`，`ACKNOWLEDGED` 到 `RESOLVED`，`RESOLVED` 到 `ARCHIVED`。`ARCHIVED` 不可修改。重复确认、重复解决和重复归档按本文档保持幂等。
 
 创建状态源、创建线路、创建宕机记录和手动刷新支持 `idempotencyKey`。同一操作者、同一幂等键、同一请求体重复提交时返回同一结果。相同幂等键搭配不同请求体返回 `43002`。并发创建相同状态源目标、线路入口或重复刷新同一状态源时只能一个请求成功，其余返回冲突。
+
+幂等请求体指纹必须使用字段名排序后的稳定 JSON 语义计算，不能依赖浏览器字段顺序或 Java `Map.toString()`。创建类幂等记录有效期为 24 小时，手动刷新幂等记录有效期为 10 分钟。过期记录不得继续影响新请求。
 
 ## 状态采集与失败降级
 
