@@ -25,6 +25,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -284,6 +285,9 @@ class WhitelistStore {
         String currentId = currentByUser.get(user.userId());
         if (currentId != null) {
             WhitelistApplicationRecord current = applications.get(currentId);
+            if (current != null && Set.of("REMOVED", "REAPPLYING").contains(current.status) && !"RECHECK".equals(handoff.attemptType())) {
+                throw new WhitelistException(409, 44019, "recheck handoff required");
+            }
             if (current != null && !Set.of("WITHDRAWN", "REJECTED", "REMOVED", "ARCHIVED", "REAPPLYING").contains(current.status)) {
                 Map<String, Object> value = view(current, false);
                 remember(user.userId(), "create", body, value);
@@ -515,6 +519,7 @@ class WhitelistStore {
         if (existing != null) return existing.value();
         if (!Set.of("PENDING_REVIEW", "UNDER_REVIEW", "SUPPLEMENT_SUBMITTED", "APPROVAL_BLOCKED").contains(app.status)) throw new WhitelistException(409, Set.of("APPROVED", "REMOVED").contains(app.status) ? 44018 : 44014, "state conflict");
         failBeforeWrite(request);
+        failProfile(request);
         String before = app.status;
         app.reviewerUserId = actor.userId();
         app.reviewerDisplayNameSnapshot = actor.displayName();
@@ -527,6 +532,14 @@ class WhitelistStore {
             app.result = "PENDING";
             app.profileActivation = linkedMap("status", "FAILED", "memberId", null, "profileStatus", null, "calledAt", NOW, "failureCode", "44020", "failureReason", "profile activation conflict");
             audit(actor, app.applicationId, "WHITELIST_PROFILE_ACTIVATION_FAILED", "MEDIUM", before, app.status, "profile failed");
+        } else if ("true".equals(request.getHeader("X-Test-Fail-After-Profile"))) {
+            app.status = "APPROVAL_BLOCKED";
+            app.result = "PENDING";
+            app.profileActivation = linkedMap("status", "ACTIVATED", "memberId", "member-" + app.userId, "profileStatus", "ACTIVE", "calledAt", NOW, "failureCode", "52003", "failureReason", "whitelist state confirmation failed");
+            app.updatedAt = NOW;
+            audit(actor, app.applicationId, "WHITELIST_PROFILE_ACTIVATED", "MEDIUM", before, app.status, "profile activated");
+            audit(actor, app.applicationId, "WHITELIST_DOWNSTREAM_COMPENSATION_REQUIRED", "HIGH", before, app.status, "state confirmation failed");
+            throw new WhitelistException(500, 52003, "whitelist downstream compensation required");
         } else {
             app.status = "APPROVED";
             app.result = "APPROVED";
@@ -580,6 +593,7 @@ class WhitelistStore {
         if ("REMOVED".equals(app.status)) return view(app, true);
         if (!"APPROVED".equals(app.status)) throw new WhitelistException(409, 44014, "state conflict");
         failBeforeWrite(request);
+        failProfile(request);
         String before = app.status;
         app.status = "REMOVED";
         app.result = "REMOVED";
@@ -668,6 +682,14 @@ class WhitelistStore {
             case "session-approve" -> new Handoff(sessionId, "onb-approve", 1, 1, "approve-user", minecraft("ApproveSteve", "uuid-approve"), "BUILDING", "FIRST_TIME", "PASSED", score(), NOW);
             case "session-reject" -> new Handoff(sessionId, "onb-reject", 1, 1, "reject-user", minecraft("RejectSteve", "uuid-reject"), "GENERAL", "FIRST_TIME", "PASSED", score(), NOW);
             case "session-profile-fail" -> new Handoff(sessionId, "onb-profile-fail", 1, 1, "profile-fail-user", minecraft("ProfileFailSteve", "uuid-profile-fail"), "LATE_GAME", "FIRST_TIME", "PASSED", score(), NOW);
+            case "session-profile-unavailable" -> new Handoff(sessionId, "onb-profile-unavailable", 1, 1, "profile-unavailable-user", minecraft("ProfileDownSteve", "uuid-profile-down"), "GENERAL", "FIRST_TIME", "PASSED", score(), NOW);
+            case "session-profile-timeout" -> new Handoff(sessionId, "onb-profile-timeout", 1, 1, "profile-timeout-user", minecraft("ProfileTimeoutSteve", "uuid-profile-timeout"), "GENERAL", "FIRST_TIME", "PASSED", score(), NOW);
+            case "session-profile-bad-schema" -> new Handoff(sessionId, "onb-profile-bad-schema", 1, 1, "profile-bad-schema-user", minecraft("ProfileBadSteve", "uuid-profile-bad"), "GENERAL", "FIRST_TIME", "PASSED", score(), NOW);
+            case "session-profile-compensate" -> new Handoff(sessionId, "onb-profile-compensate", 1, 1, "profile-compensate-user", minecraft("ProfileCompensateSteve", "uuid-profile-compensate"), "GENERAL", "FIRST_TIME", "PASSED", score(), NOW);
+            case "session-remove-profile-fail" -> new Handoff(sessionId, "onb-remove-profile-fail", 1, 1, "remove-downstream-user", minecraft("RemoveProfileFailSteve", "uuid-remove-profile-fail"), "GENERAL", "FIRST_TIME", "PASSED", score(), NOW);
+            case "session-reapply-first" -> new Handoff(sessionId, "onb-reapply-first", 1, 1, "reapply-user", minecraft("ReapplySteve", "uuid-reapply"), "REDSTONE", "FIRST_TIME", "PASSED", score(), NOW);
+            case "session-reapply-first-again" -> new Handoff(sessionId, "onb-reapply-first-again", 1, 1, "reapply-user", minecraft("ReapplySteve", "uuid-reapply"), "REDSTONE", "FIRST_TIME", "PASSED", score(), NOW);
+            case "session-reapply-recheck" -> new Handoff(sessionId, "onb-reapply-recheck", 1, 1, "reapply-user", minecraft("ReapplySteve", "uuid-reapply"), "REDSTONE", "RECHECK", "PASSED", score(), NOW);
             default -> throw new WhitelistException(502, 47010, "exam handoff unavailable");
         };
     }
@@ -765,6 +787,16 @@ class WhitelistStore {
     private void failBeforeWrite(HttpServletRequest request) {
         if ("true".equals(request.getHeader("X-Test-Fail-Audit"))) throw new WhitelistException(500, 52001, "whitelist audit failed");
         if ("true".equals(request.getHeader("X-Test-Fail-Store"))) throw new WhitelistException(500, 52002, "whitelist state failed");
+    }
+
+    private void failProfile(HttpServletRequest request) {
+        switch (Objects.toString(request.getHeader("X-Test-Profile-Mode"), "")) {
+            case "unavailable" -> throw new WhitelistException(502, 47020, "profile unavailable");
+            case "timeout" -> throw new WhitelistException(504, 47021, "profile timeout");
+            case "bad-schema" -> throw new WhitelistException(502, 47022, "profile incompatible");
+            default -> {
+            }
+        }
     }
 
     private String notificationStatus(HttpServletRequest request) {
@@ -870,7 +902,10 @@ class WhitelistStore {
 
     private void validateFutureDueAt(String dueAt) {
         try {
-            if (dueAt == null || !Instant.parse(dueAt).isAfter(Instant.parse(NOW))) throw new WhitelistException(400, 40001, "invalid dueAt");
+            if (dueAt == null) throw new WhitelistException(400, 40001, "invalid dueAt");
+            Instant value = Instant.parse(dueAt);
+            Instant now = Instant.parse(NOW);
+            if (!value.isAfter(now) || value.isAfter(now.plus(Duration.ofDays(14)))) throw new WhitelistException(400, 40001, "invalid dueAt");
         } catch (DateTimeParseException ex) {
             throw new WhitelistException(400, 40001, "invalid dueAt");
         }
@@ -939,6 +974,12 @@ class TestWhitelistAuthProvider {
             case "approve-user-token" -> new WhitelistUser("approve-user", "Approve User", Set.of("USER"), "ACTIVE", "NORMAL");
             case "reject-user-token" -> new WhitelistUser("reject-user", "Reject User", Set.of("USER"), "ACTIVE", "NORMAL");
             case "profile-fail-token" -> new WhitelistUser("profile-fail-user", "Profile Fail", Set.of("USER"), "ACTIVE", "NORMAL");
+            case "profile-unavailable-token" -> new WhitelistUser("profile-unavailable-user", "Profile Unavailable", Set.of("USER"), "ACTIVE", "NORMAL");
+            case "profile-timeout-token" -> new WhitelistUser("profile-timeout-user", "Profile Timeout", Set.of("USER"), "ACTIVE", "NORMAL");
+            case "profile-bad-schema-token" -> new WhitelistUser("profile-bad-schema-user", "Profile Bad Schema", Set.of("USER"), "ACTIVE", "NORMAL");
+            case "profile-compensate-token" -> new WhitelistUser("profile-compensate-user", "Profile Compensate", Set.of("USER"), "ACTIVE", "NORMAL");
+            case "remove-profile-fail-token" -> new WhitelistUser("remove-downstream-user", "Remove Profile Fail", Set.of("USER"), "ACTIVE", "NORMAL");
+            case "reapply-user-token" -> new WhitelistUser("reapply-user", "Reapply User", Set.of("USER"), "ACTIVE", "NORMAL");
             default -> throw new WhitelistException(401, 41001, "invalid session");
         };
     }

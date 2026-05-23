@@ -1,6 +1,6 @@
 # 北冥官网 whitelist API 契约
 
-版本：0.1
+版本：0.2
 
 ## 文档定位
 
@@ -49,6 +49,8 @@
 `auth` 是强依赖。当前请求认证上下文至少包含 `userId`、`displayName`、`roles`、`permissions`、`status` 和 `minecraftBinding`。用户状态为 `PENDING_PROFILE` 或 `ACTIVE` 时可创建、补充、撤回和读取自己的申请；`DISABLED`、`BANNED`、`DELETED` 不允许写入。auth 不可用返回 `47000`，auth 超时返回 `47001`，字段或枚举不兼容返回 `47002`。
 
 `exam` 是创建申请的强依赖。创建白名单申请时必须读取 `GET /api/v1/exams/admin/sessions/{sessionId}/whitelist-handoff` 或未来等价服务间适配器。只有交接快照满足 `result=PASSED`、`passedAt` 不为空、`userId` 与当前用户一致、`minecraftBindingSnapshot` 完整、`handoffVersion` 未被当前 whitelist 申请消费过时，才允许创建申请。exam 不可用返回 `47010`，超时返回 `47011`，字段不兼容返回 `47012`，交接状态不允许返回 `44010`。
+
+当用户历史申请已被移除或重开为 `REAPPLYING` 时，新建申请必须消费 `attemptType=RECHECK` 的 exam handoff。再次使用 `FIRST_TIME` handoff 创建二次入服申请必须返回 `44019` 或 `44010`，实现固定为 `44019`，并不得创建申请。
 
 `profile` 是审核通过和移除白名单的强依赖。审核通过时必须通过 `POST /api/v1/profile/admin/members/activate` 或未来等价服务间适配器创建或激活成员档案，并保存调用结果摘要。移除白名单时必须通过 `PATCH /api/v1/profile/admin/members/{memberId}/status` 或未来等价适配器把成员状态流转为 `REMOVED` 或契约允许的目标状态。profile 不可用返回 `47020`，超时返回 `47021`，字段不兼容返回 `47022`，成员激活冲突返回 `44020`。profile 激活失败时申请不得进入 `APPROVED`，必须进入 `APPROVAL_BLOCKED` 或保持可复核状态。
 
@@ -446,6 +448,8 @@
 
 业务规则：只允许 `PENDING_REVIEW`、`UNDER_REVIEW` 和 `SUPPLEMENT_SUBMITTED`。成功后进入 `NEEDS_SUPPLEMENT`，`result=NEEDS_SUPPLEMENT`。通知失败不回滚，但必须记录。
 
+`dueAt` 必须晚于服务端当前时间，且不得超过服务端当前时间后 14 天。超过 14 天、格式非法或早于当前时间时返回 `40001`，不得改变申请状态。
+
 ### 审核通过
 
 `PATCH /api/v1/whitelist/admin/applications/{applicationId}/approve`
@@ -463,6 +467,8 @@
 成功响应 HTTP `200`，`data` 为更新后的 `WhitelistApplication`。
 
 业务规则：只允许 `PENDING_REVIEW`、`UNDER_REVIEW` 和 `SUPPLEMENT_SUBMITTED`。审核通过必须先完成本地校验，再调用 profile 激活成员档案。profile 激活成功后进入 `APPROVED`，`result=APPROVED`，生成 `attendanceHandoff`，`attendanceInitializationStatus=WAITING_MODULE` 或 `READY_FOR_CONSUME`，并尝试发送通知。profile 激活失败时不得进入 `APPROVED`，必须进入 `APPROVAL_BLOCKED`，保存失败摘要并写审计。notification 失败不回滚已通过状态。
+
+profile 不可用、超时或响应字段不兼容时，审核通过不得进入 `APPROVED`，必须返回 `47020`、`47021` 或 `47022`，并保持申请可复核。若 profile 已确认激活成功但 whitelist 本地状态写入失败，必须返回 `52003`，把申请保留为 `APPROVAL_BLOCKED` 或等价可复核状态，保存 `profileActivation.status=ACTIVATED`、失败摘要和审计线索，后续不得对用户伪造成已通过。
 
 审计要求：成功写入 `WHITELIST_APPROVED` 和 `WHITELIST_PROFILE_ACTIVATED`。profile 失败写入 `WHITELIST_PROFILE_ACTIVATION_FAILED`。审计失败时不得调用 profile，不得改变状态。
 
@@ -500,6 +506,8 @@
 成功响应 HTTP `200`，`data` 为更新后的 `WhitelistApplication`。
 
 业务规则：该接口是 `HIGH` 风险，必须要求 `ADMIN` 或 `OWNER`，并校验二次确认。只允许 `APPROVED` 申请移除。成功后状态进入 `REMOVED`，`result=REMOVED`，`reapplyRequired=true`，`nextExamAttemptType=RECHECK`。必须调用 profile 状态接口把成员档案流转为 `REMOVED` 或契约允许目标状态。不得直接执行真实服务器白名单命令，不得写服务器文件。profile 状态变更失败时不得进入 `REMOVED`，必须返回依赖错误或保持原状态。
+
+profile 移除状态接口不可用、超时或响应字段不兼容时，移除操作不得进入 `REMOVED`。若 profile 已确认状态变更成功但 whitelist 本地状态写入失败，必须返回 `52003`，保留可复核摘要，避免官网状态和成员档案状态长期不一致且无法追踪。
 
 审计要求：成功写入 `WHITELIST_REMOVED`，记录为 `HIGH` 风险。重复移除同一申请保持幂等，不重复写审计。
 
@@ -617,6 +625,8 @@ exam 是创建申请强依赖。交接快照不可用、未通过、已消费、
 profile 是审核通过和移除白名单强依赖。profile 激活失败时申请不得进入 `APPROVED`。profile 移除状态失败时申请不得进入 `REMOVED`。如果 profile 已激活但 whitelist 状态写入失败，必须记录 `52003` 风险并提供可复核状态，不能吞成成功。
 
 notification 默认是辅助依赖。通知失败不得回滚创建、补充、通过、拒绝、移除或重开，但必须记录失败摘要和审计。
+
+通知失败摘要至少要能区分不可用、超时和字段不兼容三类失败。P0 可统一保存为 `notificationStatus=FAILED`，但审计中必须保留脱敏失败线索，不得保存通知正文或完整请求头。
 
 attendance 未实现时，审核通过仍可完成 whitelist 和 profile 激活，但只能返回 `attendanceInitializationStatus=WAITING_MODULE` 或 `READY_FOR_CONSUME`。不得返回积分已初始化、不得创建积分流水、不得维护榜单。
 

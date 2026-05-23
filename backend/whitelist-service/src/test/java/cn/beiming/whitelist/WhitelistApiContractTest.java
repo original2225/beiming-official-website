@@ -64,13 +64,13 @@ class WhitelistApiContractTest {
         addRange(mapped, "WL-HANDOFF", 1, 28);
         addRange(mapped, "WL-AUDIT", 1, 32);
         addRange(mapped, "WL-OPS", 1, 24);
-        addRange(mapped, "WL-DEPS", 1, 52);
+        addRange(mapped, "WL-DEPS", 1, 62);
         addRange(mapped, "WL-COMPAT", 1, 44);
-        addRange(mapped, "WL-HARDEN", 1, 36);
+        addRange(mapped, "WL-HARDEN", 1, 46);
         addRange(mapped, "WL-PORT", 1, 6);
         addRange(mapped, "WL-CYCLE", 1, 20);
-        assertThat(mapped).contains("WL-COM-001", "WL-ADMIN-APPROVE-048", "WL-HANDOFF-028", "WL-CYCLE-020");
-        assertThat(mapped).hasSize(802);
+        assertThat(mapped).contains("WL-COM-001", "WL-ADMIN-APPROVE-048", "WL-HANDOFF-028", "WL-DEPS-062", "WL-HARDEN-046", "WL-CYCLE-020");
+        assertThat(mapped).hasSize(822);
     }
 
     @Test
@@ -224,6 +224,91 @@ class WhitelistApiContractTest {
     }
 
     @Test
+    @DisplayName("WL-DEPS and WL-HARDEN cover reapply handoffs, profile hard failures, compensation, and dueAt limits")
+    void dependencyAndHardeningAdditions() throws Exception {
+        JsonNode dueSeed = performJson(post("/api/v1/whitelist/me/applications").header("Authorization", bearer("user-token")),
+                createBody("session-passed", "create-due-limit"), 201);
+        String dueId = dueSeed.at("/data/applicationId").asText();
+        performJson(patch("/api/v1/whitelist/admin/applications/" + dueId + "/request-supplement").header("Authorization", bearer("admin-token")),
+                Map.of("idempotencyKey", "due-too-long", "publicComment", "补充说明", "dueAt", "2026-06-20T12:00:00Z", "reason", "截止过长"), 400, 40001);
+        JsonNode dueDetail = performJson(get("/api/v1/whitelist/admin/applications/" + dueId).header("Authorization", bearer("admin-token")), 200);
+        assertThat(dueDetail.at("/data/status").asText()).isEqualTo("PENDING_REVIEW");
+        performJson(patch("/api/v1/whitelist/admin/applications/" + dueId + "/request-supplement").header("Authorization", bearer("admin-token")),
+                Map.of("idempotencyKey", "due-invalid", "publicComment", "补充说明", "dueAt", "not-time", "reason", "格式错误"), 400, 40001);
+        performJson(patch("/api/v1/whitelist/admin/applications/" + dueId + "/request-supplement").header("Authorization", bearer("admin-token")),
+                with(Map.of("idempotencyKey", "due-null", "publicComment", "补充说明", "reason", "空截止时间"), "dueAt", null), 400, 40001);
+        JsonNode dueOk = performJson(patch("/api/v1/whitelist/admin/applications/" + dueId + "/request-supplement").header("Authorization", bearer("admin-token")),
+                Map.of("idempotencyKey", "due-within-limit", "publicComment", "补充说明", "dueAt", "2026-06-05T12:00:00Z", "reason", "材料不足"), 200);
+        assertThat(dueOk.at("/data/status").asText()).isEqualTo("NEEDS_SUPPLEMENT");
+
+        JsonNode profileDownSeed = performJson(post("/api/v1/whitelist/me/applications").header("Authorization", bearer("profile-unavailable-token")),
+                createBody("session-profile-unavailable", "create-profile-down"), 201);
+        String profileDownId = profileDownSeed.at("/data/applicationId").asText();
+        performJson(patch("/api/v1/whitelist/admin/applications/" + profileDownId + "/approve")
+                        .header("Authorization", bearer("admin-token"))
+                        .header("X-Test-Profile-Mode", "unavailable"),
+                approveBody("approve-profile-down"), 502, 47020);
+        JsonNode profileDownDetail = performJson(get("/api/v1/whitelist/admin/applications/" + profileDownId).header("Authorization", bearer("admin-token")), 200);
+        assertThat(profileDownDetail.at("/data/status").asText()).isNotEqualTo("APPROVED");
+
+        JsonNode profileTimeoutSeed = performJson(post("/api/v1/whitelist/me/applications").header("Authorization", bearer("profile-timeout-token")),
+                createBody("session-profile-timeout", "create-profile-timeout"), 201);
+        performJson(patch("/api/v1/whitelist/admin/applications/" + profileTimeoutSeed.at("/data/applicationId").asText() + "/approve")
+                        .header("Authorization", bearer("admin-token"))
+                        .header("X-Test-Profile-Mode", "timeout"),
+                approveBody("approve-profile-timeout"), 504, 47021);
+
+        JsonNode profileBadSeed = performJson(post("/api/v1/whitelist/me/applications").header("Authorization", bearer("profile-bad-schema-token")),
+                createBody("session-profile-bad-schema", "create-profile-bad"), 201);
+        performJson(patch("/api/v1/whitelist/admin/applications/" + profileBadSeed.at("/data/applicationId").asText() + "/approve")
+                        .header("Authorization", bearer("admin-token"))
+                        .header("X-Test-Profile-Mode", "bad-schema"),
+                approveBody("approve-profile-bad"), 502, 47022);
+
+        JsonNode compensateSeed = performJson(post("/api/v1/whitelist/me/applications").header("Authorization", bearer("profile-compensate-token")),
+                createBody("session-profile-compensate", "create-compensate"), 201);
+        String compensateId = compensateSeed.at("/data/applicationId").asText();
+        performJson(patch("/api/v1/whitelist/admin/applications/" + compensateId + "/approve")
+                        .header("Authorization", bearer("admin-token"))
+                        .header("X-Test-Fail-After-Profile", "true"),
+                approveBody("approve-compensate"), 500, 52003);
+        JsonNode compensateDetail = performJson(get("/api/v1/whitelist/admin/applications/" + compensateId).header("Authorization", bearer("admin-token")), 200);
+        assertThat(compensateDetail.at("/data/status").asText()).isEqualTo("APPROVAL_BLOCKED");
+        assertThat(compensateDetail.at("/data/profileActivation/status").asText()).isEqualTo("ACTIVATED");
+        assertNoRuntimeSecrets(compensateDetail);
+
+        JsonNode removeSeed = performJson(post("/api/v1/whitelist/me/applications").header("Authorization", bearer("remove-profile-fail-token")),
+                createBody("session-remove-profile-fail", "create-remove-fail"), 201);
+        String removeId = removeSeed.at("/data/applicationId").asText();
+        performJson(patch("/api/v1/whitelist/admin/applications/" + removeId + "/approve").header("Authorization", bearer("admin-token")),
+                approveBody("approve-remove-fail"), 200);
+        performJson(patch("/api/v1/whitelist/admin/applications/" + removeId + "/remove")
+                        .header("Authorization", bearer("admin-token"))
+                        .header("X-Test-Profile-Mode", "unavailable"),
+                Map.of("idempotencyKey", "remove-profile-down", "publicComment", "暂时移除", "reason", "profile 不可用", "confirmText", "REMOVE_WHITELIST"), 502, 47020);
+        JsonNode removeDetail = performJson(get("/api/v1/whitelist/admin/applications/" + removeId).header("Authorization", bearer("admin-token")), 200);
+        assertThat(removeDetail.at("/data/status").asText()).isEqualTo("APPROVED");
+
+        JsonNode reapplySeed = performJson(post("/api/v1/whitelist/me/applications").header("Authorization", bearer("reapply-user-token")),
+                createBody("session-reapply-first", "create-reapply-first"), 201);
+        String reapplyId = reapplySeed.at("/data/applicationId").asText();
+        performJson(patch("/api/v1/whitelist/admin/applications/" + reapplyId + "/approve").header("Authorization", bearer("admin-token")),
+                approveBody("approve-reapply"), 200);
+        performJson(patch("/api/v1/whitelist/admin/applications/" + reapplyId + "/remove").header("Authorization", bearer("admin-token")),
+                Map.of("idempotencyKey", "remove-reapply", "publicComment", "暂时移除", "reason", "长期未参与", "confirmText", "REMOVE_WHITELIST"), 200);
+        performJson(post("/api/v1/whitelist/admin/applications/" + reapplyId + "/reopen").header("Authorization", bearer("admin-token")),
+                Map.of("idempotencyKey", "reopen-reapply", "publicComment", "可重新申请", "reason", "允许重考"), 200);
+        performJson(post("/api/v1/whitelist/me/applications").header("Authorization", bearer("reapply-user-token")),
+                createBody("session-reapply-first-again", "create-first-again"), 409, 44019);
+        JsonNode recheck = performJson(post("/api/v1/whitelist/me/applications").header("Authorization", bearer("reapply-user-token")),
+                createBody("session-reapply-recheck", "create-recheck"), 201);
+        assertThat(recheck.at("/data/attemptType").asText()).isEqualTo("RECHECK");
+        JsonNode replay = performJson(post("/api/v1/whitelist/me/applications").header("Authorization", bearer("reapply-user-token")),
+                createBody("session-reapply-recheck", "create-recheck"), 200);
+        assertThat(replay.at("/data/applicationId").asText()).isEqualTo(recheck.at("/data/applicationId").asText());
+    }
+
+    @Test
     @DisplayName("WL-COMPAT scans source boundaries and verifies server-operation and attendance ownership stay outside whitelist")
     void compatibilityAndBoundaryContract() throws Exception {
         Path serviceRoot = Path.of("backend/whitelist-service/src/main/java");
@@ -304,6 +389,13 @@ class WhitelistApiContractTest {
                 "private note", "internalNote", "notification body", "content body", "minecraftVerifyCode",
                 "requestHeaders", "paramsSummaryFull", "attendancePoints", "leaderboard", "server.properties",
                 "whitelist add", "whitelist remove", "node-daemon", "terminal", "container");
+    }
+
+    private void assertNoRuntimeSecrets(JsonNode json) {
+        assertThat(json.toString()).doesNotContain(
+                "secret-token", "authorizationHeader", "stackTrace", "requestHeaders", "notification body",
+                "content body", "minecraftVerifyCode", "server.properties", "whitelist add", "whitelist remove",
+                "node-daemon", "terminal", "container");
     }
 
     private void addRange(Set<String> ids, String prefix, int start, int end) {
