@@ -188,10 +188,12 @@ class WhitelistApiContractTest {
                 Map.of("idempotencyKey", "remove-approve-1", "publicComment", "暂时移除", "reason", "长期未参与", "confirmText", "REMOVE_WHITELIST"), 200);
         assertThat(removed.at("/data/status").asText()).isEqualTo("REMOVED");
         assertThat(removed.at("/data/nextExamAttemptType").asText()).isEqualTo("RECHECK");
+        performJson(get("/api/v1/whitelist/admin/applications/" + approveId + "/attendance-handoff").header("Authorization", bearer("admin-token")), 409, 44014);
 
         JsonNode reopened = performJson(post("/api/v1/whitelist/admin/applications/" + approveId + "/reopen").header("Authorization", bearer("admin-token")),
                 Map.of("idempotencyKey", "reopen-approve-1", "publicComment", "可重新申请", "reason", "允许重考"), 200);
         assertThat(reopened.at("/data/status").asText()).isEqualTo("REAPPLYING");
+        performJson(get("/api/v1/whitelist/admin/applications/" + approveId + "/attendance-handoff").header("Authorization", bearer("admin-token")), 409, 44014);
 
         JsonNode rejectedSeed = performJson(post("/api/v1/whitelist/me/applications").header("Authorization", bearer("reject-user-token")),
                 createBody("session-reject", "create-reject-1"), 201);
@@ -240,6 +242,15 @@ class WhitelistApiContractTest {
         JsonNode dueOk = performJson(patch("/api/v1/whitelist/admin/applications/" + dueId + "/request-supplement").header("Authorization", bearer("admin-token")),
                 Map.of("idempotencyKey", "due-within-limit", "publicComment", "补充说明", "dueAt", "2026-06-05T12:00:00Z", "reason", "材料不足"), 200);
         assertThat(dueOk.at("/data/status").asText()).isEqualTo("NEEDS_SUPPLEMENT");
+
+        JsonNode notificationSeed = performJson(post("/api/v1/whitelist/me/applications").header("Authorization", bearer("reject-user-token")),
+                createBody("session-reject", "create-notification-failure"), 201);
+        performJson(patch("/api/v1/whitelist/admin/applications/" + notificationSeed.at("/data/applicationId").asText() + "/request-supplement")
+                        .header("Authorization", bearer("admin-token"))
+                        .header("X-Test-Notification-Mode", "unavailable"),
+                Map.of("idempotencyKey", "notify-failed-supplement", "publicComment", "补充说明", "dueAt", "2026-06-05T12:00:00Z", "reason", "通知失败审计"), 200);
+        JsonNode notificationAudit = performJson(get("/api/v1/whitelist/admin/audit-logs").header("Authorization", bearer("admin-token")).param("action", "WHITELIST_NOTIFICATION_FAILED"), 200);
+        assertThat(notificationAudit.at("/data/total").asInt()).isGreaterThanOrEqualTo(1);
 
         JsonNode profileDownSeed = performJson(post("/api/v1/whitelist/me/applications").header("Authorization", bearer("profile-unavailable-token")),
                 createBody("session-profile-unavailable", "create-profile-down"), 201);

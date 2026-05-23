@@ -320,7 +320,7 @@ class WhitelistStore {
         applications.put(app.applicationId, app);
         currentByUser.put(app.userId, app.applicationId);
         audit(user, app.applicationId, "WHITELIST_APPLICATION_CREATED", "LOW", null, app.status, "create application");
-        if ("FAILED".equals(app.notificationStatus)) audit(user, app.applicationId, "WHITELIST_NOTIFICATION_FAILED", "LOW", app.status, app.status, "notification failed");
+        auditNotificationFailure(user, app);
         Map<String, Object> value = view(app, false);
         remember(user.userId(), "create", body, value);
         return new MutationResult(true, value);
@@ -406,6 +406,7 @@ class WhitelistStore {
         app.notificationStatus = notificationStatus(request);
         app.updatedAt = NOW;
         audit(user, app.applicationId, "WHITELIST_SUPPLEMENT_SUBMITTED", "LOW", before, app.status, "supplement");
+        auditNotificationFailure(user, app);
         Map<String, Object> value = view(app, false);
         remember(user.userId(), "supplement:" + applicationId, body, value);
         return value;
@@ -426,6 +427,7 @@ class WhitelistStore {
         app.updatedAt = NOW;
         app.notificationStatus = notificationStatus(request);
         audit(user, app.applicationId, "WHITELIST_APPLICATION_WITHDRAWN", "MEDIUM", before, app.status, "withdraw");
+        auditNotificationFailure(user, app);
         Map<String, Object> value = view(app, false);
         remember(user.userId(), "withdraw:" + applicationId, body, value);
         return value;
@@ -505,6 +507,7 @@ class WhitelistStore {
         app.reviewedAt = NOW;
         app.updatedAt = NOW;
         audit(actor, app.applicationId, "WHITELIST_SUPPLEMENT_REQUESTED", "MEDIUM", before, app.status, "request supplement");
+        auditNotificationFailure(actor, app);
         Map<String, Object> value = view(app, true);
         remember(actor.userId(), "requestSupplement:" + applicationId, body, value);
         return value;
@@ -550,7 +553,7 @@ class WhitelistStore {
             audit(actor, app.applicationId, "WHITELIST_PROFILE_ACTIVATED", "MEDIUM", before, app.status, "profile activated");
         }
         app.updatedAt = NOW;
-        if ("FAILED".equals(app.notificationStatus)) audit(actor, app.applicationId, "WHITELIST_NOTIFICATION_FAILED", "LOW", app.status, app.status, "notification failed");
+        auditNotificationFailure(actor, app);
         Map<String, Object> value = view(app, true);
         remember(actor.userId(), "approve:" + applicationId, body, value);
         return value;
@@ -577,6 +580,7 @@ class WhitelistStore {
         app.notificationStatus = notificationStatus(request);
         app.updatedAt = NOW;
         audit(actor, app.applicationId, "WHITELIST_REJECTED", "MEDIUM", before, app.status, "reject");
+        auditNotificationFailure(actor, app);
         Map<String, Object> value = view(app, true);
         remember(actor.userId(), "reject:" + applicationId, body, value);
         return value;
@@ -605,6 +609,7 @@ class WhitelistStore {
         app.notificationStatus = notificationStatus(request);
         app.updatedAt = NOW;
         audit(actor, app.applicationId, "WHITELIST_REMOVED", "HIGH", before, app.status, "remove");
+        auditNotificationFailure(actor, app);
         Map<String, Object> value = view(app, true);
         remember(actor.userId(), "remove:" + applicationId, body, value);
         return value;
@@ -628,6 +633,7 @@ class WhitelistStore {
         app.notificationStatus = notificationStatus(request);
         app.updatedAt = NOW;
         audit(actor, app.applicationId, "WHITELIST_REOPENED", "MEDIUM", before, app.status, "reopen");
+        auditNotificationFailure(actor, app);
         Map<String, Object> value = view(app, true);
         remember(actor.userId(), "reopen:" + applicationId, body, value);
         return value;
@@ -635,7 +641,8 @@ class WhitelistStore {
 
     synchronized Map<String, Object> attendanceHandoff(WhitelistUser actor, String applicationId, HttpServletRequest request) {
         WhitelistApplicationRecord app = require(applicationId);
-        if (!"APPROVED".equals(app.status) && !"REMOVED".equals(app.status) && !"REAPPLYING".equals(app.status)) throw new WhitelistException(409, 44014, "state conflict");
+        if (!"APPROVED".equals(app.status)) throw new WhitelistException(409, 44014, "state conflict");
+        if (app.profileActivation == null || !"ACTIVATED".equals(app.profileActivation.get("status"))) throw new WhitelistException(409, 44014, "state conflict");
         if (app.attendanceHandoff == null) throw new WhitelistException(409, 44021, "handoff missing");
         attendanceHandoffReads++;
         audit(actor, app.applicationId, "WHITELIST_ATTENDANCE_HANDOFF_READ", "LOW", app.status, app.status, "read handoff");
@@ -782,6 +789,12 @@ class WhitelistStore {
 
     private void audit(WhitelistUser actor, String applicationId, String action, String risk, String before, String after, String reason) {
         audits.add(linkedMap("id", "audit-" + (++idSeq), "requestId", WhitelistController.requestId(), "actorUserId", actor.userId(), "actorRole", actor.roles().iterator().next(), "actorPermissions", List.of(), "sourceIp", "127.0.0.1", "targetType", "WHITELIST_APPLICATION", "targetId", applicationId, "action", action, "riskLevel", risk, "reason", reason, "paramsSummary", "summary", "beforeState", before, "afterState", after, "result", "SUCCESS", "failureReason", null, "createdAt", NOW));
+    }
+
+    private void auditNotificationFailure(WhitelistUser actor, WhitelistApplicationRecord app) {
+        if ("FAILED".equals(app.notificationStatus)) {
+            audit(actor, app.applicationId, "WHITELIST_NOTIFICATION_FAILED", "LOW", app.status, app.status, "notification failed");
+        }
     }
 
     private void failBeforeWrite(HttpServletRequest request) {
