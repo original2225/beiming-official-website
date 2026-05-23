@@ -56,6 +56,8 @@
 
 `notification` 用于投递申请提交、要求补充、补充提交、审核通过、审核拒绝、移除和允许重新申请通知。P0 中通知是辅助依赖，失败不得回滚主状态，但必须保存 `notificationStatus=FAILED`、失败原因摘要并写入审计。notification 不可用记录或返回 `47030`，超时记录或返回 `47031`，字段不兼容记录或返回 `47032`。
 
+通知失败摘要必须能区分不可用、超时和字段不兼容三类失败。当前用户接口和后台接口都可以返回 `notificationFailure` 脱敏摘要，便于前端展示和后台排障；摘要不得包含通知正文、完整请求头、认证 token、内部 URL 或异常堆栈。
+
 `attendance` 当前未实现。审核通过后 `whitelist` 不得伪造积分初始化成功，只能生成 `attendanceInitializationStatus=WAITING_MODULE` 的交接摘要。后续 `attendance` 开发时只能通过本文档的 attendance handoff 接口或未来正式服务间接口消费摘要，不能直接读取 whitelist 数据库。
 
 `onboarding` 不是白名单主数据来源。`whitelist` 可以保存 exam 快照中携带的 onboarding `applicationId` 和 `onboardingHandoffVersion`，但不能要求 onboarding 回写白名单状态。
@@ -104,6 +106,7 @@
 | `profileActivation` | WhitelistProfileActivationSummary 或 null | 是 | 成员档案激活摘要。 |
 | `attendanceHandoff` | WhitelistAttendanceHandoffSnapshot 或 null | 后台可见 | 给 attendance 的初始化交接摘要。当前用户结果只返回状态摘要。 |
 | `notificationStatus` | string 或 null | 是 | 最近一次通知结果。 |
+| `notificationFailure` | WhitelistNotificationFailureSummary 或 null | 是 | 最近一次通知失败脱敏摘要。通知成功时为 `null`。 |
 | `removedAt` | string 或 null | 是 | 移除时间。 |
 | `removedBy` | string 或 null | 是 | 移除操作者。 |
 | `removalReason` | string 或 null | 后台可见 | 移除原因。当前用户结果只返回公开说明。 |
@@ -152,6 +155,16 @@
 | `calledAt` | string 或 null | 是 | 调用 profile 时间。 |
 | `failureCode` | string 或 null | 是 | 失败码摘要。 |
 | `failureReason` | string 或 null | 是 | 脱敏失败原因。 |
+
+### WhitelistNotificationFailureSummary
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `status` | string | 是 | 固定为 `FAILED`。 |
+| `failureCode` | string | 是 | `47030`、`47031` 或 `47032`。 |
+| `failureType` | string | 是 | `UNAVAILABLE`、`TIMEOUT` 或 `BAD_SCHEMA`。 |
+| `failureReason` | string | 是 | 脱敏失败摘要，不得包含通知正文、请求头、token 或堆栈。 |
+| `failedAt` | string | 是 | 失败发生时间。 |
 
 ### WhitelistAttendanceHandoffSnapshot
 
@@ -626,7 +639,7 @@ profile 是审核通过和移除白名单强依赖。profile 激活失败时申�
 
 notification 默认是辅助依赖。通知失败不得回滚创建、补充、通过、拒绝、移除或重开，但必须记录失败摘要和审计。
 
-通知失败摘要至少要能区分不可用、超时和字段不兼容三类失败。P0 可统一保存为 `notificationStatus=FAILED`，但审计中必须保留脱敏失败线索，不得保存通知正文或完整请求头。
+通知失败摘要至少要能区分不可用、超时和字段不兼容三类失败。P0 可统一保存为 `notificationStatus=FAILED`，但必须同时保存 `notificationFailure.failureCode`、`notificationFailure.failureType` 和脱敏 `failureReason`，审计中也必须保留同等级别的脱敏失败线索，不得保存通知正文或完整请求头。
 
 attendance 未实现时，审核通过仍可完成 whitelist 和 profile 激活，但只能返回 `attendanceInitializationStatus=WAITING_MODULE` 或 `READY_FOR_CONSUME`。不得返回积分已初始化、不得创建积分流水、不得维护榜单。
 

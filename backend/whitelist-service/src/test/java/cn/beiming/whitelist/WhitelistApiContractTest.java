@@ -66,11 +66,11 @@ class WhitelistApiContractTest {
         addRange(mapped, "WL-OPS", 1, 24);
         addRange(mapped, "WL-DEPS", 1, 62);
         addRange(mapped, "WL-COMPAT", 1, 44);
-        addRange(mapped, "WL-HARDEN", 1, 46);
+        addRange(mapped, "WL-HARDEN", 1, 50);
         addRange(mapped, "WL-PORT", 1, 6);
         addRange(mapped, "WL-CYCLE", 1, 20);
-        assertThat(mapped).contains("WL-COM-001", "WL-ADMIN-APPROVE-048", "WL-HANDOFF-028", "WL-DEPS-062", "WL-HARDEN-046", "WL-CYCLE-020");
-        assertThat(mapped).hasSize(822);
+        assertThat(mapped).contains("WL-COM-001", "WL-ADMIN-APPROVE-048", "WL-HANDOFF-028", "WL-DEPS-062", "WL-HARDEN-050", "WL-CYCLE-020");
+        assertThat(mapped).hasSize(826);
     }
 
     @Test
@@ -251,6 +251,24 @@ class WhitelistApiContractTest {
                 Map.of("idempotencyKey", "notify-failed-supplement", "publicComment", "补充说明", "dueAt", "2026-06-05T12:00:00Z", "reason", "通知失败审计"), 200);
         JsonNode notificationAudit = performJson(get("/api/v1/whitelist/admin/audit-logs").header("Authorization", bearer("admin-token")).param("action", "WHITELIST_NOTIFICATION_FAILED"), 200);
         assertThat(notificationAudit.at("/data/total").asInt()).isGreaterThanOrEqualTo(1);
+        JsonNode notificationDetail = performJson(get("/api/v1/whitelist/admin/applications/" + notificationSeed.at("/data/applicationId").asText()).header("Authorization", bearer("admin-token")), 200);
+        assertThat(notificationDetail.at("/data/notificationFailure/failureCode").asText()).isEqualTo("47030");
+        assertThat(notificationDetail.at("/data/notificationFailure/failureType").asText()).isEqualTo("UNAVAILABLE");
+        assertNoRuntimeSecrets(notificationDetail);
+
+        JsonNode timeoutNotification = performJson(post("/api/v1/whitelist/me/applications")
+                        .header("Authorization", bearer("approve-user-token"))
+                        .header("X-Test-Notification-Mode", "timeout"),
+                createBody("session-approve", "create-notification-timeout"), 201);
+        assertThat(timeoutNotification.at("/data/notificationFailure/failureCode").asText()).isEqualTo("47031");
+        assertThat(timeoutNotification.at("/data/notificationFailure/failureType").asText()).isEqualTo("TIMEOUT");
+
+        JsonNode badSchemaNotification = performJson(post("/api/v1/whitelist/me/applications")
+                        .header("Authorization", bearer("profile-fail-token"))
+                        .header("X-Test-Notification-Mode", "bad-schema"),
+                createBody("session-profile-fail", "create-notification-bad-schema"), 201);
+        assertThat(badSchemaNotification.at("/data/notificationFailure/failureCode").asText()).isEqualTo("47032");
+        assertThat(badSchemaNotification.at("/data/notificationFailure/failureType").asText()).isEqualTo("BAD_SCHEMA");
 
         JsonNode profileDownSeed = performJson(post("/api/v1/whitelist/me/applications").header("Authorization", bearer("profile-unavailable-token")),
                 createBody("session-profile-unavailable", "create-profile-down"), 201);

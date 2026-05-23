@@ -312,6 +312,7 @@ class WhitelistStore {
         app.scoreSummary = handoff.scoreSummary();
         app.examPassedAt = handoff.passedAt();
         app.notificationStatus = notificationStatus(request);
+        app.notificationFailure = notificationFailure(request);
         app.reapplyRequired = false;
         app.createdAt = NOW;
         app.updatedAt = NOW;
@@ -404,6 +405,7 @@ class WhitelistStore {
         Map<String, Object> requestSummary = linkedMap("requestId", app.supplementRequest == null ? "supp-" + app.applicationId : app.supplementRequest.get("requestId"), "publicComment", app.supplementRequest == null ? "补充材料" : app.supplementRequest.get("publicComment"), "dueAt", app.supplementRequest == null ? null : app.supplementRequest.get("dueAt"), "requestedBy", app.supplementRequest == null ? app.reviewerUserId : app.supplementRequest.get("requestedBy"), "requestedAt", app.supplementRequest == null ? NOW : app.supplementRequest.get("requestedAt"), "submittedAt", NOW, "materials", materials);
         app.supplementRequest = requestSummary;
         app.notificationStatus = notificationStatus(request);
+        app.notificationFailure = notificationFailure(request);
         app.updatedAt = NOW;
         audit(user, app.applicationId, "WHITELIST_SUPPLEMENT_SUBMITTED", "LOW", before, app.status, "supplement");
         auditNotificationFailure(user, app);
@@ -426,6 +428,7 @@ class WhitelistStore {
         app.withdrawnAt = NOW;
         app.updatedAt = NOW;
         app.notificationStatus = notificationStatus(request);
+        app.notificationFailure = notificationFailure(request);
         audit(user, app.applicationId, "WHITELIST_APPLICATION_WITHDRAWN", "MEDIUM", before, app.status, "withdraw");
         auditNotificationFailure(user, app);
         Map<String, Object> value = view(app, false);
@@ -504,6 +507,7 @@ class WhitelistStore {
         app.internalNote = string(body.get("internalNote"));
         app.supplementRequest = linkedMap("requestId", "supp-" + (++idSeq), "publicComment", comment, "dueAt", body.getOrDefault("dueAt", null), "requestedBy", actor.userId(), "requestedAt", NOW, "submittedAt", null, "materials", List.of());
         app.notificationStatus = notificationStatus(request);
+        app.notificationFailure = notificationFailure(request);
         app.reviewedAt = NOW;
         app.updatedAt = NOW;
         audit(actor, app.applicationId, "WHITELIST_SUPPLEMENT_REQUESTED", "MEDIUM", before, app.status, "request supplement");
@@ -530,6 +534,7 @@ class WhitelistStore {
         app.internalNote = string(body.get("internalNote"));
         app.reviewedAt = NOW;
         app.notificationStatus = notificationStatus(request);
+        app.notificationFailure = notificationFailure(request);
         if (app.userId.contains("profile-fail")) {
             app.status = "APPROVAL_BLOCKED";
             app.result = "PENDING";
@@ -578,6 +583,7 @@ class WhitelistStore {
         app.reviewedAt = NOW;
         app.rejectedAt = NOW;
         app.notificationStatus = notificationStatus(request);
+        app.notificationFailure = notificationFailure(request);
         app.updatedAt = NOW;
         audit(actor, app.applicationId, "WHITELIST_REJECTED", "MEDIUM", before, app.status, "reject");
         auditNotificationFailure(actor, app);
@@ -607,6 +613,7 @@ class WhitelistStore {
         app.reapplyRequired = true;
         app.nextExamAttemptType = "RECHECK";
         app.notificationStatus = notificationStatus(request);
+        app.notificationFailure = notificationFailure(request);
         app.updatedAt = NOW;
         audit(actor, app.applicationId, "WHITELIST_REMOVED", "HIGH", before, app.status, "remove");
         auditNotificationFailure(actor, app);
@@ -631,6 +638,7 @@ class WhitelistStore {
         if (app.nextExamAttemptType == null) app.nextExamAttemptType = "RECHECK";
         app.reviewComment = validateRequiredString(body, "publicComment", 1, 1000);
         app.notificationStatus = notificationStatus(request);
+        app.notificationFailure = notificationFailure(request);
         app.updatedAt = NOW;
         audit(actor, app.applicationId, "WHITELIST_REOPENED", "MEDIUM", before, app.status, "reopen");
         auditNotificationFailure(actor, app);
@@ -736,6 +744,7 @@ class WhitelistStore {
                 "supplementRequest", app.supplementRequest,
                 "profileActivation", app.profileActivation,
                 "notificationStatus", app.notificationStatus,
+                "notificationFailure", app.notificationFailure,
                 "removedAt", app.removedAt,
                 "removedBy", app.removedBy,
                 "reapplyRequired", app.reapplyRequired,
@@ -759,7 +768,7 @@ class WhitelistStore {
     }
 
     private Map<String, Object> resultView(WhitelistApplicationRecord app) {
-        return linkedMap("applicationId", app.applicationId, "status", app.status, "result", app.result, "reviewComment", app.reviewComment, "profileActivationStatus", app.profileActivation == null ? "PENDING" : app.profileActivation.get("status"), "attendanceInitializationStatus", app.attendanceHandoff == null ? null : app.attendanceHandoff.get("initializationStatus"), "notificationStatus", app.notificationStatus, "reviewedAt", app.reviewedAt);
+        return linkedMap("applicationId", app.applicationId, "status", app.status, "result", app.result, "reviewComment", app.reviewComment, "profileActivationStatus", app.profileActivation == null ? "PENDING" : app.profileActivation.get("status"), "attendanceInitializationStatus", app.attendanceHandoff == null ? null : app.attendanceHandoff.get("initializationStatus"), "notificationStatus", app.notificationStatus, "notificationFailure", app.notificationFailure, "reviewedAt", app.reviewedAt);
     }
 
     private Map<String, Object> handoffView(WhitelistApplicationRecord app) {
@@ -793,7 +802,8 @@ class WhitelistStore {
 
     private void auditNotificationFailure(WhitelistUser actor, WhitelistApplicationRecord app) {
         if ("FAILED".equals(app.notificationStatus)) {
-            audit(actor, app.applicationId, "WHITELIST_NOTIFICATION_FAILED", "LOW", app.status, app.status, "notification failed");
+            String reason = app.notificationFailure == null ? "notification failed" : Objects.toString(app.notificationFailure.get("failureType")) + ":" + Objects.toString(app.notificationFailure.get("failureCode"));
+            audit(actor, app.applicationId, "WHITELIST_NOTIFICATION_FAILED", "LOW", app.status, app.status, reason);
         }
     }
 
@@ -813,8 +823,17 @@ class WhitelistStore {
     }
 
     private String notificationStatus(HttpServletRequest request) {
-        String mode = request.getHeader("X-Test-Notification-Mode");
-        return "unavailable".equals(mode) || "timeout".equals(mode) ? "FAILED" : "DELIVERED";
+        String mode = Objects.toString(request.getHeader("X-Test-Notification-Mode"), "");
+        return Set.of("unavailable", "timeout", "bad-schema").contains(mode) ? "FAILED" : "DELIVERED";
+    }
+
+    private Map<String, Object> notificationFailure(HttpServletRequest request) {
+        return switch (Objects.toString(request.getHeader("X-Test-Notification-Mode"), "")) {
+            case "unavailable" -> linkedMap("status", "FAILED", "failureCode", "47030", "failureType", "UNAVAILABLE", "failureReason", "notification unavailable", "failedAt", NOW);
+            case "timeout" -> linkedMap("status", "FAILED", "failureCode", "47031", "failureType", "TIMEOUT", "failureReason", "notification timeout", "failedAt", NOW);
+            case "bad-schema" -> linkedMap("status", "FAILED", "failureCode", "47032", "failureType", "BAD_SCHEMA", "failureReason", "notification response incompatible", "failedAt", NOW);
+            default -> null;
+        };
     }
 
     private IdempotencyRecord replay(String actorId, String operation, Map<String, Object> body) {
@@ -1043,6 +1062,7 @@ class WhitelistApplicationRecord {
     Map<String, Object> profileActivation;
     Map<String, Object> attendanceHandoff;
     String notificationStatus;
+    Map<String, Object> notificationFailure;
     String removedAt;
     String removedBy;
     String removalReason;
