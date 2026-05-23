@@ -30,7 +30,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest(classes = AttendanceServiceApplication.class)
+@SpringBootTest(classes = AttendanceServiceApplication.class, properties = "attendance.test-controls.enabled=true")
 @AutoConfigureMockMvc
 @DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_EACH_TEST_METHOD)
 class AttendanceApiContractTest {
@@ -62,11 +62,11 @@ class AttendanceApiContractTest {
         addRange(mapped, "ATT-OPS", 1, 26);
         addRange(mapped, "ATT-DEPS", 1, 70);
         addRange(mapped, "ATT-COMPAT", 1, 50);
-        addRange(mapped, "ATT-HARDEN", 1, 60);
+        addRange(mapped, "ATT-HARDEN", 1, 68);
         addRange(mapped, "ATT-PORT", 1, 6);
         addRange(mapped, "ATT-CYCLE", 1, 24);
-        assertThat(mapped).contains("ATT-COM-001", "ATT-INIT-060", "ATT-MONTHLY-070", "ATT-DEPS-070", "ATT-HARDEN-060", "ATT-CYCLE-024");
-        assertThat(mapped).hasSize(860);
+        assertThat(mapped).contains("ATT-COM-001", "ATT-INIT-060", "ATT-MONTHLY-070", "ATT-DEPS-070", "ATT-HARDEN-068", "ATT-CYCLE-024");
+        assertThat(mapped).hasSize(868);
     }
 
     @Test
@@ -313,6 +313,7 @@ class AttendanceApiContractTest {
         JsonNode ops = performJson(get("/api/v1/attendance/admin/ops/summary").header("Authorization", bearer("helper-token")), 200);
         assertThat(ops.at("/data/service").asText()).isEqualTo("attendance");
         assertThat(ops.at("/data/port").asInt()).isEqualTo(8111);
+        assertThat(ops.at("/data/testControlsEnabled").asBoolean()).isTrue();
         assertThat(ops.toString()).contains("P0_IN_MEMORY_STORAGE", "REAL_ONLINE_TIME_NOT_CONNECTED", "WHITELIST_REMOVAL_NOT_CONNECTED");
         assertNoSecrets(ops);
 

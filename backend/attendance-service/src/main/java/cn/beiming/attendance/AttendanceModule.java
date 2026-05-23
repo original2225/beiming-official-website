@@ -4,6 +4,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
@@ -41,13 +42,18 @@ import java.util.concurrent.ConcurrentHashMap;
 @Configuration
 class AttendanceModule {
     @Bean
-    AttendanceStore attendanceStore() {
-        return new AttendanceStore();
+    AttendanceStore attendanceStore(AttendanceTestControls testControls) {
+        return new AttendanceStore(testControls);
     }
 
     @Bean
     TestAttendanceAuthProvider attendanceAuthProvider() {
         return new TestAttendanceAuthProvider();
+    }
+
+    @Bean
+    AttendanceTestControls attendanceTestControls(@Value("${attendance.test-controls.enabled:false}") boolean enabled) {
+        return new AttendanceTestControls(enabled);
     }
 }
 
@@ -272,7 +278,12 @@ class AttendanceStore {
     private final Map<String, String> sourceContribution = new ConcurrentHashMap<>();
     private final Map<String, IdempotencyRecord> idempotency = new ConcurrentHashMap<>();
     private final List<Map<String, Object>> audits = java.util.Collections.synchronizedList(new ArrayList<>());
+    private final AttendanceTestControls testControls;
     private int idSeq = 1000;
+
+    AttendanceStore(AttendanceTestControls testControls) {
+        this.testControls = testControls;
+    }
 
     synchronized MutationResult initialize(AttendanceUser actor, Map<String, Object> body, HttpServletRequest request) {
         validateIdempotencyKey(body);
@@ -709,11 +720,11 @@ class AttendanceStore {
     Map<String, Object> opsSummary(HttpServletRequest request) {
         long active = accounts.values().stream().filter(account -> "ACTIVE".equals(account.status)).count();
         long openCandidates = candidates.values().stream().filter(candidate -> "OPEN".equals(candidate.status)).count();
-        return linkedMap("service", "attendance", "port", 8111, "storageMode", "IN_MEMORY", "authMode", "TEST_STUB", "whitelistMode", "TEST_STUB", "profileMode", "TEST_STUB", "notificationMode", "TEST_STUB", "accountsTotal", accounts.size(), "activeAccountsTotal", active, "removalCandidatesOpenTotal", openCandidates, "monthlyRunsTotal", monthlyRuns.size(), "ledgerEntriesTotal", ledgers.size(), "contributionsTotal", contributions.size(), "auditsTotal", audits.size(), "idempotencyRecordsTotal", idempotency.size(), "lastMonthlyRunAt", monthlyRuns.isEmpty() ? null : NOW, "lastAuditAt", audits.isEmpty() ? null : NOW, "productionGaps", List.of("P0_IN_MEMORY_STORAGE", "P0_AUTH_STUB", "P0_WHITELIST_STUB", "P0_PROFILE_STUB", "P0_NOTIFICATION_STUB", "REAL_ACTIVITY_EVENTS_NOT_CONNECTED", "REAL_ONLINE_TIME_NOT_CONNECTED", "WHITELIST_REMOVAL_NOT_CONNECTED"));
+        return linkedMap("service", "attendance", "port", 8111, "storageMode", "IN_MEMORY", "authMode", "TEST_STUB", "whitelistMode", "TEST_STUB", "profileMode", "TEST_STUB", "notificationMode", "TEST_STUB", "testControlsEnabled", testControls.enabled(), "accountsTotal", accounts.size(), "activeAccountsTotal", active, "removalCandidatesOpenTotal", openCandidates, "monthlyRunsTotal", monthlyRuns.size(), "ledgerEntriesTotal", ledgers.size(), "contributionsTotal", contributions.size(), "auditsTotal", audits.size(), "idempotencyRecordsTotal", idempotency.size(), "lastMonthlyRunAt", monthlyRuns.isEmpty() ? null : NOW, "lastAuditAt", audits.isEmpty() ? null : NOW, "productionGaps", List.of("P0_IN_MEMORY_STORAGE", "P0_AUTH_STUB", "P0_WHITELIST_STUB", "P0_PROFILE_STUB", "P0_NOTIFICATION_STUB", testControls.enabled() ? "TEST_CONTROLS_ENABLED_FOR_LOCAL_TEST" : "TEST_CONTROLS_DISABLED_OUTSIDE_TEST", "REAL_ACTIVITY_EVENTS_NOT_CONNECTED", "REAL_ONLINE_TIME_NOT_CONNECTED", "WHITELIST_REMOVAL_NOT_CONNECTED"));
     }
 
     private Handoff handoff(Map<String, Object> body, HttpServletRequest request) {
-        switch (Objects.toString(request.getHeader("X-Test-Whitelist-Mode"), "")) {
+        switch (testHeader(request, "X-Test-Whitelist-Mode")) {
             case "unavailable" -> throw new AttendanceException(502, 48010, "whitelist handoff unavailable");
             case "timeout" -> throw new AttendanceException(504, 48011, "whitelist handoff timeout");
             case "bad-schema" -> throw new AttendanceException(502, 48012, "whitelist handoff incompatible");
@@ -735,7 +746,7 @@ class AttendanceStore {
     }
 
     private void profileCheck(String memberId, HttpServletRequest request) {
-        switch (Objects.toString(request.getHeader("X-Test-Profile-Mode"), "")) {
+        switch (testHeader(request, "X-Test-Profile-Mode")) {
             case "unavailable" -> throw new AttendanceException(502, 48020, "profile unavailable");
             case "timeout" -> throw new AttendanceException(504, 48021, "profile timeout");
             case "bad-schema" -> throw new AttendanceException(502, 48022, "profile incompatible");
@@ -747,7 +758,7 @@ class AttendanceStore {
     private List<Map<String, Object>> leaderboardEntries(Map<String, String> filters, HttpServletRequest request) {
         String sort = filters.getOrDefault("sort", "score_desc");
         String group = filters.get("memberGroup");
-        boolean stale = "unavailable".equals(request.getHeader("X-Test-Profile-Mode"));
+        boolean stale = "unavailable".equals(testHeader(request, "X-Test-Profile-Mode"));
         Comparator<AttendanceAccountRecord> comparator = switch (sort) {
             case "earned_desc" -> Comparator.comparingInt((AttendanceAccountRecord account) -> account.totalEarned).reversed();
             case "lastActivity_desc" -> Comparator.comparing((AttendanceAccountRecord account) -> Objects.toString(account.lastPositiveActivityAt, "")).reversed();
@@ -882,7 +893,7 @@ class AttendanceStore {
     }
 
     private Map<String, Object> accountView(AttendanceAccountRecord account, boolean admin, HttpServletRequest request) {
-        boolean stale = account.profileSnapshotStale || (request != null && "unavailable".equals(request.getHeader("X-Test-Profile-Mode")));
+        boolean stale = account.profileSnapshotStale || "unavailable".equals(testHeader(request, "X-Test-Profile-Mode"));
         Map<String, Object> row = linkedMap("accountId", account.accountId, "userId", account.userId, "memberId", account.memberId, "displayNameSnapshot", account.displayNameSnapshot, "avatarUrlSnapshot", account.avatarUrlSnapshot, "memberGroupSnapshot", account.memberGroupSnapshot, "memberStatusSnapshot", account.memberStatusSnapshot, "minecraftBindingSnapshot", account.minecraftBindingSnapshot, "status", account.status, "scoreBalance", account.scoreBalance, "initialScore", account.initialScore, "totalEarned", account.totalEarned, "totalDeducted", account.totalDeducted, "lastPositiveActivityAt", account.lastPositiveActivityAt, "lastDeductedAt", account.lastDeductedAt, "lastLedgerId", account.lastLedgerId, "whitelistApplicationId", account.whitelistApplicationId, "whitelistHandoffId", account.whitelistHandoffId, "whitelistHandoffVersion", account.whitelistHandoffVersion, "reviewDirection", account.reviewDirection, "attemptType", account.attemptType, "notificationStatus", account.notificationStatus, "notificationFailure", admin ? account.notificationFailure : null, "profileSnapshotStale", stale, "createdAt", account.createdAt, "updatedAt", account.updatedAt, "archivedAt", account.archivedAt);
         if (!admin) row.remove("notificationFailure");
         return row;
@@ -914,7 +925,7 @@ class AttendanceStore {
     }
 
     private Map<String, Object> dependencyStatus(HttpServletRequest request) {
-        return linkedMap("auth", "OK", "profile", request != null && "unavailable".equals(request.getHeader("X-Test-Profile-Mode")) ? "DEGRADED" : "OK", "notification", "OK");
+        return linkedMap("auth", "OK", "profile", "unavailable".equals(testHeader(request, "X-Test-Profile-Mode")) ? "DEGRADED" : "OK", "notification", "OK");
     }
 
     private void audit(AttendanceUser actor, String targetType, String targetId, String action, String risk, String before, String after, String reason) {
@@ -932,7 +943,7 @@ class AttendanceStore {
     }
 
     private Map<String, Object> notificationFailure(HttpServletRequest request) {
-        return switch (Objects.toString(request.getHeader("X-Test-Notification-Mode"), "")) {
+        return switch (testHeader(request, "X-Test-Notification-Mode")) {
             case "unavailable" -> linkedMap("status", "FAILED", "failureCode", "48030", "failureType", "UNAVAILABLE", "failureReason", "notification unavailable", "failedAt", NOW);
             case "timeout" -> linkedMap("status", "FAILED", "failureCode", "48031", "failureType", "TIMEOUT", "failureReason", "notification timeout", "failedAt", NOW);
             case "bad-schema" -> linkedMap("status", "FAILED", "failureCode", "48032", "failureType", "BAD_SCHEMA", "failureReason", "notification response incompatible", "failedAt", NOW);
@@ -1105,12 +1116,16 @@ class AttendanceStore {
     }
 
     private void failBeforeWrite(HttpServletRequest request) {
-        if ("true".equals(request.getHeader("X-Test-Fail-Audit"))) throw new AttendanceException(500, 53001, "attendance audit failed");
-        if ("true".equals(request.getHeader("X-Test-Fail-Store"))) throw new AttendanceException(500, 53002, "attendance state failed");
+        if ("true".equals(testHeader(request, "X-Test-Fail-Audit"))) throw new AttendanceException(500, 53001, "attendance audit failed");
+        if ("true".equals(testHeader(request, "X-Test-Fail-Store"))) throw new AttendanceException(500, 53002, "attendance state failed");
     }
 
     private void failLedger(HttpServletRequest request) {
-        if ("true".equals(request.getHeader("X-Test-Fail-Ledger"))) throw new AttendanceException(500, 53003, "attendance ledger failed");
+        if ("true".equals(testHeader(request, "X-Test-Fail-Ledger"))) throw new AttendanceException(500, 53003, "attendance ledger failed");
+    }
+
+    private String testHeader(HttpServletRequest request, String name) {
+        return testControls.enabled() && request != null ? Objects.toString(request.getHeader(name), "") : "";
     }
 
     private static String validateRequiredString(Map<String, Object> body, String field, int min, int max) {
@@ -1202,6 +1217,9 @@ record IdempotencyRecord(String fingerprint, Map<String, Object> value) {
 }
 
 record MutationResult(boolean created, Map<String, Object> value) {
+}
+
+record AttendanceTestControls(boolean enabled) {
 }
 
 class AttendanceAccountRecord {
