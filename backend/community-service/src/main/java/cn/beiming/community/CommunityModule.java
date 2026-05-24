@@ -722,6 +722,7 @@ class CommunityStore {
     Map<String, Object> search(Map<String, String> query) {
         String keyword = query.get("keyword");
         if (keyword == null || keyword.isBlank() || keyword.length() > 80) throw new CommunityException(400, 40001, "invalid keyword");
+        enumQuery(query, "scope", Set.of("ALL", "POST", "COMMENT", "BOARD"));
         return publicPosts(Map.of("keyword", keyword));
     }
 
