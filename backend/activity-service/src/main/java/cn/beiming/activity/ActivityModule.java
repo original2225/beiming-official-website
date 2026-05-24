@@ -153,6 +153,7 @@ class ActivityController {
             if (existing.isPresent()) {
                 throw new ApiException(HttpStatus.CONFLICT, 49614, "duplicate registration");
             }
+            ensureAuditWritable(request);
             ActivityRegistrationRecord registration = store.createRegistration(activity, actor, body);
             store.audit("ACTIVITY_REGISTERED", activity.activityId, registration.registrationId, actor.userId, "SUCCESS");
             return created(request, registration.currentUserView());
@@ -164,18 +165,20 @@ class ActivityController {
                                                    @PathVariable String registrationId,
                                                    @RequestBody Map<String, Object> body) {
         Actor actor = auth.current(request);
-        validateIdempotency(body);
-        ActivityRegistrationRecord registration = store.requireRegistration(registrationId);
-        if (!registration.userId.equals(actor.userId)) {
-            throw new ApiException(HttpStatus.NOT_FOUND, 49601, "registration not found");
-        }
-        ActivityRecord activity = store.requireActivity(registration.activityId);
-        if (List.of("RUNNING", "COMPLETED", "RESULT_PUBLISHED").contains(activity.status)) {
-            throw new ApiException(HttpStatus.CONFLICT, 49611, "registration cannot be canceled");
-        }
-        store.cancelRegistration(registration, actor.userId);
-        store.audit("ACTIVITY_REGISTRATION_CANCELED", activity.activityId, registration.registrationId, actor.userId, "SUCCESS");
-        return ok(request, registration.currentUserView());
+        return idempotent(request, actor, body, () -> {
+            ActivityRegistrationRecord registration = store.requireRegistration(registrationId);
+            if (!registration.userId.equals(actor.userId)) {
+                throw new ApiException(HttpStatus.NOT_FOUND, 49601, "registration not found");
+            }
+            ActivityRecord activity = store.requireActivity(registration.activityId);
+            if (List.of("RUNNING", "COMPLETED", "RESULT_PUBLISHED").contains(activity.status)) {
+                throw new ApiException(HttpStatus.CONFLICT, 49611, "registration cannot be canceled");
+            }
+            ensureAuditWritable(request);
+            store.cancelRegistration(registration, actor.userId);
+            store.audit("ACTIVITY_REGISTRATION_CANCELED", activity.activityId, registration.registrationId, actor.userId, "SUCCESS");
+            return ok(request, registration.currentUserView());
+        });
     }
 
     @GetMapping("/me/events/{activityId}/check-in")
@@ -235,9 +238,7 @@ class ActivityController {
             if (properties.enabled() && body.containsKey("linkedContentId") && "unavailable".equals(request.getHeader("X-Test-Content-Mode"))) {
                 throw new ApiException(HttpStatus.BAD_GATEWAY, 49440, "content unavailable");
             }
-            if (properties.enabled() && "true".equals(request.getHeader("X-Test-Fail-Audit"))) {
-                throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 54601, "activity audit failed");
-            }
+            ensureAuditWritable(request);
             ActivityRecord activity = store.createActivity(body, actor);
             store.audit("ACTIVITY_CREATED", activity.activityId, activity.activityId, actor.userId, "SUCCESS");
             return created(request, activity.adminView());
@@ -249,15 +250,18 @@ class ActivityController {
                                                     @PathVariable String activityId,
                                                     @RequestBody Map<String, Object> body) {
         Actor actor = auth.requireStaff(request);
-        validateIdempotency(body);
-        ActivityRecord activity = store.requireActivity(activityId);
-        if (!List.of("DRAFT", "NEEDS_CHANGES", "REJECTED", "APPROVED").contains(activity.status)) {
-            throw new ApiException(HttpStatus.CONFLICT, 49610, "activity state conflict");
-        }
-        store.applyEditableFields(activity, body);
-        activity.updatedAt = now();
-        store.audit("ACTIVITY_UPDATED", activity.activityId, activity.activityId, actor.userId, "SUCCESS");
-        return ok(request, activity.adminView());
+        return idempotent(request, actor, body, () -> {
+            ActivityRecord activity = store.requireActivity(activityId);
+            if (!List.of("DRAFT", "NEEDS_CHANGES", "REJECTED", "APPROVED").contains(activity.status)) {
+                throw new ApiException(HttpStatus.CONFLICT, 49610, "activity state conflict");
+            }
+            store.validateEditableFields(activity, body);
+            ensureAuditWritable(request);
+            store.applyEditableFields(activity, body);
+            activity.updatedAt = now();
+            store.audit("ACTIVITY_UPDATED", activity.activityId, activity.activityId, actor.userId, "SUCCESS");
+            return ok(request, activity.adminView());
+        });
     }
 
     @PostMapping("/admin/events/{activityId}/submit")
@@ -265,15 +269,17 @@ class ActivityController {
                                                     @PathVariable String activityId,
                                                     @RequestBody Map<String, Object> body) {
         Actor actor = auth.requireStaff(request);
-        validateIdempotency(body);
-        ActivityRecord activity = store.requireActivity(activityId);
-        if (!List.of("DRAFT", "NEEDS_CHANGES", "REJECTED").contains(activity.status)) {
-            throw new ApiException(HttpStatus.CONFLICT, 49610, "activity state conflict");
-        }
-        activity.status = "PENDING_REVIEW";
-        activity.submittedAt = now();
-        store.audit("ACTIVITY_SUBMITTED", activity.activityId, activity.activityId, actor.userId, "SUCCESS");
-        return ok(request, activity.adminView());
+        return idempotent(request, actor, body, () -> {
+            ActivityRecord activity = store.requireActivity(activityId);
+            if (!List.of("DRAFT", "NEEDS_CHANGES", "REJECTED").contains(activity.status)) {
+                throw new ApiException(HttpStatus.CONFLICT, 49610, "activity state conflict");
+            }
+            ensureAuditWritable(request);
+            activity.status = "PENDING_REVIEW";
+            activity.submittedAt = now();
+            store.audit("ACTIVITY_SUBMITTED", activity.activityId, activity.activityId, actor.userId, "SUCCESS");
+            return ok(request, activity.adminView());
+        });
     }
 
     @PatchMapping("/admin/events/{activityId}/approve")
@@ -281,19 +287,18 @@ class ActivityController {
                                                      @PathVariable String activityId,
                                                      @RequestBody Map<String, Object> body) {
         Actor actor = auth.requireStaff(request);
-        validateIdempotency(body);
-        ActivityRecord activity = store.requireActivity(activityId);
-        if (!List.of("PENDING_REVIEW", "NEEDS_CHANGES").contains(activity.status)) {
-            throw new ApiException(HttpStatus.CONFLICT, 49610, "activity state conflict");
-        }
-        if (properties.enabled() && "true".equals(request.getHeader("X-Test-Fail-Audit"))) {
-            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 54601, "activity audit failed");
-        }
-        activity.status = "APPROVED";
-        activity.reviewedAt = now();
-        activity.notificationFailure = notificationFailure(request);
-        store.audit("ACTIVITY_APPROVED", activity.activityId, activity.activityId, actor.userId, "SUCCESS");
-        return ok(request, activity.adminView());
+        return idempotent(request, actor, body, () -> {
+            ActivityRecord activity = store.requireActivity(activityId);
+            if (!List.of("PENDING_REVIEW", "NEEDS_CHANGES").contains(activity.status)) {
+                throw new ApiException(HttpStatus.CONFLICT, 49610, "activity state conflict");
+            }
+            ensureAuditWritable(request);
+            activity.status = "APPROVED";
+            activity.reviewedAt = now();
+            activity.notificationFailure = notificationFailure(request);
+            store.audit("ACTIVITY_APPROVED", activity.activityId, activity.activityId, actor.userId, "SUCCESS");
+            return ok(request, activity.adminView());
+        });
     }
 
     @PatchMapping("/admin/events/{activityId}/reject")
@@ -315,15 +320,17 @@ class ActivityController {
                                                      @PathVariable String activityId,
                                                      @RequestBody Map<String, Object> body) {
         Actor actor = auth.requireAdmin(request);
-        validateIdempotency(body);
-        ActivityRecord activity = store.requireActivity(activityId);
-        if (!"APPROVED".equals(activity.status)) {
-            throw new ApiException(HttpStatus.CONFLICT, 49610, "activity state conflict");
-        }
-        activity.status = "REGISTRATION_OPEN";
-        activity.publishedAt = now();
-        store.audit("ACTIVITY_PUBLISHED", activity.activityId, activity.activityId, actor.userId, "SUCCESS");
-        return ok(request, activity.adminView());
+        return idempotent(request, actor, body, () -> {
+            ActivityRecord activity = store.requireActivity(activityId);
+            if (!"APPROVED".equals(activity.status)) {
+                throw new ApiException(HttpStatus.CONFLICT, 49610, "activity state conflict");
+            }
+            ensureAuditWritable(request);
+            activity.status = "REGISTRATION_OPEN";
+            activity.publishedAt = now();
+            store.audit("ACTIVITY_PUBLISHED", activity.activityId, activity.activityId, actor.userId, "SUCCESS");
+            return ok(request, activity.adminView());
+        });
     }
 
     @PatchMapping("/admin/events/{activityId}/open-registration")
@@ -359,12 +366,14 @@ class ActivityController {
                                                      @PathVariable String activityId,
                                                      @RequestBody Map<String, Object> body) {
         Actor actor = auth.requireAdmin(request);
-        validateIdempotency(body);
-        ActivityRecord activity = store.requireActivity(activityId);
-        activity.status = "OFFLINE";
-        activity.offlineAt = now();
-        store.audit("ACTIVITY_OFFLINED", activity.activityId, activity.activityId, actor.userId, "SUCCESS");
-        return ok(request, activity.adminView());
+        return idempotent(request, actor, body, () -> {
+            ActivityRecord activity = store.requireActivity(activityId);
+            ensureAuditWritable(request);
+            activity.status = "OFFLINE";
+            activity.offlineAt = now();
+            store.audit("ACTIVITY_OFFLINED", activity.activityId, activity.activityId, actor.userId, "SUCCESS");
+            return ok(request, activity.adminView());
+        });
     }
 
     @PatchMapping("/admin/events/{activityId}/archive")
@@ -372,12 +381,14 @@ class ActivityController {
                                                      @PathVariable String activityId,
                                                      @RequestBody Map<String, Object> body) {
         Actor actor = auth.requireAdmin(request);
-        validateIdempotency(body);
-        ActivityRecord activity = store.requireActivity(activityId);
-        activity.status = "ARCHIVED";
-        activity.archivedAt = now();
-        store.audit("ACTIVITY_ARCHIVED", activity.activityId, activity.activityId, actor.userId, "SUCCESS");
-        return ok(request, activity.adminView());
+        return idempotent(request, actor, body, () -> {
+            ActivityRecord activity = store.requireActivity(activityId);
+            ensureAuditWritable(request);
+            activity.status = "ARCHIVED";
+            activity.archivedAt = now();
+            store.audit("ACTIVITY_ARCHIVED", activity.activityId, activity.activityId, actor.userId, "SUCCESS");
+            return ok(request, activity.adminView());
+        });
     }
 
     @PatchMapping("/admin/events/{activityId}/delete")
@@ -385,12 +396,15 @@ class ActivityController {
                                                     @PathVariable String activityId,
                                                     @RequestBody Map<String, Object> body) {
         Actor actor = auth.requireAdmin(request);
-        requireConfirm(body, "DELETE_ACTIVITY_EVENT");
-        ActivityRecord activity = store.requireActivity(activityId);
-        activity.status = "DELETED";
-        activity.deletedAt = now();
-        store.audit("ACTIVITY_DELETED", activity.activityId, activity.activityId, actor.userId, "SUCCESS");
-        return ok(request, activity.adminView());
+        return idempotent(request, actor, body, () -> {
+            requireConfirm(body, "DELETE_ACTIVITY_EVENT");
+            ActivityRecord activity = store.requireActivity(activityId);
+            ensureAuditWritable(request);
+            activity.status = "DELETED";
+            activity.deletedAt = now();
+            store.audit("ACTIVITY_DELETED", activity.activityId, activity.activityId, actor.userId, "SUCCESS");
+            return ok(request, activity.adminView());
+        });
     }
 
     @GetMapping("/admin/events/{activityId}/registrations")
@@ -413,24 +427,26 @@ class ActivityController {
                                                             @PathVariable String registrationId,
                                                             @RequestBody Map<String, Object> body) {
         Actor actor = auth.requireStaff(request);
-        validateIdempotency(body);
-        ActivityRegistrationRecord registration = store.requireRegistration(registrationId);
-        ActivityRecord activity = store.requireActivity(registration.activityId);
-        if (!List.of("SUBMITTED", "WAITLISTED").contains(registration.status)) {
-            throw new ApiException(HttpStatus.CONFLICT, 49611, "registration state conflict");
-        }
-        if (!activity.hasConfirmedSlot()) {
-            throw new ApiException(HttpStatus.CONFLICT, 49613, "activity capacity is full");
-        }
-        registration.status = "CONFIRMED";
-        activity.confirmedCount++;
-        if (registration.waitlistRank != null) {
-            activity.waitlistedCount = Math.max(0, activity.waitlistedCount - 1);
-        }
-        registration.updatedAt = now();
-        registration.notificationFailure = notificationFailure(request);
-        store.audit("ACTIVITY_REGISTRATION_CONFIRMED", activity.activityId, registration.registrationId, actor.userId, "SUCCESS");
-        return ok(request, registration.adminView());
+        return idempotent(request, actor, body, () -> {
+            ActivityRegistrationRecord registration = store.requireRegistration(registrationId);
+            ActivityRecord activity = store.requireActivity(registration.activityId);
+            if (!List.of("SUBMITTED", "WAITLISTED").contains(registration.status)) {
+                throw new ApiException(HttpStatus.CONFLICT, 49611, "registration state conflict");
+            }
+            if (!activity.hasConfirmedSlot()) {
+                throw new ApiException(HttpStatus.CONFLICT, 49613, "activity capacity is full");
+            }
+            ensureAuditWritable(request);
+            registration.status = "CONFIRMED";
+            activity.confirmedCount++;
+            if (registration.waitlistRank != null) {
+                activity.waitlistedCount = Math.max(0, activity.waitlistedCount - 1);
+            }
+            registration.updatedAt = now();
+            registration.notificationFailure = notificationFailure(request);
+            store.audit("ACTIVITY_REGISTRATION_CONFIRMED", activity.activityId, registration.registrationId, actor.userId, "SUCCESS");
+            return ok(request, registration.adminView());
+        });
     }
 
     @PatchMapping("/admin/registrations/{registrationId}/reject")
@@ -438,17 +454,19 @@ class ActivityController {
                                                            @PathVariable String registrationId,
                                                            @RequestBody Map<String, Object> body) {
         Actor actor = auth.requireStaff(request);
-        validateIdempotency(body);
-        ActivityRegistrationRecord registration = store.requireRegistration(registrationId);
-        ActivityRecord activity = store.requireActivity(registration.activityId);
-        if (!List.of("SUBMITTED", "WAITLISTED").contains(registration.status)) {
-            throw new ApiException(HttpStatus.CONFLICT, 49611, "registration state conflict");
-        }
-        registration.status = "REJECTED";
-        registration.updatedAt = now();
-        registration.notificationFailure = notificationFailure(request);
-        store.audit("ACTIVITY_REGISTRATION_REJECTED", activity.activityId, registration.registrationId, actor.userId, "SUCCESS");
-        return ok(request, registration.adminView());
+        return idempotent(request, actor, body, () -> {
+            ActivityRegistrationRecord registration = store.requireRegistration(registrationId);
+            ActivityRecord activity = store.requireActivity(registration.activityId);
+            if (!List.of("SUBMITTED", "WAITLISTED").contains(registration.status)) {
+                throw new ApiException(HttpStatus.CONFLICT, 49611, "registration state conflict");
+            }
+            ensureAuditWritable(request);
+            registration.status = "REJECTED";
+            registration.updatedAt = now();
+            registration.notificationFailure = notificationFailure(request);
+            store.audit("ACTIVITY_REGISTRATION_REJECTED", activity.activityId, registration.registrationId, actor.userId, "SUCCESS");
+            return ok(request, registration.adminView());
+        });
     }
 
     @PatchMapping("/admin/registrations/{registrationId}/promote")
@@ -456,22 +474,24 @@ class ActivityController {
                                                             @PathVariable String registrationId,
                                                             @RequestBody Map<String, Object> body) {
         Actor actor = auth.requireStaff(request);
-        validateIdempotency(body);
-        ActivityRegistrationRecord registration = store.requireRegistration(registrationId);
-        ActivityRecord activity = store.requireActivity(registration.activityId);
-        if (!"WAITLISTED".equals(registration.status)) {
-            throw new ApiException(HttpStatus.CONFLICT, 49615, "registration is not waitlisted");
-        }
-        if (!activity.hasConfirmedSlot()) {
-            throw new ApiException(HttpStatus.CONFLICT, 49613, "activity capacity is full");
-        }
-        registration.status = "CONFIRMED";
-        registration.updatedAt = now();
-        activity.confirmedCount++;
-        activity.waitlistedCount = Math.max(0, activity.waitlistedCount - 1);
-        registration.notificationFailure = notificationFailure(request);
-        store.audit("ACTIVITY_WAITLIST_PROMOTED", activity.activityId, registration.registrationId, actor.userId, "SUCCESS");
-        return ok(request, registration.adminView());
+        return idempotent(request, actor, body, () -> {
+            ActivityRegistrationRecord registration = store.requireRegistration(registrationId);
+            ActivityRecord activity = store.requireActivity(registration.activityId);
+            if (!"WAITLISTED".equals(registration.status)) {
+                throw new ApiException(HttpStatus.CONFLICT, 49615, "registration is not waitlisted");
+            }
+            if (!activity.hasConfirmedSlot()) {
+                throw new ApiException(HttpStatus.CONFLICT, 49613, "activity capacity is full");
+            }
+            ensureAuditWritable(request);
+            registration.status = "CONFIRMED";
+            registration.updatedAt = now();
+            activity.confirmedCount++;
+            activity.waitlistedCount = Math.max(0, activity.waitlistedCount - 1);
+            registration.notificationFailure = notificationFailure(request);
+            store.audit("ACTIVITY_WAITLIST_PROMOTED", activity.activityId, registration.registrationId, actor.userId, "SUCCESS");
+            return ok(request, registration.adminView());
+        });
     }
 
     @PatchMapping("/admin/registrations/{registrationId}/cancel")
@@ -479,11 +499,13 @@ class ActivityController {
                                                            @PathVariable String registrationId,
                                                            @RequestBody Map<String, Object> body) {
         Actor actor = auth.requireStaff(request);
-        validateIdempotency(body);
-        ActivityRegistrationRecord registration = store.requireRegistration(registrationId);
-        store.cancelRegistration(registration, actor.userId);
-        store.audit("ACTIVITY_REGISTRATION_ADMIN_CANCELED", registration.activityId, registration.registrationId, actor.userId, "SUCCESS");
-        return ok(request, registration.adminView());
+        return idempotent(request, actor, body, () -> {
+            ActivityRegistrationRecord registration = store.requireRegistration(registrationId);
+            ensureAuditWritable(request);
+            store.cancelRegistration(registration, actor.userId);
+            store.audit("ACTIVITY_REGISTRATION_ADMIN_CANCELED", registration.activityId, registration.registrationId, actor.userId, "SUCCESS");
+            return ok(request, registration.adminView());
+        });
     }
 
     @PatchMapping("/admin/registrations/{registrationId}/check-in")
@@ -491,17 +513,17 @@ class ActivityController {
                                                 @PathVariable String registrationId,
                                                 @RequestBody Map<String, Object> body) {
         Actor actor = auth.requireStaff(request);
-        validateIdempotency(body);
-        ActivityRegistrationRecord registration = store.requireRegistration(registrationId);
-        ActivityRecord activity = store.requireActivity(registration.activityId);
-        if (!"CONFIRMED".equals(registration.status) && !"CHECKED_IN".equals(registration.status)) {
-            throw new ApiException(HttpStatus.CONFLICT, 49611, "registration state conflict");
-        }
-        Instant current = currentInstant(request);
-        if (!activity.isCheckInWindowOpen(current)) {
-            throw new ApiException(HttpStatus.CONFLICT, 49618, "activity check-in window is closed");
-        }
-        synchronized (store) {
+        return idempotent(request, actor, body, () -> {
+            ActivityRegistrationRecord registration = store.requireRegistration(registrationId);
+            ActivityRecord activity = store.requireActivity(registration.activityId);
+            if (!"CONFIRMED".equals(registration.status) && !"CHECKED_IN".equals(registration.status)) {
+                throw new ApiException(HttpStatus.CONFLICT, 49611, "registration state conflict");
+            }
+            Instant current = currentInstant(request);
+            if (!activity.isCheckInWindowOpen(current)) {
+                throw new ApiException(HttpStatus.CONFLICT, 49618, "activity check-in window is closed");
+            }
+            ensureAuditWritable(request);
             if (!"CHECKED_IN".equals(registration.status)) {
                 registration.status = "CHECKED_IN";
                 registration.checkedInAt = current.toString();
@@ -509,9 +531,9 @@ class ActivityController {
             }
             registration.updatedAt = now();
             registration.notificationFailure = notificationFailure(request);
-        }
-        store.audit("ACTIVITY_REGISTRATION_CHECKED_IN", activity.activityId, registration.registrationId, actor.userId, "SUCCESS");
-        return ok(request, registration.adminView());
+            store.audit("ACTIVITY_REGISTRATION_CHECKED_IN", activity.activityId, registration.registrationId, actor.userId, "SUCCESS");
+            return ok(request, registration.adminView());
+        });
     }
 
     @PatchMapping("/admin/registrations/{registrationId}/no-show")
@@ -519,18 +541,20 @@ class ActivityController {
                                                @PathVariable String registrationId,
                                                @RequestBody Map<String, Object> body) {
         Actor actor = auth.requireStaff(request);
-        validateIdempotency(body);
-        ActivityRegistrationRecord registration = store.requireRegistration(registrationId);
-        ActivityRecord activity = store.requireActivity(registration.activityId);
-        if (!"CONFIRMED".equals(registration.status)) {
-            throw new ApiException(HttpStatus.CONFLICT, 49611, "registration state conflict");
-        }
-        registration.status = "NO_SHOW";
-        registration.noShowAt = now();
-        registration.updatedAt = now();
-        activity.noShowCount++;
-        store.audit("ACTIVITY_REGISTRATION_NO_SHOW", activity.activityId, registration.registrationId, actor.userId, "SUCCESS");
-        return ok(request, registration.adminView());
+        return idempotent(request, actor, body, () -> {
+            ActivityRegistrationRecord registration = store.requireRegistration(registrationId);
+            ActivityRecord activity = store.requireActivity(registration.activityId);
+            if (!"CONFIRMED".equals(registration.status)) {
+                throw new ApiException(HttpStatus.CONFLICT, 49611, "registration state conflict");
+            }
+            ensureAuditWritable(request);
+            registration.status = "NO_SHOW";
+            registration.noShowAt = now();
+            registration.updatedAt = now();
+            activity.noShowCount++;
+            store.audit("ACTIVITY_REGISTRATION_NO_SHOW", activity.activityId, registration.registrationId, actor.userId, "SUCCESS");
+            return ok(request, registration.adminView());
+        });
     }
 
     @PutMapping("/admin/events/{activityId}/result")
@@ -538,18 +562,20 @@ class ActivityController {
                                                      @PathVariable String activityId,
                                                      @RequestBody Map<String, Object> body) {
         Actor actor = auth.requireStaff(request);
-        validateIdempotency(body);
-        ActivityRecord activity = store.requireActivity(activityId);
-        if (!List.of("COMPLETED", "RESULT_PUBLISHED").contains(activity.status)) {
-            throw new ApiException(HttpStatus.CONFLICT, 49610, "activity state conflict");
-        }
-        ActivityResultRecord result = store.results.computeIfAbsent(activity.activityId, id -> new ActivityResultRecord("res-" + store.resultSeq.incrementAndGet(), activity.activityId));
-        result.title = text(body, "title", "活动结果");
-        result.summary = text(body, "summary", "活动完成");
-        result.details = text(body, "details", "");
-        result.updatedAt = now();
-        store.audit("ACTIVITY_RESULT_UPSERTED", activity.activityId, result.resultId, actor.userId, "SUCCESS");
-        return ok(request, result.view());
+        return idempotent(request, actor, body, () -> {
+            ActivityRecord activity = store.requireActivity(activityId);
+            if (!List.of("COMPLETED", "RESULT_PUBLISHED").contains(activity.status)) {
+                throw new ApiException(HttpStatus.CONFLICT, 49610, "activity state conflict");
+            }
+            ensureAuditWritable(request);
+            ActivityResultRecord result = store.results.computeIfAbsent(activity.activityId, id -> new ActivityResultRecord("res-" + store.resultSeq.incrementAndGet(), activity.activityId));
+            result.title = text(body, "title", "活动结果");
+            result.summary = text(body, "summary", "活动完成");
+            result.details = text(body, "details", "");
+            result.updatedAt = now();
+            store.audit("ACTIVITY_RESULT_UPSERTED", activity.activityId, result.resultId, actor.userId, "SUCCESS");
+            return ok(request, result.view());
+        });
     }
 
     @PatchMapping("/admin/events/{activityId}/result/publish")
@@ -557,17 +583,19 @@ class ActivityController {
                                                       @PathVariable String activityId,
                                                       @RequestBody Map<String, Object> body) {
         Actor actor = auth.requireAdmin(request);
-        validateIdempotency(body);
-        ActivityRecord activity = store.requireActivity(activityId);
-        ActivityResultRecord result = store.results.get(activity.activityId);
-        if (result == null) {
-            throw new ApiException(HttpStatus.NOT_FOUND, 49602, "result not found");
-        }
-        result.status = "PUBLISHED";
-        result.publishedAt = now();
-        activity.status = "RESULT_PUBLISHED";
-        store.audit("ACTIVITY_RESULT_PUBLISHED", activity.activityId, result.resultId, actor.userId, "SUCCESS");
-        return ok(request, result.view());
+        return idempotent(request, actor, body, () -> {
+            ActivityRecord activity = store.requireActivity(activityId);
+            ActivityResultRecord result = store.results.get(activity.activityId);
+            if (result == null) {
+                throw new ApiException(HttpStatus.NOT_FOUND, 49602, "result not found");
+            }
+            ensureAuditWritable(request);
+            result.status = "PUBLISHED";
+            result.publishedAt = now();
+            activity.status = "RESULT_PUBLISHED";
+            store.audit("ACTIVITY_RESULT_PUBLISHED", activity.activityId, result.resultId, actor.userId, "SUCCESS");
+            return ok(request, result.view());
+        });
     }
 
     @PostMapping("/admin/events/{activityId}/rewards")
@@ -575,15 +603,17 @@ class ActivityController {
                                                      @PathVariable String activityId,
                                                      @RequestBody Map<String, Object> body) {
         Actor actor = auth.requireStaff(request);
-        validateIdempotency(body);
-        ActivityRecord activity = store.requireActivity(activityId);
-        ActivityRegistrationRecord registration = store.requireRegistration(text(body, "registrationId", ""));
-        if (!registration.activityId.equals(activity.activityId) || !"CHECKED_IN".equals(registration.status)) {
-            throw new ApiException(HttpStatus.CONFLICT, 49616, "reward state conflict");
-        }
-        ActivityRewardRecord reward = store.createReward(activity, registration, body);
-        store.audit("ACTIVITY_REWARD_CREATED", activity.activityId, reward.rewardId, actor.userId, "SUCCESS");
-        return created(request, reward.adminView());
+        return idempotent(request, actor, body, () -> {
+            ActivityRecord activity = store.requireActivity(activityId);
+            ActivityRegistrationRecord registration = store.requireRegistration(text(body, "registrationId", ""));
+            if (!registration.activityId.equals(activity.activityId) || !"CHECKED_IN".equals(registration.status)) {
+                throw new ApiException(HttpStatus.CONFLICT, 49616, "reward state conflict");
+            }
+            ensureAuditWritable(request);
+            ActivityRewardRecord reward = store.createReward(activity, registration, body);
+            store.audit("ACTIVITY_REWARD_CREATED", activity.activityId, reward.rewardId, actor.userId, "SUCCESS");
+            return created(request, reward.adminView());
+        });
     }
 
     @PatchMapping("/admin/rewards/{rewardId}/issue")
@@ -591,16 +621,18 @@ class ActivityController {
                                                     @PathVariable String rewardId,
                                                     @RequestBody Map<String, Object> body) {
         Actor actor = auth.requireStaff(request);
-        validateIdempotency(body);
-        ActivityRewardRecord reward = store.requireReward(rewardId);
-        if (!List.of("PENDING_ISSUE", "ISSUED").contains(reward.status)) {
-            throw new ApiException(HttpStatus.CONFLICT, 49616, "reward state conflict");
-        }
-        reward.status = "ISSUED";
-        reward.issuedAt = now();
-        reward.notificationFailure = notificationFailure(request);
-        store.audit("ACTIVITY_REWARD_ISSUED", reward.activityId, reward.rewardId, actor.userId, "SUCCESS");
-        return ok(request, reward.adminView());
+        return idempotent(request, actor, body, () -> {
+            ActivityRewardRecord reward = store.requireReward(rewardId);
+            if (!List.of("PENDING_ISSUE", "ISSUED").contains(reward.status)) {
+                throw new ApiException(HttpStatus.CONFLICT, 49616, "reward state conflict");
+            }
+            ensureAuditWritable(request);
+            reward.status = "ISSUED";
+            reward.issuedAt = now();
+            reward.notificationFailure = notificationFailure(request);
+            store.audit("ACTIVITY_REWARD_ISSUED", reward.activityId, reward.rewardId, actor.userId, "SUCCESS");
+            return ok(request, reward.adminView());
+        });
     }
 
     @PatchMapping("/admin/rewards/{rewardId}/revoke")
@@ -608,12 +640,15 @@ class ActivityController {
                                                      @PathVariable String rewardId,
                                                      @RequestBody Map<String, Object> body) {
         Actor actor = auth.requireAdmin(request);
-        requireConfirm(body, "REVOKE_ACTIVITY_REWARD");
-        ActivityRewardRecord reward = store.requireReward(rewardId);
-        reward.status = "REVOKED";
-        reward.revokedAt = now();
-        store.audit("ACTIVITY_REWARD_REVOKED", reward.activityId, reward.rewardId, actor.userId, "SUCCESS");
-        return ok(request, reward.adminView());
+        return idempotent(request, actor, body, () -> {
+            requireConfirm(body, "REVOKE_ACTIVITY_REWARD");
+            ActivityRewardRecord reward = store.requireReward(rewardId);
+            ensureAuditWritable(request);
+            reward.status = "REVOKED";
+            reward.revokedAt = now();
+            store.audit("ACTIVITY_REWARD_REVOKED", reward.activityId, reward.rewardId, actor.userId, "SUCCESS");
+            return ok(request, reward.adminView());
+        });
     }
 
     @PostMapping("/admin/events/{activityId}/contribution-candidates")
@@ -621,20 +656,22 @@ class ActivityController {
                                                                @PathVariable String activityId,
                                                                @RequestBody Map<String, Object> body) {
         Actor actor = auth.requireAdmin(request);
-        validateIdempotency(body);
-        ActivityRecord activity = store.requireActivity(activityId);
-        if (!"RESULT_PUBLISHED".equals(activity.status)) {
-            throw new ApiException(HttpStatus.CONFLICT, 49622, "contribution candidate is not allowed");
-        }
-        List<Map<String, Object>> created = new ArrayList<>();
-        for (ActivityRewardRecord reward : store.rewards.values()) {
-            if (reward.activityId.equals(activity.activityId) && "ISSUED".equals(reward.status)) {
-                ActivityContributionRecord candidate = store.createCandidate(activity, reward);
-                created.add(candidate.view());
+        return idempotent(request, actor, body, () -> {
+            ActivityRecord activity = store.requireActivity(activityId);
+            if (!"RESULT_PUBLISHED".equals(activity.status)) {
+                throw new ApiException(HttpStatus.CONFLICT, 49622, "contribution candidate is not allowed");
             }
-        }
-        store.audit("ACTIVITY_CONTRIBUTION_CANDIDATES_CREATED", activity.activityId, activity.activityId, actor.userId, "SUCCESS");
-        return created(request, Map.of("items", created, "total", created.size()));
+            ensureAuditWritable(request);
+            List<Map<String, Object>> created = new ArrayList<>();
+            for (ActivityRewardRecord reward : store.rewards.values()) {
+                if (reward.activityId.equals(activity.activityId) && "ISSUED".equals(reward.status)) {
+                    ActivityContributionRecord candidate = store.createCandidate(activity, reward);
+                    created.add(candidate.view());
+                }
+            }
+            store.audit("ACTIVITY_CONTRIBUTION_CANDIDATES_CREATED", activity.activityId, activity.activityId, actor.userId, "SUCCESS");
+            return created(request, Map.of("items", created, "total", created.size()));
+        });
     }
 
     @GetMapping("/admin/audit-logs")
@@ -690,29 +727,33 @@ class ActivityController {
 
     private ResponseEntity<Map<String, Object>> reviewEvent(HttpServletRequest request, String activityId, Map<String, Object> body, String status, String action) {
         Actor actor = auth.requireStaff(request);
-        validateIdempotency(body);
-        ActivityRecord activity = store.requireActivity(activityId);
-        if (!"PENDING_REVIEW".equals(activity.status)) {
-            throw new ApiException(HttpStatus.CONFLICT, 49610, "activity state conflict");
-        }
-        activity.status = status;
-        activity.reviewedAt = now();
-        store.audit(action, activity.activityId, activity.activityId, actor.userId, "SUCCESS");
-        return ok(request, activity.adminView());
+        return idempotent(request, actor, body, () -> {
+            ActivityRecord activity = store.requireActivity(activityId);
+            if (!"PENDING_REVIEW".equals(activity.status)) {
+                throw new ApiException(HttpStatus.CONFLICT, 49610, "activity state conflict");
+            }
+            ensureAuditWritable(request);
+            activity.status = status;
+            activity.reviewedAt = now();
+            store.audit(action, activity.activityId, activity.activityId, actor.userId, "SUCCESS");
+            return ok(request, activity.adminView());
+        });
     }
 
     private ResponseEntity<Map<String, Object>> transitionStaff(HttpServletRequest request, String activityId, Map<String, Object> body,
                                                                 List<String> from, String to, String action) {
         Actor actor = auth.requireStaff(request);
-        validateIdempotency(body);
-        ActivityRecord activity = store.requireActivity(activityId);
-        if (!from.contains(activity.status)) {
-            throw new ApiException(HttpStatus.CONFLICT, 49610, "activity state conflict");
-        }
-        activity.status = to;
-        activity.updatedAt = now();
-        store.audit(action, activity.activityId, activity.activityId, actor.userId, "SUCCESS");
-        return ok(request, activity.adminView());
+        return idempotent(request, actor, body, () -> {
+            ActivityRecord activity = store.requireActivity(activityId);
+            if (!from.contains(activity.status)) {
+                throw new ApiException(HttpStatus.CONFLICT, 49610, "activity state conflict");
+            }
+            ensureAuditWritable(request);
+            activity.status = to;
+            activity.updatedAt = now();
+            store.audit(action, activity.activityId, activity.activityId, actor.userId, "SUCCESS");
+            return ok(request, activity.adminView());
+        });
     }
 
     private Map<String, Object> notificationFailure(HttpServletRequest request) {
@@ -748,6 +789,12 @@ class ActivityController {
         Object key = body == null ? null : body.get("idempotencyKey");
         if (key != null && (key.toString().length() < 8 || key.toString().length() > 80)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, 40001, "invalid idempotencyKey");
+        }
+    }
+
+    private void ensureAuditWritable(HttpServletRequest request) {
+        if (properties.enabled() && "true".equals(request.getHeader("X-Test-Fail-Audit"))) {
+            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 54601, "activity audit failed");
         }
     }
 
@@ -927,7 +974,7 @@ class ActivityStore {
         }
         int capacity = number(body.get("capacity"), 10);
         int waitlistCapacity = number(body.get("waitlistCapacity"), 0);
-        if (capacity < 0 || waitlistCapacity < 0) {
+        if (capacity < 1 || waitlistCapacity < 0) {
             throw new ApiException(HttpStatus.BAD_REQUEST, 40001, "invalid activity capacity");
         }
         String id = "act-" + activitySeq.incrementAndGet();
@@ -952,8 +999,35 @@ class ActivityStore {
         if (body.containsKey("title")) activity.title = text(body, "title", activity.title);
         if (body.containsKey("summary")) activity.summary = text(body, "summary", activity.summary);
         if (body.containsKey("description")) activity.description = text(body, "description", activity.description);
+        if (body.containsKey("startAt")) activity.startAt = text(body, "startAt", activity.startAt);
+        if (body.containsKey("endAt")) activity.endAt = text(body, "endAt", activity.endAt);
+        if (body.containsKey("registrationOpenAt")) activity.registrationOpenAt = text(body, "registrationOpenAt", activity.registrationOpenAt);
+        if (body.containsKey("registrationCloseAt")) activity.registrationCloseAt = text(body, "registrationCloseAt", activity.registrationCloseAt);
         if (body.containsKey("capacity")) activity.capacity = number(body.get("capacity"), activity.capacity);
         if (body.containsKey("waitlistCapacity")) activity.waitlistCapacity = number(body.get("waitlistCapacity"), activity.waitlistCapacity);
+    }
+
+    void validateEditableFields(ActivityRecord activity, Map<String, Object> body) {
+        String startAt = body.containsKey("startAt") ? text(body, "startAt", activity.startAt) : activity.startAt;
+        String endAt = body.containsKey("endAt") ? text(body, "endAt", activity.endAt) : activity.endAt;
+        String registrationOpenAt = body.containsKey("registrationOpenAt") ? text(body, "registrationOpenAt", activity.registrationOpenAt) : activity.registrationOpenAt;
+        String registrationCloseAt = body.containsKey("registrationCloseAt") ? text(body, "registrationCloseAt", activity.registrationCloseAt) : activity.registrationCloseAt;
+        int capacity = body.containsKey("capacity") ? number(body.get("capacity"), activity.capacity) : activity.capacity;
+        int waitlistCapacity = body.containsKey("waitlistCapacity") ? number(body.get("waitlistCapacity"), activity.waitlistCapacity) : activity.waitlistCapacity;
+        Instant start = Instant.parse(startAt);
+        Instant end = Instant.parse(endAt);
+        if (!end.isAfter(start)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, 40001, "invalid activity time");
+        }
+        if (registrationCloseAt != null && Instant.parse(registrationCloseAt).isAfter(start)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, 40001, "invalid registration close time");
+        }
+        if (registrationOpenAt != null && registrationCloseAt != null && Instant.parse(registrationOpenAt).isAfter(Instant.parse(registrationCloseAt))) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, 40001, "invalid registration open time");
+        }
+        if (capacity < 1 || waitlistCapacity < 0) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, 40001, "invalid activity capacity");
+        }
     }
 
     ActivityRegistrationRecord createRegistration(ActivityRecord activity, Actor actor, Map<String, Object> body) {

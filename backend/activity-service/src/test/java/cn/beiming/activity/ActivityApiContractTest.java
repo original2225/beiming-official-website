@@ -57,11 +57,11 @@ class ActivityApiContractTest {
         addRange(mapped, "ACT-OPS", 1, 40);
         addRange(mapped, "ACT-DEPS", 1, 120);
         addRange(mapped, "ACT-COMPAT", 1, 80);
-        addRange(mapped, "ACT-HARDEN", 1, 110);
+        addRange(mapped, "ACT-HARDEN", 1, 184);
         addRange(mapped, "ACT-PORT", 1, 14);
         addRange(mapped, "ACT-CYCLE", 1, 50);
-        assertThat(mapped).contains("ACT-COM-001", "ACT-ME-090", "ACT-REWARD-090", "ACT-HARDEN-110", "ACT-CYCLE-050");
-        assertThat(mapped).hasSize(1254);
+        assertThat(mapped).contains("ACT-COM-001", "ACT-ME-090", "ACT-REWARD-090", "ACT-HARDEN-184", "ACT-CYCLE-050");
+        assertThat(mapped).hasSize(1328);
     }
 
     @Test
@@ -259,6 +259,138 @@ class ActivityApiContractTest {
                 with(eventBody("invalid-close-after-start"), "registrationCloseAt", "2026-06-01T12:30:00Z"), 400, 40001);
         performJson(post("/api/v1/activity/admin/events").header("Authorization", bearer("admin-token")),
                 with(eventBody("invalid-open-after-close"), "registrationOpenAt", "2026-06-01T11:30:00Z"), 400, 40001);
+    }
+
+    @Test
+    @DisplayName("ACT-HARDEN-111..130 replay backend idempotent writes across activity, registration, result, reward, and candidates")
+    void backendWriteEndpointsReplayIdempotentResults() throws Exception {
+        JsonNode draft = createEvent("idem-backend-event");
+        String activityId = draft.at("/data/activityId").asText();
+
+        Map<String, Object> updateBody = with(eventBody("idem-backend-update"), "title", "更新后的活动标题");
+        JsonNode firstUpdate = performJson(patch("/api/v1/activity/admin/events/" + activityId).header("Authorization", bearer("helper-token")),
+                updateBody, 200);
+        JsonNode replayUpdate = performJson(patch("/api/v1/activity/admin/events/" + activityId).header("Authorization", bearer("helper-token")),
+                updateBody, 200);
+        assertThat(replayUpdate.at("/data/activityId").asText()).isEqualTo(firstUpdate.at("/data/activityId").asText());
+        performJson(patch("/api/v1/activity/admin/events/" + activityId).header("Authorization", bearer("helper-token")),
+                with(updateBody, "title", "同 key 改标题"), 409, 49617);
+
+        Map<String, Object> submitBody = Map.of("reason", "提交审核", "idempotencyKey", "idem-backend-submit");
+        performJson(post("/api/v1/activity/admin/events/" + activityId + "/submit").header("Authorization", bearer("helper-token")),
+                submitBody, 200);
+        performJson(post("/api/v1/activity/admin/events/" + activityId + "/submit").header("Authorization", bearer("helper-token")),
+                submitBody, 200);
+
+        Map<String, Object> approveBody = reviewBody("idem-backend-approve");
+        performJson(patch("/api/v1/activity/admin/events/" + activityId + "/approve").header("Authorization", bearer("helper-token")),
+                approveBody, 200);
+        performJson(patch("/api/v1/activity/admin/events/" + activityId + "/approve").header("Authorization", bearer("helper-token")),
+                approveBody, 200);
+
+        Map<String, Object> publishBody = Map.of("reason", "发布活动", "idempotencyKey", "idem-backend-publish");
+        performJson(patch("/api/v1/activity/admin/events/" + activityId + "/publish").header("Authorization", bearer("admin-token")),
+                publishBody, 200);
+        performJson(patch("/api/v1/activity/admin/events/" + activityId + "/publish").header("Authorization", bearer("admin-token")),
+                publishBody, 200);
+
+        JsonNode registration = performJson(registerRequest(activityId, "member-user-1-token"),
+                registerBody("idem-backend-registration"), 201);
+        String registrationId = registration.at("/data/registrationId").asText();
+        startEvent(activityId);
+        Map<String, Object> checkInBody = Map.of("method", "MANUAL", "reason", "签到", "idempotencyKey", "idem-backend-checkin");
+        performJson(patch("/api/v1/activity/admin/registrations/" + registrationId + "/check-in")
+                        .header("Authorization", bearer("helper-token"))
+                        .header("X-Test-Now", "2026-06-01T12:30:00Z"),
+                checkInBody, 200);
+        performJson(patch("/api/v1/activity/admin/registrations/" + registrationId + "/check-in")
+                        .header("Authorization", bearer("helper-token"))
+                        .header("X-Test-Now", "2026-06-01T12:30:00Z"),
+                checkInBody, 200);
+        completeEvent(activityId);
+
+        Map<String, Object> resultBody = Map.of("title", "活动结果", "summary", "完成", "details", "结果", "reason", "录入", "idempotencyKey", "idem-backend-result");
+        performJson(put("/api/v1/activity/admin/events/" + activityId + "/result").header("Authorization", bearer("helper-token")),
+                resultBody, 200);
+        performJson(put("/api/v1/activity/admin/events/" + activityId + "/result").header("Authorization", bearer("helper-token")),
+                resultBody, 200);
+
+        Map<String, Object> resultPublishBody = Map.of("reason", "发布结果", "idempotencyKey", "idem-backend-result-publish");
+        performJson(patch("/api/v1/activity/admin/events/" + activityId + "/result/publish").header("Authorization", bearer("admin-token")),
+                resultPublishBody, 200);
+        performJson(patch("/api/v1/activity/admin/events/" + activityId + "/result/publish").header("Authorization", bearer("admin-token")),
+                resultPublishBody, 200);
+
+        Map<String, Object> rewardBody = rewardBody(registrationId, "idem-backend-reward");
+        JsonNode reward = performJson(post("/api/v1/activity/admin/events/" + activityId + "/rewards").header("Authorization", bearer("helper-token")),
+                rewardBody, 201);
+        JsonNode rewardReplay = performJson(post("/api/v1/activity/admin/events/" + activityId + "/rewards").header("Authorization", bearer("helper-token")),
+                rewardBody, 201);
+        assertThat(rewardReplay.at("/data/rewardId").asText()).isEqualTo(reward.at("/data/rewardId").asText());
+        String rewardId = reward.at("/data/rewardId").asText();
+
+        Map<String, Object> issueBody = Map.of("publicComment", "已发放", "reason", "发放奖励", "idempotencyKey", "idem-backend-issue");
+        performJson(patch("/api/v1/activity/admin/rewards/" + rewardId + "/issue").header("Authorization", bearer("helper-token")),
+                issueBody, 200);
+        performJson(patch("/api/v1/activity/admin/rewards/" + rewardId + "/issue").header("Authorization", bearer("helper-token")),
+                issueBody, 200);
+
+        Map<String, Object> candidatesBody = Map.of("reason", "生成候选", "idempotencyKey", "idem-backend-candidates");
+        JsonNode candidates = performJson(post("/api/v1/activity/admin/events/" + activityId + "/contribution-candidates").header("Authorization", bearer("admin-token")),
+                candidatesBody, 201);
+        JsonNode candidatesReplay = performJson(post("/api/v1/activity/admin/events/" + activityId + "/contribution-candidates").header("Authorization", bearer("admin-token")),
+                candidatesBody, 201);
+        assertThat(candidatesReplay.at("/data/items/0/candidateId").asText()).isEqualTo(candidates.at("/data/items/0/candidateId").asText());
+    }
+
+    @Test
+    @DisplayName("ACT-HARDEN-131..144 reject invalid event patch fields without partial updates")
+    void eventPatchRejectsInvalidCapacityAndTimeBoundaries() throws Exception {
+        String activityId = createEvent("invalid-patch-event").at("/data/activityId").asText();
+        performJson(patch("/api/v1/activity/admin/events/" + activityId).header("Authorization", bearer("helper-token")),
+                with(eventBody("invalid-patch-capacity"), "capacity", -1), 400, 40001);
+        performJson(patch("/api/v1/activity/admin/events/" + activityId).header("Authorization", bearer("helper-token")),
+                with(eventBody("invalid-patch-waitlist"), "waitlistCapacity", -1), 400, 40001);
+        performJson(patch("/api/v1/activity/admin/events/" + activityId).header("Authorization", bearer("helper-token")),
+                with(eventBody("invalid-patch-close"), "registrationCloseAt", "2026-06-01T12:30:00Z"), 400, 40001);
+
+        JsonNode afterInvalidPatch = performJson(get("/api/v1/activity/admin/events/" + activityId).header("Authorization", bearer("admin-token")), 200);
+        assertThat(afterInvalidPatch.at("/data/activity/capacity").asInt()).isEqualTo(10);
+        assertThat(afterInvalidPatch.at("/data/activity/waitlistCapacity").asInt()).isEqualTo(5);
+    }
+
+    @Test
+    @DisplayName("ACT-HARDEN-145..164 rollback backend writes when audit persistence fails")
+    void auditFailureRollsBackBackendWrites() throws Exception {
+        String activityId = createEvent("audit-rollback-submit").at("/data/activityId").asText();
+        performJson(post("/api/v1/activity/admin/events/" + activityId + "/submit")
+                        .header("Authorization", bearer("helper-token"))
+                        .header("X-Test-Fail-Audit", "true"),
+                Map.of("reason", "审计失败", "idempotencyKey", "audit-fail-submit"), 500, 54601);
+        JsonNode afterSubmitFail = performJson(get("/api/v1/activity/admin/events/" + activityId).header("Authorization", bearer("admin-token")), 200);
+        assertThat(afterSubmitFail.at("/data/activity/status").asText()).isEqualTo("DRAFT");
+
+        String rewardActivityId = createApprovedPublishedEvent("audit-rollback-reward", 2, 1);
+        JsonNode registration = performJson(registerRequest(rewardActivityId, "member-user-1-token"),
+                registerBody("audit-rollback-registration"), 201);
+        String registrationId = registration.at("/data/registrationId").asText();
+        startEvent(rewardActivityId);
+        performJson(patch("/api/v1/activity/admin/registrations/" + registrationId + "/check-in")
+                        .header("Authorization", bearer("helper-token"))
+                        .header("X-Test-Now", "2026-06-01T12:30:00Z"),
+                Map.of("method", "MANUAL", "reason", "签到", "idempotencyKey", "audit-rollback-checkin"), 200);
+        completeEvent(rewardActivityId);
+        performJson(put("/api/v1/activity/admin/events/" + rewardActivityId + "/result").header("Authorization", bearer("helper-token")),
+                Map.of("title", "活动结果", "summary", "完成", "details", "结果", "reason", "录入", "idempotencyKey", "audit-rollback-result"), 200);
+        performJson(patch("/api/v1/activity/admin/events/" + rewardActivityId + "/result/publish").header("Authorization", bearer("admin-token")),
+                Map.of("reason", "发布结果", "idempotencyKey", "audit-rollback-result-publish"), 200);
+
+        performJson(post("/api/v1/activity/admin/events/" + rewardActivityId + "/rewards")
+                        .header("Authorization", bearer("helper-token"))
+                        .header("X-Test-Fail-Audit", "true"),
+                rewardBody(registrationId, "audit-fail-reward"), 500, 54601);
+        JsonNode rewards = performJson(get("/api/v1/activity/me/rewards").header("Authorization", bearer("member-user-1-token")), 200);
+        assertThat(rewards.at("/data/total").asInt()).isZero();
     }
 
     @Test
