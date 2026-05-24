@@ -1,0 +1,6 @@
+server:
+  port: 8112
+
+community:
+  test-controls:
+    enabled: false

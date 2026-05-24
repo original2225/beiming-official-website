@@ -148,7 +148,9 @@ class CommunityApiContractTest {
     @DisplayName("COM-REACTION, COM-VOTE, and COM-REPORT cover interaction idempotency, poll eligibility, and report queues")
     void reactionVoteAndReportFlow() throws Exception {
         String boardId = createBoard("interaction-flow").at("/data/boardId").asText();
-        String postId = approvePost(createPost(boardId, "interaction-post-1").at("/data/postId").asText());
+        String postId = createPost(boardId, "interaction-post-1").at("/data/postId").asText();
+        submitPost(postId, "interaction-post-1-submit");
+        approvePost(postId);
 
         JsonNode like = performJson(post("/api/v1/community/me/posts/" + postId + "/like").header("Authorization", bearer("member-user-1-token")),
                 Map.of("idempotencyKey", "like-post-1"), 200);
@@ -300,8 +302,7 @@ class CommunityApiContractTest {
 
     private String createAndSubmit(String idempotencyKey) throws Exception {
         String postId = createPost("board-general", idempotencyKey).at("/data/postId").asText();
-        performJson(post("/api/v1/community/me/posts/" + postId + "/submit").header("Authorization", bearer("member-user-1-token")),
-                Map.of("idempotencyKey", idempotencyKey + "-submit"), 200);
+        submitPost(postId, idempotencyKey + "-submit");
         return postId;
     }
 
@@ -313,6 +314,11 @@ class CommunityApiContractTest {
         performJson(patch("/api/v1/community/admin/posts/" + postId + "/approve").header("Authorization", bearer("helper-token")),
                 reviewBody(postId + "-approve"), 200);
         return postId;
+    }
+
+    private void submitPost(String postId, String idempotencyKey) throws Exception {
+        performJson(post("/api/v1/community/me/posts/" + postId + "/submit").header("Authorization", bearer("member-user-1-token")),
+                Map.of("idempotencyKey", idempotencyKey), 200);
     }
 
     private JsonNode performJson(MockHttpServletRequestBuilder builder, int status) throws Exception {
