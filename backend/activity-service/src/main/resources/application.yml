@@ -1,0 +1,6 @@
+server:
+  port: 8113
+
+activity:
+  test-controls:
+    enabled: false
