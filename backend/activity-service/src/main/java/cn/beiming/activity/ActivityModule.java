@@ -33,9 +33,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 
 @RestController
 @RequestMapping("/api/v1/activity")
@@ -129,31 +131,32 @@ class ActivityController {
                                                  @PathVariable String activityId,
                                                  @RequestBody Map<String, Object> body) {
         Actor actor = auth.current(request);
-        validateIdempotency(body);
-        if (properties.enabled() && "unavailable".equals(request.getHeader("X-Test-Profile-Mode"))) {
-            throw new ApiException(HttpStatus.BAD_GATEWAY, 49410, "profile unavailable");
-        }
-        if (number(body.get("guestCount"), 0) != 0) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, 40001, "guestCount is not supported");
-        }
-        ActivityRecord activity = store.requireActivity(activityId);
-        if (!activity.isRegistrationOpen()) {
-            throw new ApiException(HttpStatus.CONFLICT, 49612, "registration is not open");
-        }
-        if (activity.requiresMember() && actor.memberId == null) {
-            throw new ApiException(HttpStatus.FORBIDDEN, 49620, "activity eligibility denied");
-        }
-        Optional<ActivityRegistrationRecord> existing = store.registrations.values().stream()
-                .filter(registration -> registration.activityId.equals(activity.activityId))
-                .filter(registration -> registration.userId.equals(actor.userId))
-                .filter(registration -> !List.of("CANCELED", "REJECTED").contains(registration.status))
-                .findFirst();
-        if (existing.isPresent()) {
-            throw new ApiException(HttpStatus.CONFLICT, 49614, "duplicate registration");
-        }
-        ActivityRegistrationRecord registration = store.createRegistration(activity, actor, body);
-        store.audit("ACTIVITY_REGISTERED", activity.activityId, registration.registrationId, actor.userId, "SUCCESS");
-        return created(request, registration.currentUserView());
+        return idempotent(request, actor, body, () -> {
+            if (properties.enabled() && "unavailable".equals(request.getHeader("X-Test-Profile-Mode"))) {
+                throw new ApiException(HttpStatus.BAD_GATEWAY, 49410, "profile unavailable");
+            }
+            if (number(body.get("guestCount"), 0) != 0) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, 40001, "guestCount is not supported");
+            }
+            ActivityRecord activity = store.requireActivity(activityId);
+            if (!activity.isRegistrationOpen(currentInstant(request))) {
+                throw new ApiException(HttpStatus.CONFLICT, 49612, "registration is not open");
+            }
+            if (activity.requiresMember() && actor.memberId == null) {
+                throw new ApiException(HttpStatus.FORBIDDEN, 49620, "activity eligibility denied");
+            }
+            Optional<ActivityRegistrationRecord> existing = store.registrations.values().stream()
+                    .filter(registration -> registration.activityId.equals(activity.activityId))
+                    .filter(registration -> registration.userId.equals(actor.userId))
+                    .filter(registration -> !List.of("CANCELED", "REJECTED").contains(registration.status))
+                    .findFirst();
+            if (existing.isPresent()) {
+                throw new ApiException(HttpStatus.CONFLICT, 49614, "duplicate registration");
+            }
+            ActivityRegistrationRecord registration = store.createRegistration(activity, actor, body);
+            store.audit("ACTIVITY_REGISTERED", activity.activityId, registration.registrationId, actor.userId, "SUCCESS");
+            return created(request, registration.currentUserView());
+        });
     }
 
     @PostMapping("/me/registrations/{registrationId}/cancel")
@@ -228,16 +231,17 @@ class ActivityController {
     @PostMapping("/admin/events")
     ResponseEntity<Map<String, Object>> createEvent(HttpServletRequest request, @RequestBody Map<String, Object> body) {
         Actor actor = auth.requireStaff(request);
-        validateIdempotency(body);
-        if (properties.enabled() && body.containsKey("linkedContentId") && "unavailable".equals(request.getHeader("X-Test-Content-Mode"))) {
-            throw new ApiException(HttpStatus.BAD_GATEWAY, 49440, "content unavailable");
-        }
-        if (properties.enabled() && "true".equals(request.getHeader("X-Test-Fail-Audit"))) {
-            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 54601, "activity audit failed");
-        }
-        ActivityRecord activity = store.createActivity(body, actor);
-        store.audit("ACTIVITY_CREATED", activity.activityId, activity.activityId, actor.userId, "SUCCESS");
-        return created(request, activity.adminView());
+        return idempotent(request, actor, body, () -> {
+            if (properties.enabled() && body.containsKey("linkedContentId") && "unavailable".equals(request.getHeader("X-Test-Content-Mode"))) {
+                throw new ApiException(HttpStatus.BAD_GATEWAY, 49440, "content unavailable");
+            }
+            if (properties.enabled() && "true".equals(request.getHeader("X-Test-Fail-Audit"))) {
+                throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, 54601, "activity audit failed");
+            }
+            ActivityRecord activity = store.createActivity(body, actor);
+            store.audit("ACTIVITY_CREATED", activity.activityId, activity.activityId, actor.userId, "SUCCESS");
+            return created(request, activity.adminView());
+        });
     }
 
     @PatchMapping("/admin/events/{activityId}")
@@ -493,13 +497,19 @@ class ActivityController {
         if (!"CONFIRMED".equals(registration.status) && !"CHECKED_IN".equals(registration.status)) {
             throw new ApiException(HttpStatus.CONFLICT, 49611, "registration state conflict");
         }
-        if (!"CHECKED_IN".equals(registration.status)) {
-            registration.status = "CHECKED_IN";
-            registration.checkedInAt = now();
-            activity.checkedInCount++;
+        Instant current = currentInstant(request);
+        if (!activity.isCheckInWindowOpen(current)) {
+            throw new ApiException(HttpStatus.CONFLICT, 49618, "activity check-in window is closed");
         }
-        registration.updatedAt = now();
-        registration.notificationFailure = notificationFailure(request);
+        synchronized (store) {
+            if (!"CHECKED_IN".equals(registration.status)) {
+                registration.status = "CHECKED_IN";
+                registration.checkedInAt = current.toString();
+                activity.checkedInCount++;
+            }
+            registration.updatedAt = now();
+            registration.notificationFailure = notificationFailure(request);
+        }
         store.audit("ACTIVITY_REGISTRATION_CHECKED_IN", activity.activityId, registration.registrationId, actor.userId, "SUCCESS");
         return ok(request, registration.adminView());
     }
@@ -736,9 +746,50 @@ class ActivityController {
 
     private void validateIdempotency(Map<String, Object> body) {
         Object key = body == null ? null : body.get("idempotencyKey");
-        if (key != null && key.toString().length() < 8) {
+        if (key != null && (key.toString().length() < 8 || key.toString().length() > 80)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, 40001, "invalid idempotencyKey");
         }
+    }
+
+    private ResponseEntity<Map<String, Object>> idempotent(HttpServletRequest request,
+                                                           Actor actor,
+                                                           Map<String, Object> body,
+                                                           Supplier<ResponseEntity<Map<String, Object>>> action) {
+        validateIdempotency(body);
+        String idempotencyKey = idempotencyKey(body);
+        if (idempotencyKey == null) {
+            return action.get();
+        }
+        String semanticKey = request.getMethod() + " " + request.getRequestURI();
+        String storageKey = actor.userId + "|" + semanticKey + "|" + idempotencyKey;
+        String fingerprint = store.fingerprint(body);
+        synchronized (store) {
+            ActivityIdempotencyRecord existing = store.idempotencyRecords.get(storageKey);
+            if (existing != null) {
+                if (!existing.fingerprint().equals(fingerprint)) {
+                    throw new ApiException(HttpStatus.CONFLICT, 49617, "idempotency key conflict");
+                }
+                return response(request, existing.status(), existing.code(), existing.message(), existing.data());
+            }
+            ResponseEntity<Map<String, Object>> result = action.get();
+            Map<String, Object> resultBody = Objects.requireNonNull(result.getBody());
+            store.idempotencyRecords.put(storageKey, new ActivityIdempotencyRecord(
+                    fingerprint,
+                    HttpStatus.valueOf(result.getStatusCode().value()),
+                    ((Number) resultBody.get("code")).intValue(),
+                    resultBody.get("message").toString(),
+                    resultBody.get("data")
+            ));
+            return result;
+        }
+    }
+
+    private String idempotencyKey(Map<String, Object> body) {
+        Object value = body == null ? null : body.get("idempotencyKey");
+        if (value == null || value.toString().isBlank()) {
+            return null;
+        }
+        return value.toString();
     }
 
     private void requireConfirm(Map<String, Object> body, String expected) {
@@ -794,6 +845,14 @@ class ActivityController {
     private String now() {
         return Instant.now().toString();
     }
+
+    private Instant currentInstant(HttpServletRequest request) {
+        String testNow = request.getHeader("X-Test-Now");
+        if (properties.enabled() && testNow != null && !testNow.isBlank()) {
+            return Instant.parse(testNow);
+        }
+        return Instant.now();
+    }
 }
 
 @Service
@@ -804,7 +863,8 @@ class ActivityStore {
     final Map<String, ActivityRewardRecord> rewards = new ConcurrentHashMap<>();
     final Map<String, ActivityContributionRecord> candidates = new ConcurrentHashMap<>();
     final List<ActivityAuditRecord> audits = new ArrayList<>();
-    final Map<String, Object> idempotencyRecords = new ConcurrentHashMap<>();
+    final Map<String, ActivityIdempotencyRecord> idempotencyRecords = new ConcurrentHashMap<>();
+    private final ObjectMapper objectMapper = new ObjectMapper();
     final AtomicInteger activitySeq = new AtomicInteger();
     final AtomicInteger registrationSeq = new AtomicInteger();
     final AtomicInteger resultSeq = new AtomicInteger();
@@ -857,6 +917,19 @@ class ActivityStore {
         if (!end.isAfter(start)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, 40001, "invalid activity time");
         }
+        String registrationOpenAt = text(body, "registrationOpenAt", null);
+        String registrationCloseAt = text(body, "registrationCloseAt", null);
+        if (registrationCloseAt != null && Instant.parse(registrationCloseAt).isAfter(start)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, 40001, "invalid registration close time");
+        }
+        if (registrationOpenAt != null && registrationCloseAt != null && Instant.parse(registrationOpenAt).isAfter(Instant.parse(registrationCloseAt))) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, 40001, "invalid registration open time");
+        }
+        int capacity = number(body.get("capacity"), 10);
+        int waitlistCapacity = number(body.get("waitlistCapacity"), 0);
+        if (capacity < 0 || waitlistCapacity < 0) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, 40001, "invalid activity capacity");
+        }
         String id = "act-" + activitySeq.incrementAndGet();
         ActivityRecord activity = new ActivityRecord(id, slug, text(body, "title", "北冥活动"), text(body, "summary", "活动摘要"), text(body, "description", "活动描述"));
         activity.type = text(body, "type", "BUILD");
@@ -864,10 +937,10 @@ class ActivityStore {
         activity.registrationPolicy = text(body, "registrationPolicy", "OPEN");
         activity.startAt = start.toString();
         activity.endAt = end.toString();
-        activity.registrationOpenAt = text(body, "registrationOpenAt", null);
-        activity.registrationCloseAt = text(body, "registrationCloseAt", null);
-        activity.capacity = number(body.get("capacity"), 10);
-        activity.waitlistCapacity = number(body.get("waitlistCapacity"), 0);
+        activity.registrationOpenAt = registrationOpenAt;
+        activity.registrationCloseAt = registrationCloseAt;
+        activity.capacity = capacity;
+        activity.waitlistCapacity = waitlistCapacity;
         activity.locationText = text(body, "locationText", null);
         activity.coverImageUrl = text(body, "coverImageUrl", null);
         activity.createdBy = actor.userId;
@@ -948,6 +1021,26 @@ class ActivityStore {
         audits.add(new ActivityAuditRecord("aaud-" + (audits.size() + 1), action, activityId, targetId, actorUserId, result));
     }
 
+    String fingerprint(Map<String, Object> body) {
+        try {
+            return objectMapper.writeValueAsString(canonical(body));
+        } catch (Exception exception) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, 40001, "invalid json body");
+        }
+    }
+
+    private Object canonical(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> sorted = new TreeMap<>();
+            map.forEach((key, nested) -> sorted.put(key.toString(), canonical(nested)));
+            return sorted;
+        }
+        if (value instanceof List<?> list) {
+            return list.stream().map(this::canonical).toList();
+        }
+        return value;
+    }
+
     private String text(Map<String, Object> body, String key, String fallback) {
         Object value = body == null ? null : body.get(key);
         return value == null ? fallback : value.toString();
@@ -962,6 +1055,9 @@ class ActivityStore {
         }
         return Integer.parseInt(value.toString());
     }
+}
+
+record ActivityIdempotencyRecord(String fingerprint, HttpStatus status, int code, String message, Object data) {
 }
 
 class ActivityRecord {
@@ -1009,8 +1105,20 @@ class ActivityRecord {
         return List.of("PUBLISHED", "REGISTRATION_OPEN", "REGISTRATION_CLOSED", "RUNNING", "COMPLETED", "RESULT_PUBLISHED").contains(status);
     }
 
-    boolean isRegistrationOpen() {
-        return "REGISTRATION_OPEN".equals(status);
+    boolean isRegistrationOpen(Instant current) {
+        if (!"REGISTRATION_OPEN".equals(status)) {
+            return false;
+        }
+        if (registrationOpenAt != null && current.isBefore(Instant.parse(registrationOpenAt))) {
+            return false;
+        }
+        return registrationCloseAt == null || !current.isAfter(Instant.parse(registrationCloseAt));
+    }
+
+    boolean isCheckInWindowOpen(Instant current) {
+        Instant start = Instant.parse(startAt).minusSeconds(3600);
+        Instant end = Instant.parse(endAt).plusSeconds(86400);
+        return !current.isBefore(start) && !current.isAfter(end);
     }
 
     boolean requiresMember() {

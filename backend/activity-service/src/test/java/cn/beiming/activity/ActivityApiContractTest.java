@@ -107,12 +107,12 @@ class ActivityApiContractTest {
         assertThat(publicList.at("/data/total").asInt()).isGreaterThanOrEqualTo(1);
         assertNoSecrets(publicList);
 
-        JsonNode firstRegistration = performJson(post("/api/v1/activity/me/events/" + activityId + "/registrations").header("Authorization", bearer("member-user-1-token")),
+        JsonNode firstRegistration = performJson(registerRequest(activityId, "member-user-1-token"),
                 registerBody("reg-member-1"), 201);
         assertThat(firstRegistration.at("/data/status").asText()).isEqualTo("CONFIRMED");
         String firstRegistrationId = firstRegistration.at("/data/registrationId").asText();
 
-        JsonNode waitlisted = performJson(post("/api/v1/activity/me/events/" + activityId + "/registrations").header("Authorization", bearer("member-user-2-token")),
+        JsonNode waitlisted = performJson(registerRequest(activityId, "member-user-2-token"),
                 registerBody("reg-member-2"), 201);
         assertThat(waitlisted.at("/data/status").asText()).isEqualTo("WAITLISTED");
         String waitlistedId = waitlisted.at("/data/registrationId").asText();
@@ -147,7 +147,7 @@ class ActivityApiContractTest {
     @DisplayName("ACT-RESULT and ACT-REWARD keep results, rewards, and contribution candidates inside activity")
     void resultRewardAndContributionCandidateFlow() throws Exception {
         String activityId = createApprovedPublishedEvent("reward-event-1", 2, 1);
-        JsonNode registration = performJson(post("/api/v1/activity/me/events/" + activityId + "/registrations").header("Authorization", bearer("member-user-1-token")),
+        JsonNode registration = performJson(registerRequest(activityId, "member-user-1-token"),
                 registerBody("reward-reg-1"), 201);
         String registrationId = registration.at("/data/registrationId").asText();
         startEvent(activityId);
@@ -188,6 +188,80 @@ class ActivityApiContractTest {
     }
 
     @Test
+    @DisplayName("ACT-HARDEN replays identical idempotent writes and rejects idempotency fingerprint conflicts")
+    void idempotencyReplaysCreateAndRegistrationResults() throws Exception {
+        Map<String, Object> eventBody = eventBody("idem-create-1");
+        JsonNode firstCreate = performJson(post("/api/v1/activity/admin/events").header("Authorization", bearer("admin-token")),
+                eventBody, 201);
+        JsonNode replayCreate = performJson(post("/api/v1/activity/admin/events").header("Authorization", bearer("admin-token")),
+                eventBody, 201);
+        assertThat(replayCreate.at("/data/activityId").asText()).isEqualTo(firstCreate.at("/data/activityId").asText());
+        performJson(post("/api/v1/activity/admin/events").header("Authorization", bearer("admin-token")),
+                with(eventBody, "title", "改动后的活动标题"), 409, 49617);
+
+        String activityId = createApprovedPublishedEvent("idem-reg-event-1", 3, 1);
+        Map<String, Object> registerBody = registerBody("idem-reg-1");
+        JsonNode firstRegistration = performJson(registerRequest(activityId, "member-user-1-token"),
+                registerBody, 201);
+        JsonNode replayRegistration = performJson(registerRequest(activityId, "member-user-1-token"),
+                registerBody, 201);
+        assertThat(replayRegistration.at("/data/registrationId").asText()).isEqualTo(firstRegistration.at("/data/registrationId").asText());
+        performJson(registerRequest(activityId, "member-user-1-token"),
+                with(registerBody, "note", "换一份报名备注"), 409, 49617);
+    }
+
+    @Test
+    @DisplayName("ACT-REG and ACT-CHECKIN enforce registration and check-in time windows from server time")
+    void registrationAndCheckInWindowsUseServerTime() throws Exception {
+        Map<String, Object> futureOpen = with(eventBody("window-reg-open"), "registrationOpenAt", "2026-05-26T00:00:00Z");
+        String futureOpenId = createApprovedPublishedEvent(futureOpen, 2, 1);
+        performJson(post("/api/v1/activity/me/events/" + futureOpenId + "/registrations")
+                        .header("Authorization", bearer("member-user-1-token"))
+                        .header("X-Test-Now", "2026-05-25T12:00:00Z"),
+                registerBody("before-open"), 409, 49612);
+
+        String closedId = createApprovedPublishedEvent("window-reg-closed", 2, 1);
+        performJson(post("/api/v1/activity/me/events/" + closedId + "/registrations")
+                        .header("Authorization", bearer("member-user-1-token"))
+                        .header("X-Test-Now", "2026-06-01T11:30:00Z"),
+                registerBody("after-close"), 409, 49612);
+
+        String checkInActivityId = createApprovedPublishedEvent("window-checkin", 2, 1);
+        JsonNode registration = performJson(post("/api/v1/activity/me/events/" + checkInActivityId + "/registrations")
+                        .header("Authorization", bearer("member-user-1-token"))
+                        .header("X-Test-Now", "2026-05-25T12:00:00Z"),
+                registerBody("window-checkin-reg"), 201);
+        String registrationId = registration.at("/data/registrationId").asText();
+        startEvent(checkInActivityId);
+
+        performJson(patch("/api/v1/activity/admin/registrations/" + registrationId + "/check-in")
+                        .header("Authorization", bearer("helper-token"))
+                        .header("X-Test-Now", "2026-06-01T10:59:59Z"),
+                Map.of("method", "MANUAL", "reason", "过早签到", "idempotencyKey", "checkin-too-early"), 409, 49618);
+        performJson(patch("/api/v1/activity/admin/registrations/" + registrationId + "/check-in")
+                        .header("Authorization", bearer("helper-token"))
+                        .header("X-Test-Now", "2026-06-02T14:00:01Z"),
+                Map.of("method", "MANUAL", "reason", "过晚签到", "idempotencyKey", "checkin-too-late"), 409, 49618);
+        performJson(patch("/api/v1/activity/admin/registrations/" + registrationId + "/check-in")
+                        .header("Authorization", bearer("helper-token"))
+                        .header("X-Test-Now", "2026-06-01T11:00:00Z"),
+                Map.of("method", "MANUAL", "reason", "窗口内签到", "idempotencyKey", "checkin-in-window"), 200);
+    }
+
+    @Test
+    @DisplayName("ACT-ADMIN and ACT-WAITLIST reject invalid capacity and registration time boundaries")
+    void activityCreationRejectsInvalidCapacityAndRegistrationBoundaries() throws Exception {
+        performJson(post("/api/v1/activity/admin/events").header("Authorization", bearer("admin-token")),
+                with(eventBody("invalid-capacity"), "capacity", -1), 400, 40001);
+        performJson(post("/api/v1/activity/admin/events").header("Authorization", bearer("admin-token")),
+                with(eventBody("invalid-waitlist"), "waitlistCapacity", -1), 400, 40001);
+        performJson(post("/api/v1/activity/admin/events").header("Authorization", bearer("admin-token")),
+                with(eventBody("invalid-close-after-start"), "registrationCloseAt", "2026-06-01T12:30:00Z"), 400, 40001);
+        performJson(post("/api/v1/activity/admin/events").header("Authorization", bearer("admin-token")),
+                with(eventBody("invalid-open-after-close"), "registrationOpenAt", "2026-06-01T11:30:00Z"), 400, 40001);
+    }
+
+    @Test
     @DisplayName("ACT-DEPS, ACT-AUDIT, ACT-OPS, ACT-COMPAT, and ACT-HARDEN cover dependency failures and boundaries")
     void dependencyHardeningAuditOpsAndCompatibilityFlow() throws Exception {
         performJson(post("/api/v1/activity/me/events/act-seed-open/registrations")
@@ -210,7 +284,7 @@ class ActivityApiContractTest {
         assertThat(afterAuditFail.at("/data/activity/status").asText()).isEqualTo("PENDING_REVIEW");
 
         String activityId = createApprovedPublishedEvent("notify-fail-event", 2, 1);
-        JsonNode registration = performJson(post("/api/v1/activity/me/events/" + activityId + "/registrations").header("Authorization", bearer("member-user-1-token")),
+        JsonNode registration = performJson(registerRequest(activityId, "member-user-1-token"),
                 registerBody("notify-reg"), 201);
         startEvent(activityId);
         performJson(patch("/api/v1/activity/admin/registrations/" + registration.at("/data/registrationId").asText() + "/check-in")
@@ -271,6 +345,17 @@ class ActivityApiContractTest {
     private String createApprovedPublishedEvent(String idempotencyKey, int capacity, int waitlistCapacity) throws Exception {
         JsonNode event = performJson(post("/api/v1/activity/admin/events").header("Authorization", bearer("admin-token")),
                 with(with(eventBody(idempotencyKey), "capacity", capacity), "waitlistCapacity", waitlistCapacity), 201);
+        return approveAndPublishEvent(event, idempotencyKey);
+    }
+
+    private String createApprovedPublishedEvent(Map<String, Object> body, int capacity, int waitlistCapacity) throws Exception {
+        String idempotencyKey = body.get("idempotencyKey").toString();
+        JsonNode event = performJson(post("/api/v1/activity/admin/events").header("Authorization", bearer("admin-token")),
+                with(with(body, "capacity", capacity), "waitlistCapacity", waitlistCapacity), 201);
+        return approveAndPublishEvent(event, idempotencyKey);
+    }
+
+    private String approveAndPublishEvent(JsonNode event, String idempotencyKey) throws Exception {
         String activityId = event.at("/data/activityId").asText();
         performJson(post("/api/v1/activity/admin/events/" + activityId + "/submit").header("Authorization", bearer("helper-token")),
                 Map.of("reason", "提交审核", "idempotencyKey", idempotencyKey + "-submit"), 200);
@@ -320,6 +405,12 @@ class ActivityApiContractTest {
         assertThat(json.at("/code").asInt()).isEqualTo(code);
         assertThat(json.at("/requestId").asText()).isNotBlank();
         return json;
+    }
+
+    private MockHttpServletRequestBuilder registerRequest(String activityId, String token) {
+        return post("/api/v1/activity/me/events/" + activityId + "/registrations")
+                .header("Authorization", bearer(token))
+                .header("X-Test-Now", "2026-05-25T12:00:00Z");
     }
 
     private Map<String, Object> eventBody(String idempotencyKey) {
