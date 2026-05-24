@@ -1,6 +1,10 @@
 # 北冥官网 community API 契约
 
-版本：0.1
+版本：0.2
+
+## 版本记录
+
+`0.2` 补充 P1 硬化验收：公开浏览计数必须按服务端访问指纹去重；投票开放时间、关闭时间和可投资格必须生效；举报证据链接必须校验协议，举报处理必须保存关联处罚；工单必须保存并返回站内安全附件摘要和关联对象摘要；高风险处罚解除必须纳入审计失败回滚；工单后台状态推进必须遵守固定状态机。
 
 ## 文档定位
 
@@ -142,7 +146,7 @@
 | `commentCount` | integer | 是 | 已通过评论数。 |
 | `likeCount` | integer | 是 | 点赞数。 |
 | `favoriteCount` | integer | 是 | 收藏数。 |
-| `viewCount` | integer | 是 | 服务端统计浏览数。 |
+| `viewCount` | integer | 是 | 服务端统计浏览数。公开详情读取可以增加该值，但必须按服务端访问指纹去重，不能让同一访客在短时间内无限累加。 |
 | `acceptedCommentId` | string 或 null | 是 | 问答帖的采纳评论。 |
 | `lastCommentAt` | string 或 null | 是 | 最近评论时间。 |
 | `submittedAt` | string 或 null | 是 | 提交审核时间。 |
@@ -194,8 +198,8 @@
 | `eligibleVisibility` | string | 是 | `PUBLIC`、`MEMBER_ONLY` 或 `STAFF_ONLY`。 |
 | `anonymousResult` | boolean | 是 | 是否隐藏投票人。 |
 | `voteCount` | integer | 是 | 投票人数。 |
-| `opensAt` | string 或 null | 是 | 开放时间。 |
-| `closesAt` | string 或 null | 是 | 关闭时间。 |
+| `opensAt` | string 或 null | 是 | 开放时间。非空时，早于该时间不得投票。 |
+| `closesAt` | string 或 null | 是 | 关闭时间。非空时，达到或晚于该时间不得投票。`closesAt` 必须晚于 `opensAt`。 |
 | `createdAt` | string | 是 | 创建时间。 |
 | `updatedAt` | string | 是 | 更新时间。 |
 
@@ -217,7 +221,7 @@
 | `targetId` | string | 是 | 目标 ID。 |
 | `reasonType` | string | 是 | `CommunityReportReason`。 |
 | `description` | string | 是 | 5 到 2000 位。 |
-| `evidenceLinks` | string[] | 是 | 0 到 10 个 http、https 或站内链接。 |
+| `evidenceLinks` | string[] | 是 | 0 到 10 个 http、https 或站内链接。站内链接必须以 `/` 开头，禁止 `javascript:`、`file:`、`ftp:` 和空白链接。 |
 | `status` | string | 是 | `CommunityReportStatus`。 |
 | `reporter` | CommunityAuthorSnapshot | 是 | 举报人快照。 |
 | `assigneeUserId` | string 或 null | 后台可见 | 处理人。 |
@@ -240,7 +244,7 @@
 | `priority` | string | 是 | `LOW`、`NORMAL`、`HIGH` 或 `URGENT`。 |
 | `creator` | CommunityAuthorSnapshot | 是 | 创建人快照。 |
 | `assigneeUserId` | string 或 null | 后台可见 | 处理人。 |
-| `relatedObject` | object 或 null | 是 | 关联帖子、举报、资源、白名单申请或账号问题摘要。 |
+| `relatedObject` | object 或 null | 是 | 关联帖子、举报、资源、白名单申请或账号问题摘要。P1 只保存摘要字段，禁止保存 token、完整请求头、内部 URL、服务器命令和前序服务内部路径。 |
 | `messages` | CommunityTicketMessage[] | 详情可见 | 工单消息。列表只返回最近摘要。 |
 | `lastReplyAt` | string 或 null | 是 | 最近回复时间。 |
 | `resolvedAt` | string 或 null | 是 | 解决时间。 |
@@ -257,7 +261,7 @@
 | `messageType` | string | 是 | `CommunityTicketMessageType`。 |
 | `body` | string | 是 | 1 到 10000 位。 |
 | `author` | CommunityAuthorSnapshot 或 null | 是 | 系统事件可为 `null`。 |
-| `attachments` | object[] | 是 | P1 只允许站内安全附件摘要，不上传原文件。 |
+| `attachments` | object[] | 是 | P1 只允许站内安全附件摘要，不上传原文件。每个附件必须包含 `attachmentId`、`name` 和以 `/` 开头的站内 `url`，最多 5 个。 |
 | `createdAt` | string | 是 | 创建时间。 |
 
 ### CommunityPenalty
@@ -530,11 +534,15 @@
 
 请求字段：`optionIds` 必填，1 到 10 个，`idempotencyKey` 可选。成功响应 HTTP `200`，`data` 包含投票记录摘要和更新后的投票结果。只允许 `OPEN` 投票；资格不足、重复投票、选项数量不满足规则返回 `49020`。投票记录必须服务端按用户去重。是否允许改票由实现固定，推荐 P1 禁止改票。
 
+`eligibleVisibility` 必须在投票时生效。`PUBLIC` 允许所有可写入社区的登录用户投票，`MEMBER_ONLY` 允许普通成员和工作人员投票，`STAFF_ONLY` 只允许 `HELPER`、`ADMIN` 或 `OWNER` 投票。`opensAt` 和 `closesAt` 必须按服务端时间判断，未开放或已关闭返回 `49020`，权限不足返回 `42001`。
+
 ### 举报帖子和评论
 
 `POST /api/v1/community/me/posts/{postId}/reports`、`POST /api/v1/community/me/comments/{commentId}/reports`
 
 请求字段：`reasonType`、`description`、`evidenceLinks`、`idempotencyKey`。成功响应 HTTP `201`，`data` 为 `CommunityReport` 当前用户视图。重复举报同一目标和同一原因在未处理前返回 `49021` 或幂等结果。举报不得向被举报用户泄露举报人。
+
+`evidenceLinks` 必须逐条校验协议，只允许 `http://`、`https://` 或以 `/` 开头的站内链接。非法链接返回 `40001`，不得创建举报。
 
 ### 我的举报进度
 
@@ -547,6 +555,8 @@
 `POST /api/v1/community/me/tickets`
 
 请求字段：`type`、`title`、`body`、`relatedObject`、`attachments`、`idempotencyKey`。成功响应 HTTP `201`，`data` 为 `CommunityTicket` 当前用户视图，状态为 `OPEN` 或 `WAITING_STAFF`。账号状态为 `PENDING_PROFILE` 的用户可以创建账号、白名单和资源问题工单。
+
+`relatedObject` 和 `attachments` 必须保存到工单详情。公开给创建人的视图和后台视图都可以返回安全摘要，但不得返回内部备注、token、请求头、异常堆栈、内部 URL 或服务器命令。
 
 ### 我的工单列表和详情
 
@@ -596,6 +606,8 @@
 
 `PATCH /api/v1/community/admin/reports/{reportId}/resolve` 请求字段为 `resolution`、`internalNote`、`linkedPenaltyId`、`reason`、`idempotencyKey`。成功后状态为 `RESOLVED`，可以关联已创建处罚。
 
+如果传入 `linkedPenaltyId`，服务端必须确认处罚存在，并把该 ID 保存到举报后台视图。该字段只在后台可见，不得出现在举报人视图或公开接口中。
+
 `PATCH /api/v1/community/admin/reports/{reportId}/dismiss` 请求字段为 `resolution`、`internalNote`、`reason`、`idempotencyKey`。成功后状态为 `DISMISSED`。
 
 ### 工单处理
@@ -607,6 +619,8 @@
 `POST /api/v1/community/admin/tickets/{ticketId}/messages` 请求字段为 `messageType`、`body`、`attachments`、`reason`、`idempotencyKey`。`HELPER` 可以写 `STAFF_REPLY`，只有 `ADMIN` 和 `OWNER` 可写 `INTERNAL_NOTE`。
 
 `PATCH /api/v1/community/admin/tickets/{ticketId}/status` 请求字段为 `status`、`publicComment`、`reason`、`idempotencyKey`。只允许在 `OPEN`、`WAITING_STAFF`、`WAITING_USER`、`RESOLVED`、`CLOSED` 之间按服务端状态机推进。非法跳转返回 `49015`。
+
+后台工单状态推进使用固定状态机。`OPEN`、`WAITING_STAFF` 和 `WAITING_USER` 可以进入 `WAITING_STAFF`、`WAITING_USER`、`RESOLVED` 或 `CLOSED`；`RESOLVED` 只能进入 `CLOSED`；`CLOSED` 和 `ARCHIVED` 是终态，不得再改为非终态；`ARCHIVED` 只允许 `ADMIN` 或 `OWNER` 从 `CLOSED` 推进。
 
 ### 处罚管理
 
