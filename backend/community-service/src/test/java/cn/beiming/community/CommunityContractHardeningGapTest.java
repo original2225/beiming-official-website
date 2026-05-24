@@ -58,7 +58,7 @@ class CommunityContractHardeningGapTest {
                 with(pollBody(postId, "poll-window-invalid"), "closesAt", "2026-05-24T11:00:00Z"), 400, 40001);
 
         JsonNode futurePoll = performJson(post("/api/v1/community/admin/polls").header("Authorization", bearer("admin-token")),
-                with(pollBody(postId, "poll-window-future"), "opensAt", "2026-05-24T13:00:00Z"), 201);
+                with(with(pollBody(postId, "poll-window-future"), "opensAt", "2026-05-24T13:00:00Z"), "closesAt", "2026-05-24T14:00:00Z"), 201);
         String futurePollId = futurePoll.at("/data/pollId").asText();
         performJson(patch("/api/v1/community/admin/polls/" + futurePollId + "/open").header("Authorization", bearer("admin-token")),
                 Map.of("reason", "开放投票", "idempotencyKey", "poll-window-open"), 200);

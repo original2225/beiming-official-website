@@ -85,8 +85,8 @@ class CommunityController {
     }
 
     @GetMapping("/posts/{postId}")
-    Map<String, Object> publicPost(@PathVariable String postId) {
-        return ok(store.publicPost(postId));
+    Map<String, Object> publicPost(@PathVariable String postId, HttpServletRequest request) {
+        return ok(store.publicPost(postId, request));
     }
 
     @GetMapping("/posts/{postId}/comments")
@@ -633,6 +633,7 @@ class CommunityStore {
     private final Set<String> commentLikes = ConcurrentHashMap.newKeySet();
     private final Set<String> favorites = ConcurrentHashMap.newKeySet();
     private final Set<String> pollVotes = ConcurrentHashMap.newKeySet();
+    private final Set<String> postViewFingerprints = ConcurrentHashMap.newKeySet();
     private final List<Map<String, Object>> audits = java.util.Collections.synchronizedList(new ArrayList<>());
     private final CommunityTestControls testControls;
     private int idSeq = 1000;
@@ -689,10 +690,10 @@ class CommunityStore {
         return pageRows(publicPostRows(query, page, pageSize), page, pageSize);
     }
 
-    Map<String, Object> publicPost(String postId) {
+    Map<String, Object> publicPost(String postId, HttpServletRequest request) {
         PostRecord post = requirePost(postId);
         if (!"APPROVED".equals(post.status)) throw new CommunityException(404, 49001, "post not found");
-        post.viewCount++;
+        if (postViewFingerprints.add(postId + ":" + accessFingerprint(request))) post.viewCount++;
         return postView(post, false);
     }
 
@@ -1078,6 +1079,9 @@ class CommunityStore {
         poll.maxChoices = intBody(body, "maxChoices", 1);
         poll.eligibleVisibility = enumBody(body, "eligibleVisibility", VISIBILITIES, "PUBLIC");
         poll.anonymousResult = boolBody(body, "anonymousResult", true);
+        poll.opensAt = optionalInstant(body, "opensAt");
+        poll.closesAt = optionalInstant(body, "closesAt");
+        validatePollWindow(poll.opensAt, poll.closesAt);
         poll.options = pollOptions(body);
         poll.createdAt = NOW;
         poll.updatedAt = NOW;
@@ -1114,6 +1118,8 @@ class CommunityStore {
         validateIdempotencyKey(body);
         PollRecord poll = requirePoll(pollId);
         if (!"OPEN".equals(poll.status)) throw new CommunityException(409, 49020, "poll not open");
+        ensurePollEligible(actor, poll);
+        ensurePollWithinWindow(poll);
         List<String> optionIds = looseStringList(body, "optionIds", poll.minChoices, poll.maxChoices, 100);
         Set<String> available = new LinkedHashSet<>();
         for (PollOption option : poll.options) available.add(option.optionId);
@@ -1144,7 +1150,7 @@ class CommunityStore {
         report.targetId = targetId;
         report.reasonType = reasonType;
         report.description = validateRequiredString(body, "description", 5, 2000);
-        report.evidenceLinks = looseStringList(body, "evidenceLinks", 0, 10, 500);
+        report.evidenceLinks = evidenceLinks(body);
         report.status = "OPEN";
         report.reporter = author(actor, false);
         report.createdAt = NOW;
@@ -1206,6 +1212,11 @@ class CommunityStore {
         if (!Set.of("OPEN", "UNDER_REVIEW").contains(report.status)) throw new CommunityException(409, 49014, "report state denied");
         report.status = status;
         report.resolution = validateRequiredString(body, "resolution", 1, 1000);
+        String linkedPenaltyId = string(body.get("linkedPenaltyId"));
+        if (linkedPenaltyId != null) {
+            requirePenalty(linkedPenaltyId);
+            report.linkedPenaltyId = linkedPenaltyId;
+        }
         report.updatedAt = NOW;
         report.resolvedAt = NOW;
         audit(actor, "COMMUNITY_REPORT", report.reportId, "COMMUNITY_REPORT_" + status, "MEDIUM", null, report.status, "finish report");
@@ -1225,9 +1236,10 @@ class CommunityStore {
         ticket.status = "WAITING_STAFF";
         ticket.priority = "NORMAL";
         ticket.creator = author(actor, false);
+        ticket.relatedObject = safeRelatedObject(body.get("relatedObject"));
         ticket.createdAt = NOW;
         ticket.updatedAt = NOW;
-        ticket.messages.add(ticketMessage(ticket.ticketId, "USER_REPLY", validateRequiredString(body, "body", 1, 10000), actor));
+        ticket.messages.add(ticketMessage(ticket.ticketId, "USER_REPLY", validateRequiredString(body, "body", 1, 10000), actor, attachments(body)));
         tickets.put(ticket.ticketId, ticket);
         audit(actor, "COMMUNITY_TICKET", ticket.ticketId, "COMMUNITY_TICKET_CREATED", "LOW", null, ticket.status, "create ticket");
         return ticketView(ticket, false);
@@ -1257,7 +1269,7 @@ class CommunityStore {
         TicketRecord ticket = requireTicket(ticketId);
         requireOwner(actor, ticket.creatorUserId(), 49005);
         if (!Set.of("OPEN", "WAITING_USER", "WAITING_STAFF").contains(ticket.status)) throw new CommunityException(409, 49015, "ticket state denied");
-        ticket.messages.add(ticketMessage(ticket.ticketId, "USER_REPLY", validateRequiredString(body, "body", 1, 10000), actor));
+        ticket.messages.add(ticketMessage(ticket.ticketId, "USER_REPLY", validateRequiredString(body, "body", 1, 10000), actor, attachments(body)));
         ticket.status = "WAITING_STAFF";
         ticket.updatedAt = NOW;
         ticket.lastReplyAt = NOW;
@@ -1314,7 +1326,7 @@ class CommunityStore {
         TicketRecord ticket = requireTicket(ticketId);
         String messageType = enumBody(body, "messageType", Set.of("USER_REPLY", "STAFF_REPLY", "INTERNAL_NOTE", "SYSTEM_EVENT"), "STAFF_REPLY");
         if ("INTERNAL_NOTE".equals(messageType) && actor.roles().contains("HELPER")) throw new CommunityException(403, 42001, "internal note denied");
-        ticket.messages.add(ticketMessage(ticket.ticketId, messageType, validateRequiredString(body, "body", 1, 10000), actor));
+        ticket.messages.add(ticketMessage(ticket.ticketId, messageType, validateRequiredString(body, "body", 1, 10000), actor, attachments(body)));
         ticket.status = "STAFF_REPLY".equals(messageType) ? "WAITING_USER" : ticket.status;
         ticket.updatedAt = NOW;
         ticket.lastReplyAt = NOW;
@@ -1327,7 +1339,7 @@ class CommunityStore {
         validateReason(body, 500);
         TicketRecord ticket = requireTicket(ticketId);
         String status = enumBody(body, "status", TICKET_STATUSES, null);
-        if (!Set.of("OPEN", "WAITING_STAFF", "WAITING_USER", "RESOLVED", "CLOSED").contains(status)) throw new CommunityException(409, 49015, "ticket state denied");
+        if (!ticketTransitionAllowed(actor, ticket.status, status)) throw new CommunityException(409, 49015, "ticket state denied");
         ticket.status = status;
         if ("RESOLVED".equals(status)) ticket.resolvedAt = NOW;
         if ("CLOSED".equals(status)) ticket.closedAt = NOW;
@@ -1377,6 +1389,7 @@ class CommunityStore {
         validateReason(body, 500);
         validateRequiredString(body, "publicReason", 1, 200);
         if (!"REVOKE_COMMUNITY_PENALTY".equals(string(body.get("confirmText")))) throw new CommunityException(403, 42003, "missing confirmation");
+        failBeforeWrite(request);
         PenaltyRecord penalty = requirePenalty(penaltyId);
         if (!Set.of("ACTIVE", "EXPIRED").contains(penalty.status)) throw new CommunityException(409, 49016, "penalty state denied");
         penalty.status = "REVOKED";
@@ -1509,6 +1522,105 @@ class CommunityStore {
 
     private boolean hasActivePenalty(String userId, Set<String> types) {
         return penalties.values().stream().anyMatch(penalty -> userId.equals(penalty.targetUserId) && "ACTIVE".equals(penalty.status) && types.contains(penalty.type));
+    }
+
+    private String accessFingerprint(HttpServletRequest request) {
+        if (request == null) return "unknown";
+        String forwarded = string(request.getHeader("X-Forwarded-For"));
+        String ip = forwarded == null || forwarded.isBlank() ? request.getRemoteAddr() : forwarded.split(",")[0].trim();
+        String userAgent = string(request.getHeader("User-Agent"));
+        return Objects.toString(ip, "unknown") + ":" + Objects.toString(userAgent, "unknown");
+    }
+
+    private void ensurePollEligible(CommunityUser actor, PollRecord poll) {
+        if ("STAFF_ONLY".equals(poll.eligibleVisibility) && !isStaff(actor)) throw new CommunityException(403, 42001, "poll staff only");
+        if ("PENDING_PROFILE".equals(actor.status())) throw new CommunityException(409, 49020, "poll eligibility denied");
+    }
+
+    private boolean isStaff(CommunityUser actor) {
+        return actor.roles().stream().anyMatch(Set.of("HELPER", "ADMIN", "OWNER")::contains);
+    }
+
+    private void ensurePollWithinWindow(PollRecord poll) {
+        Instant now = Instant.parse(NOW);
+        if (poll.opensAt != null && now.isBefore(Instant.parse(poll.opensAt))) throw new CommunityException(409, 49020, "poll not opened");
+        if (poll.closesAt != null && !now.isBefore(Instant.parse(poll.closesAt))) throw new CommunityException(409, 49020, "poll closed");
+    }
+
+    private void validatePollWindow(String opensAt, String closesAt) {
+        if (opensAt != null && closesAt != null && !Instant.parse(closesAt).isAfter(Instant.parse(opensAt))) {
+            throw new CommunityException(400, 40001, "invalid poll window");
+        }
+    }
+
+    private String optionalInstant(Map<String, Object> body, String field) {
+        String value = string(body.get(field));
+        if (value == null || value.isBlank()) return null;
+        try {
+            Instant.parse(value);
+            return value;
+        } catch (DateTimeParseException exception) {
+            throw new CommunityException(400, 40001, "invalid " + field);
+        }
+    }
+
+    private List<String> evidenceLinks(Map<String, Object> body) {
+        List<String> links = looseStringList(body, "evidenceLinks", 0, 10, 500);
+        for (String link : links) {
+            if (!safeLink(link)) throw new CommunityException(400, 40001, "invalid evidence link");
+        }
+        return links;
+    }
+
+    private List<Map<String, Object>> attachments(Map<String, Object> body) {
+        Object raw = body.get("attachments");
+        if (raw == null) return List.of();
+        if (!(raw instanceof List<?> list) || list.size() > 5) throw new CommunityException(400, 40001, "invalid attachments");
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Object item : list) {
+            if (!(item instanceof Map<?, ?> map)) throw new CommunityException(400, 40001, "invalid attachment");
+            String attachmentId = requiredObjectString(map, "attachmentId", 1, 80);
+            String name = requiredObjectString(map, "name", 1, 120);
+            String url = requiredObjectString(map, "url", 1, 500);
+            if (!safeInternalLink(url)) throw new CommunityException(400, 40001, "invalid attachment url");
+            result.add(linkedMap("attachmentId", attachmentId, "name", name, "url", url));
+        }
+        return result;
+    }
+
+    private Map<String, Object> safeRelatedObject(Object raw) {
+        if (raw == null) return null;
+        if (!(raw instanceof Map<?, ?> map)) throw new CommunityException(400, 40001, "invalid related object");
+        Map<String, Object> result = new LinkedHashMap<>();
+        for (String key : List.of("type", "id", "targetId", "title", "summary", "sourceModule")) {
+            Object value = map.get(key);
+            if (value != null) result.put(key, Objects.toString(value));
+        }
+        return result.isEmpty() ? null : result;
+    }
+
+    private String requiredObjectString(Map<?, ?> map, String field, int min, int max) {
+        Object raw = map.get(field);
+        String value = raw == null ? null : raw.toString();
+        if (value == null || value.isBlank() || value.length() < min || value.length() > max) {
+            throw new CommunityException(400, 40001, "invalid " + field);
+        }
+        return value;
+    }
+
+    private boolean safeLink(String link) {
+        return link != null && !link.isBlank() && (link.startsWith("http://") || link.startsWith("https://") || safeInternalLink(link));
+    }
+
+    private boolean safeInternalLink(String link) {
+        return link != null && link.startsWith("/") && !link.startsWith("//") && !link.contains("\\");
+    }
+
+    private boolean ticketTransitionAllowed(CommunityUser actor, String current, String target) {
+        if ("ARCHIVED".equals(target)) return "CLOSED".equals(current) && actor.roles().stream().anyMatch(Set.of("ADMIN", "OWNER")::contains);
+        if ("ARCHIVED".equals(current) || "CLOSED".equals(current)) return false;
+        if ("RESOLVED".equals(current)) return "CLOSED".equals(target);
+        return Set.of("WAITING_STAFF", "WAITING_USER", "RESOLVED", "CLOSED").contains(target);
     }
 
     private Map<String, Object> boardView(BoardRecord board) {
@@ -1644,7 +1756,7 @@ class CommunityStore {
                         "messageType", message.messageType,
                         "body", message.body,
                         "author", message.author,
-                        "attachments", List.of(),
+                        "attachments", message.attachments,
                         "createdAt", message.createdAt))
                 .toList();
         Map<String, Object> view = linkedMap(
@@ -1654,7 +1766,7 @@ class CommunityStore {
                 "status", ticket.status,
                 "priority", ticket.priority,
                 "creator", ticket.creator,
-                "relatedObject", null,
+                "relatedObject", ticket.relatedObject,
                 "messages", visibleMessages,
                 "lastReplyAt", ticket.lastReplyAt,
                 "resolvedAt", ticket.resolvedAt,
@@ -1702,13 +1814,14 @@ class CommunityStore {
         );
     }
 
-    private TicketMessageRecord ticketMessage(String ticketId, String messageType, String body, CommunityUser actor) {
+    private TicketMessageRecord ticketMessage(String ticketId, String messageType, String body, CommunityUser actor, List<Map<String, Object>> attachments) {
         TicketMessageRecord message = new TicketMessageRecord();
         message.messageId = "ticket-message-" + (++idSeq);
         message.ticketId = ticketId;
         message.messageType = messageType;
         message.body = body;
         message.author = actor == null ? null : author(actor, false);
+        message.attachments = attachments;
         message.createdAt = NOW;
         return message;
     }
@@ -2183,6 +2296,7 @@ class TicketRecord {
     String priority;
     Map<String, Object> creator;
     String assigneeUserId;
+    Map<String, Object> relatedObject;
     List<TicketMessageRecord> messages = new ArrayList<>();
     String lastReplyAt;
     String resolvedAt;
@@ -2201,6 +2315,7 @@ class TicketMessageRecord {
     String messageType;
     String body;
     Map<String, Object> author;
+    List<Map<String, Object>> attachments = List.of();
     String createdAt;
 }
 
