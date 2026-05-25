@@ -317,11 +317,11 @@
 
 `GET /api/v1/ops-control/nodes/{nodeId}/capabilities` 返回节点上报能力、控制面允许能力和当前用户可用能力的交集。
 
-`GET /api/v1/ops-control/nodes/{nodeId}/metrics/latest` 返回最近 `OpsMetricSnapshot`。没有快照时返回 `data=null` 和 `degraded=true` 摘要；节点不存在返回 `49401`。
+`GET /api/v1/ops-control/nodes/{nodeId}/metrics/latest` 返回最近 `OpsMetricSnapshot`。没有快照时返回包含 `nodeId` 和 `degraded=true` 的降级摘要；节点不存在返回 `49401`。
 
 `GET /api/v1/ops-control/nodes/{nodeId}/containers`、`GET /vms`、`GET /minecraft-instances` 均返回最后快照分页。节点离线时仍可读最后快照，但必须标记 `stale=true`。详情不存在返回 `49400`。
 
-`GET /api/v1/ops-control/nodes/{nodeId}/files` 查询参数包括 `rootAlias`、`path`。`path` 必须是 `/` 开头的授权根目录内相对路径，不允许 `..`、反斜杠、控制字符或编码绕过。路径越界返回 `49414`。P1 只返回模拟授权目录快照。
+`GET /api/v1/ops-control/nodes/{nodeId}/files` 查询参数包括 `rootAlias`、`path`。`path` 必须是 `/` 开头的授权根目录内相对路径，不允许 `..`、反斜杠、控制字符或编码绕过。路径越界返回 `49414`。目录匹配必须按路径段边界判断，不能让 `/foo` 命中 `/foobar`。P1 只返回模拟授权目录快照。
 
 ## 节点管理接口
 
@@ -331,7 +331,7 @@
 
 `PATCH /api/v1/ops-control/nodes/{nodeId}/enable` 请求字段包括 `reason` 和 `idempotencyKey`。`DISABLED` 可回到 `OFFLINE`，等待下一次心跳确认在线。`REVOKED` 不允许启用。
 
-`POST /api/v1/ops-control/nodes/{nodeId}/heartbeat` 请求字段包括 `status`、`version`、`capabilities`、`metrics`、`containers`、`vms`、`minecraftInstances`、`files` 和 `nodeRequestId`。P1 允许 `NODE_WRITE` 用户模拟节点回写。心跳成功更新最后快照和审计摘要，不执行真实系统操作。
+`POST /api/v1/ops-control/nodes/{nodeId}/heartbeat` 请求字段包括 `status`、`version`、`capabilities`、`metrics`、`containers`、`vms`、`minecraftInstances`、`files` 和 `nodeRequestId`。`status` 必须属于 `OpsNodeStatus`，不允许浏览器或节点写入服务端可信字段。P1 允许 `NODE_WRITE` 用户模拟节点回写。心跳成功更新最后快照和审计摘要，不执行真实系统操作。
 
 ## 文件和日志请求
 
@@ -341,35 +341,35 @@
 
 ## 任务接口
 
-`POST /api/v1/ops-control/tasks` 请求字段包括 `taskType`、`nodeId`、`targetType`、`targetId`、`params`、`reason`、`confirmText`、`approvalId` 和 `idempotencyKey`。成功响应 HTTP `201`，`data` 为 `OpsTask`。
+`POST /api/v1/ops-control/tasks` 请求字段包括 `taskType`、`nodeId`、`targetType`、`targetId`、`params`、`reason`、`confirmText`、`approvalId` 和 `idempotencyKey`。成功响应 HTTP `201`，`data` 为 `OpsTask`。请求不得携带 `actorUserId`、`actorRole`、`actorPermissions`、`taskStatus`、`approvalStatus`、`auditResult`、`createdBy`、`updatedBy`、`beforeState` 或 `afterState` 等服务端可信字段，出现时返回 `40001`。
 
 任务能力规则：节点注册、启用、禁用和 token 轮换要求 `NODE_WRITE`。容器启动、停止、重启要求 `CONTAINER_OPERATE`。容器删除为 `CRITICAL`，必须审批。虚拟机动作要求 `VM_OPERATE`。Minecraft 实例启停要求 `CONTAINER_OPERATE` 或后续专用能力；`MC_COMMAND` 和 `TERMINAL_COMMAND` 要求 `TERMINAL_ACCESS` 且为 `CRITICAL`。文件读写、重命名、移动和删除要求 `FILE_MANAGE`，删除为 `HIGH`。备份恢复为 `CRITICAL`。
 
-风险规则：`LOW` 和 `MEDIUM` 任务不需要审批。`HIGH` 任务必须有二次确认，`confirmText` 根据任务类型固定，例如 `DELETE_FILE`、`STOP_INSTANCE`。`CRITICAL` 任务必须有有效审批或由 `OWNER` 直接授权。审批人不能审批自己的 `CRITICAL` 任务。
+风险规则：`LOW` 和 `MEDIUM` 任务不需要审批。`HIGH` 任务必须有二次确认，`confirmText` 根据任务类型固定，例如 `DELETE_FILE`、`STOP_INSTANCE`。`CRITICAL` 任务可以先创建为 `PENDING_APPROVAL` 等待审批；真正派发或执行前必须有有效审批，或由 `OWNER` 在控制面直接授权。审批人不能审批自己的 `CRITICAL` 任务。
 
-节点规则：节点不存在返回 `49401`。节点 `OFFLINE`、`DISABLED` 或 `REVOKED` 时，需要实时执行的任务返回 `49415` 或创建为 `FAILED`，不能进入 `SUCCEEDED`。P1 `nodeAdapterMode=SIMULATED` 下只允许白名单安全任务进入 `SUCCEEDED`，高风险真实执行任务进入 `PENDING_APPROVAL` 或 `FAILED`。
+节点规则：节点不存在返回 `49401`。节点 `OFFLINE`、`DISABLED` 或 `REVOKED` 时，需要实时执行的任务返回 `49415` 或创建为 `FAILED`，不能进入 `SUCCEEDED`。容器、虚拟机、Minecraft 实例和文件任务必须校验目标快照存在，目标不存在返回 `49400`。P1 `nodeAdapterMode=SIMULATED` 下只允许白名单安全任务进入 `SUCCEEDED`，高风险真实执行任务进入 `PENDING_APPROVAL` 或 `FAILED`。
 
 幂等规则：同一操作者、同一接口语义、同一 `idempotencyKey`、同一请求体重复提交返回同一任务。相同键不同体返回 `49412`。请求体指纹必须使用结构化 JSON 规范化，嵌套对象按字段名递归排序。
 
-`GET /api/v1/ops-control/tasks` 支持 `page`、`pageSize`、`nodeId`、`taskType`、`status`、`riskLevel`、`createdBy`、`from`、`to` 和 `sort`。成功响应分页 `items` 为 `OpsTask[]`。
+`GET /api/v1/ops-control/tasks` 支持 `page`、`pageSize`、`nodeId`、`taskType`、`status`、`riskLevel`、`createdBy`、`from`、`to` 和 `sort`。`sort` 允许 `updatedAt_desc`、`createdAt_desc`、`riskLevel_desc`。成功响应分页 `items` 为 `OpsTask[]`。
 
 `GET /api/v1/ops-control/tasks/{taskId}` 返回任务详情和审批摘要。不存在返回 `49402`。
 
 `PATCH /api/v1/ops-control/tasks/{taskId}/cancel` 请求字段包括 `reason` 和 `idempotencyKey`。只有 `PENDING_APPROVAL`、`QUEUED`、`DISPATCHED` 可以取消。`RUNNING` 任务 P1 不支持强制取消，返回 `49410`。终态任务重复取消返回状态冲突。
 
-`POST /api/v1/ops-control/tasks/{taskId}/node-result` 请求字段包括 `nodeRequestId`、`status`、`resultSummary`、`failureReason` 和 `finishedAt`。P1 允许 `NODE_WRITE` 用户模拟节点结果回写。只允许 `DISPATCHED` 或 `RUNNING` 任务回写。回写必须审计并脱敏。
+`POST /api/v1/ops-control/tasks/{taskId}/node-result` 请求字段包括 `nodeRequestId`、`status`、`resultSummary`、`failureReason` 和 `finishedAt`。`status` 只允许 `SUCCEEDED`、`FAILED` 或 `TIMEOUT`。P1 允许 `NODE_WRITE` 用户模拟节点结果回写。只允许 `DISPATCHED` 或 `RUNNING` 任务回写。回写必须审计并脱敏，审计写入失败时任务状态不得变化。
 
 ## 审批接口
 
-`GET /api/v1/ops-control/approvals` 支持 `page`、`pageSize`、`status`、`riskLevel`、`requestedBy`、`from`、`to` 和 `sort`。只有 `OWNER` 或具备 `HIGH_RISK_APPROVE` 的用户可访问。
+`GET /api/v1/ops-control/approvals` 支持 `page`、`pageSize`、`status`、`riskLevel`、`requestedBy`、`from`、`to` 和 `sort`。`sort` 允许 `createdAt_desc`、`reviewedAt_desc`、`riskLevel_desc`。只有 `OWNER` 或具备 `HIGH_RISK_APPROVE` 的用户可访问。
 
-`PATCH /api/v1/ops-control/approvals/{approvalId}/approve` 请求字段包括 `reviewComment`、`reason` 和 `idempotencyKey`。审批通过后，关联任务从 `PENDING_APPROVAL` 进入 `QUEUED` 或在 P1 模拟模式下进入 `DISPATCHED`、`SUCCEEDED`、`FAILED`。审批不存在返回 `49403`。审批不是 `PENDING` 返回 `49410`。审批自己的 `CRITICAL` 任务返回 `49416`。
+`PATCH /api/v1/ops-control/approvals/{approvalId}/approve` 请求字段包括 `reviewComment`、`reason` 和 `idempotencyKey`。审批通过后，关联任务从 `PENDING_APPROVAL` 进入 `QUEUED` 或在 P1 模拟模式下进入 `DISPATCHED`、`SUCCEEDED`、`FAILED`。审批不存在返回 `49403`。审批不是 `PENDING` 返回 `49410`。审批自己的 `CRITICAL` 任务返回 `49416`。审计写入失败时审批和任务状态必须保持不变。
 
-`PATCH /api/v1/ops-control/approvals/{approvalId}/reject` 请求字段同审批通过。拒绝后任务进入 `FAILED`，失败原因为 `APPROVAL_REJECTED`。拒绝必须写审计。
+`PATCH /api/v1/ops-control/approvals/{approvalId}/reject` 请求字段同审批通过。拒绝后任务进入 `FAILED`，失败原因为 `APPROVAL_REJECTED`。拒绝必须写审计，审计写入失败时审批和任务状态必须保持不变。
 
 ## 审计和自检接口
 
-`GET /api/v1/ops-control/audit-logs` 支持 `page`、`pageSize`、`actorUserId`、`action`、`targetType`、`targetId`、`nodeId`、`taskId`、`result`、`riskLevel`、`from`、`to` 和 `sort`。只有 `ADMIN` 和 `OWNER` 可访问。审计列表是只读接口，不提供删除、修改或恢复。
+`GET /api/v1/ops-control/audit-logs` 支持 `page`、`pageSize`、`actorUserId`、`action`、`targetType`、`targetId`、`nodeId`、`taskId`、`result`、`riskLevel`、`from`、`to` 和 `sort`。`sort` 允许 `createdAt_desc`、`riskLevel_desc`。只有 `ADMIN` 和 `OWNER` 可访问。审计列表是只读接口，不提供删除、修改或恢复。审计中的 `requestId` 必须来自当前 HTTP 请求或节点回写请求，不能使用固定占位值。
 
 `GET /api/v1/ops-control/ops/summary` 成功响应 HTTP `200`，`data` 为 `OpsSummary`。P1 必须返回 `storageMode=IN_MEMORY`、`authMode=TEST_STUB`、`adminAdapterMode=TEST_STUB`、`nodeAdapterMode=SIMULATED`、`nodeDaemonConnected=false`、`testControlsEnabled=false` 和生产化缺口。摘要不得返回 token、密码、请求头、内部路径、真实命令、文件内容、异常堆栈或节点密钥。
 
