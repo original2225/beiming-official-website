@@ -43,7 +43,11 @@
 
 节点请求编号 `X-Node-Request-Id` 必须全局可追踪。没有传入普通 `X-Request-Id` 时，服务端仍按公共契约生成 HTTP 请求编号，并把节点请求编号放入 `data.nodeRequestId` 或本地审计字段。
 
-时间戳允许偏差默认 300 秒。超出偏差返回 `49602`。签名错误返回 `49601`。节点未注册或本地配置未绑定节点 ID 返回 `49603`。重复 `nodeRequestId` 且请求体一致时按幂等重放处理；同一 `nodeRequestId` 不同请求体返回 `49612`。
+生产化节点认证必须使用配置化节点身份和密钥，不得在生产默认配置中只依赖源码常量。第一版 Java 模拟节点采用 `node-daemon.node-id`、`node-daemon.node-token`、`node-daemon.node-signing-secret` 和 `node-daemon.allowed-clock-skew-seconds`。这些配置可以在本地测试中使用示例值，但真实部署必须由环境变量、启动参数或受控配置注入，不能把真实 token 或签名密钥提交到仓库。
+
+HMAC 签名算法固定为 `HmacSHA256`，签名输出使用小写 hex。签名明文按以下字段用换行符拼接：HTTP 方法大写值、HTTP 路径、规范化 JSON 请求体、`X-Node-Timestamp`、`X-Node-Request-Id`。GET、无 body 请求或空 body 请求的规范化请求体为 `{}`。规范化 JSON 必须递归按字段名升序排序，数组保留顺序，字符串按 JSON 标准转义。签名不覆盖浏览器 token，也不接受浏览器用户 token 代替节点 token。
+
+时间戳允许偏差默认 300 秒。超出偏差返回 `49602`。签名错误返回 `49601`。节点未注册或本地配置未绑定节点 ID 返回 `49603`。重复 `nodeRequestId` 且签名明文一致时可以作为幂等重试继续进入业务幂等逻辑；同一 `nodeRequestId` 不同签名明文返回 `49612`，不得推进任务、心跳或审计成功状态。
 
 请求体不得传入并覆盖 `trusted`、`localRootPath`、`resolvedPath`、`tokenDigest`、`credential`、`beforeState`、`afterState`、`auditResult`、`createdBy`、`updatedBy`、`finishedAt` 等节点本地可信字段。出现可信字段时返回 `40001`。
 
@@ -194,6 +198,8 @@
 
 `GET /api/v1/node-daemon/ops/summary` 返回 `NodeDaemonSummary`。第一版必须返回 `mode=SIMULATED`、`port=8117`、`testControlsEnabled=false`、`runtimeAdapters` 和 `productionGaps`。摘要不得返回 token、密码、请求头、内部路径、真实命令、完整日志、文件内容、异常堆栈或控制面凭据。
 
+自检摘要必须返回 `authMode`、`signatureAlgorithm`、`nodeIdBound`、`allowedClockSkewSeconds` 和 `replayWindowMode`。这些字段只说明认证模式和防重放策略，不返回 token 摘要、签名密钥摘要、完整请求头或环境变量。生产默认 `authMode=HMAC_CONFIGURED`，签名算法为 `HmacSHA256`。
+
 `GET /api/v1/node-daemon/capabilities` 返回节点本地支持能力、控制面允许能力和第一版实际可执行能力。第一版真实写能力不得开放，`TERMINAL_ACCESS` 只能返回 `planned=false` 或 `available=false`。
 
 `POST /api/v1/node-daemon/registration/handshake` 请求字段包括 `controlPlaneNodeId`、`registrationNonce`、`daemonVersion`、`capabilities` 和 `idempotencyKey`。成功返回节点本地绑定摘要和签名能力，不返回 token 原文。节点 ID 与本地配置冲突返回 `49603`。同 key 同体重放返回同一握手摘要，同 key 不同体返回 `49612`。
@@ -253,3 +259,5 @@
 `node-daemon` API 文档必须按 `docs/contracts-node-daemon.md` 独立存在，并由 `.local-docs/tests-node-daemon.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、签名失败、节点未注册、能力不足、目标不存在、状态冲突、幂等、并发、超时、取消、运行时不可用、控制面不可用、路径越界、敏感字段脱敏、审计失败回滚、测试控制头默认关闭和模块验收口径。
 
 `node-daemon` 完成时必须满足以下条件：端口固定为 `8117`；健康检查不泄露敏感信息；除健康检查外全部接口要求节点认证；请求编号和节点请求编号可追踪；签名、时间戳和幂等被验证；任务接收兼容 `ops-control` 的任务模型；心跳和任务结果回写兼容 `ops-control` 既有接口；路径守卫、日志摘要、文件摘要和敏感字段脱敏都有自动化验证；测试控制头默认关闭；不接收浏览器 token 直接执行请求；不执行未授权真实宿主机命令；不做真实删除、真实终端、真实备份恢复或真实虚拟机强制操作；自动化测试必须先红灯；实现后 `node-daemon` 全量测试通过；前序 16 个稳定服务回归通过；边界扫描无违规命中；测试过程记录完整。
+
+本轮生产化认证加固完成时还必须满足以下条件：节点 token、节点 ID、签名密钥和时间偏差来自配置；默认生产模式不接受固定 `test-signature`；正确 HMAC 签名可以访问受保护接口；错误签名、错误时间戳、错误节点 ID 和浏览器 token 均被拒绝；相同 `X-Node-Request-Id` 的同明文重试不被防重放层误杀；相同 `X-Node-Request-Id` 的不同签名明文返回 `49612`；自检摘要只返回认证模式和算法，不泄露密钥或 token 原文。
