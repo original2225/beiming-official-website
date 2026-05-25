@@ -62,6 +62,7 @@ class ChangelogController {
                                                        @RequestParam(required = false) String visibility,
                                                        @RequestParam(required = false) String impactLevel,
                                                        @RequestParam(required = false) String minecraftVersion,
+                                                       @RequestParam(required = false) String tag,
                                                        @RequestParam(required = false) String from,
                                                        @RequestParam(required = false) String to,
                                                        @RequestParam(required = false) String sort) {
@@ -86,6 +87,7 @@ class ChangelogController {
                 .filter(release -> visibility == null || release.visibility.equals(visibility))
                 .filter(release -> impactLevel == null || release.impactLevel.equals(impactLevel))
                 .filter(release -> minecraftVersion == null || Objects.equals(release.minecraftVersion, minecraftVersion))
+                .filter(release -> tag == null || release.matchesTag(tag))
                 .filter(release -> inReleaseRange(release, fromInstant, toInstant))
                 .sorted(releaseComparator(sort))
                 .map(ChangelogReleaseRecord::publicView)
@@ -144,6 +146,8 @@ class ChangelogController {
                     }
                 });
             });
+            release.pluginVersions.forEach(plugin -> addText(components, plugin.get("name")));
+            release.resourcePackVersions.forEach(pack -> addText(components, pack.get("name")));
         });
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("types", types);
@@ -164,6 +168,8 @@ class ChangelogController {
                                                 @RequestParam(required = false) String severity,
                                                 @RequestParam(required = false) String component,
                                                 @RequestParam(required = false) String releaseType,
+                                                @RequestParam(required = false) String from,
+                                                @RequestParam(required = false) String to,
                                                 @RequestParam(required = false) String sort) {
         validatePage(page, pageSize);
         validateSort(sort, "releasedAt_desc", "releasedAt_asc", "severity_desc");
@@ -176,10 +182,14 @@ class ChangelogController {
         if (releaseType != null) {
             validateReleaseType(releaseType);
         }
+        Instant fromInstant = parseOptionalInstant(from);
+        Instant toInstant = parseOptionalInstant(to);
+        validateRange(fromInstant, toInstant);
         List<Map<String, Object>> items = new ArrayList<>();
         store.releases.values().stream()
                 .filter(ChangelogReleaseRecord::isPublicVisible)
                 .filter(release -> releaseType == null || release.type.equals(releaseType))
+                .filter(release -> inReleaseRange(release, fromInstant, toInstant))
                 .forEach(release -> release.groups.stream()
                         .filter(group -> groupType == null || group.type.equals(groupType))
                         .forEach(group -> group.items.stream()
@@ -188,6 +198,7 @@ class ChangelogController {
                                 .filter(item -> keyword == null || item.title.contains(keyword) || item.description.contains(keyword))
                                 .map(item -> item.publicSearchView(release, group))
                                 .forEach(items::add)));
+        items.sort(changeComparator(sort));
         return ok(request, page(items, page, pageSize));
     }
 
@@ -197,25 +208,33 @@ class ChangelogController {
                                                   @RequestParam(defaultValue = "20") int pageSize,
                                                   @RequestParam(required = false) String status,
                                                   @RequestParam(required = false) String type,
+                                                  @RequestParam(required = false) String from,
+                                                  @RequestParam(required = false) String to,
                                                   @RequestParam(required = false) String sort) {
         Actor actor = auth.current(request);
         validatePage(page, pageSize);
         if (status != null) {
             validateEnum(status, List.of("ACTIVE", "CANCELED"));
         }
+        if (type != null) {
+            validateReleaseType(type);
+        }
+        Instant fromInstant = parseOptionalInstant(from);
+        Instant toInstant = parseOptionalInstant(to);
+        validateRange(fromInstant, toInstant);
         validateSort(sort, "updatedAt_desc", "createdAt_desc", "releasedAt_desc");
         List<Map<String, Object>> items = store.bookmarks.values().stream()
                 .filter(bookmark -> bookmark.userId.equals(actor.userId))
                 .filter(bookmark -> status == null || bookmark.status.equals(status))
                 .filter(bookmark -> {
                     ChangelogReleaseRecord release = store.releases.get(bookmark.releaseId);
-                    return release != null && (type == null || release.type.equals(type));
+                    return release != null && (type == null || release.type.equals(type)) && inReleaseRange(release, fromInstant, toInstant);
                 })
                 .sorted(bookmarkComparator(sort))
                 .map(bookmark -> {
                     Map<String, Object> view = new LinkedHashMap<>();
                     view.put("bookmark", bookmark.view());
-                    view.put("release", store.releases.get(bookmark.releaseId).summaryView());
+                    view.put("release", store.releases.get(bookmark.releaseId).currentUserSummaryView("ACTIVE".equals(bookmark.status)));
                     return view;
                 })
                 .toList();
@@ -233,8 +252,8 @@ class ChangelogController {
                     .orElseThrow(() -> new ChangelogException(HttpStatus.NOT_FOUND, 49300, "changelog release not found"));
             ensureBookmarkWritable(request);
             ChangelogBookmarkRecord bookmark = store.bookmark(release, actor);
-            store.audit("CHANGELOG_RELEASE_BOOKMARKED", release.releaseId, bookmark.bookmarkId, actor.userId, "SUCCESS");
-            return created(request, Map.of("bookmark", bookmark.view(), "release", release.publicView()));
+            store.audit("CHANGELOG_RELEASE_BOOKMARKED", release.releaseId, bookmark.bookmarkId, actor, request, body, "SUCCESS", null, null);
+            return created(request, Map.of("bookmark", bookmark.view(), "release", release.currentUserSummaryView(true)));
         });
     }
 
@@ -247,8 +266,8 @@ class ChangelogController {
             ChangelogReleaseRecord release = store.findRelease(releaseId).orElseThrow(() -> new ChangelogException(HttpStatus.NOT_FOUND, 49300, "changelog release not found"));
             ensureBookmarkWritable(request);
             ChangelogBookmarkRecord bookmark = store.unbookmark(release, actor);
-            store.audit("CHANGELOG_RELEASE_UNBOOKMARKED", release.releaseId, bookmark.bookmarkId, actor.userId, "SUCCESS");
-            return ok(request, Map.of("bookmark", bookmark.view(), "release", release.summaryView()));
+            store.audit("CHANGELOG_RELEASE_UNBOOKMARKED", release.releaseId, bookmark.bookmarkId, actor, request, body, "SUCCESS", null, null);
+            return ok(request, Map.of("bookmark", bookmark.view(), "release", release.currentUserSummaryView(false)));
         });
     }
 
@@ -263,6 +282,8 @@ class ChangelogController {
                                                       @RequestParam(required = false) String impactLevel,
                                                       @RequestParam(required = false) String createdBy,
                                                       @RequestParam(required = false) String minecraftVersion,
+                                                      @RequestParam(required = false) String from,
+                                                      @RequestParam(required = false) String to,
                                                       @RequestParam(required = false) String sort) {
         auth.requireStaff(request);
         validatePage(page, pageSize);
@@ -276,6 +297,12 @@ class ChangelogController {
         if (visibility != null) {
             validateVisibility(visibility);
         }
+        if (impactLevel != null) {
+            validateEnum(impactLevel, List.of("LOW", "MEDIUM", "HIGH", "CRITICAL"));
+        }
+        Instant fromInstant = parseOptionalInstant(from);
+        Instant toInstant = parseOptionalInstant(to);
+        validateRange(fromInstant, toInstant);
         List<Map<String, Object>> items = store.releases.values().stream()
                 .filter(release -> keyword == null || release.title.contains(keyword) || release.summary.contains(keyword) || release.slug.contains(keyword))
                 .filter(release -> type == null || release.type.equals(type))
@@ -284,6 +311,7 @@ class ChangelogController {
                 .filter(release -> impactLevel == null || release.impactLevel.equals(impactLevel))
                 .filter(release -> createdBy == null || release.createdBy.equals(createdBy))
                 .filter(release -> minecraftVersion == null || Objects.equals(release.minecraftVersion, minecraftVersion))
+                .filter(release -> inCreatedRange(release, fromInstant, toInstant))
                 .sorted(releaseComparator(sort == null ? "updatedAt_desc" : sort))
                 .map(ChangelogReleaseRecord::adminView)
                 .toList();
@@ -304,19 +332,19 @@ class ChangelogController {
     }
 
     @PostMapping("/admin/releases")
-    ResponseEntity<Map<String, Object>> createRelease(HttpServletRequest request, @RequestBody Map<String, Object> body) {
+    synchronized ResponseEntity<Map<String, Object>> createRelease(HttpServletRequest request, @RequestBody Map<String, Object> body) {
         Actor actor = auth.requireStaff(request);
         return idempotent(request, actor, "create-release", body, () -> {
             validateReleaseBody(request, body, true, null);
             ensureAuditWritable(request);
             ChangelogReleaseRecord release = store.createRelease(body, actor);
-            store.audit("CHANGELOG_RELEASE_CREATED", release.releaseId, release.releaseId, actor.userId, "SUCCESS");
+            store.audit("CHANGELOG_RELEASE_CREATED", release.releaseId, release.releaseId, actor, request, body, "SUCCESS", null, release.status);
             return created(request, release.adminView());
         });
     }
 
     @PatchMapping("/admin/releases/{releaseId}")
-    ResponseEntity<Map<String, Object>> updateRelease(HttpServletRequest request,
+    synchronized ResponseEntity<Map<String, Object>> updateRelease(HttpServletRequest request,
                                                       @PathVariable String releaseId,
                                                       @RequestBody Map<String, Object> body) {
         Actor actor = auth.requireStaff(request);
@@ -331,41 +359,41 @@ class ChangelogController {
             validateReleaseBody(request, body, false, release);
             ensureAuditWritable(request);
             store.applyReleaseFields(release, body, actor);
-            store.audit("CHANGELOG_RELEASE_UPDATED", release.releaseId, release.releaseId, actor.userId, "SUCCESS");
+            store.audit("CHANGELOG_RELEASE_UPDATED", release.releaseId, release.releaseId, actor, request, body, "SUCCESS", release.status, release.status);
             return ok(request, release.adminView());
         });
     }
 
     @PostMapping("/admin/releases/{releaseId}/submit")
-    ResponseEntity<Map<String, Object>> submit(HttpServletRequest request,
+    synchronized ResponseEntity<Map<String, Object>> submit(HttpServletRequest request,
                                                @PathVariable String releaseId,
                                                @RequestBody Map<String, Object> body) {
         return transitionStaff(request, releaseId, body, List.of("DRAFT", "NEEDS_CHANGES", "REJECTED"), "PENDING_REVIEW", "CHANGELOG_RELEASE_SUBMITTED");
     }
 
     @PatchMapping("/admin/releases/{releaseId}/approve")
-    ResponseEntity<Map<String, Object>> approve(HttpServletRequest request,
+    synchronized ResponseEntity<Map<String, Object>> approve(HttpServletRequest request,
                                                 @PathVariable String releaseId,
                                                 @RequestBody Map<String, Object> body) {
         return transitionStaff(request, releaseId, body, List.of("PENDING_REVIEW", "NEEDS_CHANGES"), "APPROVED", "CHANGELOG_RELEASE_APPROVED");
     }
 
     @PatchMapping("/admin/releases/{releaseId}/reject")
-    ResponseEntity<Map<String, Object>> reject(HttpServletRequest request,
+    synchronized ResponseEntity<Map<String, Object>> reject(HttpServletRequest request,
                                                @PathVariable String releaseId,
                                                @RequestBody Map<String, Object> body) {
         return transitionStaff(request, releaseId, body, List.of("PENDING_REVIEW"), "REJECTED", "CHANGELOG_RELEASE_REJECTED");
     }
 
     @PatchMapping("/admin/releases/{releaseId}/request-changes")
-    ResponseEntity<Map<String, Object>> requestChanges(HttpServletRequest request,
+    synchronized ResponseEntity<Map<String, Object>> requestChanges(HttpServletRequest request,
                                                        @PathVariable String releaseId,
                                                        @RequestBody Map<String, Object> body) {
         return transitionStaff(request, releaseId, body, List.of("PENDING_REVIEW"), "NEEDS_CHANGES", "CHANGELOG_RELEASE_CHANGES_REQUESTED");
     }
 
     @PatchMapping("/admin/releases/{releaseId}/publish")
-    ResponseEntity<Map<String, Object>> publish(HttpServletRequest request,
+    synchronized ResponseEntity<Map<String, Object>> publish(HttpServletRequest request,
                                                 @PathVariable String releaseId,
                                                 @RequestBody Map<String, Object> body) {
         Actor actor = auth.requireAdmin(request);
@@ -385,13 +413,13 @@ class ChangelogController {
             release.updatedBy = actor.userId;
             release.updatedAt = now();
             applyNotificationFailure(request, release);
-            store.audit("CHANGELOG_RELEASE_PUBLISHED", release.releaseId, release.releaseId, actor.userId, "SUCCESS", before, release.status);
+            store.audit("CHANGELOG_RELEASE_PUBLISHED", release.releaseId, release.releaseId, actor, request, body, "SUCCESS", before, release.status);
             return ok(request, release.adminView());
         });
     }
 
     @PatchMapping("/admin/releases/{releaseId}/offline")
-    ResponseEntity<Map<String, Object>> offline(HttpServletRequest request,
+    synchronized ResponseEntity<Map<String, Object>> offline(HttpServletRequest request,
                                                 @PathVariable String releaseId,
                                                 @RequestBody Map<String, Object> body) {
         Actor actor = auth.requireAdmin(request);
@@ -408,13 +436,13 @@ class ChangelogController {
             release.updatedBy = actor.userId;
             release.updatedAt = now();
             applyNotificationFailure(request, release);
-            store.audit("CHANGELOG_RELEASE_OFFLINED", release.releaseId, release.releaseId, actor.userId, "SUCCESS", before, release.status);
+            store.audit("CHANGELOG_RELEASE_OFFLINED", release.releaseId, release.releaseId, actor, request, body, "SUCCESS", before, release.status);
             return ok(request, release.adminView());
         });
     }
 
     @PatchMapping("/admin/releases/{releaseId}/archive")
-    ResponseEntity<Map<String, Object>> archive(HttpServletRequest request,
+    synchronized ResponseEntity<Map<String, Object>> archive(HttpServletRequest request,
                                                 @PathVariable String releaseId,
                                                 @RequestBody Map<String, Object> body) {
         Actor actor = auth.requireAdmin(request);
@@ -430,13 +458,13 @@ class ChangelogController {
             release.archivedAt = now();
             release.updatedBy = actor.userId;
             release.updatedAt = now();
-            store.audit("CHANGELOG_RELEASE_ARCHIVED", release.releaseId, release.releaseId, actor.userId, "SUCCESS", before, release.status);
+            store.audit("CHANGELOG_RELEASE_ARCHIVED", release.releaseId, release.releaseId, actor, request, body, "SUCCESS", before, release.status);
             return ok(request, release.adminView());
         });
     }
 
     @PatchMapping("/admin/releases/{releaseId}/delete")
-    ResponseEntity<Map<String, Object>> deleteRelease(HttpServletRequest request,
+    synchronized ResponseEntity<Map<String, Object>> deleteRelease(HttpServletRequest request,
                                                       @PathVariable String releaseId,
                                                       @RequestBody Map<String, Object> body) {
         Actor actor = auth.requireAdmin(request);
@@ -455,13 +483,13 @@ class ChangelogController {
             release.deletedAt = now();
             release.updatedBy = actor.userId;
             release.updatedAt = now();
-            store.audit("CHANGELOG_RELEASE_DELETED", release.releaseId, release.releaseId, actor.userId, "SUCCESS", before, release.status);
+            store.audit("CHANGELOG_RELEASE_DELETED", release.releaseId, release.releaseId, actor, request, body, "SUCCESS", before, release.status);
             return ok(request, release.adminView());
         });
     }
 
     @PostMapping("/admin/releases/{releaseId}/calendar-sync")
-    ResponseEntity<Map<String, Object>> calendarSync(HttpServletRequest request,
+    synchronized ResponseEntity<Map<String, Object>> calendarSync(HttpServletRequest request,
                                                      @PathVariable String releaseId,
                                                      @RequestBody Map<String, Object> body) {
         Actor actor = auth.requireAdmin(request);
@@ -488,7 +516,7 @@ class ChangelogController {
                 release.calendarEventId = "cal-from-" + release.releaseId;
                 release.calendarSyncedAt = now();
             }
-            store.audit("CHANGELOG_CALENDAR_SYNCED", release.releaseId, release.releaseId, actor.userId, "SUCCESS");
+            store.audit("CHANGELOG_CALENDAR_SYNCED", release.releaseId, release.releaseId, actor, request, body, "SUCCESS", release.status, release.status);
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("syncStatus", status);
             data.put("releaseId", release.releaseId);
@@ -505,20 +533,33 @@ class ChangelogController {
                                                   @RequestParam(defaultValue = "20") int pageSize,
                                                   @RequestParam(required = false) String actorUserId,
                                                   @RequestParam(required = false) String action,
+                                                  @RequestParam(required = false) String targetType,
+                                                  @RequestParam(required = false) String targetId,
                                                   @RequestParam(required = false) String releaseId,
                                                   @RequestParam(required = false) String result,
+                                                  @RequestParam(required = false) String from,
+                                                  @RequestParam(required = false) String to,
                                                   @RequestParam(required = false) String sort) {
         auth.requireAdmin(request);
         validatePage(page, pageSize);
         if (result != null) {
             validateEnum(result, List.of("SUCCESS", "FAILED"));
         }
+        if (targetType != null) {
+            validateEnum(targetType, List.of("CHANGELOG_RELEASE", "CHANGELOG_SERVICE"));
+        }
+        Instant fromInstant = parseOptionalInstant(from);
+        Instant toInstant = parseOptionalInstant(to);
+        validateRange(fromInstant, toInstant);
         validateSort(sort, "createdAt_desc", "createdAt_asc");
         List<Map<String, Object>> items = store.audits.stream()
                 .filter(audit -> actorUserId == null || audit.actorUserId.equals(actorUserId))
                 .filter(audit -> action == null || audit.action.equals(action))
+                .filter(audit -> targetType == null || audit.targetType.equals(targetType))
+                .filter(audit -> targetId == null || audit.targetId.equals(targetId))
                 .filter(audit -> releaseId == null || audit.releaseId.equals(releaseId))
                 .filter(audit -> result == null || audit.result.equals(result))
+                .filter(audit -> inAuditRange(audit, fromInstant, toInstant))
                 .sorted(auditComparator(sort))
                 .map(ChangelogAuditRecord::view)
                 .toList();
@@ -528,7 +569,8 @@ class ChangelogController {
     @GetMapping("/admin/ops/summary")
     ResponseEntity<Map<String, Object>> opsSummary(HttpServletRequest request) {
         auth.requireStaff(request);
-        store.audit("CHANGELOG_OPS_SUMMARY_READ", "changelog", "changelog", auth.current(request).userId, "SUCCESS");
+        Actor actor = auth.current(request);
+        store.audit("CHANGELOG_OPS_SUMMARY_READ", "changelog", "changelog", "CHANGELOG_SERVICE", actor, request, Map.of(), "SUCCESS", null, null);
         return ok(request, store.ops(properties.enabled()));
     }
 
@@ -558,7 +600,7 @@ class ChangelogController {
                 release.reviewedAt = now();
                 release.reviewComment = text(body, "reviewComment", release.reviewComment);
             }
-            store.audit(action, release.releaseId, release.releaseId, actor.userId, "SUCCESS", before, to);
+            store.audit(action, release.releaseId, release.releaseId, actor, request, body, "SUCCESS", before, to);
             return ok(request, release.adminView());
         });
     }
@@ -840,6 +882,16 @@ class ChangelogController {
         return (from == null || !released.isBefore(from)) && (to == null || released.isBefore(to));
     }
 
+    private static boolean inCreatedRange(ChangelogReleaseRecord release, Instant from, Instant to) {
+        Instant created = Instant.parse(release.createdAt);
+        return (from == null || !created.isBefore(from)) && (to == null || created.isBefore(to));
+    }
+
+    private static boolean inAuditRange(ChangelogAuditRecord audit, Instant from, Instant to) {
+        Instant created = Instant.parse(audit.createdAt);
+        return (from == null || !created.isBefore(from)) && (to == null || created.isBefore(to));
+    }
+
     private static Comparator<ChangelogReleaseRecord> releaseComparator(String sort) {
         String actual = sort == null ? "releasedAt_desc" : sort;
         Comparator<ChangelogReleaseRecord> comparator = switch (actual) {
@@ -859,6 +911,18 @@ class ChangelogController {
         return Comparator.comparing((ChangelogBookmarkRecord bookmark) -> Instant.parse(bookmark.updatedAt)).reversed();
     }
 
+    private static Comparator<Map<String, Object>> changeComparator(String sort) {
+        Comparator<Map<String, Object>> byReleasedAt = Comparator.comparing(item -> instantOrMin(Objects.toString(((Map<?, ?>) item.get("release")).get("releasedAt"), null)));
+        if ("releasedAt_asc".equals(sort)) {
+            return byReleasedAt;
+        }
+        if ("severity_desc".equals(sort)) {
+            return Comparator.comparingInt((Map<String, Object> item) -> severityRank(Objects.toString(item.get("severity"), "INFO"))).reversed()
+                    .thenComparing(byReleasedAt.reversed());
+        }
+        return byReleasedAt.reversed();
+    }
+
     private static Comparator<ChangelogAuditRecord> auditComparator(String sort) {
         Comparator<ChangelogAuditRecord> comparator = Comparator.comparing(audit -> Instant.parse(audit.createdAt));
         return "createdAt_asc".equals(sort) ? comparator : comparator.reversed();
@@ -875,6 +939,22 @@ class ChangelogController {
             case "MEDIUM" -> 2;
             default -> 1;
         };
+    }
+
+    private static int severityRank(String severity) {
+        return switch (severity) {
+            case "SECURITY" -> 5;
+            case "BREAKING" -> 4;
+            case "MAJOR" -> 3;
+            case "MINOR" -> 2;
+            default -> 1;
+        };
+    }
+
+    private static void addText(Set<String> values, Object value) {
+        if (value != null && !value.toString().isBlank()) {
+            values.add(value.toString());
+        }
     }
 
     private static int number(Object value, int fallback) {
@@ -966,11 +1046,18 @@ class ChangelogStore {
         release.releasedAt = text(body, "releasedAt", release.releasedAt);
         release.effectiveAt = text(body, "effectiveAt", release.effectiveAt);
         release.minecraftVersion = text(body, "minecraftVersion", release.minecraftVersion);
+        if (body.containsKey("pluginVersions")) {
+            release.pluginVersions = objectList(body.get("pluginVersions"));
+        }
+        if (body.containsKey("resourcePackVersions")) {
+            release.resourcePackVersions = objectList(body.get("resourcePackVersions"));
+        }
         release.mapVersion = text(body, "mapVersion", release.mapVersion);
         release.compatibilityNotes = text(body, "compatibilityNotes", release.compatibilityNotes);
         release.knownIssues = text(body, "knownIssues", release.knownIssues);
         release.rollbackNotes = text(body, "rollbackNotes", release.rollbackNotes);
         release.securityPublicSummary = text(body, "securityPublicSummary", release.securityPublicSummary);
+        release.internalNote = text(body, "internalNote", release.internalNote);
         if (body.get("groups") instanceof List<?> groups) {
             release.groups = parseGroups(groups);
         }
@@ -1016,6 +1103,20 @@ class ChangelogStore {
         }
         return ids.stream().map(id -> linkedMap("resourceId", id.toString(), "slug", id.toString(), "versionName", "2026.06",
                 "visibility", "PUBLIC", "downloadAvailable", true, "resourceSnapshotStale", false, "failure", null)).toList();
+    }
+
+    private List<Map<String, Object>> objectList(Object value) {
+        if (!(value instanceof List<?> list)) {
+            return List.of();
+        }
+        return list.stream()
+                .filter(Map.class::isInstance)
+                .map(raw -> {
+                    Map<String, Object> copy = new LinkedHashMap<>();
+                    ((Map<?, ?>) raw).forEach((key, nested) -> copy.put(key.toString(), nested));
+                    return copy;
+                })
+                .toList();
     }
 
     private List<Map<String, Object>> relatedServers(Object value) {
@@ -1078,11 +1179,39 @@ class ChangelogStore {
     }
 
     void audit(String action, String releaseId, String targetId, String actorUserId, String result) {
-        audit(action, releaseId, targetId, actorUserId, result, null, null);
+        audits.add(new ChangelogAuditRecord("chaud-" + (audits.size() + 1), action, releaseId, targetId, "CHANGELOG_RELEASE",
+                actorUserId, "SYSTEM", result, null, null, Map.of(), null, null, null));
     }
 
     void audit(String action, String releaseId, String targetId, String actorUserId, String result, String stateFrom, String stateTo) {
-        audits.add(new ChangelogAuditRecord("chaud-" + (audits.size() + 1), action, releaseId, targetId, actorUserId, result, stateFrom, stateTo));
+        audits.add(new ChangelogAuditRecord("chaud-" + (audits.size() + 1), action, releaseId, targetId, "CHANGELOG_RELEASE",
+                actorUserId, "SYSTEM", result, null, null, Map.of(), stateFrom, stateTo, null));
+    }
+
+    void audit(String action, String releaseId, String targetId, Actor actor, HttpServletRequest request, Map<String, Object> body,
+               String result, String stateFrom, String stateTo) {
+        audit(action, releaseId, targetId, "CHANGELOG_RELEASE", actor, request, body, result, stateFrom, stateTo);
+    }
+
+    void audit(String action, String releaseId, String targetId, String targetType, Actor actor, HttpServletRequest request, Map<String, Object> body,
+               String result, String stateFrom, String stateTo) {
+        String requestId = Objects.toString(request.getAttribute("requestId"), null);
+        String reason = body == null ? null : Objects.toString(body.get("reason"), null);
+        audits.add(new ChangelogAuditRecord("chaud-" + (audits.size() + 1), action, releaseId, targetId, targetType,
+                actor.userId, actor.role, result, requestId, reason, paramsSummary(body), stateFrom, stateTo, null));
+    }
+
+    private Map<String, Object> paramsSummary(Map<String, Object> body) {
+        if (body == null || body.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Object> summary = new LinkedHashMap<>();
+        body.forEach((key, value) -> {
+            if (!"internalNote".equals(key) && !"reviewComment".equals(key) && !"securityPublicSummary".equals(key)) {
+                summary.put(key, value instanceof List<?> list ? "list:" + list.size() : value);
+            }
+        });
+        return summary;
     }
 
     Map<String, Object> ops(boolean testControlsEnabled) {
@@ -1172,6 +1301,7 @@ class ChangelogReleaseRecord {
     String knownIssues;
     String rollbackNotes;
     String securityPublicSummary;
+    String internalNote;
     List<Map<String, Object>> relatedResources = List.of();
     List<Map<String, Object>> relatedServerInstances = List.of();
     Map<String, Object> relatedContent;
@@ -1213,6 +1343,12 @@ class ChangelogReleaseRecord {
         return view;
     }
 
+    Map<String, Object> currentUserSummaryView(boolean bookmarkedByCurrentUser) {
+        Map<String, Object> view = summaryView();
+        view.put("bookmarkedByCurrentUser", bookmarkedByCurrentUser);
+        return view;
+    }
+
     Map<String, Object> publicView() {
         Map<String, Object> view = baseView(false, true);
         view.remove("reviewComment");
@@ -1228,6 +1364,7 @@ class ChangelogReleaseRecord {
         view.put("createdBy", createdBy);
         view.put("updatedBy", updatedBy);
         view.put("reviewedBy", reviewedBy);
+        view.put("internalNote", internalNote);
         view.put("deletedAt", deletedAt);
         return view;
     }
@@ -1290,6 +1427,13 @@ class ChangelogReleaseRecord {
         summary.put("lastAttemptAt", notificationFailure == null ? null : notificationFailure.get("failedAt"));
         summary.put("failure", includeFailure ? notificationFailure : null);
         return summary;
+    }
+
+    boolean matchesTag(String tag) {
+        return groups.stream().flatMap(group -> group.items.stream())
+                .anyMatch(item -> item.publicSafe && Objects.equals(item.component, tag))
+                || pluginVersions.stream().anyMatch(plugin -> Objects.equals(plugin.get("name"), tag))
+                || resourcePackVersions.stream().anyMatch(pack -> Objects.equals(pack.get("name"), tag));
     }
 }
 
@@ -1397,35 +1541,56 @@ class ChangelogAuditRecord {
     final String action;
     final String releaseId;
     final String targetId;
+    final String targetType;
     final String actorUserId;
+    final String actorRole;
     final String result;
+    final String requestId;
+    final String reason;
+    final Map<String, Object> paramsSummary;
     final String stateFrom;
     final String stateTo;
+    final String failureReason;
     final String createdAt = Instant.now().toString();
 
-    ChangelogAuditRecord(String auditId, String action, String releaseId, String targetId, String actorUserId, String result, String stateFrom, String stateTo) {
+    ChangelogAuditRecord(String auditId, String action, String releaseId, String targetId, String targetType, String actorUserId,
+                         String actorRole, String result, String requestId, String reason, Map<String, Object> paramsSummary,
+                         String stateFrom, String stateTo, String failureReason) {
         this.auditId = auditId;
         this.action = action;
         this.releaseId = releaseId;
         this.targetId = targetId;
+        this.targetType = targetType;
         this.actorUserId = actorUserId;
+        this.actorRole = actorRole;
         this.result = result;
+        this.requestId = requestId;
+        this.reason = reason;
+        this.paramsSummary = paramsSummary == null ? Map.of() : paramsSummary;
         this.stateFrom = stateFrom;
         this.stateTo = stateTo;
+        this.failureReason = failureReason;
     }
 
     Map<String, Object> view() {
         Map<String, Object> view = new LinkedHashMap<>();
         view.put("id", auditId);
+        view.put("requestId", requestId);
         view.put("action", action);
-        view.put("targetType", "CHANGELOG_RELEASE");
+        view.put("targetType", targetType);
         view.put("releaseId", releaseId);
         view.put("targetId", targetId);
         view.put("actorUserId", actorUserId);
+        view.put("actorRole", actorRole);
         view.put("result", result);
         view.put("riskLevel", "LOW");
+        view.put("reason", reason);
+        view.put("paramsSummary", paramsSummary);
+        view.put("beforeState", stateFrom);
+        view.put("afterState", stateTo);
         view.put("stateFrom", stateFrom);
         view.put("stateTo", stateTo);
+        view.put("failureReason", failureReason);
         view.put("createdAt", createdAt);
         return view;
     }

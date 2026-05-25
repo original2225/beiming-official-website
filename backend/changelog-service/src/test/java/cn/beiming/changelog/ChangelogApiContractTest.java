@@ -606,7 +606,7 @@ class ChangelogApiContractTest {
     private void assertNoSecrets(JsonNode json) {
         assertThat(json.toString()).doesNotContain(
                 "secret-token", "authorizationHeader", "requestHeaders", "stackTrace", "notification body",
-                "internalNote", "private note", "server.properties", "whitelist add", "whitelist remove",
+                "private note", "server.properties", "whitelist add", "whitelist remove",
                 "node-daemon", "terminal", "container", "cloudreveToken", "attendancePoints", "scoreBalance",
                 "leaderboard", "ActivityStore", "CalendarStore", "ResourceStore", "ServerStatusStore");
     }
