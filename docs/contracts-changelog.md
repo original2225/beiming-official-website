@@ -1,6 +1,6 @@
 # 北冥官网 changelog API 契约
 
-版本：0.1
+版本：0.2
 
 ## 文档定位
 
@@ -32,6 +32,8 @@
 `changelog` 拥有以下主数据：发布记录、版本记录、变更分组、变更项、影响范围、兼容说明、已知问题、回滚说明、关联资源快照、关联服务器实例快照、关联日历摘要、关联内容快照、通知投递摘要、依赖调用摘要、幂等记录、changelog 审计日志和自检统计。
 
 `changelog` 可以保存来自 `auth` 的 `userId`、`displayName`、`roles`、`permissions` 和用户状态快照；可以保存来自 `resource` 的 `resourceId`、`slug`、`versionName`、`visibility` 和可用性摘要；可以保存来自 `server-status` 的 `instanceId`、`name`、`minecraftVersion` 和状态快照摘要；可以保存来自 `content` 的 `contentId`、`slug`、`title` 和公开地址；可以保存来自 `calendar` 的 `eventId`、时间和同步状态；可以保存来自 `notification` 的投递结果摘要。所有快照只服务展示、检索和审计，不能成为来源模块主数据，也不能反写来源模块。
+
+P1 内存实现必须完整兑现本文档已经承诺的 HTTP 行为，包括筛选参数、字段存储、用户态字段、审计查询和并发口径。真实数据库持久化、真实网关 auth、真实服务间 HTTP、真实 calendar 写入和真实 notification 投递属于生产化后续变更，必须继续通过自检摘要暴露缺口，不得伪装为已接通。
 
 ## 基础路径与认证
 
@@ -99,8 +101,8 @@
 | `releasedAt` | string 或 null | 是 | 对玩家宣告发布时间。 |
 | `effectiveAt` | string 或 null | 是 | 实际生效时间。 |
 | `minecraftVersion` | string 或 null | 是 | Minecraft 版本摘要。 |
-| `pluginVersions` | object[] | 是 | 插件名称、版本、动作和公开备注。 |
-| `resourcePackVersions` | object[] | 是 | 资源包名称、版本、资源快照 ID。 |
+| `pluginVersions` | object[] | 是 | 插件名称、版本、动作和公开备注。创建和修改时必须按请求体结构化保存。 |
+| `resourcePackVersions` | object[] | 是 | 资源包名称、版本、资源快照 ID。创建和修改时必须按请求体结构化保存。 |
 | `mapVersion` | string 或 null | 是 | 地图版本摘要。 |
 | `groups` | ChangelogGroup[] | 是 | 变更分组。至少 1 组，每组至少 1 项。 |
 | `compatibilityNotes` | string 或 null | 是 | 兼容说明，最多 2000 位。 |
@@ -274,7 +276,7 @@
 
 `GET /api/v1/changelog/releases`
 
-查询参数：`page`、`pageSize`、`keyword`、`type`、`visibility`、`impactLevel`、`minecraftVersion`、`tag`、`from`、`to` 和 `sort`。`pageSize` 最大 `100`。`sort` 允许 `releasedAt_desc`、`releasedAt_asc`、`effectiveAt_desc`、`updatedAt_desc`、`impactLevel_desc`。
+查询参数：`page`、`pageSize`、`keyword`、`type`、`visibility`、`impactLevel`、`minecraftVersion`、`tag`、`from`、`to` 和 `sort`。`pageSize` 最大 `100`。`sort` 允许 `releasedAt_desc`、`releasedAt_asc`、`effectiveAt_desc`、`updatedAt_desc`、`impactLevel_desc`。`tag` 使用公开标签聚合结果中的值，P1 中来源为公开安全变更项的 `component`、插件名称和资源包名称。
 
 成功响应 HTTP `200`，分页 `items` 为公开视图 `ChangelogRelease[]`。游客只看到 `PUBLISHED` 且 `visibility=PUBLIC` 的发布记录。列表不得返回内部备注、后台审核字段、通知失败详情、审计字段、完整依赖错误和未脱敏安全细节。
 
@@ -302,7 +304,7 @@
 
 `GET /api/v1/changelog/changes`
 
-查询参数：`page`、`pageSize`、`keyword`、`groupType`、`severity`、`component`、`releaseType`、`from`、`to` 和 `sort`。成功响应 HTTP `200`，分页 `items` 为公开变更项摘要，包含发布记录摘要、分组和变更项。只返回公开可见发布记录中 `publicSafe=true` 或已脱敏的变更项。
+查询参数：`page`、`pageSize`、`keyword`、`groupType`、`severity`、`component`、`releaseType`、`from`、`to` 和 `sort`。成功响应 HTTP `200`，分页 `items` 为公开变更项摘要，包含发布记录摘要、分组和变更项。只返回公开可见发布记录中 `publicSafe=true` 或已脱敏的变更项。`from` 和 `to` 使用 ISO 8601，按所属发布记录的 `releasedAt` 查询，非法时间返回 `40001`，非法范围返回 `49316`。`severity_desc` 必须先按严重度从高到低排序，再按发布时间倒序稳定排序。
 
 ## 当前用户接口
 
@@ -310,7 +312,7 @@
 
 `GET /api/v1/changelog/me/bookmarks`
 
-查询参数：`page`、`pageSize`、`status`、`type`、`from`、`to` 和 `sort`。成功响应 HTTP `200`，分页 `items` 为当前用户收藏记录与发布摘要。只能返回当前认证用户自己的收藏，不得通过请求参数传入 `userId`。非法 `status` 返回 `40001`，非法 `sort` 返回 `40003`，非法时间返回 `40001`，非法范围返回 `49316`。
+查询参数：`page`、`pageSize`、`status`、`type`、`from`、`to` 和 `sort`。成功响应 HTTP `200`，分页 `items` 为当前用户收藏记录与发布摘要。只能返回当前认证用户自己的收藏，不得通过请求参数传入 `userId`。当前用户视图中的发布摘要必须包含 `bookmarkedByCurrentUser`。非法 `status` 或 `type` 返回 `40001`，非法 `sort` 返回 `40003`，非法时间返回 `40001`，非法范围返回 `49316`。
 
 ### 收藏发布记录
 
@@ -328,7 +330,7 @@
 
 ### 后台发布列表和详情
 
-`GET /api/v1/changelog/admin/releases` 支持 `page`、`pageSize`、`keyword`、`type`、`status`、`visibility`、`impactLevel`、`createdBy`、`minecraftVersion`、`from`、`to` 和 `sort`。后台可查看全部非物理删除记录，默认按 `updatedAt_desc`。`GET /api/v1/changelog/admin/releases/{releaseId}` 返回发布记录、收藏统计、关联快照、通知摘要、日历同步摘要、依赖摘要和最近审计。响应不得返回 token、完整请求头、通知正文、前序服务内部路径、异常堆栈、真实服务器命令、节点凭据或 Cloudreve token。
+`GET /api/v1/changelog/admin/releases` 支持 `page`、`pageSize`、`keyword`、`type`、`status`、`visibility`、`impactLevel`、`createdBy`、`minecraftVersion`、`from`、`to` 和 `sort`。后台可查看全部非物理删除记录，默认按 `updatedAt_desc`。`from` 和 `to` 按 `createdAt` 查询。`GET /api/v1/changelog/admin/releases/{releaseId}` 返回发布记录、收藏统计、关联快照、通知摘要、日历同步摘要、依赖摘要和最近审计。响应不得返回 token、完整请求头、通知正文、前序服务内部路径、异常堆栈、真实服务器命令、节点凭据或 Cloudreve token。
 
 ### 创建发布草稿
 
@@ -368,7 +370,7 @@
 
 ## 审计和自检
 
-`GET /api/v1/changelog/admin/audit-logs` 支持 `page`、`pageSize`、`actorUserId`、`action`、`targetType`、`targetId`、`releaseId`、`result`、`from`、`to` 和 `sort`。成功响应 HTTP `200`，分页 `items` 为 `ChangelogAuditLog[]`。只有 `ADMIN` 和 `OWNER` 可访问。审计日志不得通过 changelog API 删除。
+`GET /api/v1/changelog/admin/audit-logs` 支持 `page`、`pageSize`、`actorUserId`、`action`、`targetType`、`targetId`、`releaseId`、`result`、`from`、`to` 和 `sort`。成功响应 HTTP `200`，分页 `items` 为 `ChangelogAuditLog[]`。只有 `ADMIN` 和 `OWNER` 可访问。`from` 和 `to` 按 `createdAt` 查询。审计日志必须至少返回公共契约要求的 `id`、`requestId`、`actorUserId`、`actorRole`、`targetType`、`targetId`、`action`、`riskLevel`、`reason`、`paramsSummary`、`beforeState`、`afterState`、`result`、`failureReason` 和 `createdAt`。审计日志不得通过 changelog API 删除。
 
 `GET /api/v1/changelog/admin/ops/summary` 成功响应 HTTP `200`。
 
@@ -416,7 +418,7 @@
 
 并发收藏同一用户同一发布记录只能产生一条有效收藏记录。重复取消收藏保持幂等。收藏计数必须和有效收藏记录一致，不得小于 0。并发审核、发布、下架、归档和软删除同一发布记录只能有一个成功状态推进。读取接口允许读到更新前或更新后的完整状态，不能返回半更新对象。
 
-P1 内存实现必须用本服务内的串行临界区保护发布记录状态、收藏计数、关联快照、日历同步摘要和审计写入。后续持久化实现必须迁移为数据库事务、唯一约束、条件更新或等效机制，不能降低上述并发口径。
+P1 内存实现必须用本服务内的串行临界区保护发布记录状态、收藏计数、关联快照、日历同步摘要和审计写入。所有状态流转写操作必须在同一个临界区内完成状态校验、状态修改、审计写入和响应快照生成。后续持久化实现必须迁移为数据库事务、唯一约束、条件更新或等效机制，不能降低上述并发口径。
 
 ## 审计要求
 
