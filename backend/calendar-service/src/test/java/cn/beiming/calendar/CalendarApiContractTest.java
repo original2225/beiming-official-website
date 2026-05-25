@@ -233,6 +233,48 @@ class CalendarApiContractTest {
     }
 
     @Test
+    @DisplayName("CAL-ADMIN allows partial time updates against the existing event range")
+    void partialTimeUpdateUsesExistingRangeBoundary() throws Exception {
+        String eventId = createEvent("partial-time-update").at("/data/eventId").asText();
+
+        JsonNode updated = performJson(patch("/api/v1/calendar/admin/events/" + eventId).header("Authorization", bearer("helper-token")),
+                Map.of("startAt", "2026-06-01T13:00:00Z", "reason", "只调整开始时间", "idempotencyKey", "partial-time-update-start"), 200);
+
+        assertThat(updated.at("/data/startAt").asText()).isEqualTo("2026-06-01T13:00:00Z");
+        assertThat(updated.at("/data/endAt").asText()).isEqualTo("2026-06-01T14:00:00Z");
+    }
+
+    @Test
+    @DisplayName("CAL-PUB and CAL-ME suppress notification failure and backend-only event fields")
+    void publicAndMeViewsDoNotExposeBackendOnlyEventFields() throws Exception {
+        String eventId = createEvent("public-redaction").at("/data/eventId").asText();
+        performJson(post("/api/v1/calendar/admin/events/" + eventId + "/submit").header("Authorization", bearer("helper-token")),
+                Map.of("reason", "提交审核", "idempotencyKey", "public-redaction-submit"), 200);
+        performJson(patch("/api/v1/calendar/admin/events/" + eventId + "/approve").header("Authorization", bearer("helper-token")),
+                Map.of("reviewComment", "审核通过", "reason", "符合日程规则", "idempotencyKey", "public-redaction-approve"), 200);
+        performJson(patch("/api/v1/calendar/admin/events/" + eventId + "/publish")
+                        .header("Authorization", bearer("admin-token"))
+                        .header("X-Test-Notification-Mode", "unavailable"),
+                Map.of("reason", "发布日程", "idempotencyKey", "public-redaction-publish"), 200);
+
+        JsonNode publicDetail = performJson(get("/api/v1/calendar/events/" + eventId), 200);
+        assertThat(publicDetail.toString()).doesNotContain("49820", "failureCode", "failureReason");
+
+        performJson(post("/api/v1/calendar/me/events/" + eventId + "/watch").header("Authorization", bearer("member-user-1-token")),
+                watchBody("public-redaction-watch"), 201);
+        JsonNode unwatched = performJson(post("/api/v1/calendar/me/events/" + eventId + "/unwatch").header("Authorization", bearer("member-user-1-token")),
+                Map.of("reason", "取消关注", "idempotencyKey", "public-redaction-unwatch"), 200);
+        assertThat(unwatched.toString()).doesNotContain("createdBy", "updatedBy", "reviewedBy", "deletedAt", "49820", "failureCode");
+    }
+
+    @Test
+    @DisplayName("CAL-ME rejects malformed reminder offsets as a validation error")
+    void malformedReminderOffsetReturnsValidationError() throws Exception {
+        performJson(post("/api/v1/calendar/me/events/cal-seed-public/watch").header("Authorization", bearer("member-user-1-token")),
+                Map.of("reminderEnabled", true, "reminderOffsets", List.of("not-a-number"), "idempotencyKey", "bad-reminder-offset"), 400, 40001);
+    }
+
+    @Test
     @DisplayName("CAL-AUDIT rolls back backend writes when audit persistence fails")
     void auditFailureRollsBackBackendWrites() throws Exception {
         String eventId = createEvent("audit-rollback-submit").at("/data/eventId").asText();

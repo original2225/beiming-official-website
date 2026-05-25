@@ -194,7 +194,7 @@ class CalendarController {
             ensureWatchWritable(request);
             CalendarWatchRecord watch = store.unwatch(event, actor, body);
             store.audit("CALENDAR_EVENT_UNWATCHED", event.eventId, watch.watchId, actor.userId, "SUCCESS");
-            return ok(request, Map.of("watch", watch.view(), "event", event.adminView()));
+            return ok(request, Map.of("watch", watch.view(), "event", event.summaryView()));
         });
     }
 
@@ -231,7 +231,7 @@ class CalendarController {
     ResponseEntity<Map<String, Object>> createEvent(HttpServletRequest request, @RequestBody Map<String, Object> body) {
         Actor actor = auth.requireStaff(request);
         return idempotent(request, actor, body, () -> {
-            validateEventBody(body, true);
+            validateEventBody(body, true, null);
             ensureAuditWritable(request);
             CalendarEventRecord event = store.createEvent(body, actor);
             store.audit("CALENDAR_EVENT_CREATED", event.eventId, event.eventId, actor.userId, "SUCCESS");
@@ -249,7 +249,7 @@ class CalendarController {
             if (!List.of("DRAFT", "NEEDS_CHANGES", "REJECTED", "APPROVED").contains(event.status)) {
                 throw new ApiException(HttpStatus.CONFLICT, 49910, "calendar event state conflict");
             }
-            validateEventBody(body, false);
+            validateEventBody(body, false, event);
             ensureAuditWritable(request);
             store.applyEventFields(event, body, actor);
             store.audit("CALENDAR_EVENT_UPDATED", event.eventId, event.eventId, actor.userId, "SUCCESS");
@@ -486,7 +486,7 @@ class CalendarController {
         return operation.get();
     }
 
-    private void validateEventBody(Map<String, Object> body, boolean create) {
+    private void validateEventBody(Map<String, Object> body, boolean create, CalendarEventRecord existing) {
         requireReason(body);
         if (create || body.containsKey("title")) {
             validateText(body.get("title"), 2, 100, "title");
@@ -509,8 +509,8 @@ class CalendarController {
             throw new ApiException(HttpStatus.BAD_REQUEST, 40001, "sourceId is required");
         }
         if (create || body.containsKey("startAt") || body.containsKey("endAt")) {
-            Instant start = parseRequiredInstant(body.get("startAt"));
-            Instant end = parseRequiredInstant(body.get("endAt"));
+            Instant start = body.containsKey("startAt") ? parseRequiredInstant(body.get("startAt")) : Instant.parse(existing.startAt);
+            Instant end = body.containsKey("endAt") ? parseRequiredInstant(body.get("endAt")) : Instant.parse(existing.endAt);
             if (!end.isAfter(start)) {
                 throw new ApiException(HttpStatus.BAD_REQUEST, 40001, "endAt must be after startAt");
             }
@@ -680,7 +680,11 @@ class CalendarController {
         if (value == null) {
             return fallback;
         }
-        return Integer.parseInt(value.toString());
+        try {
+            return Integer.parseInt(value.toString());
+        } catch (NumberFormatException exception) {
+            return fallback;
+        }
     }
 
     private String now() {
@@ -943,17 +947,17 @@ class CalendarEventRecord {
     }
 
     Map<String, Object> summaryView() {
-        Map<String, Object> view = baseView();
+        Map<String, Object> view = baseView(false);
         view.remove("description");
         return view;
     }
 
     Map<String, Object> publicView() {
-        return baseView();
+        return baseView(false);
     }
 
     Map<String, Object> adminView() {
-        Map<String, Object> view = baseView();
+        Map<String, Object> view = baseView(true);
         view.put("createdBy", createdBy);
         view.put("updatedBy", updatedBy);
         view.put("reviewedBy", reviewedBy);
@@ -963,7 +967,7 @@ class CalendarEventRecord {
         return view;
     }
 
-    private Map<String, Object> baseView() {
+    private Map<String, Object> baseView(boolean includeReminderFailure) {
         Map<String, Object> view = new LinkedHashMap<>();
         view.put("eventId", eventId);
         view.put("source", sourceView());
@@ -982,7 +986,7 @@ class CalendarEventRecord {
         view.put("labels", List.of("calendar"));
         view.put("priority", priority);
         view.put("watchCount", watchCount);
-        view.put("reminderPolicy", reminderPolicy());
+        view.put("reminderPolicy", reminderPolicy(includeReminderFailure));
         view.put("reviewComment", null);
         view.put("publishedAt", publishedAt);
         view.put("offlineAt", offlineAt);
@@ -1006,14 +1010,14 @@ class CalendarEventRecord {
         return source;
     }
 
-    private Map<String, Object> reminderPolicy() {
+    private Map<String, Object> reminderPolicy(boolean includeFailure) {
         Map<String, Object> policy = new LinkedHashMap<>();
         policy.put("enabled", true);
         policy.put("offsetMinutes", List.of(60));
         policy.put("channels", List.of("IN_APP"));
         policy.put("lastReminderStatus", reminderFailure == null ? "SKIPPED" : "FAILED");
         policy.put("lastReminderAt", null);
-        policy.put("failure", reminderFailure);
+        policy.put("failure", includeFailure ? reminderFailure : null);
         return policy;
     }
 }
