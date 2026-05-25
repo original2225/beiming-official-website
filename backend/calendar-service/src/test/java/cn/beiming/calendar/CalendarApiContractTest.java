@@ -202,7 +202,7 @@ class CalendarApiContractTest {
                 syncBody("sync-activity-down", "UPSERT_SNAPSHOT"), 502, 49810);
 
         JsonNode versionEvent = performJson(post("/api/v1/calendar/admin/events").header("Authorization", bearer("admin-token")),
-                with(with(eventBody("manual-version-release"), "type", "VERSION_RELEASE"), "sourceType", "CHANGELOG"), 201);
+                with(with(with(eventBody("manual-version-release"), "type", "VERSION_RELEASE"), "sourceType", "CHANGELOG"), "sourceId", "future-changelog-1"), 201);
         assertThat(versionEvent.at("/data/type").asText()).isEqualTo("VERSION_RELEASE");
 
         JsonNode ops = performJson(get("/api/v1/calendar/admin/ops/summary").header("Authorization", bearer("helper-token")), 200);
