@@ -152,11 +152,32 @@ class CalendarController {
     @GetMapping("/me/watchlist")
     ResponseEntity<Map<String, Object>> watchlist(HttpServletRequest request,
                                                   @RequestParam(defaultValue = "1") int page,
-                                                  @RequestParam(defaultValue = "20") int pageSize) {
+                                                  @RequestParam(defaultValue = "20") int pageSize,
+                                                  @RequestParam(required = false) String status,
+                                                  @RequestParam(required = false) String type,
+                                                  @RequestParam(required = false) String from,
+                                                  @RequestParam(required = false) String to,
+                                                  @RequestParam(required = false) String sort) {
         Actor actor = auth.current(request);
         validatePage(page, pageSize);
+        if (status != null) {
+            validateEnum(status, List.of("ACTIVE", "CANCELED"));
+        }
+        if (type != null) {
+            validateEventType(type);
+        }
+        validateSort(sort, "updatedAt_desc", "createdAt_desc", "startAt_asc");
+        Instant fromInstant = parseOptionalInstant(from);
+        Instant toInstant = parseOptionalInstant(to);
+        validateRange(fromInstant, toInstant);
         List<Map<String, Object>> items = store.watches.values().stream()
                 .filter(watch -> watch.userId.equals(actor.userId))
+                .filter(watch -> status == null || watch.status.equals(status))
+                .filter(watch -> {
+                    CalendarEventRecord event = store.events.get(watch.eventId);
+                    return event != null && (type == null || event.type.equals(type)) && overlaps(event, fromInstant, toInstant);
+                })
+                .sorted(watchComparator(sort))
                 .map(watch -> {
                     Map<String, Object> view = new LinkedHashMap<>();
                     view.put("watch", watch.view());
@@ -202,13 +223,41 @@ class CalendarController {
     ResponseEntity<Map<String, Object>> adminEvents(HttpServletRequest request,
                                                     @RequestParam(defaultValue = "1") int page,
                                                     @RequestParam(defaultValue = "20") int pageSize,
+                                                    @RequestParam(required = false) String keyword,
+                                                    @RequestParam(required = false) String type,
+                                                    @RequestParam(required = false) String status,
+                                                    @RequestParam(required = false) String visibility,
                                                     @RequestParam(required = false) String sourceType,
+                                                    @RequestParam(required = false) String createdBy,
+                                                    @RequestParam(required = false) String from,
+                                                    @RequestParam(required = false) String to,
                                                     @RequestParam(required = false) String sort) {
         auth.requireStaff(request);
         validatePage(page, pageSize);
         validateSort(sort, "updatedAt_desc", "startAt_asc", "startAt_desc", "publishedAt_desc");
+        if (type != null) {
+            validateEventType(type);
+        }
+        if (status != null) {
+            validateEventStatus(status);
+        }
+        if (visibility != null) {
+            validateVisibility(visibility);
+        }
+        if (sourceType != null) {
+            validateSourceType(sourceType);
+        }
+        Instant fromInstant = parseOptionalInstant(from);
+        Instant toInstant = parseOptionalInstant(to);
+        validateRange(fromInstant, toInstant);
         List<Map<String, Object>> items = store.events.values().stream()
+                .filter(event -> keyword == null || event.title.contains(keyword) || event.summary.contains(keyword))
+                .filter(event -> type == null || event.type.equals(type))
+                .filter(event -> status == null || event.status.equals(status))
+                .filter(event -> visibility == null || event.visibility.equals(visibility))
                 .filter(event -> sourceType == null || event.sourceType.equals(sourceType))
+                .filter(event -> createdBy == null || event.createdBy.equals(createdBy))
+                .filter(event -> overlaps(event, fromInstant, toInstant))
                 .sorted(eventComparator(sort == null ? "updatedAt_desc" : sort))
                 .map(CalendarEventRecord::adminView)
                 .toList();
@@ -223,7 +272,7 @@ class CalendarController {
         data.put("event", event.adminView());
         data.put("watchesTotal", event.watchCount);
         data.put("dependencySummary", Map.of("activity", "TEST_STUB", "notification", "SKIPPED", "changelog", "NOT_CONNECTED"));
-        data.put("recentAudits", store.audits.stream().filter(audit -> audit.eventId.equals(event.eventId)).map(CalendarAuditRecord::view).toList());
+        data.put("recentAudits", store.audits.stream().filter(audit -> audit.eventId.equals(event.eventId)).map(audit -> audit.view(event.sourceType)).toList());
         return ok(request, data);
     }
 
@@ -248,6 +297,9 @@ class CalendarController {
             CalendarEventRecord event = store.requireEvent(eventId);
             if (!List.of("DRAFT", "NEEDS_CHANGES", "REJECTED", "APPROVED").contains(event.status)) {
                 throw new ApiException(HttpStatus.CONFLICT, 49910, "calendar event state conflict");
+            }
+            if ("HELPER".equals(actor.role) && !event.createdBy.equals(actor.userId)) {
+                throw new ApiException(HttpStatus.FORBIDDEN, 42001, "role denied");
             }
             validateEventBody(body, false, event);
             ensureAuditWritable(request);
@@ -418,10 +470,41 @@ class CalendarController {
     @GetMapping("/admin/audit-logs")
     ResponseEntity<Map<String, Object>> auditLogs(HttpServletRequest request,
                                                   @RequestParam(defaultValue = "1") int page,
-                                                  @RequestParam(defaultValue = "20") int pageSize) {
+                                                  @RequestParam(defaultValue = "20") int pageSize,
+                                                  @RequestParam(required = false) String actorUserId,
+                                                  @RequestParam(required = false) String action,
+                                                  @RequestParam(required = false) String targetType,
+                                                  @RequestParam(required = false) String targetId,
+                                                  @RequestParam(required = false) String eventId,
+                                                  @RequestParam(required = false) String sourceType,
+                                                  @RequestParam(required = false) String result,
+                                                  @RequestParam(required = false) String from,
+                                                  @RequestParam(required = false) String to,
+                                                  @RequestParam(required = false) String sort) {
         auth.requireAdmin(request);
         validatePage(page, pageSize);
-        List<Map<String, Object>> items = store.audits.stream().map(CalendarAuditRecord::view).toList();
+        validateSort(sort, "createdAt_desc", "createdAt_asc");
+        if (result != null) {
+            validateEnum(result, List.of("SUCCESS", "FAILED"));
+        }
+        if (sourceType != null) {
+            validateSourceType(sourceType);
+        }
+        Instant fromInstant = parseOptionalInstant(from);
+        Instant toInstant = parseOptionalInstant(to);
+        validateRange(fromInstant, toInstant);
+        List<Map<String, Object>> items = store.audits.stream()
+                .filter(audit -> actorUserId == null || audit.actorUserId.equals(actorUserId))
+                .filter(audit -> action == null || audit.action.equals(action))
+                .filter(audit -> targetType == null || audit.targetType().equals(targetType))
+                .filter(audit -> targetId == null || audit.targetId.equals(targetId))
+                .filter(audit -> eventId == null || audit.eventId.equals(eventId))
+                .filter(audit -> sourceType == null || store.sourceTypeFor(audit.eventId).equals(sourceType))
+                .filter(audit -> result == null || audit.result.equals(result))
+                .filter(audit -> inAuditRange(audit, fromInstant, toInstant))
+                .sorted(auditComparator(sort))
+                .map(audit -> audit.view(store.sourceTypeFor(audit.eventId)))
+                .toList();
         return ok(request, page(items, page, pageSize));
     }
 
@@ -503,8 +586,19 @@ class CalendarController {
         if (create || body.containsKey("visibility")) {
             validateEnum(body.get("visibility"), List.of("PUBLIC", "MEMBER_ONLY", "STAFF_ONLY"));
         }
-        String sourceType = Objects.toString(body.getOrDefault("sourceType", "MANUAL"));
-        validateEnum(sourceType, List.of("MANUAL", "ACTIVITY", "CHANGELOG", "COMMUNITY_POLL", "OPS_PLACEHOLDER"));
+        String sourceType = body.containsKey("sourceType")
+                ? Objects.toString(body.get("sourceType"))
+                : (existing == null ? "MANUAL" : existing.sourceType);
+        validateSourceType(sourceType);
+        if ((create || body.containsKey("sourceType")) && !List.of("MANUAL", "CHANGELOG").contains(sourceType)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, 40001, "sourceType is not creatable");
+        }
+        String eventType = body.containsKey("type")
+                ? Objects.toString(body.get("type"))
+                : (existing == null ? "" : existing.type);
+        if ("CHANGELOG".equals(sourceType) && !"VERSION_RELEASE".equals(eventType)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, 40001, "changelog source requires version release");
+        }
         if (!"MANUAL".equals(sourceType) && !hasText(body.get("sourceId"))) {
             throw new ApiException(HttpStatus.BAD_REQUEST, 40001, "sourceId is required");
         }
@@ -556,6 +650,22 @@ class CalendarController {
         }
     }
 
+    private void validateEventType(String type) {
+        validateEnum(type, List.of("ACTIVITY", "MAINTENANCE", "ENGINEERING_MILESTONE", "VOTE_DEADLINE", "VERSION_RELEASE", "SERVER_SCHEDULE"));
+    }
+
+    private void validateEventStatus(String status) {
+        validateEnum(status, List.of("DRAFT", "PENDING_REVIEW", "APPROVED", "REJECTED", "NEEDS_CHANGES", "PUBLISHED", "OFFLINE", "ARCHIVED", "DELETED"));
+    }
+
+    private void validateVisibility(String visibility) {
+        validateEnum(visibility, List.of("PUBLIC", "MEMBER_ONLY", "STAFF_ONLY"));
+    }
+
+    private void validateSourceType(String sourceType) {
+        validateEnum(sourceType, List.of("MANUAL", "ACTIVITY", "CHANGELOG", "COMMUNITY_POLL", "OPS_PLACEHOLDER"));
+    }
+
     private void validateText(Object value, int min, int max, String field) {
         String text = Objects.toString(value, "");
         if (text.length() < min || text.length() > max) {
@@ -604,6 +714,17 @@ class CalendarController {
         return end.isAfter(from) && start.isBefore(to);
     }
 
+    private void validateRange(Instant from, Instant to) {
+        if (from != null && to != null && !to.isAfter(from)) {
+            throw new ApiException(HttpStatus.CONFLICT, 49911, "calendar time range conflict");
+        }
+    }
+
+    private boolean inAuditRange(CalendarAuditRecord audit, Instant from, Instant to) {
+        Instant createdAt = Instant.parse(audit.createdAt);
+        return (from == null || !createdAt.isBefore(from)) && (to == null || createdAt.isBefore(to));
+    }
+
     private Comparator<CalendarEventRecord> eventComparator(String sort) {
         String value = sort == null ? "startAt_asc" : sort;
         return switch (value) {
@@ -613,6 +734,20 @@ class CalendarController {
             case "updatedAt_desc" -> Comparator.comparing((CalendarEventRecord event) -> Instant.parse(event.updatedAt)).reversed();
             default -> Comparator.comparing((CalendarEventRecord event) -> Instant.parse(event.startAt)).thenComparing(event -> event.eventId);
         };
+    }
+
+    private Comparator<CalendarWatchRecord> watchComparator(String sort) {
+        String value = sort == null ? "updatedAt_desc" : sort;
+        return switch (value) {
+            case "createdAt_desc" -> Comparator.comparing((CalendarWatchRecord watch) -> Instant.parse(watch.createdAt)).reversed();
+            case "startAt_asc" -> Comparator.comparing((CalendarWatchRecord watch) -> Instant.parse(store.events.get(watch.eventId).startAt)).thenComparing(watch -> watch.watchId);
+            default -> Comparator.comparing((CalendarWatchRecord watch) -> Instant.parse(watch.updatedAt)).reversed();
+        };
+    }
+
+    private Comparator<CalendarAuditRecord> auditComparator(String sort) {
+        Comparator<CalendarAuditRecord> comparator = Comparator.comparing(audit -> Instant.parse(audit.createdAt));
+        return "createdAt_asc".equals(sort) ? comparator : comparator.reversed();
     }
 
     private Instant nullableInstant(String value) {
@@ -844,6 +979,11 @@ class CalendarStore {
 
     void audit(String action, String eventId, String targetId, String actorUserId, String result) {
         audits.add(new CalendarAuditRecord("caud-" + (audits.size() + 1), action, eventId, targetId, actorUserId, result));
+    }
+
+    String sourceTypeFor(String eventId) {
+        CalendarEventRecord event = events.get(eventId);
+        return event == null ? "MANUAL" : event.sourceType;
     }
 
     Map<String, Object> ops(boolean testControlsEnabled) {
@@ -1081,12 +1221,24 @@ class CalendarAuditRecord {
         this.result = result;
     }
 
-    Map<String, Object> view() {
+    String targetType() {
+        if ("calendar-sync".equals(eventId)) {
+            return "CALENDAR_SYNC";
+        }
+        if ("calendar".equals(eventId)) {
+            return "CALENDAR_OPS";
+        }
+        return "CALENDAR_EVENT";
+    }
+
+    Map<String, Object> view(String sourceType) {
         Map<String, Object> view = new LinkedHashMap<>();
         view.put("id", auditId);
         view.put("action", action);
+        view.put("targetType", targetType());
         view.put("eventId", eventId);
         view.put("targetId", targetId);
+        view.put("sourceType", sourceType);
         view.put("actorUserId", actorUserId);
         view.put("result", result);
         view.put("riskLevel", "LOW");

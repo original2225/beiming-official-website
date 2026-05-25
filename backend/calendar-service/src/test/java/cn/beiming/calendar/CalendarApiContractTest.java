@@ -237,7 +237,7 @@ class CalendarApiContractTest {
     void partialTimeUpdateUsesExistingRangeBoundary() throws Exception {
         String eventId = createEvent("partial-time-update").at("/data/eventId").asText();
 
-        JsonNode updated = performJson(patch("/api/v1/calendar/admin/events/" + eventId).header("Authorization", bearer("helper-token")),
+        JsonNode updated = performJson(patch("/api/v1/calendar/admin/events/" + eventId).header("Authorization", bearer("admin-token")),
                 Map.of("startAt", "2026-06-01T13:00:00Z", "reason", "只调整开始时间", "idempotencyKey", "partial-time-update-start"), 200);
 
         assertThat(updated.at("/data/startAt").asText()).isEqualTo("2026-06-01T13:00:00Z");
@@ -272,6 +272,127 @@ class CalendarApiContractTest {
     void malformedReminderOffsetReturnsValidationError() throws Exception {
         performJson(post("/api/v1/calendar/me/events/cal-seed-public/watch").header("Authorization", bearer("member-user-1-token")),
                 Map.of("reminderEnabled", true, "reminderOffsets", List.of("not-a-number"), "idempotencyKey", "bad-reminder-offset"), 400, 40001);
+    }
+
+    @Test
+    @DisplayName("CAL-P1H-001 to CAL-P1H-003 complete admin event filtering and P1 source creation limits")
+    void adminEventFiltersAndSourceCreationBoundaries() throws Exception {
+        String maintenanceId = createEvent("admin-filter-maintenance").at("/data/eventId").asText();
+        JsonNode voteDraft = performJson(post("/api/v1/calendar/admin/events").header("Authorization", bearer("admin-token")),
+                with(with(with(with(with(eventBody("admin-filter-vote"), "title", "vote filter event"), "type", "VOTE_DEADLINE"), "visibility", "STAFF_ONLY"), "startAt", "2026-08-01T12:00:00Z"), "endAt", "2026-08-01T14:00:00Z"), 201);
+        String voteId = voteDraft.at("/data/eventId").asText();
+        String publishedId = createApprovedPublishedEvent("admin-filter-published");
+
+        JsonNode keyword = performJson(get("/api/v1/calendar/admin/events").header("Authorization", bearer("admin-token")).param("keyword", "vote filter"), 200);
+        assertThat(keyword.toString()).contains(voteId).doesNotContain(maintenanceId);
+
+        JsonNode type = performJson(get("/api/v1/calendar/admin/events").header("Authorization", bearer("admin-token")).param("type", "VOTE_DEADLINE"), 200);
+        assertThat(type.toString()).contains(voteId).doesNotContain(maintenanceId);
+
+        JsonNode status = performJson(get("/api/v1/calendar/admin/events").header("Authorization", bearer("admin-token")).param("status", "DRAFT"), 200);
+        assertThat(status.toString()).contains(maintenanceId, voteId).doesNotContain(publishedId);
+
+        JsonNode visibility = performJson(get("/api/v1/calendar/admin/events").header("Authorization", bearer("admin-token")).param("visibility", "STAFF_ONLY"), 200);
+        assertThat(visibility.toString()).contains(voteId).doesNotContain(maintenanceId);
+
+        JsonNode createdBy = performJson(get("/api/v1/calendar/admin/events").header("Authorization", bearer("admin-token")).param("createdBy", "admin-user"), 200);
+        assertThat(createdBy.toString()).contains(maintenanceId, voteId);
+
+        JsonNode range = performJson(get("/api/v1/calendar/admin/events")
+                .header("Authorization", bearer("admin-token"))
+                .param("from", "2026-07-31T00:00:00Z")
+                .param("to", "2026-08-02T00:00:00Z"), 200);
+        assertThat(range.toString()).contains(voteId).doesNotContain(maintenanceId);
+
+        performJson(get("/api/v1/calendar/admin/events").header("Authorization", bearer("admin-token")).param("type", "BAD_TYPE"), 400, 40001);
+        performJson(get("/api/v1/calendar/admin/events").header("Authorization", bearer("admin-token")).param("from", "bad-time"), 400, 40001);
+        performJson(get("/api/v1/calendar/admin/events").header("Authorization", bearer("admin-token"))
+                .param("from", "2026-08-02T00:00:00Z").param("to", "2026-08-01T00:00:00Z"), 409, 49911);
+
+        performJson(post("/api/v1/calendar/admin/events").header("Authorization", bearer("admin-token")),
+                with(with(eventBody("bad-activity-create"), "sourceType", "ACTIVITY"), "sourceId", "act-direct-create"), 400, 40001);
+        performJson(post("/api/v1/calendar/admin/events").header("Authorization", bearer("admin-token")),
+                with(with(eventBody("bad-poll-create"), "sourceType", "COMMUNITY_POLL"), "sourceId", "poll-direct-create"), 400, 40001);
+        performJson(post("/api/v1/calendar/admin/events").header("Authorization", bearer("admin-token")),
+                with(with(eventBody("bad-ops-create"), "sourceType", "OPS_PLACEHOLDER"), "sourceId", "ops-direct-create"), 400, 40001);
+        performJson(post("/api/v1/calendar/admin/events").header("Authorization", bearer("admin-token")),
+                with(with(with(eventBody("bad-changelog-type"), "sourceType", "CHANGELOG"), "sourceId", "change-wrong-type"), "type", "MAINTENANCE"), 400, 40001);
+    }
+
+    @Test
+    @DisplayName("CAL-P1H-004 filters current user watchlist without leaking another user")
+    void watchlistFiltersStatusTypeTimeAndSort() throws Exception {
+        String maintenanceId = createApprovedPublishedEvent("watchlist-filter-maintenance");
+        String voteId = createApprovedPublishedEvent(with(with(with(eventBody("watchlist-filter-vote"), "type", "VOTE_DEADLINE"), "startAt", "2026-08-10T12:00:00Z"), "endAt", "2026-08-10T14:00:00Z"));
+
+        performJson(post("/api/v1/calendar/me/events/" + maintenanceId + "/watch").header("Authorization", bearer("member-user-1-token")),
+                watchBody("watchlist-maintenance-user1"), 201);
+        performJson(post("/api/v1/calendar/me/events/" + voteId + "/watch").header("Authorization", bearer("member-user-1-token")),
+                watchBody("watchlist-vote-user1"), 201);
+        performJson(post("/api/v1/calendar/me/events/" + maintenanceId + "/watch").header("Authorization", bearer("member-user-2-token")),
+                watchBody("watchlist-maintenance-user2"), 201);
+        performJson(post("/api/v1/calendar/me/events/" + maintenanceId + "/unwatch").header("Authorization", bearer("member-user-1-token")),
+                Map.of("reason", "测试取消关注过滤", "idempotencyKey", "watchlist-unwatch-maintenance"), 200);
+
+        JsonNode active = performJson(get("/api/v1/calendar/me/watchlist").header("Authorization", bearer("member-user-1-token")).param("status", "ACTIVE"), 200);
+        assertThat(active.toString()).contains(voteId).doesNotContain(maintenanceId, "member-user-2");
+
+        JsonNode canceled = performJson(get("/api/v1/calendar/me/watchlist").header("Authorization", bearer("member-user-1-token")).param("status", "CANCELED"), 200);
+        assertThat(canceled.toString()).contains(maintenanceId).doesNotContain(voteId, "member-user-2");
+
+        JsonNode type = performJson(get("/api/v1/calendar/me/watchlist").header("Authorization", bearer("member-user-1-token")).param("type", "VOTE_DEADLINE"), 200);
+        assertThat(type.toString()).contains(voteId).doesNotContain(maintenanceId);
+
+        JsonNode range = performJson(get("/api/v1/calendar/me/watchlist")
+                .header("Authorization", bearer("member-user-1-token"))
+                .param("from", "2026-08-09T00:00:00Z")
+                .param("to", "2026-08-11T00:00:00Z")
+                .param("sort", "startAt_asc"), 200);
+        assertThat(range.toString()).contains(voteId).doesNotContain(maintenanceId);
+
+        performJson(get("/api/v1/calendar/me/watchlist").header("Authorization", bearer("member-user-1-token")).param("status", "BAD"), 400, 40001);
+        performJson(get("/api/v1/calendar/me/watchlist").header("Authorization", bearer("member-user-1-token")).param("sort", "bad"), 400, 40003);
+    }
+
+    @Test
+    @DisplayName("CAL-P1H-005 and CAL-P1H-007 enforce audit filters and HELPER ownership")
+    void auditFiltersAndHelperOwnershipBoundaries() throws Exception {
+        JsonNode helperEvent = performJson(post("/api/v1/calendar/admin/events").header("Authorization", bearer("helper-token")),
+                eventBody("helper-owned-event"), 201);
+        String helperEventId = helperEvent.at("/data/eventId").asText();
+        JsonNode helperPatch = performJson(patch("/api/v1/calendar/admin/events/" + helperEventId).header("Authorization", bearer("helper-token")),
+                Map.of("title", "helper owned event", "reason", "修改自己的草稿", "idempotencyKey", "helper-owned-patch"), 200);
+        assertThat(helperPatch.at("/data/title").asText()).isEqualTo("helper owned event");
+
+        String adminEventId = createEvent("admin-owned-for-helper").at("/data/eventId").asText();
+        performJson(patch("/api/v1/calendar/admin/events/" + adminEventId).header("Authorization", bearer("helper-token")),
+                Map.of("title", "协管不能改别人", "reason", "权限边界", "idempotencyKey", "helper-patch-admin-owned"), 403, 42001);
+
+        performJson(get("/api/v1/calendar/admin/audit-logs").header("Authorization", bearer("helper-token")), 403, 42001);
+
+        JsonNode action = performJson(get("/api/v1/calendar/admin/audit-logs")
+                .header("Authorization", bearer("admin-token"))
+                .param("action", "CALENDAR_EVENT_UPDATED"), 200);
+        assertThat(action.toString()).contains(helperEventId).doesNotContain(adminEventId);
+
+        JsonNode actor = performJson(get("/api/v1/calendar/admin/audit-logs")
+                .header("Authorization", bearer("admin-token"))
+                .param("actorUserId", "helper-user")
+                .param("result", "SUCCESS")
+                .param("sort", "createdAt_asc"), 200);
+        assertThat(actor.toString()).contains(helperEventId).doesNotContain("admin-owned-for-helper");
+
+        JsonNode event = performJson(get("/api/v1/calendar/admin/audit-logs")
+                .header("Authorization", bearer("admin-token"))
+                .param("eventId", helperEventId), 200);
+        assertThat(event.toString()).contains(helperEventId).doesNotContain(adminEventId);
+
+        performJson(get("/api/v1/calendar/admin/audit-logs").header("Authorization", bearer("admin-token")).param("result", "BAD"), 400, 40001);
+        performJson(get("/api/v1/calendar/admin/audit-logs").header("Authorization", bearer("admin-token")).param("sort", "bad"), 400, 40003);
+        performJson(get("/api/v1/calendar/admin/audit-logs")
+                .header("Authorization", bearer("admin-token"))
+                .param("from", "2026-08-02T00:00:00Z")
+                .param("to", "2026-08-01T00:00:00Z"), 409, 49911);
     }
 
     @Test
