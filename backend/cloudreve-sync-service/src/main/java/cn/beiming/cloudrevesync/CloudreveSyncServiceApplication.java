@@ -120,6 +120,7 @@ class CloudreveSyncController {
                         text(body.get("authMode")), Boolean.FALSE.equals(body.get("enabled")) ? "DISABLED" : "ENABLED",
                         stringList(body.get("capabilities")), intValue(body.get("timeoutMs"), 5000), actor.userId);
                 provider.applyQuota(body);
+                provider.applyOpsAssetRef(body);
                 store.providers.put(providerId, provider);
                 store.audit("CLOUDREVE_PROVIDER_CREATED", "PROVIDER", providerId, actor, request, body, "MEDIUM", "SUCCESS", null, null, provider.status);
                 Map<String, Object> view = provider.view();
@@ -146,6 +147,7 @@ class CloudreveSyncController {
                 if (body.containsKey("capabilities")) provider.capabilities = stringList(body.get("capabilities"));
                 if (body.containsKey("timeoutMs")) provider.timeoutMs = intValue(body.get("timeoutMs"), 5000);
                 provider.applyQuota(body);
+                provider.applyOpsAssetRef(body);
                 provider.updatedBy = actor.userId;
                 provider.updatedAt = now();
                 store.audit("CLOUDREVE_PROVIDER_UPDATED", "PROVIDER", providerId, actor, request, body, "MEDIUM", "SUCCESS", null, before, provider.status);
@@ -160,6 +162,7 @@ class CloudreveSyncController {
     ResponseEntity<Map<String, Object>> disableProvider(HttpServletRequest request, @PathVariable String providerId, @RequestBody Map<String, Object> body) {
         Actor actor = auth.requireAnyCapability(request, "NODE_WRITE");
         auth.requireAdmin(actor);
+        rejectTrusted(body);
         validateReason(body);
         return idempotent(request, actor, "provider:disable:" + providerId, body, () -> {
             store.failAuditIfRequested(request, properties.enabled());
@@ -177,6 +180,7 @@ class CloudreveSyncController {
     ResponseEntity<Map<String, Object>> enableProvider(HttpServletRequest request, @PathVariable String providerId, @RequestBody Map<String, Object> body) {
         Actor actor = auth.requireAnyCapability(request, "NODE_WRITE");
         auth.requireAdmin(actor);
+        rejectTrusted(body);
         validateReason(body);
         if (properties.enabled() && "unauthorized".equals(request.getHeader("X-Test-Cloudreve-Mode"))) {
             throw new CloudreveException(HttpStatus.BAD_GATEWAY, 46703, "cloudreve unauthorized");
@@ -290,6 +294,9 @@ class CloudreveSyncController {
                 if ("DISABLED".equals(provider.status)) {
                     throw new CloudreveException(HttpStatus.CONFLICT, 49710, "provider disabled");
                 }
+                if (List.of("DIRECTORY_SYNC", "SHARE_REFRESH").contains(text(body.get("jobType"))) && "EXCEEDED".equals(provider.quotaStatus())) {
+                    throw new CloudreveException(HttpStatus.CONFLICT, 49710, "provider quota exceeded");
+                }
                 String jobId = "job-" + store.nextId();
                 String status = properties.enabled() && "pending".equals(request.getHeader("X-Test-Cloudreve-Mode")) ? "PENDING" : "SUCCEEDED";
                 Map<String, Object> target = body.containsKey("target") ? objectMap(body.get("target")) : Map.of("providerId", provider.providerId);
@@ -311,12 +318,14 @@ class CloudreveSyncController {
         auth.requireAnyCapability(request, "FILE_MANAGE", "NODE_READ");
         validatePage(query);
         validateSort(query.get("sort"), "createdAt_desc", "updatedAt_desc", "finishedAt_desc");
+        validateTimeRange(query);
         return ok(request, page(store.jobs.values().stream()
                 .filter(job -> query.get("providerId") == null || job.providerId.equals(query.get("providerId")))
                 .filter(job -> query.get("jobType") == null || job.jobType.equals(query.get("jobType")))
                 .filter(job -> query.get("status") == null || job.status.equals(query.get("status")))
                 .filter(job -> query.get("trigger") == null || job.trigger.equals(query.get("trigger")))
                 .filter(job -> query.get("createdBy") == null || job.createdBy.equals(query.get("createdBy")))
+                .filter(job -> inTimeRange(job.createdAt, query))
                 .sorted(jobComparator(query.get("sort")))
                 .map(CloudreveJob::view)
                 .toList(), query));
@@ -331,6 +340,7 @@ class CloudreveSyncController {
     @PatchMapping("/sync-jobs/{jobId}/cancel")
     ResponseEntity<Map<String, Object>> cancelJob(HttpServletRequest request, @PathVariable String jobId, @RequestBody Map<String, Object> body) {
         Actor actor = auth.requireAnyCapability(request, "FILE_MANAGE", "NODE_WRITE");
+        rejectTrusted(body);
         validateReason(body);
         return idempotent(request, actor, "job:cancel:" + jobId, body, () -> {
             store.failAuditIfRequested(request, properties.enabled());
@@ -362,6 +372,7 @@ class CloudreveSyncController {
                 .filter(audit -> query.get("jobId") == null || Objects.equals(audit.jobId, query.get("jobId")))
                 .filter(audit -> query.get("action") == null || audit.action.equals(query.get("action")))
                 .filter(audit -> query.get("result") == null || audit.result.equals(query.get("result")))
+                .filter(audit -> inTimeRange(audit.createdAt, query))
                 .sorted(auditComparator(query.get("sort")))
                 .map(CloudreveAudit::view)
                 .toList(), query));
@@ -427,23 +438,25 @@ class CloudreveSyncController {
     }
 
     private ResponseEntity<Map<String, Object>> idempotent(HttpServletRequest request, Actor actor, String namespace, Map<String, Object> body, ResponseSupplier supplier) {
-        String key = text(body.get("idempotencyKey"));
-        if (key.isBlank()) {
-            return supplier.get();
-        }
-        String idempotencyKey = actor.userId + ":" + namespace + ":" + key;
-        String fingerprint = store.fingerprint(body);
-        CloudreveIdempotency existing = store.idempotency.get(idempotencyKey);
-        if (existing != null) {
-            if (!existing.fingerprint.equals(fingerprint)) {
-                throw new CloudreveException(HttpStatus.CONFLICT, 49712, "idempotency conflict");
+        synchronized (store) {
+            String key = text(body.get("idempotencyKey"));
+            if (key.isBlank()) {
+                return supplier.get();
             }
-            return respond(request, existing.status, 0, "success", existing.data);
+            String idempotencyKey = actor.userId + ":" + namespace + ":" + key;
+            String fingerprint = store.fingerprint(body);
+            CloudreveIdempotency existing = store.idempotency.get(idempotencyKey);
+            if (existing != null) {
+                if (!existing.fingerprint.equals(fingerprint)) {
+                    throw new CloudreveException(HttpStatus.CONFLICT, 49712, "idempotency conflict");
+                }
+                return respond(request, existing.status, 0, "success", existing.data);
+            }
+            ResponseEntity<Map<String, Object>> response = supplier.get();
+            Object data = response.getBody() == null ? null : response.getBody().get("data");
+            store.idempotency.put(idempotencyKey, new CloudreveIdempotency(fingerprint, response.getStatusCode(), data));
+            return response;
         }
-        ResponseEntity<Map<String, Object>> response = supplier.get();
-        Object data = response.getBody() == null ? null : response.getBody().get("data");
-        store.idempotency.put(idempotencyKey, new CloudreveIdempotency(fingerprint, response.getStatusCode(), data));
-        return response;
     }
 
     private static void validateProviderBody(Map<String, Object> body, boolean create) {
@@ -535,7 +548,22 @@ class CloudreveSyncController {
     private static void validateTimeRange(Map<String, String> query) {
         String from = query.get("from");
         String to = query.get("to");
-        if (from != null && to != null && Instant.parse(from).isAfter(Instant.parse(to))) {
+        if (from != null && to != null && parseInstant(from).isAfter(parseInstant(to))) {
+            throw new CloudreveException(HttpStatus.BAD_REQUEST, 40001, "invalid time range");
+        }
+    }
+
+    private static boolean inTimeRange(String value, Map<String, String> query) {
+        Instant instant = parseInstant(value);
+        String from = query.get("from");
+        String to = query.get("to");
+        return (from == null || !instant.isBefore(parseInstant(from))) && (to == null || !instant.isAfter(parseInstant(to)));
+    }
+
+    private static Instant parseInstant(String value) {
+        try {
+            return Instant.parse(value);
+        } catch (Exception exception) {
             throw new CloudreveException(HttpStatus.BAD_REQUEST, 40001, "invalid time range");
         }
     }
@@ -825,7 +853,7 @@ class CloudreveProvider {
     String status;
     List<String> capabilities;
     int timeoutMs;
-    final Map<String, Object> opsAssetRef = Map.of("assetId", "asset-cloudreve-main", "source", "ops-control");
+    Map<String, Object> opsAssetRef = new LinkedHashMap<>(Map.of("assetId", "asset-cloudreve-main", "source", "ops-control"));
     Long quotaTotalBytes = 512L * 1024 * 1024 * 1024;
     Long quotaUsedBytes = 128L * 1024 * 1024 * 1024;
     int quotaWarningThresholdPercent = 85;
@@ -911,6 +939,30 @@ class CloudreveProvider {
             sanitized.put("source", "REQUEST_SUMMARY");
             pricingPlanSummary = sanitized;
         }
+    }
+
+    void applyOpsAssetRef(Map<String, Object> body) {
+        if (!body.containsKey("opsAssetRef")) return;
+        Object value = body.get("opsAssetRef");
+        if (value == null) {
+            opsAssetRef = null;
+            return;
+        }
+        if (!(value instanceof Map<?, ?> map)) {
+            throw new CloudreveException(HttpStatus.BAD_REQUEST, 40001, "invalid ops asset ref");
+        }
+        Map<String, Object> sanitized = new LinkedHashMap<>();
+        copyIfPresent(map, sanitized, "assetId");
+        copyIfPresent(map, sanitized, "assetType");
+        copyIfPresent(map, sanitized, "displayName");
+        copyIfPresent(map, sanitized, "source");
+        copyIfPresent(map, sanitized, "syncedAt");
+        opsAssetRef = sanitized.isEmpty() ? null : sanitized;
+    }
+
+    private static void copyIfPresent(Map<?, ?> source, Map<String, Object> target, String key) {
+        Object value = source.get(key);
+        if (value != null) target.put(key, String.valueOf(value));
     }
 
     Double quotaUsagePercent() {

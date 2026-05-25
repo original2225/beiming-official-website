@@ -177,6 +177,99 @@ class CloudreveSyncApiContractTest {
     }
 
     @Test
+    @DisplayName("CRS-PROVIDER and CRS-HARDEN cover opsAssetRef persistence, trusted-field rejection, quota exceeded guards, and time filters")
+    void providerHardeningAndTimeFiltering() throws Exception {
+        Map<String, Object> customOpsRef = new LinkedHashMap<>();
+        customOpsRef.put("assetId", "asset-cloudreve-custom");
+        customOpsRef.put("assetType", "CLOUDREVE_SERVICE");
+        customOpsRef.put("displayName", "Custom Cloudreve Asset");
+        customOpsRef.put("source", "ops-control");
+        customOpsRef.put("syncedAt", "2026-05-26T03:31:00Z");
+
+        JsonNode created = performJson(post("/api/v1/cloudreve-sync/providers").header("Authorization", bearer("sync-admin-token")),
+                with(providerBody("ops-ref-create"), "opsAssetRef", customOpsRef), 201);
+        assertThat(created.at("/data/opsAssetRef/assetId").asText()).isEqualTo("asset-cloudreve-custom");
+        assertThat(created.at("/data/opsAssetRef/assetType").asText()).isEqualTo("CLOUDREVE_SERVICE");
+        assertThat(created.toString()).doesNotContain("internalPath", "nodeSecret", "cloudreve-secret-token");
+
+        Map<String, Object> updatedOpsRef = new LinkedHashMap<>();
+        updatedOpsRef.put("assetId", "asset-cloudreve-updated");
+        updatedOpsRef.put("assetType", "CLOUDREVE_SERVICE");
+        updatedOpsRef.put("displayName", "Updated Cloudreve Asset");
+        updatedOpsRef.put("source", "ops-control");
+        JsonNode patched = performJson(patch("/api/v1/cloudreve-sync/providers/" + created.at("/data/providerId").asText())
+                        .header("Authorization", bearer("sync-admin-token")),
+                Map.of("opsAssetRef", updatedOpsRef, "reason", "更新资产引用", "idempotencyKey", "ops-ref-patch"), 200);
+        assertThat(patched.at("/data/opsAssetRef/assetId").asText()).isEqualTo("asset-cloudreve-updated");
+
+        performJson(patch("/api/v1/cloudreve-sync/providers/" + created.at("/data/providerId").asText() + "/disable")
+                        .header("Authorization", bearer("sync-admin-token")),
+                Map.of("reason", "拒绝可信字段", "idempotencyKey", "disable-trusted", "createdBy", "browser"), 400, 40001);
+        JsonNode afterRejectedDisable = performJson(get("/api/v1/cloudreve-sync/providers/" + created.at("/data/providerId").asText())
+                .header("Authorization", bearer("sync-viewer-token")), 200);
+        assertThat(afterRejectedDisable.at("/data/status").asText()).isEqualTo("ENABLED");
+
+        performJson(patch("/api/v1/cloudreve-sync/providers/" + created.at("/data/providerId").asText() + "/enable")
+                        .header("Authorization", bearer("sync-admin-token")),
+                Map.of("reason", "拒绝可信字段", "idempotencyKey", "enable-trusted", "taskStatus", "SUCCEEDED"), 400, 40001);
+
+        JsonNode pending = performJson(post("/api/v1/cloudreve-sync/sync-jobs")
+                        .header("Authorization", bearer("sync-file-token"))
+                        .header("X-Test-Cloudreve-Mode", "pending"),
+                jobBody("DIRECTORY_SYNC", "trusted-cancel-job"), 201);
+        performJson(patch("/api/v1/cloudreve-sync/sync-jobs/" + pending.at("/data/jobId").asText() + "/cancel")
+                        .header("Authorization", bearer("sync-file-token")),
+                Map.of("reason", "拒绝可信字段", "idempotencyKey", "cancel-trusted", "beforeState", "RUNNING"), 400, 40001);
+        JsonNode stillPending = performJson(get("/api/v1/cloudreve-sync/sync-jobs/" + pending.at("/data/jobId").asText())
+                .header("Authorization", bearer("sync-viewer-token")), 200);
+        assertThat(stillPending.at("/data/status").asText()).isEqualTo("PENDING");
+
+        Map<String, Object> exceededBody = providerBody("quota-exceeded");
+        exceededBody.put("quotaTotalBytes", 100L);
+        exceededBody.put("quotaUsedBytes", 150L);
+        JsonNode exceeded = performJson(post("/api/v1/cloudreve-sync/providers").header("Authorization", bearer("sync-admin-token")),
+                exceededBody, 201);
+        assertThat(exceeded.at("/data/quotaStatus").asText()).isEqualTo("EXCEEDED");
+        String exceededProviderId = exceeded.at("/data/providerId").asText();
+        performJson(post("/api/v1/cloudreve-sync/sync-jobs").header("Authorization", bearer("sync-file-token")),
+                with(jobBody("DIRECTORY_SYNC", "quota-directory"), "providerId", exceededProviderId), 409, 49710);
+        performJson(post("/api/v1/cloudreve-sync/sync-jobs").header("Authorization", bearer("sync-file-token")),
+                with(jobBody("SHARE_REFRESH", "quota-share"), "providerId", exceededProviderId), 409, 49710);
+        performJson(post("/api/v1/cloudreve-sync/sync-jobs").header("Authorization", bearer("sync-admin-token")),
+                with(jobBody("PROVIDER_HEALTH_CHECK", "quota-health"), "providerId", exceededProviderId), 201);
+        performJson(get("/api/v1/cloudreve-sync/files").header("Authorization", bearer("sync-file-token"))
+                .param("providerId", "provider-main"), 200);
+
+        JsonNode jobsFuture = performJson(get("/api/v1/cloudreve-sync/sync-jobs")
+                .header("Authorization", bearer("sync-viewer-token"))
+                .param("from", "2030-01-01T00:00:00Z")
+                .param("to", "2031-01-01T00:00:00Z"), 200);
+        assertThat(jobsFuture.at("/data/total").asInt()).isZero();
+        JsonNode jobsCurrent = performJson(get("/api/v1/cloudreve-sync/sync-jobs")
+                .header("Authorization", bearer("sync-viewer-token"))
+                .param("from", "2020-01-01T00:00:00Z")
+                .param("to", "2030-01-01T00:00:00Z"), 200);
+        assertThat(jobsCurrent.at("/data/total").asInt()).isGreaterThan(0);
+        performJson(get("/api/v1/cloudreve-sync/sync-jobs")
+                .header("Authorization", bearer("sync-viewer-token"))
+                .param("from", "2030-01-01T00:00:00Z")
+                .param("to", "2020-01-01T00:00:00Z"), 400, 40001);
+
+        JsonNode auditFuture = performJson(get("/api/v1/cloudreve-sync/audit-logs")
+                .header("Authorization", bearer("sync-admin-token"))
+                .param("providerId", exceededProviderId)
+                .param("from", "2030-01-01T00:00:00Z")
+                .param("to", "2031-01-01T00:00:00Z"), 200);
+        assertThat(auditFuture.at("/data/total").asInt()).isZero();
+        JsonNode auditCurrent = performJson(get("/api/v1/cloudreve-sync/audit-logs")
+                .header("Authorization", bearer("sync-admin-token"))
+                .param("providerId", exceededProviderId)
+                .param("from", "2020-01-01T00:00:00Z")
+                .param("to", "2030-01-01T00:00:00Z"), 200);
+        assertThat(auditCurrent.at("/data/total").asInt()).isGreaterThan(0);
+    }
+
+    @Test
     @DisplayName("CRS-FILE and CRS-SHARE cover snapshots, path guard, share resolve, degradation, idempotency, and password redaction")
     void filesSharesAndResolve() throws Exception {
         JsonNode files = performJson(get("/api/v1/cloudreve-sync/files")
