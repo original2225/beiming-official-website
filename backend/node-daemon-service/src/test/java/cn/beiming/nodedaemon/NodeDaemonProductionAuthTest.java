@@ -17,6 +17,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.TreeMap;
@@ -36,7 +37,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_EACH_TEST_METHOD)
 class NodeDaemonProductionAuthTest {
     private static final String SECRET = "local-node-signing-secret";
-    private static final String TIMESTAMP = "2026-05-26T00:55:00Z";
 
     @Autowired
     MockMvc mvc;
@@ -66,12 +66,13 @@ class NodeDaemonProductionAuthTest {
         body.put("registrationNonce", "nonce-hmac");
         body.put("controlPlaneNodeId", "node-main");
 
+        String replayTimestamp = Instant.now().toString();
         JsonNode handshake = performJson(post("/api/v1/node-daemon/registration/handshake")
-                .headers(signedHeaders("POST", "/api/v1/node-daemon/registration/handshake", body, "node-auth-handshake")), body, 200);
+                .headers(signedHeaders("POST", "/api/v1/node-daemon/registration/handshake", body, "node-auth-handshake", replayTimestamp)), body, 200);
         assertThat(handshake.at("/data/nodeId").asText()).isEqualTo("node-main");
 
         JsonNode replay = performJson(post("/api/v1/node-daemon/registration/handshake")
-                .headers(signedHeaders("POST", "/api/v1/node-daemon/registration/handshake", body, "node-auth-handshake")), body, 200);
+                .headers(signedHeaders("POST", "/api/v1/node-daemon/registration/handshake", body, "node-auth-handshake", replayTimestamp)), body, 200);
         assertThat(replay.at("/data/handshakeId").asText()).isEqualTo(handshake.at("/data/handshakeId").asText());
 
         performJson(get("/api/v1/node-daemon/capabilities")
@@ -124,7 +125,7 @@ class NodeDaemonProductionAuthTest {
     }
 
     private HttpHeaders signedHeaders(String method, String path, Map<String, Object> body, String nodeRequestId) {
-        return signedHeaders(method, path, body, nodeRequestId, TIMESTAMP);
+        return signedHeaders(method, path, body, nodeRequestId, Instant.now().toString());
     }
 
     private HttpHeaders signedHeaders(String method, String path, Map<String, Object> body, String nodeRequestId, String timestamp) {
@@ -142,7 +143,7 @@ class NodeDaemonProductionAuthTest {
         headers.set("Authorization", "Bearer node-token-valid");
         headers.set("X-Node-Id", "node-main");
         headers.set("X-Node-Request-Id", nodeRequestId);
-        headers.set("X-Node-Timestamp", TIMESTAMP);
+        headers.set("X-Node-Timestamp", Instant.now().toString());
         headers.set("X-Node-Signature", "test-signature");
         return headers;
     }

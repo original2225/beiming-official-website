@@ -18,6 +18,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -41,22 +45,33 @@ public class NodeDaemonServiceApplication {
 @RestController
 @RequestMapping("/api/v1/node-daemon")
 class NodeDaemonController {
-    private static final String NODE_ID = "node-main";
     private static final String VERSION = "0.1.0-simulated";
-    private static final String VALID_BEARER = "Bearer node-token-valid";
     private static final String VALID_SIGNATURE = "test-signature";
     private static final String NOW = "2026-05-25T15:00:00Z";
 
+    private final String nodeId;
+    private final String nodeToken;
+    private final String nodeSigningSecret;
+    private final long allowedClockSkewSeconds;
     private final boolean testControlsEnabled;
     private final ObjectMapper objectMapper;
     private final Map<String, IdempotencyRecord> idempotency = new ConcurrentHashMap<>();
+    private final Map<String, String> nodeRequestSignatures = new ConcurrentHashMap<>();
     private final Map<String, Map<String, Object>> tasks = new ConcurrentHashMap<>();
     private final List<Map<String, Object>> audits = Collections.synchronizedList(new ArrayList<>());
 
     NodeDaemonController(
+            @Value("${node-daemon.node-id:node-main}") String nodeId,
+            @Value("${node-daemon.node-token:node-token-valid}") String nodeToken,
+            @Value("${node-daemon.node-signing-secret:local-node-signing-secret}") String nodeSigningSecret,
+            @Value("${node-daemon.allowed-clock-skew-seconds:300}") long allowedClockSkewSeconds,
             @Value("${node-daemon.test-controls.enabled:false}") boolean testControlsEnabled,
             ObjectMapper objectMapper
     ) {
+        this.nodeId = nodeId;
+        this.nodeToken = nodeToken;
+        this.nodeSigningSecret = nodeSigningSecret;
+        this.allowedClockSkewSeconds = allowedClockSkewSeconds;
         this.testControlsEnabled = testControlsEnabled;
         this.objectMapper = objectMapper;
     }
@@ -79,10 +94,15 @@ class NodeDaemonController {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("service", "node-daemon");
         data.put("port", 8117);
-        data.put("nodeId", NODE_ID);
+        data.put("nodeId", nodeId);
         data.put("mode", "SIMULATED");
         data.put("status", "READY");
         data.put("version", VERSION);
+        data.put("authMode", "HMAC_CONFIGURED");
+        data.put("signatureAlgorithm", "HmacSHA256");
+        data.put("nodeIdBound", !nodeId.isBlank());
+        data.put("allowedClockSkewSeconds", allowedClockSkewSeconds);
+        data.put("replayWindowMode", "NODE_REQUEST_ID_IN_MEMORY");
         data.put("opsControlEndpointSummary", "ops-control:8116");
         data.put("testControlsEnabled", testControlsEnabled);
         data.put("runtimeAdapters", Map.of(
@@ -117,7 +137,7 @@ class NodeDaemonController {
             HttpServletRequest request,
             @RequestBody Map<String, Object> body
     ) {
-        ResponseEntity<Map<String, Object>> auth = requireNodeAuth(request);
+        ResponseEntity<Map<String, Object>> auth = requireNodeAuth(request, body);
         if (auth != null) {
             return auth;
         }
@@ -125,7 +145,7 @@ class NodeDaemonController {
         if (trustedError != null) {
             return trustedError;
         }
-        if (!NODE_ID.equals(text(body.get("controlPlaneNodeId")))) {
+        if (!nodeId.equals(text(body.get("controlPlaneNodeId")))) {
             return error(request, HttpStatus.FORBIDDEN, 49603, "node id mismatch");
         }
         ResponseEntity<Map<String, Object>> replay = replayOrConflict(request, body, "handshake:" + text(body.get("idempotencyKey")));
@@ -134,7 +154,7 @@ class NodeDaemonController {
         }
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("handshakeId", "handshake-" + text(body.get("idempotencyKey")));
-        data.put("nodeId", NODE_ID);
+        data.put("nodeId", nodeId);
         data.put("daemonVersion", text(body.get("daemonVersion")));
         data.put("signatureAlgorithm", "HMAC-SHA256");
         data.put("capabilities", body.getOrDefault("capabilities", List.of()));
@@ -155,7 +175,7 @@ class NodeDaemonController {
 
     @PostMapping("/runtime/heartbeat")
     ResponseEntity<Map<String, Object>> heartbeat(HttpServletRequest request, @RequestBody Map<String, Object> body) {
-        ResponseEntity<Map<String, Object>> auth = requireNodeAuth(request);
+        ResponseEntity<Map<String, Object>> auth = requireNodeAuth(request, body);
         if (auth != null) {
             return auth;
         }
@@ -172,8 +192,8 @@ class NodeDaemonController {
         }
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("dryRun", dryRun);
-        data.put("nodeId", NODE_ID);
-        data.put("callbackPath", "/api/v1/ops-control/nodes/node-main/heartbeat");
+        data.put("nodeId", nodeId);
+        data.put("callbackPath", "/api/v1/ops-control/nodes/" + nodeId + "/heartbeat");
         data.put("payloadSummary", snapshot(false));
         data.put("opsControlStatus", dryRun ? "DRY_RUN" : "AVAILABLE");
         audit(request, "HEARTBEAT_TRIGGERED", null, "SUCCESS");
@@ -182,7 +202,7 @@ class NodeDaemonController {
 
     @PostMapping("/tasks")
     ResponseEntity<Map<String, Object>> receiveTask(HttpServletRequest request, @RequestBody Map<String, Object> body) {
-        ResponseEntity<Map<String, Object>> auth = requireNodeAuth(request);
+        ResponseEntity<Map<String, Object>> auth = requireNodeAuth(request, body);
         if (auth != null) {
             return auth;
         }
@@ -195,7 +215,7 @@ class NodeDaemonController {
         if (replay != null) {
             return replay;
         }
-        if (!NODE_ID.equals(text(body.get("nodeId")))) {
+        if (!nodeId.equals(text(body.get("nodeId")))) {
             return error(request, HttpStatus.FORBIDDEN, 49603, "node id mismatch");
         }
         String taskType = text(body.get("taskType"));
@@ -220,7 +240,7 @@ class NodeDaemonController {
         task.put("taskType", taskType);
         task.put("status", status);
         task.put("riskLevel", text(body.get("riskLevel")));
-        task.put("nodeId", NODE_ID);
+        task.put("nodeId", nodeId);
         task.put("targetType", targetType);
         task.put("targetId", targetId);
         task.put("paramsSummary", body.getOrDefault("paramsSummary", Map.of()));
@@ -285,7 +305,7 @@ class NodeDaemonController {
             @PathVariable String nodeRequestId,
             @RequestBody Map<String, Object> body
     ) {
-        ResponseEntity<Map<String, Object>> auth = requireNodeAuth(request);
+        ResponseEntity<Map<String, Object>> auth = requireNodeAuth(request, body);
         if (auth != null) {
             return auth;
         }
@@ -332,7 +352,7 @@ class NodeDaemonController {
 
     @PostMapping("/files/read")
     ResponseEntity<Map<String, Object>> readFile(HttpServletRequest request, @RequestBody Map<String, Object> body) {
-        ResponseEntity<Map<String, Object>> auth = requireNodeAuth(request);
+        ResponseEntity<Map<String, Object>> auth = requireNodeAuth(request, body);
         if (auth != null) {
             return auth;
         }
@@ -373,7 +393,7 @@ class NodeDaemonController {
 
     @PostMapping("/logs/query")
     ResponseEntity<Map<String, Object>> queryLogs(HttpServletRequest request, @RequestBody Map<String, Object> body) {
-        ResponseEntity<Map<String, Object>> auth = requireNodeAuth(request);
+        ResponseEntity<Map<String, Object>> auth = requireNodeAuth(request, body);
         if (auth != null) {
             return auth;
         }
@@ -420,6 +440,10 @@ class NodeDaemonController {
     }
 
     private ResponseEntity<Map<String, Object>> requireNodeAuth(HttpServletRequest request) {
+        return requireNodeAuth(request, Map.of());
+    }
+
+    private ResponseEntity<Map<String, Object>> requireNodeAuth(HttpServletRequest request, Map<String, Object> body) {
         String authorization = request.getHeader("Authorization");
         if (authorization == null || authorization.isBlank()) {
             return error(request, HttpStatus.UNAUTHORIZED, 49600, "node auth missing");
@@ -427,19 +451,75 @@ class NodeDaemonController {
         if (!authorization.startsWith("Bearer ")) {
             return error(request, HttpStatus.UNAUTHORIZED, 41003, "bad token format");
         }
-        if (!VALID_BEARER.equals(authorization)) {
+        if (!("Bearer " + nodeToken).equals(authorization)) {
             return error(request, HttpStatus.UNAUTHORIZED, 49601, "node auth invalid");
         }
-        if (!NODE_ID.equals(request.getHeader("X-Node-Id"))) {
+        if (!nodeId.equals(request.getHeader("X-Node-Id"))) {
             return error(request, HttpStatus.FORBIDDEN, 49603, "node id mismatch");
         }
-        if (!VALID_SIGNATURE.equals(request.getHeader("X-Node-Signature"))) {
+        String timestamp = request.getHeader("X-Node-Timestamp");
+        String nodeRequestId = request.getHeader("X-Node-Request-Id");
+        String signature = request.getHeader("X-Node-Signature");
+        if (timestamp == null || timestamp.isBlank() || nodeRequestId == null || nodeRequestId.isBlank() || signature == null || signature.isBlank()) {
             return error(request, HttpStatus.UNAUTHORIZED, 49601, "signature invalid");
         }
-        if ("2020-01-01T00:00:00Z".equals(request.getHeader("X-Node-Timestamp"))) {
+        if (testControlsEnabled) {
+            if (!VALID_SIGNATURE.equals(signature)) {
+                return error(request, HttpStatus.UNAUTHORIZED, 49601, "signature invalid");
+            }
+            if ("2020-01-01T00:00:00Z".equals(timestamp)) {
+                return error(request, HttpStatus.UNAUTHORIZED, 49602, "timestamp expired");
+            }
+            return null;
+        }
+        if (timestampOutsideWindow(timestamp)) {
             return error(request, HttpStatus.UNAUTHORIZED, 49602, "timestamp expired");
         }
+        String signingText = signingText(request.getMethod(), request.getRequestURI(), body, timestamp, nodeRequestId);
+        if (!hmac(signingText).equals(signature)) {
+            return error(request, HttpStatus.UNAUTHORIZED, 49601, "signature invalid");
+        }
+        String previous = nodeRequestSignatures.putIfAbsent(nodeRequestId, signingText);
+        if (previous != null && !previous.equals(signingText)) {
+            return error(request, HttpStatus.CONFLICT, 49612, "node request replay conflict");
+        }
         return null;
+    }
+
+    private boolean timestampOutsideWindow(String timestamp) {
+        try {
+            long delta = Math.abs(Duration.between(Instant.parse(timestamp), Instant.now()).getSeconds());
+            return delta > allowedClockSkewSeconds;
+        } catch (RuntimeException exception) {
+            return true;
+        }
+    }
+
+    private String signingText(String method, String path, Map<String, Object> body, String timestamp, String nodeRequestId) {
+        return method.toUpperCase() + "\n" + path + "\n" + canonicalJson(body == null ? Map.of() : body) + "\n" + timestamp + "\n" + nodeRequestId;
+    }
+
+    private String hmac(String value) {
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(nodeSigningSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            byte[] digest = mac.doFinal(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder();
+            for (byte item : digest) {
+                hex.append("%02x".formatted(item));
+            }
+            return hex.toString();
+        } catch (Exception exception) {
+            throw new IllegalStateException(exception);
+        }
+    }
+
+    private String canonicalJson(Object value) {
+        try {
+            return objectMapper.writeValueAsString(canonicalize(value));
+        } catch (JsonProcessingException exception) {
+            return "{}";
+        }
     }
 
     private ResponseEntity<Map<String, Object>> replayOrConflict(HttpServletRequest request, Map<String, Object> body, String key) {
@@ -468,7 +548,7 @@ class NodeDaemonController {
 
     private Map<String, Object> snapshot(boolean degraded) {
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("nodeId", NODE_ID);
+        data.put("nodeId", nodeId);
         data.put("status", degraded ? "DEGRADED" : "READY");
         data.put("version", VERSION);
         data.put("capabilities", List.of("NODE_READ", "NODE_WRITE", "FILE_MANAGE", "CONTAINER_OPERATE"));
@@ -482,7 +562,7 @@ class NodeDaemonController {
         ));
         data.put("containers", List.of(Map.of(
                 "containerId", "container-seed-1",
-                "nodeId", NODE_ID,
+                "nodeId", nodeId,
                 "name", "beiming-runtime",
                 "image", "beiming/runtime:simulated",
                 "runtime", "SIMULATED",
@@ -494,7 +574,7 @@ class NodeDaemonController {
         )));
         data.put("vms", List.of(Map.of(
                 "vmId", "vm-build-1",
-                "nodeId", NODE_ID,
+                "nodeId", nodeId,
                 "name", "build-vm",
                 "platform", "SIMULATED",
                 "status", "STOPPED",
@@ -506,7 +586,7 @@ class NodeDaemonController {
         )));
         data.put("minecraftInstances", List.of(Map.of(
                 "instanceId", "mc-survival",
-                "nodeId", NODE_ID,
+                "nodeId", nodeId,
                 "publicInstanceId", "public-survival",
                 "name", "北冥生存服",
                 "version", "1.20.4",
@@ -582,7 +662,7 @@ class NodeDaemonController {
             return fileEntries().stream().anyMatch(file -> Objects.equals(file.get("path"), targetId));
         }
         if ("NODE".equals(targetType)) {
-            return NODE_ID.equals(targetId);
+            return nodeId.equals(targetId);
         }
         return false;
     }
@@ -591,7 +671,7 @@ class NodeDaemonController {
         Map<String, Object> audit = new LinkedHashMap<>();
         audit.put("id", "audit-" + UUID.randomUUID());
         audit.put("requestId", requestId(request));
-        audit.put("nodeId", NODE_ID);
+        audit.put("nodeId", nodeId);
         audit.put("nodeRequestId", nodeRequestId);
         audit.put("localAction", action);
         audit.put("result", result);
