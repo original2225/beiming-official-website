@@ -8,6 +8,7 @@ import org.springframework.core.env.StandardEnvironment;
 import org.springframework.core.io.FileSystemResource;
 
 import java.nio.file.Path;
+import java.nio.file.Files;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -16,7 +17,11 @@ class OpsControlPortConfigTest {
     void portIsFixedTo8116() throws Exception {
         StandardEnvironment environment = new StandardEnvironment();
         YamlPropertySourceLoader loader = new YamlPropertySourceLoader();
-        loader.load("ops-control", new FileSystemResource(Path.of("backend/ops-control-service/src/main/resources/application.yml")))
+        Path path = Path.of("backend/ops-control-service/src/main/resources/application.yml");
+        if (!Files.exists(path)) {
+            path = Path.of("src/main/resources/application.yml");
+        }
+        loader.load("ops-control", new FileSystemResource(path))
                 .forEach(environment.getPropertySources()::addLast);
         int port = Binder.get(environment)
                 .bind("server.port", Integer.class)

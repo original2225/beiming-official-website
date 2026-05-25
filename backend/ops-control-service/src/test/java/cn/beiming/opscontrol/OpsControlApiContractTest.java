@@ -60,7 +60,7 @@ class OpsControlApiContractTest {
         addRange(mapped, "OPS-PORT", 1, 20);
         addRange(mapped, "OPS-CYCLE", 1, 80);
         assertThat(mapped).contains("OPS-COM-001", "OPS-NODE-120", "OPS-FILE-120", "OPS-HARDEN-160", "OPS-CYCLE-080");
-        assertThat(mapped).hasSize(1630);
+        assertThat(mapped).hasSize(1640);
     }
 
     @Test
