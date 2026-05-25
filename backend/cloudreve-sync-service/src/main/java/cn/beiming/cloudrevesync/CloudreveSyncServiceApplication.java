@@ -119,8 +119,9 @@ class CloudreveSyncController {
                 CloudreveProvider provider = new CloudreveProvider(providerId, displayName, baseSummary(text(body.get("baseUrl"))),
                         text(body.get("authMode")), Boolean.FALSE.equals(body.get("enabled")) ? "DISABLED" : "ENABLED",
                         stringList(body.get("capabilities")), intValue(body.get("timeoutMs"), 5000), actor.userId);
+                provider.applyQuota(body);
                 store.providers.put(providerId, provider);
-                store.audit("CLOUDREVE_PROVIDER_CREATED", "PROVIDER", "provider-main", actor, request, body, "MEDIUM", "SUCCESS", null, null, provider.status);
+                store.audit("CLOUDREVE_PROVIDER_CREATED", "PROVIDER", providerId, actor, request, body, "MEDIUM", "SUCCESS", null, null, provider.status);
                 Map<String, Object> view = provider.view();
                 view.put("credentialStored", true);
                 return created(request, view);
@@ -144,6 +145,7 @@ class CloudreveSyncController {
                 if (body.containsKey("authMode")) provider.authMode = text(body.get("authMode"));
                 if (body.containsKey("capabilities")) provider.capabilities = stringList(body.get("capabilities"));
                 if (body.containsKey("timeoutMs")) provider.timeoutMs = intValue(body.get("timeoutMs"), 5000);
+                provider.applyQuota(body);
                 provider.updatedBy = actor.userId;
                 provider.updatedAt = now();
                 store.audit("CLOUDREVE_PROVIDER_UPDATED", "PROVIDER", providerId, actor, request, body, "MEDIUM", "SUCCESS", null, before, provider.status);
@@ -290,8 +292,9 @@ class CloudreveSyncController {
                 }
                 String jobId = "job-" + store.nextId();
                 String status = properties.enabled() && "pending".equals(request.getHeader("X-Test-Cloudreve-Mode")) ? "PENDING" : "SUCCEEDED";
+                Map<String, Object> target = body.containsKey("target") ? objectMap(body.get("target")) : Map.of("providerId", provider.providerId);
                 CloudreveJob job = new CloudreveJob(jobId, text(body.get("jobType")), status, text(body.get("trigger")), provider.providerId,
-                        objectMap(body.get("target")), text(body.get("idempotencyKey")), actor.userId);
+                        target, text(body.get("idempotencyKey")), actor.userId);
                 job.resultSummary = resultSummary(job);
                 store.jobs.put(jobId, job);
                 if ("DIRECTORY_SYNC".equals(job.jobType) && "SUCCEEDED".equals(status)) {
@@ -458,6 +461,22 @@ class CloudreveSyncController {
             int timeout = intValue(body.get("timeoutMs"), 0);
             if (timeout < 1000 || timeout > 30000) throw new CloudreveException(HttpStatus.BAD_REQUEST, 40001, "invalid timeout");
         }
+        if (body.containsKey("quotaTotalBytes") && longValue(body.get("quotaTotalBytes"), 0) < 0) {
+            throw new CloudreveException(HttpStatus.BAD_REQUEST, 40001, "invalid quota total");
+        }
+        if (body.containsKey("quotaUsedBytes") && longValue(body.get("quotaUsedBytes"), 0) < 0) {
+            throw new CloudreveException(HttpStatus.BAD_REQUEST, 40001, "invalid quota used");
+        }
+        if (body.containsKey("quotaWarningThresholdPercent")) {
+            int threshold = intValue(body.get("quotaWarningThresholdPercent"), 0);
+            if (threshold < 1 || threshold > 100) throw new CloudreveException(HttpStatus.BAD_REQUEST, 40001, "invalid quota threshold");
+        }
+        if (body.containsKey("estimatedMonthlyCostCents") && intValue(body.get("estimatedMonthlyCostCents"), 0) < 0) {
+            throw new CloudreveException(HttpStatus.BAD_REQUEST, 40001, "invalid cost estimate");
+        }
+        if (body.containsKey("pricingPlanSummary") && !(body.get("pricingPlanSummary") instanceof Map<?, ?>)) {
+            throw new CloudreveException(HttpStatus.BAD_REQUEST, 40001, "invalid pricing plan");
+        }
         validateReason(body);
     }
 
@@ -467,7 +486,10 @@ class CloudreveSyncController {
         if (!List.of("PROVIDER_HEALTH_CHECK", "DIRECTORY_SYNC", "SHARE_REFRESH", "RESOURCE_LINK_VERIFY").contains(jobType) || blank(body.get("providerId"))) {
             throw new CloudreveException(HttpStatus.BAD_REQUEST, 40001, "invalid job");
         }
-        Map<String, Object> target = objectMap(body.get("target"));
+        Map<String, Object> target = body.containsKey("target") ? objectMap(body.get("target")) : Map.of();
+        if (!"PROVIDER_HEALTH_CHECK".equals(jobType) && target.isEmpty()) {
+            throw new CloudreveException(HttpStatus.BAD_REQUEST, 40001, "target required");
+        }
         if ("DIRECTORY_SYNC".equals(jobType)) guardPath(text(target.get("path")));
         if ("SHARE_REFRESH".equals(jobType) && blank(target.get("shareSnapshotId")) && blank(target.get("fileId"))) {
             throw new CloudreveException(HttpStatus.BAD_REQUEST, 40001, "invalid share refresh");
@@ -608,6 +630,12 @@ class CloudreveSyncController {
         return Integer.parseInt(value.toString());
     }
 
+    private static long longValue(Object value, long fallback) {
+        if (value == null || text(value).isBlank()) return fallback;
+        if (value instanceof Number number) return number.longValue();
+        return Long.parseLong(value.toString());
+    }
+
     private static String text(Object value) {
         return value == null ? "" : value.toString();
     }
@@ -660,6 +688,16 @@ class CloudreveStore {
     void seed() {
         CloudreveProvider provider = new CloudreveProvider("provider-main", "Main Cloudreve", "cloud.example.com", "TEST_FAKE", "ENABLED",
                 List.of("FILE_LIST", "FILE_METADATA", "SHARE_RESOLVE", "SHARE_REFRESH"), 5000, "system");
+        provider.quotaTotalBytes = 2L * 1024 * 1024 * 1024 * 1024;
+        provider.quotaUsedBytes = 1850L * 1024 * 1024 * 1024;
+        provider.estimatedMonthlyCostCents = 3000;
+        provider.pricingPlanSummary = new LinkedHashMap<>(Map.of(
+                "planName", "Cloudreve Capacity 2TB",
+                "billingModel", "CAPACITY_PLAN",
+                "currency", "CNY",
+                "includedStorageBytes", provider.quotaTotalBytes,
+                "overagePolicy", "WARN_AND_KEEP_READ_ONLY_SNAPSHOTS",
+                "source", "PUBLIC_CLOUD_PRICE_PATTERN"));
         providers.put(provider.providerId, provider);
         CloudreveFile client = new CloudreveFile("file-client-pack", "provider-main", "/packs", "client.zip", "FILE", "ACTIVE", "res-public-client", "share-client-pack");
         CloudreveFile map = new CloudreveFile("file-map-pack", "provider-main", "/packs", "map.zip", "FILE", "ACTIVE", "res-member-map", "share-map-pack");
@@ -726,6 +764,22 @@ class CloudreveStore {
         data.put("failedJobsTotal", jobs.values().stream().filter(job -> "FAILED".equals(job.status)).count());
         data.put("auditsTotal", audits.size());
         data.put("idempotencyRecordsTotal", idempotency.size());
+        long quotaTotalBytes = providers.values().stream().map(provider -> provider.quotaTotalBytes).filter(Objects::nonNull).mapToLong(Long::longValue).sum();
+        long quotaUsedBytes = providers.values().stream().map(provider -> provider.quotaUsedBytes).filter(Objects::nonNull).mapToLong(Long::longValue).sum();
+        int estimatedCost = providers.values().stream().map(provider -> provider.estimatedMonthlyCostCents).filter(Objects::nonNull).mapToInt(Integer::intValue).sum();
+        data.put("quotaTotalBytes", quotaTotalBytes);
+        data.put("quotaUsedBytes", quotaUsedBytes);
+        data.put("quotaUsagePercent", quotaTotalBytes <= 0 ? null : Math.round(quotaUsedBytes * 1000.0 / quotaTotalBytes) / 10.0);
+        data.put("quotaWarningProvidersTotal", providers.values().stream().filter(provider -> "WARNING".equals(provider.quotaStatus())).count());
+        data.put("quotaExceededProvidersTotal", providers.values().stream().filter(provider -> "EXCEEDED".equals(provider.quotaStatus())).count());
+        data.put("estimatedMonthlyCostCents", estimatedCost);
+        data.put("pricingModelSummary", Map.of(
+                "source", "SNAPSHOT_ESTIMATE",
+                "billingModels", providers.values().stream()
+                        .map(provider -> String.valueOf(provider.pricingPlanSummary.get("billingModel")))
+                        .distinct()
+                        .toList(),
+                "notBillingSystem", true));
         data.put("lastSyncAt", jobs.values().stream().map(job -> job.finishedAt).filter(Objects::nonNull).findFirst().orElse(null));
         data.put("lastFailureAt", null);
         data.put("degraded", false);
@@ -772,6 +826,17 @@ class CloudreveProvider {
     List<String> capabilities;
     int timeoutMs;
     final Map<String, Object> opsAssetRef = Map.of("assetId", "asset-cloudreve-main", "source", "ops-control");
+    Long quotaTotalBytes = 512L * 1024 * 1024 * 1024;
+    Long quotaUsedBytes = 128L * 1024 * 1024 * 1024;
+    int quotaWarningThresholdPercent = 85;
+    Integer estimatedMonthlyCostCents = 1200;
+    Map<String, Object> pricingPlanSummary = new LinkedHashMap<>(Map.of(
+            "planName", "Cloudreve Capacity 512GB",
+            "billingModel", "CAPACITY_PLAN",
+            "currency", "CNY",
+            "includedStorageBytes", 512L * 1024 * 1024 * 1024,
+            "overagePolicy", "WARN_ONLY",
+            "source", "PUBLIC_CLOUD_PRICE_PATTERN"));
     String lastHealthStatus = "AVAILABLE";
     String lastCheckedAt = now();
     String lastSyncJobId;
@@ -800,6 +865,13 @@ class CloudreveProvider {
         view.put("authMode", authMode);
         view.put("status", status);
         view.put("capabilities", capabilities);
+        view.put("quotaTotalBytes", quotaTotalBytes);
+        view.put("quotaUsedBytes", quotaUsedBytes);
+        view.put("quotaUsagePercent", quotaUsagePercent());
+        view.put("quotaWarningThresholdPercent", quotaWarningThresholdPercent);
+        view.put("quotaStatus", quotaStatus());
+        view.put("estimatedMonthlyCostCents", estimatedMonthlyCostCents);
+        view.put("pricingPlanSummary", pricingPlanSummary);
         view.put("lastHealthStatus", lastHealthStatus);
         view.put("lastCheckedAt", lastCheckedAt);
         view.put("lastSyncJobId", lastSyncJobId);
@@ -819,8 +891,54 @@ class CloudreveProvider {
         return view;
     }
 
+    void applyQuota(Map<String, Object> body) {
+        if (body.containsKey("quotaTotalBytes")) quotaTotalBytes = longValue(body.get("quotaTotalBytes"), quotaTotalBytes == null ? 0 : quotaTotalBytes);
+        if (body.containsKey("quotaUsedBytes")) quotaUsedBytes = longValue(body.get("quotaUsedBytes"), quotaUsedBytes == null ? 0 : quotaUsedBytes);
+        if (body.containsKey("quotaWarningThresholdPercent")) quotaWarningThresholdPercent = intValue(body.get("quotaWarningThresholdPercent"), quotaWarningThresholdPercent);
+        if (body.containsKey("estimatedMonthlyCostCents")) estimatedMonthlyCostCents = intValue(body.get("estimatedMonthlyCostCents"), estimatedMonthlyCostCents == null ? 0 : estimatedMonthlyCostCents);
+        if (body.get("pricingPlanSummary") instanceof Map<?, ?> map) {
+            Map<String, Object> sanitized = new LinkedHashMap<>();
+            Object planName = map.get("planName");
+            Object billingModel = map.get("billingModel");
+            Object currency = map.get("currency");
+            Object includedStorageBytes = map.get("includedStorageBytes");
+            Object overagePolicy = map.get("overagePolicy");
+            sanitized.put("planName", planName == null ? "Cloudreve Capacity" : String.valueOf(planName));
+            sanitized.put("billingModel", billingModel == null ? "CAPACITY_PLAN" : String.valueOf(billingModel));
+            sanitized.put("currency", currency == null ? "CNY" : String.valueOf(currency));
+            sanitized.put("includedStorageBytes", includedStorageBytes == null ? quotaTotalBytes : includedStorageBytes);
+            sanitized.put("overagePolicy", overagePolicy == null ? "WARN_ONLY" : String.valueOf(overagePolicy));
+            sanitized.put("source", "REQUEST_SUMMARY");
+            pricingPlanSummary = sanitized;
+        }
+    }
+
+    Double quotaUsagePercent() {
+        if (quotaTotalBytes == null || quotaUsedBytes == null || quotaTotalBytes <= 0) return null;
+        return Math.round(quotaUsedBytes * 1000.0 / quotaTotalBytes) / 10.0;
+    }
+
+    String quotaStatus() {
+        Double percent = quotaUsagePercent();
+        if (percent == null) return "UNKNOWN";
+        if (quotaUsedBytes > quotaTotalBytes) return "EXCEEDED";
+        return percent >= quotaWarningThresholdPercent ? "WARNING" : "OK";
+    }
+
     private static String now() {
         return Instant.now().toString();
+    }
+
+    private static int intValue(Object value, int fallback) {
+        if (value == null || value.toString().isBlank()) return fallback;
+        if (value instanceof Number number) return number.intValue();
+        return Integer.parseInt(value.toString());
+    }
+
+    private static long longValue(Object value, long fallback) {
+        if (value == null || value.toString().isBlank()) return fallback;
+        if (value instanceof Number number) return number.longValue();
+        return Long.parseLong(value.toString());
     }
 }
 

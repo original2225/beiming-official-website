@@ -88,6 +88,12 @@ class CloudreveSyncApiContractTest {
         assertThat(summary.at("/data/storageMode").asText()).isEqualTo("IN_MEMORY");
         assertThat(summary.at("/data/providerAdapterMode").asText()).isEqualTo("TEST_FAKE");
         assertThat(summary.at("/data/testControlsEnabled").asBoolean()).isTrue();
+        assertThat(summary.at("/data/quotaTotalBytes").asLong()).isGreaterThan(0);
+        assertThat(summary.at("/data/quotaUsedBytes").asLong()).isGreaterThan(0);
+        assertThat(summary.at("/data/quotaUsagePercent").asDouble()).isGreaterThan(0);
+        assertThat(summary.at("/data/quotaWarningProvidersTotal").asInt()).isEqualTo(1);
+        assertThat(summary.at("/data/estimatedMonthlyCostCents").asInt()).isGreaterThan(0);
+        assertThat(summary.at("/data/pricingModelSummary/source").asText()).isEqualTo("SNAPSHOT_ESTIMATE");
         assertNoSecrets(summary);
 
         performJson(get("/api/v1/cloudreve-sync/providers").header("Authorization", bearer("sync-viewer-token")).param("page", "0"), 400, 40002);
@@ -111,13 +117,22 @@ class CloudreveSyncApiContractTest {
         JsonNode detail = performJson(get("/api/v1/cloudreve-sync/providers/provider-main")
                 .header("Authorization", bearer("sync-viewer-token")), 200);
         assertThat(detail.at("/data/providerId").asText()).isEqualTo("provider-main");
+        assertThat(detail.at("/data/quotaStatus").asText()).isEqualTo("WARNING");
+        assertThat(detail.at("/data/quotaUsagePercent").asDouble()).isGreaterThanOrEqualTo(85.0);
+        assertThat(detail.at("/data/pricingPlanSummary/billingModel").asText()).isEqualTo("CAPACITY_PLAN");
         assertNoSecrets(detail);
         performJson(get("/api/v1/cloudreve-sync/providers/missing").header("Authorization", bearer("sync-viewer-token")), 404, 49700);
 
         JsonNode created = performJson(post("/api/v1/cloudreve-sync/providers").header("Authorization", bearer("sync-admin-token")),
                 providerBody("provider-create"), 201);
         assertThat(created.at("/data/status").asText()).isEqualTo("ENABLED");
+        assertThat(created.at("/data/quotaStatus").asText()).isEqualTo("OK");
         assertThat(created.toString()).contains("credentialStored").doesNotContain("cloudreve-secret-token");
+        JsonNode createdAudit = performJson(get("/api/v1/cloudreve-sync/audit-logs")
+                .header("Authorization", bearer("sync-admin-token"))
+                .param("providerId", created.at("/data/providerId").asText())
+                .param("action", "CLOUDREVE_PROVIDER_CREATED"), 200);
+        assertThat(createdAudit.at("/data/total").asInt()).isEqualTo(1);
 
         JsonNode replay = performJson(post("/api/v1/cloudreve-sync/providers").header("Authorization", bearer("sync-admin-token")),
                 providerBody("provider-create"), 201);
@@ -247,6 +262,11 @@ class CloudreveSyncApiContractTest {
         JsonNode health = performJson(post("/api/v1/cloudreve-sync/sync-jobs").header("Authorization", bearer("sync-admin-token")),
                 jobBody("PROVIDER_HEALTH_CHECK", "job-health"), 201);
         assertThat(health.at("/data/jobType").asText()).isEqualTo("PROVIDER_HEALTH_CHECK");
+        Map<String, Object> healthWithoutTarget = jobBody("PROVIDER_HEALTH_CHECK", "job-health-no-target");
+        healthWithoutTarget.remove("target");
+        JsonNode healthNoTarget = performJson(post("/api/v1/cloudreve-sync/sync-jobs").header("Authorization", bearer("sync-admin-token")),
+                healthWithoutTarget, 201);
+        assertThat(healthNoTarget.at("/data/target/providerId").asText()).isEqualTo("provider-main");
 
         JsonNode directory = performJson(post("/api/v1/cloudreve-sync/sync-jobs").header("Authorization", bearer("sync-file-token")),
                 jobBody("DIRECTORY_SYNC", "job-directory"), 201);

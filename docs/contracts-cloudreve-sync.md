@@ -24,6 +24,10 @@
 | [Google Drive files](https://developers.google.com/workspace/drive/api/guides/about-files) | 文件对象、权限和变更跟踪分离，适合作为同步快照和变更检测参考。 |
 | [Microsoft Graph driveItem](https://learn.microsoft.com/en-us/graph/api/resources/driveitem?view=graph-rest-1.0) | driveItem 统一文件和文件夹元数据，权限、共享和内容能力分离。 |
 | [Dropbox HTTP API](https://www.dropbox.com/developers/documentation/http/documentation) | list、cursor、shared link 与错误响应分层，适合作为同步任务和幂等失败映射参考。 |
+| [Google One plans](https://one.google.com/about/plans) | 云盘产品把免费额度、付费容量和共享额度显式展示，适合本服务提供配额摘要但不做真实计费。 |
+| [Microsoft OneDrive plans](https://www.microsoft.com/en-us/microsoft-365/onedrive/onedrive-plans-and-pricing) | OneDrive 按免费、个人和家庭容量分层，适合 provider 展示套餐摘要和容量告警。 |
+| [Dropbox plans](https://www.dropbox.com/plans) | Dropbox 团队套餐按起始容量和用户规模描述，适合本服务保留团队容量来源和超额策略摘要。 |
+| [Cloudflare R2 pricing](https://developers.cloudflare.com/r2/pricing/) | R2 按 GB-month、读写操作和免费额度拆分费用，适合本服务输出估算字段和告警，不把估算当账单。 |
 
 ## 职责边界
 
@@ -81,6 +85,7 @@ Cloudreve 真实凭据只能通过环境变量、启动参数或受控配置注�
 | `SyncTrigger` | `ADMIN_MANUAL`、`SCHEDULED`、`RESOURCE_COMPATIBILITY_CHECK`、`TEST_CONTROL` | 同步触发来源。 |
 | `DependencyStatus` | `AVAILABLE`、`UNAVAILABLE`、`TIMEOUT`、`BAD_SCHEMA`、`UNAUTHORIZED`、`DISABLED` | 外部依赖摘要。 |
 | `CloudreveAuditResult` | `SUCCESS`、`FAILED` | 审计结果。 |
+| `ProviderQuotaStatus` | `OK`、`WARNING`、`EXCEEDED`、`UNKNOWN` | provider 配额状态。 |
 
 ## 通用对象
 
@@ -96,6 +101,13 @@ Cloudreve 真实凭据只能通过环境变量、启动参数或受控配置注�
 | `capabilities` | string[] | 是 | `ProviderCapability` 数组。 |
 | `timeoutMs` | integer | 是 | 上游请求超时，1000 到 30000。 |
 | `opsAssetRef` | object 或 null | 是 | ops-control Cloudreve 服务资产引用摘要。 |
+| `quotaTotalBytes` | integer 或 null | 是 | provider 可用总容量，未知时为 null。 |
+| `quotaUsedBytes` | integer 或 null | 是 | provider 已用容量，未知时为 null。 |
+| `quotaUsagePercent` | number 或 null | 是 | 已用容量百分比，保留一位小数，未知时为 null。 |
+| `quotaWarningThresholdPercent` | integer | 是 | 配额告警阈值，默认 85。 |
+| `quotaStatus` | string | 是 | `ProviderQuotaStatus`。 |
+| `estimatedMonthlyCostCents` | integer 或 null | 是 | 按当前摘要估算的月成本，单位为分。该字段不是账单。 |
+| `pricingPlanSummary` | object | 是 | 套餐摘要，包含 `planName`、`billingModel`、`currency`、`includedStorageBytes`、`overagePolicy` 和 `source`。 |
 | `lastHealthStatus` | string 或 null | 是 | 最近依赖状态。 |
 | `lastCheckedAt` | string 或 null | 是 | 最近检查时间。 |
 | `lastSyncJobId` | string 或 null | 是 | 最近同步任务 ID。 |
@@ -106,7 +118,7 @@ Cloudreve 真实凭据只能通过环境变量、启动参数或受控配置注�
 
 ### CloudreveProviderSummary
 
-字段为 `providerId`、`displayName`、`baseUrlSummary`、`authMode`、`status`、`capabilities`、`lastHealthStatus`、`lastCheckedAt`、`lastSyncJobId`、`degraded`、`degradeReasons`、`createdAt` 和 `updatedAt`。摘要不得返回 token、cookie、刷新 token、管理密码、分享密码、Authorization 头、完整上游 URL 查询串或内部路径。
+字段为 `providerId`、`displayName`、`baseUrlSummary`、`authMode`、`status`、`capabilities`、`quotaTotalBytes`、`quotaUsedBytes`、`quotaUsagePercent`、`quotaWarningThresholdPercent`、`quotaStatus`、`estimatedMonthlyCostCents`、`pricingPlanSummary`、`lastHealthStatus`、`lastCheckedAt`、`lastSyncJobId`、`degraded`、`degradeReasons`、`createdAt` 和 `updatedAt`。摘要不得返回 token、cookie、刷新 token、管理密码、分享密码、Authorization 头、完整上游 URL 查询串或内部路径。
 
 ### CloudreveFileSnapshot
 
@@ -184,7 +196,7 @@ Cloudreve 真实凭据只能通过环境变量、启动参数或受控配置注�
 
 ### CloudreveOpsSummary
 
-字段至少包含 `service`、`port`、`storageMode`、`authMode`、`providerAdapterMode`、`resourceAdapterMode`、`opsAssetAdapterMode`、`testControlsEnabled`、`providersTotal`、`filesTotal`、`sharesTotal`、`jobsTotal`、`runningJobsTotal`、`failedJobsTotal`、`auditsTotal`、`idempotencyRecordsTotal`、`lastSyncAt`、`lastFailureAt`、`degraded`、`degradeReasons` 和 `productionGaps`。
+字段至少包含 `service`、`port`、`storageMode`、`authMode`、`providerAdapterMode`、`resourceAdapterMode`、`opsAssetAdapterMode`、`testControlsEnabled`、`providersTotal`、`filesTotal`、`sharesTotal`、`jobsTotal`、`runningJobsTotal`、`failedJobsTotal`、`auditsTotal`、`idempotencyRecordsTotal`、`quotaTotalBytes`、`quotaUsedBytes`、`quotaUsagePercent`、`quotaWarningProvidersTotal`、`quotaExceededProvidersTotal`、`estimatedMonthlyCostCents`、`pricingModelSummary`、`lastSyncAt`、`lastFailureAt`、`degraded`、`degradeReasons` 和 `productionGaps`。
 
 ## 错误码
 
@@ -243,15 +255,17 @@ Cloudreve 真实凭据只能通过环境变量、启动参数或受控配置注�
 
 `GET /api/v1/cloudreve-sync/ops/summary` 成功返回 `CloudreveOpsSummary`。第一版必须返回 `port=8118`、`storageMode=IN_MEMORY`、`providerAdapterMode=TEST_FAKE`、`resourceAdapterMode=TEST_STUB`、`opsAssetAdapterMode=TEST_STUB` 和生产化缺口。读取失败返回 `55300`，不得伪造健康。摘要不得返回 token、cookie、分享密码、完整 URL 查询串、后台备注、内部路径或审计原因全文。
 
+自检摘要必须提供配额和成本估算摘要。第一版只根据 provider 快照计算 `quotaUsagePercent`、告警数量和 `estimatedMonthlyCostCents`，不连接真实账单、不生成扣费、不保存支付信息。配额达到告警阈值时 provider 返回 `quotaStatus=WARNING`，已用容量大于总容量时返回 `EXCEEDED`。同步读取旧快照仍允许，但写入类接口不得把超额状态伪装为健康。
+
 ## provider 接口
 
 `GET /api/v1/cloudreve-sync/providers` 支持 `page`、`pageSize`、`keyword`、`status`、`authMode`、`capability` 和 `sort`。`sort` 允许 `updatedAt_desc`、`createdAt_desc`、`displayName_asc`。成功响应分页 `items` 为 `CloudreveProviderSummary[]`。
 
 `GET /api/v1/cloudreve-sync/providers/{providerId}` 返回 `CloudreveProvider`、最近任务摘要和降级原因。provider 不存在返回 `49700`。
 
-`POST /api/v1/cloudreve-sync/providers` 请求字段为 `displayName`、`baseUrl`、`authMode`、`credential`、`capabilities`、`timeoutMs`、`opsAssetRef`、`enabled`、`reason` 和 `idempotencyKey`。成功响应 HTTP `201`，`data` 为 `CloudreveProvider`。`credential` 只写入受控配置或测试桩，不回显；响应只返回 `credentialStored=true` 或 `credentialRotated=true` 摘要。provider 名称冲突返回 `49710`。同一操作者、同一幂等键、同一请求体重复提交返回同一 provider，相同键不同体返回 `49712`。审计失败返回 `55301`，不得创建 provider。
+`POST /api/v1/cloudreve-sync/providers` 请求字段为 `displayName`、`baseUrl`、`authMode`、`credential`、`capabilities`、`timeoutMs`、`opsAssetRef`、`quotaTotalBytes`、`quotaUsedBytes`、`quotaWarningThresholdPercent`、`estimatedMonthlyCostCents`、`pricingPlanSummary`、`enabled`、`reason` 和 `idempotencyKey`。成功响应 HTTP `201`，`data` 为 `CloudreveProvider`。`credential` 只写入受控配置或测试桩，不回显；响应只返回 `credentialStored=true` 或 `credentialRotated=true` 摘要。provider 名称冲突返回 `49710`。同一操作者、同一幂等键、同一请求体重复提交返回同一 provider，相同键不同体返回 `49712`。审计失败返回 `55301`，不得创建 provider。
 
-`PATCH /api/v1/cloudreve-sync/providers/{providerId}` 可修改 `displayName`、`baseUrl`、`authMode`、`credential`、`capabilities`、`timeoutMs`、`opsAssetRef`、`reason` 和 `idempotencyKey`。`DISABLED` provider 可以更新配置摘要，但不能触发同步任务。更新凭据只记录轮换摘要，不返回原文。provider 不存在返回 `49700`，审计失败不得改变状态。
+`PATCH /api/v1/cloudreve-sync/providers/{providerId}` 可修改 `displayName`、`baseUrl`、`authMode`、`credential`、`capabilities`、`timeoutMs`、`opsAssetRef`、`quotaTotalBytes`、`quotaUsedBytes`、`quotaWarningThresholdPercent`、`estimatedMonthlyCostCents`、`pricingPlanSummary`、`reason` 和 `idempotencyKey`。`DISABLED` provider 可以更新配置摘要，但不能触发同步任务。更新凭据只记录轮换摘要，不返回原文。provider 不存在返回 `49700`，审计失败不得改变状态。
 
 `PATCH /api/v1/cloudreve-sync/providers/{providerId}/disable` 请求字段为 `reason` 和 `idempotencyKey`。禁用后状态为 `DISABLED`，不删除历史文件和分享快照，不允许创建新的同步任务。重复禁用保持幂等。
 
@@ -267,7 +281,7 @@ Cloudreve 真实凭据只能通过环境变量、启动参数或受控配置注�
 
 ## 同步任务接口
 
-`POST /api/v1/cloudreve-sync/sync-jobs` 请求字段为 `jobType`、`providerId`、`target`、`trigger`、`reason` 和 `idempotencyKey`。`DIRECTORY_SYNC` 的 `target` 至少包含 `path`；`SHARE_REFRESH` 至少包含 `shareSnapshotId` 或 `fileId`；`RESOURCE_LINK_VERIFY` 至少包含 `resourceRef`；`PROVIDER_HEALTH_CHECK` 只需要 provider。成功响应 HTTP `201`，`data` 为 `CloudreveSyncJob`。
+`POST /api/v1/cloudreve-sync/sync-jobs` 请求字段为 `jobType`、`providerId`、`target`、`trigger`、`reason` 和 `idempotencyKey`。`DIRECTORY_SYNC` 的 `target` 至少包含 `path`；`SHARE_REFRESH` 至少包含 `shareSnapshotId` 或 `fileId`；`RESOURCE_LINK_VERIFY` 至少包含 `resourceRef`；`PROVIDER_HEALTH_CHECK` 只需要 provider，`target` 可以省略，由服务端生成 provider 目标摘要。成功响应 HTTP `201`，`data` 为 `CloudreveSyncJob`。
 
 同步任务创建时必须校验 provider 存在且未禁用。`DISABLED` provider 返回 `49710`。路径越界返回 `49714`。同一操作者、同一 provider、同一 jobType、同一幂等键和同一请求体重复提交返回同一任务；相同键不同体返回 `49712`。审计失败或任务状态写入失败时不得返回成功。
 
@@ -309,4 +323,4 @@ Cloudreve 不可用时，读取类接口可以返回旧快照并标记 `degraded
 
 `cloudreve-sync` API 文档必须按 `docs/contracts-cloudreve-sync.md` 独立存在，并由 `.local-docs/tests-cloudreve-sync.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、能力点不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求、敏感字段脱敏、测试控制头默认关闭和模块验收口径。
 
-`cloudreve-sync` 完成时必须满足以下条件：端口固定为 `8118`；健康检查不泄露敏感信息；除健康检查外全部接口要求后台认证；provider、文件快照、分享快照、同步任务、幂等、状态流转、上游失败降级、旧快照降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；不修改前序服务稳定接口；不把玩家资源主数据、后台文件管理、节点守护进程或真实宿主机操作塞进本模块；自动化测试必须先红灯；实现后 `cloudreve-sync` 全量测试通过；前序 17 个稳定服务回归通过；边界扫描无违规命中；测试过程记录完整。
+`cloudreve-sync` 完成时必须满足以下条件：端口固定为 `8118`；健康检查不泄露敏感信息；除健康检查外全部接口要求后台认证；provider、文件快照、分享快照、同步任务、幂等、状态流转、上游失败降级、旧快照降级、配额成本摘要、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；不修改前序服务稳定接口；不把玩家资源主数据、后台文件管理、节点守护进程或真实宿主机操作塞进本模块；自动化测试必须先红灯；实现后 `cloudreve-sync` 全量测试通过；前序 17 个稳定服务回归通过；边界扫描无违规命中；测试过程记录完整。
