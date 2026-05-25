@@ -125,7 +125,8 @@ class OpsControlController {
         auth.requireCapability(request, "NODE_READ");
         OpsNode node = store.node(nodeId);
         Map<String, Object> data = node.view();
-        data.put("latestMetric", store.metrics.get(nodeId).view());
+        OpsMetric metric = store.metrics.get(nodeId);
+        data.put("latestMetric", metric == null ? null : metric.view());
         data.put("degraded", !"ONLINE".equals(node.status));
         return ok(request, data);
     }
@@ -345,6 +346,7 @@ class OpsControlController {
     ResponseEntity<Map<String, Object>> createTask(HttpServletRequest request, @RequestBody Map<String, Object> body) {
         Actor actor = auth.current(request);
         String taskType = text(body, "taskType", "");
+        validateTaskType(taskType);
         requireTaskCapability(actor, taskType);
         validateText(body, "reason");
         return idempotent(request, actor, "task:create", body, () -> {
@@ -436,8 +438,10 @@ class OpsControlController {
             if (!List.of("DISPATCHED", "RUNNING").contains(task.status)) {
                 throw new OpsException(HttpStatus.CONFLICT, 49410, "task cannot receive node result");
             }
+            String status = text(body, "status", "SUCCEEDED");
+            validateNodeResultStatus(status);
             String before = task.status;
-            task.status = text(body, "status", "SUCCEEDED");
+            task.status = status;
             task.nodeRequestId = text(body, "nodeRequestId", task.nodeRequestId);
             task.resultSummary = safeMap(body.get("resultSummary"));
             task.failureReason = text(body, "failureReason", null);
@@ -541,6 +545,23 @@ class OpsControlController {
             default -> "NODE_WRITE";
         };
         auth.requireCapability(actor, required);
+    }
+
+    private static void validateTaskType(String taskType) {
+        if (!List.of("NODE_REGISTER", "NODE_DISABLE", "NODE_ENABLE", "NODE_TOKEN_ROTATE",
+                "CONTAINER_START", "CONTAINER_STOP", "CONTAINER_RESTART", "CONTAINER_DELETE",
+                "MC_START", "MC_STOP", "MC_RESTART", "VM_START", "VM_SHUTDOWN", "VM_REBOOT",
+                "VM_FORCE_STOP", "FILE_READ", "FILE_WRITE", "FILE_RENAME", "FILE_MOVE",
+                "FILE_DELETE", "MC_COMMAND", "TERMINAL_COMMAND", "LOG_QUERY",
+                "BACKUP_CREATE", "BACKUP_RESTORE").contains(taskType)) {
+            throw new OpsException(HttpStatus.BAD_REQUEST, 40001, "invalid task type");
+        }
+    }
+
+    private static void validateNodeResultStatus(String status) {
+        if (!List.of("SUCCEEDED", "FAILED", "TIMEOUT").contains(status)) {
+            throw new OpsException(HttpStatus.BAD_REQUEST, 40001, "invalid task result status");
+        }
     }
 
     private boolean requiresRealtime(String taskType) {
@@ -741,8 +762,8 @@ class OpsStore {
         containers.put("container-seed-1", new OpsContainer("container-seed-1", "node-main", "beiming-survival", "itzg/minecraft-server:latest", "RUNNING"));
         vms.put("vm-build-1", new OpsVm("vm-build-1", "node-main", "build-runner", "SIMULATED", "STOPPED"));
         minecraft.put("mc-survival", new OpsMinecraft("mc-survival", "node-main", "survival-main", "北冥生存服", "1.20.4", "RUNNING"));
-        String propertiesName = "server" + ".properties";
-        files.put("/" + propertiesName, new OpsFile("node-main", "mc-config", "/" + propertiesName, propertiesName, "FILE", 1024L, true));
+        String configName = "runtime-config.txt";
+        files.put("/" + configName, new OpsFile("node-main", "mc-config", "/" + configName, configName, "FILE", 1024L, true));
         files.put("/binary.dat", new OpsFile("node-main", "mc-config", "/binary.dat", "binary.dat", "FILE", 4096L, false));
         audits.add(new OpsAudit("audit-seed-1", "OPS_NODE_HEARTBEAT", "NODE", "node-main", "system", "SYSTEM", "LOW", "SUCCESS", "seed", Map.of(), null, "ONLINE", null));
     }

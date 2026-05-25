@@ -145,6 +145,10 @@ class OpsControlApiContractTest {
                 nodeBody("node-contract-1"), 201);
         assertThat(replay.at("/data/node/nodeId").asText()).isEqualTo(nodeId);
 
+        JsonNode newNodeDetail = performJson(get("/api/v1/ops-control/nodes/" + nodeId).header("Authorization", bearer("ops-viewer-token")), 200);
+        assertThat(newNodeDetail.at("/data/latestMetric").isNull()).isTrue();
+        assertThat(newNodeDetail.at("/data/degraded").asBoolean()).isTrue();
+
         performJson(post("/api/v1/ops-control/nodes").header("Authorization", bearer("ops-admin-token")),
                 with(nodeBody("node-contract-1"), "displayName", "同 key 改名"), 409, 49412);
 
@@ -176,7 +180,7 @@ class OpsControlApiContractTest {
                 .header("Authorization", bearer("ops-file-token"))
                 .param("rootAlias", "mc-config")
                 .param("path", "/"), 200);
-        assertThat(files.toString()).contains("server.properties").doesNotContain("/srv", "C:\\\\");
+        assertThat(files.toString()).contains("runtime-config.txt").doesNotContain("/srv", "C:\\\\", "server.properties");
 
         performJson(get("/api/v1/ops-control/nodes/node-main/files")
                 .header("Authorization", bearer("ops-file-token"))
@@ -188,7 +192,7 @@ class OpsControlApiContractTest {
                 .param("path", "\\\\secret"), 409, 49414);
 
         JsonNode read = performJson(post("/api/v1/ops-control/nodes/node-main/files/read").header("Authorization", bearer("ops-file-token")),
-                Map.of("rootAlias", "mc-config", "path", "/server.properties", "reason", "读取配置摘要", "idempotencyKey", "read-file-1"), 200);
+                Map.of("rootAlias", "mc-config", "path", "/runtime-config.txt", "reason", "读取配置摘要", "idempotencyKey", "read-file-1"), 200);
         assertThat(read.toString()).contains("contentSummary").doesNotContain("rcon.password");
 
         performJson(post("/api/v1/ops-control/nodes/node-main/files/read").header("Authorization", bearer("ops-file-token")),
@@ -217,10 +221,10 @@ class OpsControlApiContractTest {
                 with(taskBody("CONTAINER_RESTART", "container-seed-1", "restart-container-1"), "targetId", "container-seed-2"), 409, 49412);
 
         performJson(post("/api/v1/ops-control/tasks").header("Authorization", bearer("ops-file-token")),
-                taskBody("FILE_DELETE", "/server.properties", "delete-no-confirm"), 403, 42003);
+                taskBody("FILE_DELETE", "/runtime-config.txt", "delete-no-confirm"), 403, 42003);
 
         JsonNode deleteTask = performJson(post("/api/v1/ops-control/tasks").header("Authorization", bearer("ops-file-token")),
-                with(taskBody("FILE_DELETE", "/server.properties", "delete-file-1"), "confirmText", "DELETE_FILE"), 201);
+                with(taskBody("FILE_DELETE", "/runtime-config.txt", "delete-file-1"), "confirmText", "DELETE_FILE"), 201);
         assertThat(deleteTask.at("/data/status").asText()).isEqualTo("PENDING_APPROVAL");
         String approvalId = deleteTask.at("/data/approvalId").asText();
 
@@ -252,6 +256,19 @@ class OpsControlApiContractTest {
         JsonNode result = performJson(post("/api/v1/ops-control/tasks/" + dispatchedTaskId + "/node-result").header("Authorization", bearer("ops-node-writer-token")),
                 Map.of("nodeRequestId", "node-req-1", "status", "SUCCEEDED", "resultSummary", Map.of("message", "ok"), "finishedAt", "2026-05-25T13:00:00Z"), 200);
         assertThat(result.at("/data/status").asText()).isEqualTo("SUCCEEDED");
+
+        JsonNode secondDispatched = performJson(post("/api/v1/ops-control/tasks").header("Authorization", bearer("ops-container-token")).header("X-Test-Node-Mode", "dispatched"),
+                taskBody("CONTAINER_STOP", "container-seed-1", "dispatched-stop-invalid-result"), 201);
+        performJson(post("/api/v1/ops-control/tasks/" + secondDispatched.at("/data/taskId").asText() + "/node-result").header("Authorization", bearer("ops-node-writer-token")),
+                Map.of("nodeRequestId", "node-req-2", "status", "BROKEN", "resultSummary", Map.of("message", "bad"), "finishedAt", "2026-05-25T13:00:00Z"), 400, 40001);
+
+        performJson(post("/api/v1/ops-control/tasks").header("Authorization", bearer("ops-admin-token")),
+                taskBody("UNKNOWN_TASK", "node-main", "unknown-task"), 400, 40001);
+
+        JsonNode backupRestore = performJson(post("/api/v1/ops-control/tasks").header("Authorization", bearer("owner-token")),
+                with(taskBody("BACKUP_RESTORE", "node-main", "backup-restore-1"), "confirmText", "BACKUP_RESTORE"), 201);
+        assertThat(backupRestore.at("/data/status").asText()).isEqualTo("PENDING_APPROVAL");
+        assertThat(backupRestore.at("/data/riskLevel").asText()).isEqualTo("CRITICAL");
 
         performJson(post("/api/v1/ops-control/tasks").header("Authorization", bearer("ops-container-token")).header("X-Test-Node-Mode", "offline"),
                 taskBody("CONTAINER_RESTART", "container-seed-1", "offline-restart"), 409, 49415);
