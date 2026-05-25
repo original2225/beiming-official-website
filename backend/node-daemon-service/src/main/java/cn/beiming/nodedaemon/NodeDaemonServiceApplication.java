@@ -20,11 +20,14 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -48,7 +51,7 @@ class NodeDaemonController {
     private final ObjectMapper objectMapper;
     private final Map<String, IdempotencyRecord> idempotency = new ConcurrentHashMap<>();
     private final Map<String, Map<String, Object>> tasks = new ConcurrentHashMap<>();
-    private final List<Map<String, Object>> audits = new ArrayList<>();
+    private final List<Map<String, Object>> audits = Collections.synchronizedList(new ArrayList<>());
 
     NodeDaemonController(
             @Value("${node-daemon.test-controls.enabled:false}") boolean testControlsEnabled,
@@ -118,6 +121,10 @@ class NodeDaemonController {
         if (auth != null) {
             return auth;
         }
+        ResponseEntity<Map<String, Object>> trustedError = rejectTrustedFields(request, body);
+        if (trustedError != null) {
+            return trustedError;
+        }
         if (!NODE_ID.equals(text(body.get("controlPlaneNodeId")))) {
             return error(request, HttpStatus.FORBIDDEN, 49603, "node id mismatch");
         }
@@ -152,6 +159,10 @@ class NodeDaemonController {
         if (auth != null) {
             return auth;
         }
+        ResponseEntity<Map<String, Object>> trustedError = rejectTrustedFields(request, body);
+        if (trustedError != null) {
+            return trustedError;
+        }
         if (testControlsEnabled && "true".equals(request.getHeader("X-Test-Fail-Audit"))) {
             return error(request, HttpStatus.INTERNAL_SERVER_ERROR, 55201, "local audit write failed");
         }
@@ -175,6 +186,10 @@ class NodeDaemonController {
         if (auth != null) {
             return auth;
         }
+        ResponseEntity<Map<String, Object>> trustedError = rejectTrustedFields(request, body);
+        if (trustedError != null) {
+            return trustedError;
+        }
         String nodeRequestId = text(body.get("nodeRequestId"));
         ResponseEntity<Map<String, Object>> replay = replayOrConflict(request, body, "task:" + nodeRequestId);
         if (replay != null) {
@@ -191,6 +206,9 @@ class NodeDaemonController {
         }
         if (testControlsEnabled && "unavailable".equals(request.getHeader("X-Test-Runtime-Mode"))) {
             return error(request, HttpStatus.CONFLICT, 49607, "runtime unavailable");
+        }
+        if (expired(text(body.get("expiresAt")))) {
+            return error(request, HttpStatus.CONFLICT, 49606, "task expired");
         }
         if (!targetExists(targetType, targetId)) {
             return error(request, HttpStatus.NOT_FOUND, 49608, "target not found");
@@ -235,6 +253,9 @@ class NodeDaemonController {
         }
         if (page < 1 || pageSize < 1 || pageSize > 100) {
             return error(request, HttpStatus.BAD_REQUEST, 40002, "invalid page");
+        }
+        if (sort != null && !List.of("receivedAt_desc", "finishedAt_desc").contains(sort)) {
+            return error(request, HttpStatus.BAD_REQUEST, 40003, "invalid sort");
         }
         List<Map<String, Object>> items = tasks.values().stream()
                 .filter(task -> status == null || status.equals(task.get("status")))
@@ -315,6 +336,10 @@ class NodeDaemonController {
         if (auth != null) {
             return auth;
         }
+        ResponseEntity<Map<String, Object>> trustedError = rejectTrustedFields(request, body);
+        if (trustedError != null) {
+            return trustedError;
+        }
         if (testControlsEnabled && "true".equals(request.getHeader("X-Test-Fail-Audit"))) {
             return error(request, HttpStatus.INTERNAL_SERVER_ERROR, 55201, "local audit write failed");
         }
@@ -351,6 +376,10 @@ class NodeDaemonController {
         ResponseEntity<Map<String, Object>> auth = requireNodeAuth(request);
         if (auth != null) {
             return auth;
+        }
+        ResponseEntity<Map<String, Object>> trustedError = rejectTrustedFields(request, body);
+        if (trustedError != null) {
+            return trustedError;
         }
         int tailLines = number(body.get("tailLines"));
         if (tailLines < 1 || tailLines > 1000) {
@@ -431,7 +460,7 @@ class NodeDaemonController {
 
     private String fingerprint(Map<String, Object> body) {
         try {
-            return objectMapper.writeValueAsString(body);
+            return objectMapper.writeValueAsString(canonicalize(body));
         } catch (JsonProcessingException exception) {
             return body.toString();
         }
@@ -519,7 +548,8 @@ class NodeDaemonController {
         if (!"mc-config".equals(rootAlias)) {
             return error(request, HttpStatus.NOT_FOUND, 49608, "root not found");
         }
-        if (path == null || !path.startsWith("/") || path.contains("..") || path.contains("\\") || path.contains("%2e") || hasControl(path)) {
+        String lowerPath = path == null ? "" : path.toLowerCase();
+        if (path == null || !path.startsWith("/") || path.contains("..") || path.contains("\\") || lowerPath.contains("%2e") || lowerPath.contains("%5c") || hasControl(path)) {
             return error(request, HttpStatus.CONFLICT, 49605, "path escaped root");
         }
         return null;
@@ -570,8 +600,10 @@ class NodeDaemonController {
     }
 
     private Map<String, Object> page(List<Map<String, Object>> items, int page, int pageSize) {
+        int from = Math.min((page - 1) * pageSize, items.size());
+        int to = Math.min(from + pageSize, items.size());
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("items", items);
+        data.put("items", items.subList(from, to));
         data.put("page", page);
         data.put("pageSize", pageSize);
         data.put("total", items.size());
@@ -591,6 +623,52 @@ class NodeDaemonController {
 
     private String text(Object value) {
         return value == null ? "" : String.valueOf(value);
+    }
+
+    private ResponseEntity<Map<String, Object>> rejectTrustedFields(HttpServletRequest request, Map<String, Object> body) {
+        Set<String> trustedFields = Set.of(
+                "trusted", "localRootPath", "resolvedPath", "tokenDigest", "credential",
+                "beforeState", "afterState", "auditResult", "createdBy", "updatedBy", "finishedAt"
+        );
+        return containsAnyKey(body, trustedFields)
+                ? error(request, HttpStatus.BAD_REQUEST, 40001, "trusted field is not accepted")
+                : null;
+    }
+
+    private boolean containsAnyKey(Object value, Set<String> keys) {
+        if (value instanceof Map<?, ?> map) {
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                if (keys.contains(String.valueOf(entry.getKey())) || containsAnyKey(entry.getValue(), keys)) {
+                    return true;
+                }
+            }
+        }
+        if (value instanceof List<?> list) {
+            return list.stream().anyMatch(item -> containsAnyKey(item, keys));
+        }
+        return false;
+    }
+
+    private Object canonicalize(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> sorted = new TreeMap<>();
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                sorted.put(String.valueOf(entry.getKey()), canonicalize(entry.getValue()));
+            }
+            return sorted;
+        }
+        if (value instanceof List<?> list) {
+            return list.stream().map(this::canonicalize).toList();
+        }
+        return value;
+    }
+
+    private boolean expired(String expiresAt) {
+        try {
+            return !expiresAt.isBlank() && Instant.parse(expiresAt).isBefore(Instant.parse(NOW));
+        } catch (RuntimeException exception) {
+            return false;
+        }
     }
 
     private ResponseEntity<Map<String, Object>> ok(HttpServletRequest request, Object data) {

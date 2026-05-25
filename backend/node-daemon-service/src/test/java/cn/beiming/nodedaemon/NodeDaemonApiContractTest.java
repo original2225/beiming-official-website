@@ -188,6 +188,58 @@ class NodeDaemonApiContractTest {
     }
 
     @Test
+    @DisplayName("ND-HARDEN covers trusted field rejection, canonical idempotency, task expiry, and pagination slicing")
+    void taskHardeningBoundaries() throws Exception {
+        performJson(post("/api/v1/node-daemon/tasks").headers(nodeHeaders()),
+                with(taskBody("CONTAINER_RESTART", "CONTAINER", "container-seed-1", "node-req-trusted-field"), "finishedAt", "2026-05-25T15:00:00Z"), 400, 40001);
+
+        Map<String, Object> canonicalOne = new LinkedHashMap<>();
+        canonicalOne.put("taskId", "ops-task-node-req-canonical");
+        canonicalOne.put("taskType", "CONTAINER_RESTART");
+        canonicalOne.put("nodeId", "node-main");
+        canonicalOne.put("targetType", "CONTAINER");
+        canonicalOne.put("targetId", "container-seed-1");
+        canonicalOne.put("paramsSummary", new LinkedHashMap<>(Map.of("mode", "simulated", "level", "safe")));
+        canonicalOne.put("riskLevel", "MEDIUM");
+        canonicalOne.put("reason", "验证规范化幂等");
+        canonicalOne.put("nodeRequestId", "node-req-canonical");
+        canonicalOne.put("expiresAt", "2026-05-25T16:00:00Z");
+        canonicalOne.put("idempotencyKey", "node-req-canonical");
+        JsonNode first = performJson(post("/api/v1/node-daemon/tasks").headers(nodeHeaders()), canonicalOne, 201);
+
+        Map<String, Object> canonicalTwo = new LinkedHashMap<>();
+        canonicalTwo.put("idempotencyKey", "node-req-canonical");
+        canonicalTwo.put("expiresAt", "2026-05-25T16:00:00Z");
+        canonicalTwo.put("nodeRequestId", "node-req-canonical");
+        canonicalTwo.put("reason", "验证规范化幂等");
+        canonicalTwo.put("riskLevel", "MEDIUM");
+        canonicalTwo.put("paramsSummary", new LinkedHashMap<>(Map.of("level", "safe", "mode", "simulated")));
+        canonicalTwo.put("targetId", "container-seed-1");
+        canonicalTwo.put("targetType", "CONTAINER");
+        canonicalTwo.put("nodeId", "node-main");
+        canonicalTwo.put("taskType", "CONTAINER_RESTART");
+        canonicalTwo.put("taskId", "ops-task-node-req-canonical");
+        JsonNode replay = performJson(post("/api/v1/node-daemon/tasks").headers(nodeHeaders()), canonicalTwo, 201);
+        assertThat(replay.at("/data/nodeRequestId").asText()).isEqualTo(first.at("/data/nodeRequestId").asText());
+
+        performJson(post("/api/v1/node-daemon/tasks").headers(nodeHeaders()),
+                with(taskBody("CONTAINER_RESTART", "CONTAINER", "container-seed-1", "node-req-expired"), "expiresAt", "2020-01-01T00:00:00Z"), 409, 49606);
+
+        performJson(post("/api/v1/node-daemon/tasks").headers(nodeHeaders()),
+                taskBody("CONTAINER_STOP", "CONTAINER", "container-seed-1", "node-req-page-1"), 201);
+        performJson(post("/api/v1/node-daemon/tasks").headers(nodeHeaders()),
+                taskBody("MC_RESTART", "MINECRAFT_INSTANCE", "mc-survival", "node-req-page-2"), 201);
+        JsonNode page = performJson(get("/api/v1/node-daemon/tasks")
+                .headers(nodeHeaders())
+                .param("page", "2")
+                .param("pageSize", "1")
+                .param("sort", "receivedAt_desc"), 200);
+        assertThat(page.at("/data/items").size()).isEqualTo(1);
+        assertThat(page.at("/data/total").asInt()).isGreaterThanOrEqualTo(3);
+        performJson(get("/api/v1/node-daemon/tasks").headers(nodeHeaders()).param("sort", "bad"), 400, 40003);
+    }
+
+    @Test
     @DisplayName("ND-FILE and ND-LOG cover authorized path guard, text summaries, log summaries, and redaction")
     void filesAndLogsSafety() throws Exception {
         JsonNode files = performJson(get("/api/v1/node-daemon/files")
@@ -198,6 +250,7 @@ class NodeDaemonApiContractTest {
 
         performJson(get("/api/v1/node-daemon/files").headers(nodeHeaders()).param("rootAlias", "mc-config").param("path", "../secret"), 409, 49605);
         performJson(get("/api/v1/node-daemon/files").headers(nodeHeaders()).param("rootAlias", "mc-config").param("path", "\\\\secret"), 409, 49605);
+        performJson(get("/api/v1/node-daemon/files").headers(nodeHeaders()).param("rootAlias", "mc-config").param("path", "/%2E%2E/secret"), 409, 49605);
         performJson(get("/api/v1/node-daemon/files").headers(nodeHeaders()).param("rootAlias", "missing-root").param("path", "/"), 404, 49608);
 
         JsonNode folder = performJson(get("/api/v1/node-daemon/files")
