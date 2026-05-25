@@ -1,0 +1,6 @@
+server:
+  port: 8114
+
+calendar:
+  test-controls:
+    enabled: false

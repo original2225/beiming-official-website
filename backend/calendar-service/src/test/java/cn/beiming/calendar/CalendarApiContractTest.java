@@ -134,7 +134,7 @@ class CalendarApiContractTest {
     @DisplayName("CAL-TIME covers cross-month and all-day range overlap semantics")
     void crossMonthAndAllDayRangeQueries() throws Exception {
         Map<String, Object> body = with(with(with(eventBody("cross-month-1"),
-                "startAt", "2026-01-31T16:00:00Z"), "endAt", "2026-02-02T16:00:00Z"), "allDay", true);
+                "startAt", "2026-01-31T15:00:00Z"), "endAt", "2026-02-02T16:00:00Z"), "allDay", true);
         String eventId = createApprovedPublishedEvent(body);
 
         JsonNode january = performJson(get("/api/v1/calendar/month").param("month", "2026-01"), 200);
