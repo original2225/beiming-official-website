@@ -160,6 +160,131 @@ class ChangelogApiContractTest {
     }
 
     @Test
+    @DisplayName("CHG-PUB-111 and CHG-PUB-112 cover tag filters, change time ranges, and severity sorting")
+    void publicTagFiltersChangeRangesAndSeveritySort() throws Exception {
+        Map<String, Object> body = releaseBody("tagged-changes-1");
+        body.put("pluginVersions", List.of(Map.of("name", "CoreProtect", "version", "22.4", "action", "UPDATED")));
+        body.put("resourcePackVersions", List.of(Map.of("name", "Beiming Pack", "version", "2026.06")));
+        body.put("groups", List.of(group("SECURITY", "安全和性能", item("安全修复", "公开安全修复", "SECURITY", "plugin:CoreProtect", true)),
+                group("CHANGED", "普通变更", item("普通变更", "公开普通变更", "INFO", "resource-pack", true))));
+        String releaseId = createApprovedPublishedRelease(body);
+
+        JsonNode byComponent = performJson(get("/api/v1/changelog/releases").param("tag", "plugin:CoreProtect"), 200);
+        assertThat(byComponent.toString()).contains(releaseId);
+        JsonNode byPlugin = performJson(get("/api/v1/changelog/releases").param("tag", "CoreProtect"), 200);
+        assertThat(byPlugin.toString()).contains(releaseId);
+        JsonNode byPack = performJson(get("/api/v1/changelog/releases").param("tag", "Beiming Pack"), 200);
+        assertThat(byPack.toString()).contains(releaseId);
+        JsonNode missing = performJson(get("/api/v1/changelog/releases").param("tag", "missing-tag"), 200);
+        assertThat(missing.toString()).doesNotContain(releaseId);
+
+        JsonNode inRange = performJson(get("/api/v1/changelog/changes")
+                .param("from", "2026-06-01T00:00:00Z")
+                .param("to", "2026-06-02T00:00:00Z"), 200);
+        assertThat(inRange.toString()).contains(releaseId);
+        JsonNode outOfRange = performJson(get("/api/v1/changelog/changes")
+                .param("from", "2026-06-02T00:00:00Z")
+                .param("to", "2026-06-03T00:00:00Z"), 200);
+        assertThat(outOfRange.toString()).doesNotContain(releaseId);
+        performJson(get("/api/v1/changelog/changes").param("from", "bad-time"), 400, 40001);
+        performJson(get("/api/v1/changelog/changes").param("from", "2026-06-02T00:00:00Z").param("to", "2026-06-01T00:00:00Z"), 409, 49316);
+
+        JsonNode severitySorted = performJson(get("/api/v1/changelog/changes")
+                .param("releaseType", "SERVER_VERSION")
+                .param("sort", "severity_desc")
+                .param("pageSize", "100"), 200);
+        String rendered = severitySorted.toString();
+        assertThat(rendered.indexOf("SECURITY")).isLessThan(rendered.indexOf("INFO"));
+    }
+
+    @Test
+    @DisplayName("CHG-ME-081 covers bookmark type and time filters with current-user release view")
+    void bookmarkFiltersAndCurrentUserReleaseView() throws Exception {
+        String releaseId = createApprovedPublishedRelease("bookmark-filter-1");
+        performJson(post("/api/v1/changelog/me/releases/" + releaseId + "/bookmark").header("Authorization", bearer("member-user-1-token")),
+                Map.of("idempotencyKey", "bookmark-filter-1"), 201);
+
+        JsonNode typed = performJson(get("/api/v1/changelog/me/bookmarks")
+                .header("Authorization", bearer("member-user-1-token"))
+                .param("type", "SERVER_VERSION")
+                .param("from", "2026-06-01T00:00:00Z")
+                .param("to", "2026-06-02T00:00:00Z"), 200);
+        assertThat(typed.toString()).contains(releaseId);
+        assertThat(typed.at("/data/items/0/release/bookmarkedByCurrentUser").asBoolean()).isTrue();
+
+        JsonNode wrongType = performJson(get("/api/v1/changelog/me/bookmarks")
+                .header("Authorization", bearer("member-user-1-token"))
+                .param("type", "SECURITY"), 200);
+        assertThat(wrongType.toString()).doesNotContain(releaseId);
+        performJson(get("/api/v1/changelog/me/bookmarks")
+                .header("Authorization", bearer("member-user-1-token"))
+                .param("type", "BAD_TYPE"), 400, 40001);
+        performJson(get("/api/v1/changelog/me/bookmarks")
+                .header("Authorization", bearer("member-user-1-token"))
+                .param("from", "bad-time"), 400, 40001);
+    }
+
+    @Test
+    @DisplayName("CHG-ADMIN-151 and CHG-ADMIN-152 cover admin ranges and structured release fields")
+    void adminRangeFiltersAndStructuredFields() throws Exception {
+        Map<String, Object> body = releaseBody("admin-structured-fields");
+        body.put("pluginVersions", List.of(Map.of("name", "CoreProtect", "version", "22.5", "action", "UPDATED", "publicNote", "日志插件更新")));
+        body.put("resourcePackVersions", List.of(Map.of("name", "Beiming Pack", "version", "2026.07", "resourceSnapshotId", "rsp-202607")));
+        body.put("internalNote", "private note");
+        JsonNode created = performJson(post("/api/v1/changelog/admin/releases").header("Authorization", bearer("admin-token")), body, 201);
+        String releaseId = created.at("/data/releaseId").asText();
+        assertThat(created.at("/data/pluginVersions/0/version").asText()).isEqualTo("22.5");
+        assertThat(created.at("/data/resourcePackVersions/0/resourceSnapshotId").asText()).isEqualTo("rsp-202607");
+        assertThat(created.at("/data/internalNote").asText()).isEqualTo("private note");
+
+        JsonNode patched = performJson(patch("/api/v1/changelog/admin/releases/" + releaseId).header("Authorization", bearer("admin-token")),
+                Map.of("pluginVersions", List.of(Map.of("name", "CoreProtect", "version", "22.6", "action", "UPDATED")),
+                        "resourcePackVersions", List.of(Map.of("name", "Beiming Pack", "version", "2026.08")),
+                        "internalNote", "private note updated",
+                        "reason", "更新结构化字段",
+                        "idempotencyKey", "admin-structured-patch"), 200);
+        assertThat(patched.at("/data/pluginVersions/0/version").asText()).isEqualTo("22.6");
+        assertThat(patched.at("/data/resourcePackVersions/0/version").asText()).isEqualTo("2026.08");
+        assertThat(patched.at("/data/internalNote").asText()).isEqualTo("private note updated");
+
+        JsonNode adminFiltered = performJson(get("/api/v1/changelog/admin/releases")
+                .header("Authorization", bearer("admin-token"))
+                .param("impactLevel", "MEDIUM")
+                .param("from", "2026-01-01T00:00:00Z")
+                .param("to", "2030-01-01T00:00:00Z"), 200);
+        assertThat(adminFiltered.toString()).contains(releaseId);
+        performJson(get("/api/v1/changelog/admin/releases").header("Authorization", bearer("admin-token")).param("impactLevel", "BAD"), 400, 40001);
+
+        approveAndPublish(releaseId, "admin-structured-fields");
+        JsonNode publicDetail = performJson(get("/api/v1/changelog/releases/" + releaseId), 200);
+        assertThat(publicDetail.toString()).doesNotContain("private note updated");
+    }
+
+    @Test
+    @DisplayName("CHG-AUDIT-081 covers audit target and time filters plus common audit fields")
+    void auditTargetTimeFiltersAndCommonFields() throws Exception {
+        String releaseId = createRelease("audit-filter-fields").at("/data/releaseId").asText();
+        JsonNode audit = performJson(get("/api/v1/changelog/admin/audit-logs")
+                .header("Authorization", bearer("admin-token"))
+                .param("targetType", "CHANGELOG_RELEASE")
+                .param("targetId", releaseId)
+                .param("from", "2026-01-01T00:00:00Z")
+                .param("to", "2030-01-01T00:00:00Z"), 200);
+        assertThat(audit.toString()).contains(releaseId);
+        JsonNode first = audit.at("/data/items/0");
+        assertThat(first.at("/requestId").asText()).isNotBlank();
+        assertThat(first.at("/actorRole").asText()).isEqualTo("ADMIN");
+        assertThat(first.at("/reason").asText()).isNotBlank();
+        assertThat(first.at("/paramsSummary").isObject()).isTrue();
+        assertThat(first.has("beforeState")).isTrue();
+        assertThat(first.has("afterState")).isTrue();
+        assertThat(first.has("failureReason")).isTrue();
+        performJson(get("/api/v1/changelog/admin/audit-logs")
+                .header("Authorization", bearer("admin-token"))
+                .param("targetType", "BAD_TARGET"), 400, 40001);
+    }
+
+    @Test
     @DisplayName("CHG-ADMIN partial updates preserve existing relation snapshots and groups")
     void partialUpdatePreservesRelationSnapshots() throws Exception {
         JsonNode created = createRelease("partial-preserve-relations");
