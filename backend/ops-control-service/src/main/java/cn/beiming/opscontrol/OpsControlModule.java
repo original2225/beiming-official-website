@@ -200,19 +200,24 @@ class OpsControlController {
     @PostMapping("/nodes/{nodeId}/heartbeat")
     ResponseEntity<Map<String, Object>> heartbeat(HttpServletRequest request, @PathVariable String nodeId, @RequestBody Map<String, Object> body) {
         Actor actor = auth.requireCapability(request, "NODE_WRITE");
+        rejectTrusted(body);
+        String status = text(body, "status", "ONLINE");
+        validateNodeStatus(status);
         store.failAuditIfRequested(request);
         synchronized (store) {
             OpsNode node = store.node(nodeId);
             String before = node.status;
-            node.status = text(body, "status", "ONLINE");
+            node.status = status;
             node.version = text(body, "version", node.version);
             node.capabilities = stringList(body.getOrDefault("capabilities", node.capabilities));
             node.lastHeartbeatAt = now();
+            node.lastSeenRequestId = text(body, "nodeRequestId", node.lastSeenRequestId);
             node.updatedAt = node.lastHeartbeatAt;
             Object metrics = body.get("metrics");
             if (metrics instanceof Map<?, ?> metricMap) {
                 store.metrics.put(nodeId, OpsMetric.from(nodeId, metricMap));
             }
+            updateRuntimeSnapshots(nodeId, body);
             store.audit("OPS_NODE_HEARTBEAT", "NODE", nodeId, actor, request, body, "MEDIUM", "SUCCESS", null, before, node.status);
             return ok(request, node.view());
         }
@@ -300,7 +305,7 @@ class OpsControlController {
         guardPath(path);
         List<Map<String, Object>> items = store.files.values().stream()
                 .filter(file -> file.nodeId.equals(nodeId) && file.rootAlias.equals(rootAlias))
-                .filter(file -> "/".equals(path) ? file.path.lastIndexOf('/') == 0 : file.path.startsWith(path))
+                .filter(file -> matchesPath(path, file.path))
                 .map(OpsFile::view)
                 .toList();
         return ok(request, Map.of("items", items, "rootAlias", rootAlias, "path", path, "stale", false));
@@ -345,6 +350,7 @@ class OpsControlController {
     @PostMapping("/tasks")
     ResponseEntity<Map<String, Object>> createTask(HttpServletRequest request, @RequestBody Map<String, Object> body) {
         Actor actor = auth.current(request);
+        rejectTrusted(body);
         String taskType = text(body, "taskType", "");
         validateTaskType(taskType);
         requireTaskCapability(actor, taskType);
@@ -359,6 +365,7 @@ class OpsControlController {
                 if (!"ONLINE".equals(node.status) && requiresRealtime(taskType)) {
                     throw new OpsException(HttpStatus.CONFLICT, 49415, "node offline");
                 }
+                validateTaskTarget(taskType, node.nodeId, text(body, "targetId", ""));
                 String risk = risk(taskType);
                 if ("HIGH".equals(risk) && !validHighConfirm(taskType, text(body, "confirmText", ""))) {
                     throw new OpsException(HttpStatus.FORBIDDEN, 42003, "high risk not confirmed");
@@ -392,11 +399,27 @@ class OpsControlController {
     ResponseEntity<Map<String, Object>> tasks(HttpServletRequest request,
                                               @RequestParam(defaultValue = "1") int page,
                                               @RequestParam(defaultValue = "20") int pageSize,
-                                              @RequestParam(required = false) String status) {
+                                              @RequestParam(required = false) String nodeId,
+                                              @RequestParam(required = false) String taskType,
+                                              @RequestParam(required = false) String status,
+                                              @RequestParam(required = false) String riskLevel,
+                                              @RequestParam(required = false) String createdBy,
+                                              @RequestParam(required = false) String from,
+                                              @RequestParam(required = false) String to,
+                                              @RequestParam(required = false) String sort) {
         auth.requireCapability(request, "NODE_READ");
         validatePage(page, pageSize);
+        validateSort(sort, "updatedAt_desc", "createdAt_desc", "riskLevel_desc");
+        Instant fromInstant = parseInstant(from);
+        Instant toInstant = parseInstant(to);
         List<Map<String, Object>> items = store.tasks.values().stream()
+                .filter(task -> nodeId == null || task.nodeId.equals(nodeId))
+                .filter(task -> taskType == null || task.taskType.equals(taskType))
                 .filter(task -> status == null || task.status.equals(status))
+                .filter(task -> riskLevel == null || task.riskLevel.equals(riskLevel))
+                .filter(task -> createdBy == null || task.createdBy.equals(createdBy))
+                .filter(task -> inRange(task.createdAt, fromInstant, toInstant))
+                .sorted(taskComparator(sort))
                 .map(OpsTask::view)
                 .toList();
         return ok(request, page(items, page, pageSize));
@@ -411,6 +434,7 @@ class OpsControlController {
     @PatchMapping("/tasks/{taskId}/cancel")
     ResponseEntity<Map<String, Object>> cancelTask(HttpServletRequest request, @PathVariable String taskId, @RequestBody Map<String, Object> body) {
         Actor actor = auth.current(request);
+        rejectTrusted(body);
         validateText(body, "reason");
         return idempotent(request, actor, "task:cancel:" + taskId, body, () -> {
             synchronized (store) {
@@ -422,9 +446,17 @@ class OpsControlController {
                     throw new OpsException(HttpStatus.CONFLICT, 49410, "task cannot be canceled");
                 }
                 String before = task.status;
+                String beforeUpdatedAt = task.updatedAt;
                 task.status = "CANCELED";
                 task.updatedAt = now();
-                store.audit("OPS_TASK_CANCELED", "TASK", taskId, actor, request, body, "MEDIUM", "SUCCESS", null, before, task.status);
+                try {
+                    store.failAuditIfRequested(request);
+                    store.audit("OPS_TASK_CANCELED", "TASK", taskId, actor, request, body, "MEDIUM", "SUCCESS", null, before, task.status);
+                } catch (OpsException exception) {
+                    task.status = before;
+                    task.updatedAt = beforeUpdatedAt;
+                    throw exception;
+                }
                 return ok(request, task.view());
             }
         });
@@ -433,6 +465,7 @@ class OpsControlController {
     @PostMapping("/tasks/{taskId}/node-result")
     ResponseEntity<Map<String, Object>> nodeResult(HttpServletRequest request, @PathVariable String taskId, @RequestBody Map<String, Object> body) {
         Actor actor = auth.requireCapability(request, "NODE_WRITE");
+        rejectTrusted(body);
         synchronized (store) {
             OpsTask task = store.task(taskId);
             if (!List.of("DISPATCHED", "RUNNING").contains(task.status)) {
@@ -441,12 +474,26 @@ class OpsControlController {
             String status = text(body, "status", "SUCCEEDED");
             validateNodeResultStatus(status);
             String before = task.status;
+            String beforeNodeRequestId = task.nodeRequestId;
+            Map<String, Object> beforeResultSummary = task.resultSummary;
+            String beforeFailureReason = task.failureReason;
+            String beforeUpdatedAt = task.updatedAt;
             task.status = status;
             task.nodeRequestId = text(body, "nodeRequestId", task.nodeRequestId);
             task.resultSummary = safeMap(body.get("resultSummary"));
             task.failureReason = text(body, "failureReason", null);
             task.updatedAt = now();
-            store.audit("OPS_TASK_NODE_RESULT_RECORDED", "TASK", taskId, actor, request, body, "MEDIUM", "SUCCESS", task.failureReason, before, task.status);
+            try {
+                store.failAuditIfRequested(request);
+                store.audit("OPS_TASK_NODE_RESULT_RECORDED", "TASK", taskId, actor, request, body, "MEDIUM", "SUCCESS", task.failureReason, before, task.status);
+            } catch (OpsException exception) {
+                task.status = before;
+                task.nodeRequestId = beforeNodeRequestId;
+                task.resultSummary = beforeResultSummary;
+                task.failureReason = beforeFailureReason;
+                task.updatedAt = beforeUpdatedAt;
+                throw exception;
+            }
             return ok(request, task.view());
         }
     }
@@ -454,10 +501,27 @@ class OpsControlController {
     @GetMapping("/approvals")
     ResponseEntity<Map<String, Object>> approvals(HttpServletRequest request,
                                                   @RequestParam(defaultValue = "1") int page,
-                                                  @RequestParam(defaultValue = "20") int pageSize) {
+                                                  @RequestParam(defaultValue = "20") int pageSize,
+                                                  @RequestParam(required = false) String status,
+                                                  @RequestParam(required = false) String riskLevel,
+                                                  @RequestParam(required = false) String requestedBy,
+                                                  @RequestParam(required = false) String from,
+                                                  @RequestParam(required = false) String to,
+                                                  @RequestParam(required = false) String sort) {
         auth.requireCapability(request, "HIGH_RISK_APPROVE");
         validatePage(page, pageSize);
-        return ok(request, page(store.approvals.values().stream().map(OpsApproval::view).toList(), page, pageSize));
+        validateSort(sort, "createdAt_desc", "reviewedAt_desc", "riskLevel_desc");
+        Instant fromInstant = parseInstant(from);
+        Instant toInstant = parseInstant(to);
+        List<Map<String, Object>> items = store.approvals.values().stream()
+                .filter(approval -> status == null || approval.status.equals(status))
+                .filter(approval -> riskLevel == null || approval.riskLevel.equals(riskLevel))
+                .filter(approval -> requestedBy == null || approval.requestedBy.equals(requestedBy))
+                .filter(approval -> inRange(approval.createdAt, fromInstant, toInstant))
+                .sorted(approvalComparator(sort))
+                .map(OpsApproval::view)
+                .toList();
+        return ok(request, page(items, page, pageSize));
     }
 
     @GetMapping("/approvals/{approvalId}")
@@ -484,20 +548,31 @@ class OpsControlController {
                                                   @RequestParam(defaultValue = "20") int pageSize,
                                                   @RequestParam(required = false) String targetType,
                                                   @RequestParam(required = false) String targetId,
+                                                  @RequestParam(required = false) String actorUserId,
                                                   @RequestParam(required = false) String action,
+                                                  @RequestParam(required = false) String nodeId,
+                                                  @RequestParam(required = false) String taskId,
                                                   @RequestParam(required = false) String result,
+                                                  @RequestParam(required = false) String riskLevel,
                                                   @RequestParam(required = false) String from,
-                                                  @RequestParam(required = false) String to) {
+                                                  @RequestParam(required = false) String to,
+                                                  @RequestParam(required = false) String sort) {
         auth.requireAdmin(auth.current(request));
         validatePage(page, pageSize);
+        validateSort(sort, "createdAt_desc", "riskLevel_desc");
         Instant fromInstant = parseInstant(from);
         Instant toInstant = parseInstant(to);
         List<Map<String, Object>> items = store.audits.stream()
+                .filter(audit -> actorUserId == null || audit.actorUserId.equals(actorUserId))
                 .filter(audit -> targetType == null || audit.targetType.equals(targetType))
                 .filter(audit -> targetId == null || audit.targetId.equals(targetId))
                 .filter(audit -> action == null || audit.action.equals(action))
+                .filter(audit -> nodeId == null || ("NODE".equals(audit.targetType) && audit.targetId.equals(nodeId)))
+                .filter(audit -> taskId == null || ("TASK".equals(audit.targetType) && audit.targetId.equals(taskId)))
                 .filter(audit -> result == null || audit.result.equals(result))
+                .filter(audit -> riskLevel == null || audit.riskLevel.equals(riskLevel))
                 .filter(audit -> inRange(audit.createdAt, fromInstant, toInstant))
+                .sorted(auditComparator(sort))
                 .map(OpsAudit::view)
                 .toList();
         return ok(request, page(items, page, pageSize));
@@ -510,6 +585,7 @@ class OpsControlController {
     }
 
     private ResponseEntity<Map<String, Object>> reviewApproval(HttpServletRequest request, String approvalId, Map<String, Object> body, Actor actor, boolean approved) {
+        rejectTrusted(body);
         validateText(body, "reason");
         return idempotent(request, actor, "approval:" + approvalId + ":" + approved, body, () -> {
             synchronized (store) {
@@ -522,6 +598,12 @@ class OpsControlController {
                     throw new OpsException(HttpStatus.CONFLICT, 49416, "self approval denied");
                 }
                 String before = task.status;
+                String approvalBeforeStatus = approval.status;
+                String approvalBeforeApprovedBy = approval.approvedBy;
+                String approvalBeforeReviewComment = approval.reviewComment;
+                String approvalBeforeReviewedAt = approval.reviewedAt;
+                String taskBeforeFailureReason = task.failureReason;
+                String taskBeforeUpdatedAt = task.updatedAt;
                 approval.status = approved ? "APPROVED" : "REJECTED";
                 approval.approvedBy = actor.userId;
                 approval.reviewComment = text(body, "reviewComment", null);
@@ -529,8 +611,20 @@ class OpsControlController {
                 task.status = approved ? "FAILED" : "FAILED";
                 task.failureReason = approved ? "NODE_DAEMON_NOT_CONNECTED" : "APPROVAL_REJECTED";
                 task.updatedAt = now();
-                store.audit(approved ? "OPS_APPROVAL_APPROVED" : "OPS_APPROVAL_REJECTED", "APPROVAL", approvalId, actor, request, body,
-                        approval.riskLevel, "SUCCESS", task.failureReason, before, task.status);
+                try {
+                    store.failAuditIfRequested(request);
+                    store.audit(approved ? "OPS_APPROVAL_APPROVED" : "OPS_APPROVAL_REJECTED", "APPROVAL", approvalId, actor, request, body,
+                            approval.riskLevel, "SUCCESS", task.failureReason, before, task.status);
+                } catch (OpsException exception) {
+                    approval.status = approvalBeforeStatus;
+                    approval.approvedBy = approvalBeforeApprovedBy;
+                    approval.reviewComment = approvalBeforeReviewComment;
+                    approval.reviewedAt = approvalBeforeReviewedAt;
+                    task.status = before;
+                    task.failureReason = taskBeforeFailureReason;
+                    task.updatedAt = taskBeforeUpdatedAt;
+                    throw exception;
+                }
                 return ok(request, Map.of("approval", approval.view(), "task", task.view()));
             }
         });
@@ -564,6 +658,12 @@ class OpsControlController {
         }
     }
 
+    private static void validateNodeStatus(String status) {
+        if (!List.of("PENDING_REGISTRATION", "ONLINE", "OFFLINE", "DEGRADED", "DISABLED", "REVOKED").contains(status)) {
+            throw new OpsException(HttpStatus.BAD_REQUEST, 40001, "invalid node status");
+        }
+    }
+
     private boolean requiresRealtime(String taskType) {
         return !List.of("LOG_QUERY", "FILE_READ").contains(taskType);
     }
@@ -589,8 +689,64 @@ class OpsControlController {
         }
     }
 
+    private void validateTaskTarget(String taskType, String nodeId, String targetId) {
+        if (taskType.startsWith("CONTAINER_") && store.containers.values().stream().noneMatch(container -> container.nodeId.equals(nodeId) && container.containerId.equals(targetId))) {
+            throw new OpsException(HttpStatus.NOT_FOUND, 49400, "container not found");
+        }
+        if (taskType.startsWith("VM_") && store.vms.values().stream().noneMatch(vm -> vm.nodeId.equals(nodeId) && vm.vmId.equals(targetId))) {
+            throw new OpsException(HttpStatus.NOT_FOUND, 49400, "vm not found");
+        }
+        if ((taskType.startsWith("MC_") && !"MC_COMMAND".equals(taskType)) && store.minecraft.values().stream().noneMatch(instance -> instance.nodeId.equals(nodeId) && instance.instanceId.equals(targetId))) {
+            throw new OpsException(HttpStatus.NOT_FOUND, 49400, "minecraft instance not found");
+        }
+        if (taskType.startsWith("FILE_") && store.files.values().stream().noneMatch(file -> file.nodeId.equals(nodeId) && file.path.equals(targetId))) {
+            throw new OpsException(HttpStatus.NOT_FOUND, 49400, "file not found");
+        }
+    }
+
+    private void updateRuntimeSnapshots(String nodeId, Map<String, Object> body) {
+        for (Map<?, ?> item : mapList(body.get("containers"))) {
+            String containerId = itemText(item, "containerId", "");
+            if (!containerId.isBlank()) {
+                store.containers.put(containerId, new OpsContainer(containerId, nodeId, itemText(item, "name", containerId),
+                        itemText(item, "image", "redacted"), itemText(item, "status", "UNKNOWN")));
+            }
+        }
+        for (Map<?, ?> item : mapList(body.get("vms"))) {
+            String vmId = itemText(item, "vmId", "");
+            if (!vmId.isBlank()) {
+                store.vms.put(vmId, new OpsVm(vmId, nodeId, itemText(item, "name", vmId),
+                        itemText(item, "platform", "SIMULATED"), itemText(item, "status", "UNKNOWN")));
+            }
+        }
+        for (Map<?, ?> item : mapList(body.get("minecraftInstances"))) {
+            String instanceId = itemText(item, "instanceId", "");
+            if (!instanceId.isBlank()) {
+                store.minecraft.put(instanceId, new OpsMinecraft(instanceId, nodeId, itemText(item, "publicInstanceId", instanceId),
+                        itemText(item, "name", instanceId), itemText(item, "version", "unknown"), itemText(item, "status", "UNKNOWN")));
+            }
+        }
+        for (Map<?, ?> item : mapList(body.get("files"))) {
+            String path = itemText(item, "path", "");
+            guardPath(path);
+            String rootAlias = itemText(item, "rootAlias", "");
+            if (!rootAlias.isBlank()) {
+                String key = nodeId + ":" + rootAlias + ":" + path;
+                store.files.put(key, new OpsFile(nodeId, rootAlias, path, itemText(item, "name", path.substring(path.lastIndexOf('/') + 1)),
+                        itemText(item, "type", "FILE"), itemLong(item.get("sizeBytes"), 0L), itemBoolean(item.get("editableText"))));
+            }
+        }
+    }
+
+    private static boolean matchesPath(String queryPath, String filePath) {
+        if ("/".equals(queryPath)) {
+            return filePath.lastIndexOf('/') == 0;
+        }
+        return filePath.equals(queryPath) || filePath.startsWith(queryPath + "/");
+    }
+
     private void rejectTrusted(Map<String, Object> body) {
-        for (String key : List.of("actorUserId", "actorRole", "actorPermissions", "createdBy", "updatedBy", "taskStatus", "approvalStatus", "auditResult")) {
+        for (String key : List.of("actorUserId", "actorRole", "actorPermissions", "createdBy", "updatedBy", "taskStatus", "approvalStatus", "auditResult", "beforeState", "afterState")) {
             if (body.containsKey(key)) {
                 throw new OpsException(HttpStatus.BAD_REQUEST, 40001, "trusted field is not accepted");
             }
@@ -697,6 +853,39 @@ class OpsControlController {
         };
     }
 
+    private static Comparator<OpsTask> taskComparator(String sort) {
+        return switch (sort == null ? "updatedAt_desc" : sort) {
+            case "createdAt_desc" -> Comparator.comparing((OpsTask task) -> task.createdAt).reversed();
+            case "riskLevel_desc" -> Comparator.comparingInt((OpsTask task) -> riskRank(task.riskLevel)).reversed();
+            default -> Comparator.comparing((OpsTask task) -> task.updatedAt).reversed();
+        };
+    }
+
+    private static Comparator<OpsApproval> approvalComparator(String sort) {
+        return switch (sort == null ? "createdAt_desc" : sort) {
+            case "reviewedAt_desc" -> Comparator.comparing((OpsApproval approval) -> approval.reviewedAt == null ? "" : approval.reviewedAt).reversed();
+            case "riskLevel_desc" -> Comparator.comparingInt((OpsApproval approval) -> riskRank(approval.riskLevel)).reversed();
+            default -> Comparator.comparing((OpsApproval approval) -> approval.createdAt).reversed();
+        };
+    }
+
+    private static Comparator<OpsAudit> auditComparator(String sort) {
+        return switch (sort == null ? "createdAt_desc" : sort) {
+            case "riskLevel_desc" -> Comparator.comparingInt((OpsAudit audit) -> riskRank(audit.riskLevel)).reversed();
+            default -> Comparator.comparing((OpsAudit audit) -> audit.createdAt).reversed();
+        };
+    }
+
+    private static int riskRank(String riskLevel) {
+        return switch (riskLevel) {
+            case "CRITICAL" -> 4;
+            case "HIGH" -> 3;
+            case "MEDIUM" -> 2;
+            case "LOW" -> 1;
+            default -> 0;
+        };
+    }
+
     private static String text(Map<String, Object> body, String key, String fallback) {
         Object value = body == null ? null : body.get(key);
         return value == null ? fallback : value.toString();
@@ -711,6 +900,32 @@ class OpsControlController {
             return list.stream().map(Object::toString).toList();
         }
         return List.of();
+    }
+
+    private static List<Map<?, ?>> mapList(Object value) {
+        if (value instanceof List<?> list) {
+            List<Map<?, ?>> maps = new ArrayList<>();
+            for (Object item : list) {
+                if (item instanceof Map<?, ?> map) {
+                    maps.add(map);
+                }
+            }
+            return maps;
+        }
+        return List.of();
+    }
+
+    private static String itemText(Map<?, ?> item, String key, String fallback) {
+        Object value = item.get(key);
+        return value == null ? fallback : value.toString();
+    }
+
+    private static Long itemLong(Object value, Long fallback) {
+        return value instanceof Number number ? number.longValue() : fallback;
+    }
+
+    private static boolean itemBoolean(Object value) {
+        return value instanceof Boolean bool && bool;
     }
 
     @SuppressWarnings("unchecked")
@@ -765,7 +980,8 @@ class OpsStore {
         String configName = "runtime-config.txt";
         files.put("/" + configName, new OpsFile("node-main", "mc-config", "/" + configName, configName, "FILE", 1024L, true));
         files.put("/binary.dat", new OpsFile("node-main", "mc-config", "/binary.dat", "binary.dat", "FILE", 4096L, false));
-        audits.add(new OpsAudit("audit-seed-1", "OPS_NODE_HEARTBEAT", "NODE", "node-main", "system", "SYSTEM", "LOW", "SUCCESS", "seed", Map.of(), null, "ONLINE", null));
+        audits.add(new OpsAudit("audit-seed-1", "OPS_NODE_HEARTBEAT", "NODE", "node-main", "system", "SYSTEM", List.of("NODE_READ"),
+                "LOW", "SUCCESS", "seed", Map.of(), null, "ONLINE", null, "req-seed"));
     }
 
     String nextId() {
@@ -797,8 +1013,9 @@ class OpsStore {
 
     void audit(String action, String targetType, String targetId, Actor actor, HttpServletRequest request, Map<String, Object> body,
                String riskLevel, String result, String failureReason, String beforeState, String afterState) {
-        audits.add(0, new OpsAudit("audit-" + nextId(), action, targetType, targetId, actor.userId, actor.role, riskLevel,
-                result, text(body, "reason", "system"), summary(body), beforeState, afterState, failureReason));
+        audits.add(0, new OpsAudit("audit-" + nextId(), action, targetType, targetId, actor.userId, actor.role, actor.permissions, riskLevel,
+                result, text(body, "reason", "system"), summary(body), beforeState, afterState, failureReason,
+                String.valueOf(request.getAttribute("requestId"))));
     }
 
     Map<String, Object> ops(boolean testControlsEnabled) {
@@ -1195,6 +1412,7 @@ class OpsAudit {
     final String targetId;
     final String actorUserId;
     final String actorRole;
+    final List<String> actorPermissions;
     final String riskLevel;
     final String result;
     final String reason;
@@ -1202,18 +1420,19 @@ class OpsAudit {
     final String beforeState;
     final String afterState;
     final String failureReason;
-    final String requestId = "req-audit";
+    final String requestId;
     final String createdAt = Instant.now().toString();
 
     OpsAudit(String auditId, String action, String targetType, String targetId, String actorUserId, String actorRole,
-             String riskLevel, String result, String reason, Map<String, Object> paramsSummary, String beforeState,
-             String afterState, String failureReason) {
+             List<String> actorPermissions, String riskLevel, String result, String reason, Map<String, Object> paramsSummary, String beforeState,
+             String afterState, String failureReason, String requestId) {
         this.auditId = auditId;
         this.action = action;
         this.targetType = targetType;
         this.targetId = targetId;
         this.actorUserId = actorUserId;
         this.actorRole = actorRole;
+        this.actorPermissions = actorPermissions;
         this.riskLevel = riskLevel;
         this.result = result;
         this.reason = reason;
@@ -1221,6 +1440,7 @@ class OpsAudit {
         this.beforeState = beforeState;
         this.afterState = afterState;
         this.failureReason = failureReason;
+        this.requestId = requestId;
     }
 
     Map<String, Object> view() {
@@ -1229,7 +1449,7 @@ class OpsAudit {
         view.put("requestId", requestId);
         view.put("actorUserId", actorUserId);
         view.put("actorRole", actorRole);
-        view.put("actorPermissions", List.of());
+        view.put("actorPermissions", actorPermissions);
         view.put("sourceIp", null);
         view.put("targetType", targetType);
         view.put("targetId", targetId);

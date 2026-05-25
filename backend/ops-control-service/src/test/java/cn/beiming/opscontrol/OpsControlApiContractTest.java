@@ -43,24 +43,25 @@ class OpsControlApiContractTest {
     void everyDocumentedCaseHasCoverageMapping() {
         Set<String> mapped = new TreeSet<>();
         addRange(mapped, "OPS-COM", 1, 100);
+        mapped.add("OPS-COM-101");
         addRange(mapped, "OPS-AUTH", 1, 100);
         addRange(mapped, "OPS-ASSET", 1, 90);
-        addRange(mapped, "OPS-NODE", 1, 120);
+        addRange(mapped, "OPS-NODE", 1, 122);
         addRange(mapped, "OPS-METRIC", 1, 60);
         addRange(mapped, "OPS-CONTAINER", 1, 90);
         addRange(mapped, "OPS-VM", 1, 70);
         addRange(mapped, "OPS-MC", 1, 90);
-        addRange(mapped, "OPS-FILE", 1, 120);
+        addRange(mapped, "OPS-FILE", 1, 121);
         addRange(mapped, "OPS-LOG", 1, 70);
-        addRange(mapped, "OPS-TASK", 1, 160);
-        addRange(mapped, "OPS-APPROVAL", 1, 120);
-        addRange(mapped, "OPS-AUDIT", 1, 100);
-        addRange(mapped, "OPS-DEPS", 1, 90);
+        addRange(mapped, "OPS-TASK", 1, 164);
+        addRange(mapped, "OPS-APPROVAL", 1, 123);
+        addRange(mapped, "OPS-AUDIT", 1, 101);
+        addRange(mapped, "OPS-DEPS", 1, 91);
         addRange(mapped, "OPS-HARDEN", 1, 160);
         addRange(mapped, "OPS-PORT", 1, 20);
         addRange(mapped, "OPS-CYCLE", 1, 80);
         assertThat(mapped).contains("OPS-COM-001", "OPS-NODE-120", "OPS-FILE-120", "OPS-HARDEN-160", "OPS-CYCLE-080");
-        assertThat(mapped).hasSize(1640);
+        assertThat(mapped).hasSize(1653);
     }
 
     @Test
@@ -156,6 +157,28 @@ class OpsControlApiContractTest {
                 heartbeatBody(), 200);
         assertThat(heartbeat.at("/data/status").asText()).isEqualTo("ONLINE");
 
+        performJson(post("/api/v1/ops-control/nodes/" + nodeId + "/heartbeat").header("Authorization", bearer("ops-node-writer-token")),
+                with(heartbeatBody(), "status", "BROKEN"), 400, 40001);
+        performJson(post("/api/v1/ops-control/nodes/" + nodeId + "/heartbeat").header("Authorization", bearer("ops-node-writer-token")),
+                with(heartbeatBody(), "createdBy", "browser-user"), 400, 40001);
+
+        Map<String, Object> snapshotHeartbeat = new LinkedHashMap<>(heartbeatBody());
+        snapshotHeartbeat.put("containers", List.of(Map.of("containerId", "container-heartbeat-1", "name", "heartbeat-container", "image", "masked/image:latest", "status", "RUNNING")));
+        snapshotHeartbeat.put("vms", List.of(Map.of("vmId", "vm-heartbeat-1", "name", "heartbeat-vm", "platform", "SIMULATED", "status", "STOPPED")));
+        snapshotHeartbeat.put("minecraftInstances", List.of(Map.of("instanceId", "mc-heartbeat-1", "publicInstanceId", "heartbeat-public", "name", "心跳实例", "version", "1.20.4", "status", "RUNNING")));
+        snapshotHeartbeat.put("files", List.of(Map.of("rootAlias", "heartbeat-root", "path", "/folder/item.txt", "name", "item.txt", "type", "FILE", "sizeBytes", 32, "editableText", true)));
+        performJson(post("/api/v1/ops-control/nodes/" + nodeId + "/heartbeat").header("Authorization", bearer("ops-node-writer-token")),
+                snapshotHeartbeat, 200);
+        assertThat(performJson(get("/api/v1/ops-control/nodes/" + nodeId + "/containers").header("Authorization", bearer("ops-viewer-token")), 200).toString())
+                .contains("container-heartbeat-1");
+        assertThat(performJson(get("/api/v1/ops-control/nodes/" + nodeId + "/vms").header("Authorization", bearer("ops-viewer-token")), 200).toString())
+                .contains("vm-heartbeat-1");
+        assertThat(performJson(get("/api/v1/ops-control/nodes/" + nodeId + "/minecraft-instances").header("Authorization", bearer("ops-viewer-token")), 200).toString())
+                .contains("mc-heartbeat-1");
+        assertThat(performJson(get("/api/v1/ops-control/nodes/" + nodeId + "/files").header("Authorization", bearer("ops-file-token"))
+                .param("rootAlias", "heartbeat-root").param("path", "/folder"), 200).toString())
+                .contains("/folder/item.txt");
+
         performJson(patch("/api/v1/ops-control/nodes/" + nodeId + "/disable").header("Authorization", bearer("ops-admin-token")),
                 Map.of("reason", "禁用节点", "confirmText", "WRONG", "idempotencyKey", "disable-wrong"), 409, 49413);
 
@@ -191,6 +214,19 @@ class OpsControlApiContractTest {
                 .param("rootAlias", "mc-config")
                 .param("path", "\\\\secret"), 409, 49414);
 
+        Map<String, Object> fileBoundaryHeartbeat = new LinkedHashMap<>(heartbeatBody());
+        fileBoundaryHeartbeat.put("files", List.of(
+                Map.of("rootAlias", "mc-config", "path", "/folder/item.txt", "name", "item.txt", "type", "FILE", "sizeBytes", 16, "editableText", true),
+                Map.of("rootAlias", "mc-config", "path", "/folder-other/item.txt", "name", "item.txt", "type", "FILE", "sizeBytes", 16, "editableText", true)
+        ));
+        performJson(post("/api/v1/ops-control/nodes/node-main/heartbeat").header("Authorization", bearer("ops-node-writer-token")),
+                fileBoundaryHeartbeat, 200);
+        JsonNode folderFiles = performJson(get("/api/v1/ops-control/nodes/node-main/files")
+                .header("Authorization", bearer("ops-file-token"))
+                .param("rootAlias", "mc-config")
+                .param("path", "/folder"), 200);
+        assertThat(folderFiles.toString()).contains("/folder/item.txt").doesNotContain("/folder-other/item.txt");
+
         JsonNode read = performJson(post("/api/v1/ops-control/nodes/node-main/files/read").header("Authorization", bearer("ops-file-token")),
                 Map.of("rootAlias", "mc-config", "path", "/runtime-config.txt", "reason", "读取配置摘要", "idempotencyKey", "read-file-1"), 200);
         assertThat(read.toString()).contains("contentSummary").doesNotContain("rcon.password");
@@ -209,6 +245,13 @@ class OpsControlApiContractTest {
     @Test
     @DisplayName("OPS-TASK and OPS-APPROVAL cover task creation, risk controls, approval flow, cancellation, node result, and idempotency")
     void taskApprovalAndNodeResultFlow() throws Exception {
+        performJson(post("/api/v1/ops-control/tasks").header("Authorization", bearer("ops-container-token")),
+                with(taskBody("CONTAINER_RESTART", "container-seed-1", "trusted-task"), "createdBy", "browser-user"), 400, 40001);
+        performJson(post("/api/v1/ops-control/tasks").header("Authorization", bearer("ops-container-token")),
+                taskBody("CONTAINER_RESTART", "missing-container", "missing-container-target"), 404, 49400);
+        performJson(post("/api/v1/ops-control/tasks").header("Authorization", bearer("ops-file-token")),
+                with(taskBody("FILE_DELETE", "/missing.txt", "missing-file-target"), "confirmText", "DELETE_FILE"), 404, 49400);
+
         JsonNode restart = performJson(post("/api/v1/ops-control/tasks").header("Authorization", bearer("ops-container-token")),
                 taskBody("CONTAINER_RESTART", "container-seed-1", "restart-container-1"), 201);
         String restartTaskId = restart.at("/data/taskId").asText();
@@ -231,7 +274,15 @@ class OpsControlApiContractTest {
         performJson(get("/api/v1/ops-control/approvals").header("Authorization", bearer("ops-viewer-token")), 403, 42002);
         JsonNode approvals = performJson(get("/api/v1/ops-control/approvals").header("Authorization", bearer("ops-approver-token")), 200);
         assertThat(approvals.toString()).contains(approvalId);
+        JsonNode filteredApprovals = performJson(get("/api/v1/ops-control/approvals").header("Authorization", bearer("ops-approver-token"))
+                .param("status", "PENDING")
+                .param("riskLevel", "HIGH")
+                .param("requestedBy", "ops-file-user")
+                .param("sort", "riskLevel_desc"), 200);
+        assertThat(filteredApprovals.toString()).contains(approvalId).doesNotContain("terminal-command-self");
 
+        performJson(patch("/api/v1/ops-control/approvals/" + approvalId + "/approve").header("Authorization", bearer("owner-token")),
+                Map.of("reviewComment", "可信字段失败", "reason", "审批高风险任务", "approvalStatus", "APPROVED", "idempotencyKey", "approve-trusted"), 400, 40001);
         JsonNode approved = performJson(patch("/api/v1/ops-control/approvals/" + approvalId + "/approve").header("Authorization", bearer("owner-token")),
                 Map.of("reviewComment", "允许删除测试文件快照", "reason", "审批高风险任务", "idempotencyKey", "approve-delete-file"), 200);
         assertThat(approved.at("/data/approval/status").asText()).isEqualTo("APPROVED");
@@ -253,6 +304,8 @@ class OpsControlApiContractTest {
         JsonNode dispatched = performJson(post("/api/v1/ops-control/tasks").header("Authorization", bearer("ops-container-token")).header("X-Test-Node-Mode", "dispatched"),
                 taskBody("CONTAINER_STOP", "container-seed-1", "dispatched-stop"), 201);
         String dispatchedTaskId = dispatched.at("/data/taskId").asText();
+        performJson(post("/api/v1/ops-control/tasks/" + dispatchedTaskId + "/node-result").header("Authorization", bearer("ops-node-writer-token")),
+                Map.of("nodeRequestId", "node-req-trusted", "status", "SUCCEEDED", "resultSummary", Map.of("message", "bad"), "auditResult", "SUCCESS", "finishedAt", "2026-05-25T13:00:00Z"), 400, 40001);
         JsonNode result = performJson(post("/api/v1/ops-control/tasks/" + dispatchedTaskId + "/node-result").header("Authorization", bearer("ops-node-writer-token")),
                 Map.of("nodeRequestId", "node-req-1", "status", "SUCCEEDED", "resultSummary", Map.of("message", "ok"), "finishedAt", "2026-05-25T13:00:00Z"), 200);
         assertThat(result.at("/data/status").asText()).isEqualTo("SUCCEEDED");
@@ -272,6 +325,66 @@ class OpsControlApiContractTest {
 
         performJson(post("/api/v1/ops-control/tasks").header("Authorization", bearer("ops-container-token")).header("X-Test-Node-Mode", "offline"),
                 taskBody("CONTAINER_RESTART", "container-seed-1", "offline-restart"), 409, 49415);
+
+        JsonNode taskList = performJson(get("/api/v1/ops-control/tasks").header("Authorization", bearer("ops-viewer-token"))
+                .param("nodeId", "node-main")
+                .param("taskType", "CONTAINER_STOP")
+                .param("status", "DISPATCHED")
+                .param("riskLevel", "MEDIUM")
+                .param("createdBy", "ops-container-user")
+                .param("sort", "createdAt_desc"), 200);
+        assertThat(taskList.toString()).contains("dispatched-stop-invalid-result").doesNotContain("restart-container-1", "queued-stop");
+    }
+
+    @Test
+    @DisplayName("OPS-TASK, OPS-APPROVAL, and OPS-AUDIT keep state stable when audit writes fail")
+    void taskApprovalAndAuditRollback() throws Exception {
+        JsonNode queued = performJson(post("/api/v1/ops-control/tasks").header("Authorization", bearer("ops-container-token")).header("X-Test-Node-Mode", "queued"),
+                taskBody("CONTAINER_STOP", "container-seed-1", "rollback-cancel"), 201);
+        String queuedTaskId = queued.at("/data/taskId").asText();
+        performJson(patch("/api/v1/ops-control/tasks/" + queuedTaskId + "/cancel")
+                .header("Authorization", bearer("ops-container-token"))
+                .header("X-Test-Fail-Audit", "true"), Map.of("reason", "审计失败回滚取消", "idempotencyKey", "rollback-cancel-fail"), 500, 55001);
+        JsonNode queuedAfterFailure = performJson(get("/api/v1/ops-control/tasks/" + queuedTaskId).header("Authorization", bearer("ops-viewer-token")), 200);
+        assertThat(queuedAfterFailure.at("/data/status").asText()).isEqualTo("QUEUED");
+
+        JsonNode dispatched = performJson(post("/api/v1/ops-control/tasks").header("Authorization", bearer("ops-container-token")).header("X-Test-Node-Mode", "dispatched"),
+                taskBody("CONTAINER_STOP", "container-seed-1", "rollback-node-result"), 201);
+        String dispatchedTaskId = dispatched.at("/data/taskId").asText();
+        String originalNodeRequestId = dispatched.at("/data/nodeRequestId").asText();
+        performJson(post("/api/v1/ops-control/tasks/" + dispatchedTaskId + "/node-result")
+                .header("Authorization", bearer("ops-node-writer-token"))
+                .header("X-Test-Fail-Audit", "true"),
+                Map.of("nodeRequestId", "node-req-rollback", "status", "SUCCEEDED", "resultSummary", Map.of("message", "ok"), "finishedAt", "2026-05-25T13:00:00Z"), 500, 55001);
+        JsonNode dispatchedAfterFailure = performJson(get("/api/v1/ops-control/tasks/" + dispatchedTaskId).header("Authorization", bearer("ops-viewer-token")), 200);
+        assertThat(dispatchedAfterFailure.at("/data/status").asText()).isEqualTo("DISPATCHED");
+        assertThat(dispatchedAfterFailure.at("/data/nodeRequestId").asText()).isEqualTo(originalNodeRequestId);
+
+        JsonNode approveCandidate = performJson(post("/api/v1/ops-control/tasks").header("Authorization", bearer("ops-file-token")),
+                with(taskBody("FILE_DELETE", "/runtime-config.txt", "rollback-approve"), "confirmText", "DELETE_FILE"), 201);
+        String approveTaskId = approveCandidate.at("/data/taskId").asText();
+        String approveApprovalId = approveCandidate.at("/data/approvalId").asText();
+        performJson(patch("/api/v1/ops-control/approvals/" + approveApprovalId + "/approve")
+                .header("Authorization", bearer("owner-token"))
+                .header("X-Test-Fail-Audit", "true"),
+                Map.of("reviewComment", "审计失败", "reason", "审批高风险任务", "idempotencyKey", "rollback-approve-fail"), 500, 55001);
+        assertThat(performJson(get("/api/v1/ops-control/approvals/" + approveApprovalId).header("Authorization", bearer("ops-approver-token")), 200)
+                .at("/data/status").asText()).isEqualTo("PENDING");
+        assertThat(performJson(get("/api/v1/ops-control/tasks/" + approveTaskId).header("Authorization", bearer("ops-viewer-token")), 200)
+                .at("/data/status").asText()).isEqualTo("PENDING_APPROVAL");
+
+        JsonNode rejectCandidate = performJson(post("/api/v1/ops-control/tasks").header("Authorization", bearer("ops-file-token")),
+                with(taskBody("FILE_DELETE", "/runtime-config.txt", "rollback-reject"), "confirmText", "DELETE_FILE"), 201);
+        String rejectTaskId = rejectCandidate.at("/data/taskId").asText();
+        String rejectApprovalId = rejectCandidate.at("/data/approvalId").asText();
+        performJson(patch("/api/v1/ops-control/approvals/" + rejectApprovalId + "/reject")
+                .header("Authorization", bearer("owner-token"))
+                .header("X-Test-Fail-Audit", "true"),
+                Map.of("reviewComment", "审计失败", "reason", "拒绝高风险任务", "idempotencyKey", "rollback-reject-fail"), 500, 55001);
+        assertThat(performJson(get("/api/v1/ops-control/approvals/" + rejectApprovalId).header("Authorization", bearer("ops-approver-token")), 200)
+                .at("/data/status").asText()).isEqualTo("PENDING");
+        assertThat(performJson(get("/api/v1/ops-control/tasks/" + rejectTaskId).header("Authorization", bearer("ops-viewer-token")), 200)
+                .at("/data/status").asText()).isEqualTo("PENDING_APPROVAL");
     }
 
     @Test
@@ -289,6 +402,20 @@ class OpsControlApiContractTest {
                 .param("to", "2030-01-01T00:00:00Z"), 200);
         assertThat(audit.at("/data/items").isArray()).isTrue();
         assertNoSecrets(audit);
+
+        performJson(post("/api/v1/ops-control/nodes")
+                        .header("Authorization", bearer("ops-admin-token"))
+                        .header("X-Request-Id", "req-audit-real-id"),
+                nodeBody("audit-context-node"), 201);
+        JsonNode filteredAudit = performJson(get("/api/v1/ops-control/audit-logs")
+                .header("Authorization", bearer("ops-admin-token"))
+                .param("actorUserId", "ops-admin-user")
+                .param("targetType", "NODE")
+                .param("result", "SUCCESS")
+                .param("riskLevel", "MEDIUM")
+                .param("sort", "createdAt_desc"), 200);
+        assertThat(filteredAudit.at("/data/items/0/requestId").asText()).isEqualTo("req-audit-real-id");
+        assertThat(filteredAudit.at("/data/items/0/actorPermissions").toString()).contains("NODE_WRITE");
 
         JsonNode ops = performJson(get("/api/v1/ops-control/ops/summary").header("Authorization", bearer("ops-viewer-token")), 200);
         assertThat(ops.at("/data/service").asText()).isEqualTo("ops-control");
