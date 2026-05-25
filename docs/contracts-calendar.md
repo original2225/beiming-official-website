@@ -51,6 +51,8 @@
 
 后台接口使用 `/api/v1/calendar/admin` 前缀，全部要求登录。后台读取事件、同步摘要、自检摘要和审计列表要求 `HELPER`、`ADMIN` 或 `OWNER`，但审计列表只允许 `ADMIN` 或 `OWNER`。事件创建、修改、提交、审核、发布、下架、归档、软删除和 activity 同步要求 `HELPER`、`ADMIN` 或 `OWNER`，但 `HELPER` 只能创建草稿、修改自己创建的未发布事件、提交审核和执行被授权的初审。发布、下架、归档、软删除、来源同步和审计读取要求 `ADMIN` 或 `OWNER`。
 
+P1 契约补强要求：当前用户关注列表、后台事件列表和审计列表必须完整实现本文档列出的过滤参数，不能只返回未过滤全量数据。后台手工创建事件时，P1 只接受 `MANUAL` 和未来 `CHANGELOG` 占位来源；`ACTIVITY` 只能通过 `/api/v1/calendar/admin/sync/activity` 导入，`COMMUNITY_POLL` 和 `OPS_PLACEHOLDER` 只作为未来来源枚举保留，直接创建必须返回字段校验错误。`HELPER` 修改事件时必须限制为自己创建且未发布的事件，不能修改其他后台人员创建的事件。
+
 ## 本地测试控制头
 
 `calendar` 允许在本地自动化测试中使用 `X-Test-Auth-Mode`、`X-Test-Activity-Mode`、`X-Test-Notification-Mode`、`X-Test-Changelog-Mode`、`X-Test-Fail-Audit`、`X-Test-Fail-Store`、`X-Test-Fail-Watch` 和 `X-Test-Now` 模拟依赖失败、通知失败、写入失败、关注并发冲突和时间边界。该能力只服务本地测试闭环，不属于正式业务 API。
@@ -274,6 +276,8 @@
 
 查询参数：`page`、`pageSize`、`status`、`type`、`from`、`to` 和 `sort`。成功响应 HTTP `200`，分页 `items` 为当前用户关注记录与事件摘要。只能返回当前认证用户自己的关注，不得通过请求参数传入 `userId`。
 
+过滤规则：`status` 只允许 `ACTIVE` 和 `CANCELED`；`type` 按事件类型过滤；`from` 和 `to` 使用事件时间范围重叠规则；`sort` 允许 `updatedAt_desc`、`createdAt_desc` 和 `startAt_asc`。非法 `status` 返回 `40001`，非法 `sort` 返回 `40003`，非法时间返回 `40001`，非法范围返回 `49911`。
+
 ### 关注事件
 
 `POST /api/v1/calendar/me/events/{eventId}/watch`
@@ -299,6 +303,8 @@
 ### 后台事件列表和详情
 
 `GET /api/v1/calendar/admin/events` 支持 `page`、`pageSize`、`keyword`、`type`、`status`、`visibility`、`sourceType`、`createdBy`、`from`、`to` 和 `sort`。后台可查看全部非物理删除事件，默认按 `updatedAt_desc`。`GET /api/v1/calendar/admin/events/{eventId}` 返回事件、关注统计、来源同步摘要、提醒摘要、最近审计和依赖摘要。响应不得返回 token、完整请求头、通知正文、前序服务内部路径、异常堆栈、真实服务器命令、节点凭据或 Cloudreve token。
+
+后台事件列表过滤规则：`keyword` 匹配标题或摘要；`type`、`status`、`visibility`、`sourceType` 和 `createdBy` 精确匹配；`from` 和 `to` 使用事件时间范围重叠规则；非法枚举返回 `40001`；非法时间返回 `40001`；非法范围返回 `49911`。分页和排序继续遵守公共契约。
 
 ### 创建事件
 
@@ -329,6 +335,8 @@
 | `idempotencyKey` | string | 否 | 8 到 80 位。 |
 
 成功响应 HTTP `201`，状态为 `DRAFT`。同一 `sourceType` 和 `sourceId` 的非终态事件不得重复创建，返回 `49912`。`type=MAINTENANCE` 和 `SERVER_SCHEDULE` 只能保存日程元数据，不得触发服务器操作。
+
+P1 来源创建限制：后台创建接口传入 `ACTIVITY`、`COMMUNITY_POLL` 或 `OPS_PLACEHOLDER` 时返回 `40001`，提示来源只能由对应来源同步或后续模块适配产生。`CHANGELOG` 只允许 `type=VERSION_RELEASE`，并且必须带 `sourceId`，不得保存 changelog 正文主数据。
 
 ### 修改事件
 
@@ -373,6 +381,8 @@
 ## 审计和自检
 
 `GET /api/v1/calendar/admin/audit-logs` 支持 `page`、`pageSize`、`actorUserId`、`action`、`targetType`、`targetId`、`eventId`、`sourceType`、`result`、`from`、`to` 和 `sort`。成功响应 HTTP `200`，分页 `items` 为 `CalendarAuditLog[]`。只有 `ADMIN` 和 `OWNER` 可访问。审计日志不得通过 calendar API 删除。
+
+审计列表过滤规则：`actorUserId`、`action`、`targetType`、`targetId`、`eventId`、`sourceType` 和 `result` 精确匹配；`from` 和 `to` 按审计 `createdAt` 范围过滤；`sort` 允许 `createdAt_desc` 和 `createdAt_asc`。非法 `result` 返回 `40001`，非法 `sort` 返回 `40003`，非法时间返回 `40001`，非法范围返回 `49911`。
 
 `GET /api/v1/calendar/admin/ops/summary` 成功响应 HTTP `200`。
 
