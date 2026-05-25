@@ -67,6 +67,15 @@ class ChangelogController {
                                                        @RequestParam(required = false) String sort) {
         validatePage(page, pageSize);
         validateSort(sort, "releasedAt_desc", "releasedAt_asc", "effectiveAt_desc", "updatedAt_desc", "impactLevel_desc");
+        if (type != null) {
+            validateReleaseType(type);
+        }
+        if (visibility != null) {
+            validateVisibility(visibility);
+        }
+        if (impactLevel != null) {
+            validateEnum(impactLevel, List.of("LOW", "MEDIUM", "HIGH", "CRITICAL"));
+        }
         Instant fromInstant = parseOptionalInstant(from);
         Instant toInstant = parseOptionalInstant(to);
         validateRange(fromInstant, toInstant);
@@ -94,10 +103,18 @@ class ChangelogController {
     @GetMapping("/versions/latest")
     ResponseEntity<Map<String, Object>> latest(HttpServletRequest request,
                                                @RequestParam(required = false) String type,
+                                               @RequestParam(required = false) String visibility,
                                                @RequestParam(required = false) String minecraftVersion) {
+        if (type != null) {
+            validateReleaseType(type);
+        }
+        if (visibility != null) {
+            validateVisibility(visibility);
+        }
         Object data = store.releases.values().stream()
                 .filter(ChangelogReleaseRecord::isPublicVisible)
                 .filter(release -> type == null || release.type.equals(type))
+                .filter(release -> visibility == null || release.visibility.equals(visibility))
                 .filter(release -> minecraftVersion == null || Objects.equals(release.minecraftVersion, minecraftVersion))
                 .sorted(releaseComparator("releasedAt_desc"))
                 .findFirst()
@@ -150,6 +167,15 @@ class ChangelogController {
                                                 @RequestParam(required = false) String sort) {
         validatePage(page, pageSize);
         validateSort(sort, "releasedAt_desc", "releasedAt_asc", "severity_desc");
+        if (groupType != null) {
+            validateEnum(groupType, List.of("ADDED", "CHANGED", "DEPRECATED", "REMOVED", "FIXED", "SECURITY", "PERFORMANCE", "KNOWN_ISSUE"));
+        }
+        if (severity != null) {
+            validateEnum(severity, List.of("INFO", "MINOR", "MAJOR", "BREAKING", "SECURITY"));
+        }
+        if (releaseType != null) {
+            validateReleaseType(releaseType);
+        }
         List<Map<String, Object>> items = new ArrayList<>();
         store.releases.values().stream()
                 .filter(ChangelogReleaseRecord::isPublicVisible)
@@ -948,9 +974,15 @@ class ChangelogStore {
         if (body.get("groups") instanceof List<?> groups) {
             release.groups = parseGroups(groups);
         }
-        release.relatedResources = relatedResources(body.get("relatedResourceIds"));
-        release.relatedServerInstances = relatedServers(body.get("relatedServerInstanceIds"));
-        release.relatedContent = relatedContent(body.get("relatedContentId"));
+        if (body.containsKey("relatedResourceIds")) {
+            release.relatedResources = relatedResources(body.get("relatedResourceIds"));
+        }
+        if (body.containsKey("relatedServerInstanceIds")) {
+            release.relatedServerInstances = relatedServers(body.get("relatedServerInstanceIds"));
+        }
+        if (body.containsKey("relatedContentId")) {
+            release.relatedContent = relatedContent(body.get("relatedContentId"));
+        }
         release.updatedBy = actor.userId;
         release.updatedAt = Instant.now().toString();
     }
@@ -1182,7 +1214,13 @@ class ChangelogReleaseRecord {
     }
 
     Map<String, Object> publicView() {
-        return baseView(false, true);
+        Map<String, Object> view = baseView(false, true);
+        view.remove("reviewComment");
+        view.remove("submittedAt");
+        view.remove("reviewedAt");
+        view.remove("offlineAt");
+        view.remove("archivedAt");
+        return view;
     }
 
     Map<String, Object> adminView() {

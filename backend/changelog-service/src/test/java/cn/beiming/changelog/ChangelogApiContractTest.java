@@ -138,6 +138,47 @@ class ChangelogApiContractTest {
     }
 
     @Test
+    @DisplayName("CHG-PUB rejects invalid filters and keeps review workflow fields out of public views")
+    void publicFiltersAndWorkflowFieldIsolation() throws Exception {
+        String releaseId = createApprovedPublishedRelease("public-isolation-1");
+
+        performJson(get("/api/v1/changelog/releases").param("type", "BAD_TYPE"), 400, 40001);
+        performJson(get("/api/v1/changelog/releases").param("visibility", "BAD_VISIBILITY"), 400, 40001);
+        performJson(get("/api/v1/changelog/releases").param("impactLevel", "BAD_IMPACT"), 400, 40001);
+        performJson(get("/api/v1/changelog/versions/latest").param("type", "BAD_TYPE"), 400, 40001);
+        performJson(get("/api/v1/changelog/changes").param("groupType", "BAD_GROUP"), 400, 40001);
+        performJson(get("/api/v1/changelog/changes").param("severity", "BAD_SEVERITY"), 400, 40001);
+        performJson(get("/api/v1/changelog/changes").param("releaseType", "BAD_TYPE"), 400, 40001);
+
+        JsonNode detail = performJson(get("/api/v1/changelog/releases/" + releaseId), 200);
+        assertThat(detail.at("/data/reviewComment").isMissingNode()).isTrue();
+        assertThat(detail.at("/data/submittedAt").isMissingNode()).isTrue();
+        assertThat(detail.at("/data/reviewedAt").isMissingNode()).isTrue();
+        assertThat(detail.at("/data/offlineAt").isMissingNode()).isTrue();
+        assertThat(detail.at("/data/archivedAt").isMissingNode()).isTrue();
+        assertNoSecrets(detail);
+    }
+
+    @Test
+    @DisplayName("CHG-ADMIN partial updates preserve existing relation snapshots and groups")
+    void partialUpdatePreservesRelationSnapshots() throws Exception {
+        JsonNode created = createRelease("partial-preserve-relations");
+        String releaseId = created.at("/data/releaseId").asText();
+        assertThat(created.at("/data/relatedResources").size()).isEqualTo(1);
+        assertThat(created.at("/data/relatedServerInstances").size()).isEqualTo(1);
+        assertThat(created.at("/data/relatedContent/contentId").asText()).isEqualTo("content-release-note");
+
+        JsonNode patched = performJson(patch("/api/v1/changelog/admin/releases/" + releaseId).header("Authorization", bearer("admin-token")),
+                Map.of("title", "只修改标题", "reason", "局部更新不应清空快照", "idempotencyKey", "partial-preserve-patch"), 200);
+
+        assertThat(patched.at("/data/title").asText()).isEqualTo("只修改标题");
+        assertThat(patched.at("/data/groups").size()).isEqualTo(1);
+        assertThat(patched.at("/data/relatedResources").size()).isEqualTo(1);
+        assertThat(patched.at("/data/relatedServerInstances").size()).isEqualTo(1);
+        assertThat(patched.at("/data/relatedContent/contentId").asText()).isEqualTo("content-release-note");
+    }
+
+    @Test
     @DisplayName("CHG-STATE enforces status transitions, soft delete confirmation, and public visibility")
     void adminStateMachineAndSoftDelete() throws Exception {
         JsonNode draft = createRelease("state-machine-1");
