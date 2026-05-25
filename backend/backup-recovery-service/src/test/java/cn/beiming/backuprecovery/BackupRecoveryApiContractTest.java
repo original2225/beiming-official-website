@@ -91,6 +91,13 @@ class BackupRecoveryApiContractTest {
         assertThat(summary.at("/data/backupAdapterMode").asText()).isEqualTo("SIMULATED");
         assertThat(summary.at("/data/testControlsEnabled").asBoolean()).isTrue();
         assertThat(summary.at("/data/domainsTotal").asInt()).isGreaterThan(5);
+        assertThat(summary.at("/data/productionGaps").toString()).contains(
+                "REAL_PERSISTENCE_NOT_CONNECTED",
+                "REAL_BACKUP_MEDIA_NOT_CONNECTED",
+                "REAL_CROSS_SERVICE_HTTP_NOT_CONNECTED",
+                "REAL_RESTORE_EXECUTION_BLOCKED",
+                "ADMIN_READ_ONLY_ENTRY_NOT_CONNECTED",
+                "NODE_DAEMON_DIRECT_CALL_FORBIDDEN");
         assertNoSecrets(summary);
 
         performJson(get("/api/v1/backup-recovery/domains").header("Authorization", bearer("br-viewer-token")).param("page", "0"), 400, 40002);
@@ -279,6 +286,12 @@ class BackupRecoveryApiContractTest {
         performJson(post("/api/v1/backup-recovery/restore-requests")
                         .header("Authorization", bearer("br-admin-token")),
                 restoreBody(pointId, null, "restore-no-drill"), 409, 49814);
+        performJson(post("/api/v1/backup-recovery/restore-requests")
+                        .header("Authorization", bearer("br-admin-token")),
+                with(restoreBody(pointId, drillId, "restore-domain-overreach"), "domains", List.of("DATABASE_AUTH", "ATTENDANCE_LEDGER")), 400, 40001);
+        performJson(post("/api/v1/backup-recovery/restore-requests")
+                        .header("Authorization", bearer("br-admin-token")),
+                with(restoreBody(pointId, drillId, "restore-prod-write"), "impactSummary", Map.of("scope", "production", "writesProduction", true)), 400, 40001);
         JsonNode request = performJson(post("/api/v1/backup-recovery/restore-requests")
                         .header("Authorization", bearer("br-admin-token")),
                 restoreBody(pointId, drillId, "restore-main"), 201);
@@ -301,6 +314,7 @@ class BackupRecoveryApiContractTest {
                         .header("Authorization", bearer("owner-token")),
                 Map.of("reviewComment", "批准模拟恢复", "confirmText", "APPROVE_SIMULATED_RESTORE", "reason", "审批恢复", "idempotencyKey", "approve-restore"), 200);
         assertThat(approved.at("/data/status").asText()).isIn("COMPLETED_SIMULATED", "EXECUTION_BLOCKED");
+        assertThat(approved.at("/data/approvalSummary/executionMode").asText()).isIn("SIMULATED_ONLY", "BLOCKED_BY_CONTRACT");
         assertNoSecrets(approved);
 
         JsonNode rejectTarget = performJson(post("/api/v1/backup-recovery/restore-requests")
@@ -384,7 +398,8 @@ class BackupRecoveryApiContractTest {
                 "cn.beiming.nodedaemon.", "cn.beiming.cloudrevesync.", "Repository", "JdbcTemplate",
                 "ProcessBuilder", "Runtime.getRuntime", "docker ", "kubectl", "pvesh", "mcrcon", "rm -rf",
                 "Remove-Item -Recurse", "rmdir /s", "rd /s", "del /s", "rawToken", "credential",
-                "secretKey", "backupEncryptionKey", "nodeToken", "jdbc:", "authorized_keys", "id_rsa", ".env");
+                "secretKey", "backupEncryptionKey", "nodeToken", "jdbc:", "authorized_keys", "id_rsa", ".env",
+                "BACKUP_RESTORE", "node-daemon");
     }
 
     private JsonNode performJson(MockHttpServletRequestBuilder builder, int status) throws Exception {
@@ -483,6 +498,7 @@ class BackupRecoveryApiContractTest {
                 "authorizationHeader", "requestHeaders", "stackTrace", "internalPath", "resolvedPath",
                 "jdbc:", "AKIA", "objectSecret", "databasePassword", "authorized_keys", "id_rsa",
                 "ProcessBuilder", "Runtime.getRuntime", "docker ", "kubectl", "pvesh", "mcrcon",
+                "targetDatabaseUrl", "restorePath", "shellCommand", "nodeEndpoint",
                 "/srv/", "C:\\\\", ".env", "token=");
     }
 

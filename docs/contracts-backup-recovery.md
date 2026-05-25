@@ -61,6 +61,8 @@
 
 `admin` 是后台聚合入口。`backup-recovery` 可以向 admin 暴露模块健康、待办摘要、恢复申请待审批数量和审计摘要，但不能让 admin 修改备份主状态。admin 不可用时，自检摘要可以返回降级摘要，业务写操作不得伪造 admin 已同步成功。
 
+`admin` 目前的稳定契约尚未声明 `BACKUP_RECOVERY` 模块入口。本轮不得直接修改 admin 稳定接口或让 admin 写入备份恢复主状态。backup-recovery 完成本轮闭环后，如果需要后台聚合入口，必须作为 admin 的兼容增强单独走文档、测试红灯、实现和回归流程，且只能增加只读入口、待办摘要和审计索引摘要。
+
 `ops-control` 是运维控制面。`backup-recovery` 可以读取节点、资产、备份盘和任务摘要快照，也可以保存 `opsControlTaskRef` 摘要。第一版不得直接调用 `node-daemon`，不得通过 `ops-control` 真实执行 `BACKUP_RESTORE`。ops-control 不可用返回 `46820`，超时返回 `46821`，字段不兼容返回 `46822`。
 
 `node-daemon` 只接受 `ops-control` 已授权任务。`backup-recovery` 第一版不得直接调用 `node-daemon`。
@@ -257,6 +259,8 @@
 
 `GET /api/v1/backup-recovery/ops/summary` 成功返回 `BackupRecoveryOpsSummary`。第一版必须返回 `port=8119`、`storageMode=IN_MEMORY`、`backupAdapterMode=SIMULATED`、`opsControlAdapterMode=TEST_STUB`、`notificationAdapterMode=TEST_STUB` 和生产化缺口。读取失败返回 `55400`，不得伪造健康。
 
+自检摘要必须暴露正式系统设计同步状态。`productionGaps` 在第一版至少包含真实持久化未接入、真实备份介质未接入、真实跨服务 HTTP 未接入、真实恢复执行被阻断、admin 只读入口未适配和 node-daemon 直连禁止等项。该摘要用于提醒后续闭环，不允许前端把这些缺口当作可执行能力。
+
 `GET /api/v1/backup-recovery/domains` 支持 `page`、`pageSize`、`keyword`、`sourceService`、`criticality`、`enabled` 和 `sort`。`sort` 允许 `updatedAt_desc`、`displayName_asc` 和 `criticality_desc`。成功响应分页 `items` 为 `BackupDomain[]`。备份域只表达可备份范围，不读取真实数据。
 
 ## 策略接口
@@ -299,11 +303,15 @@
 
 `POST /api/v1/backup-recovery/restore-requests` 请求字段为 `backupPointId`、`domains`、`restoreMode`、`drillId`、`impactSummary`、`confirmText`、`reason` 和 `idempotencyKey`。`confirmText` 必须为 `REQUEST_RESTORE_REVIEW`。`SANDBOX_RESTORE` 要求目标备份点有通过的恢复演练，缺少时返回 `49814`。第一版 `FULL_RESTORE_BLOCKED` 只能创建为 `EXECUTION_BLOCKED` 或字段校验失败，不得真实恢复。
 
+恢复申请的 `domains` 必须是目标备份点 `domains` 的子集，不能申请恢复备份点不包含的数据域。`impactSummary.writesProduction` 在第一版必须为 `false`；出现 `true` 时返回 `40001` 或创建为 `EXECUTION_BLOCKED`，同一实现版本内必须固定并写入测试。申请请求、审批请求和响应都不得包含真实恢复目标路径、数据库连接、对象存储路径、节点地址或 shell 命令。
+
 `GET /api/v1/backup-recovery/restore-requests` 支持 `page`、`pageSize`、`backupPointId`、`status`、`requestedBy`、`riskLevel`、`from`、`to` 和 `sort`。`sort` 允许 `createdAt_desc`、`updatedAt_desc`、`riskLevel_desc`。
 
 `GET /api/v1/backup-recovery/restore-requests/{restoreRequestId}` 返回申请详情。申请不存在返回 `49804`。
 
 `PATCH /api/v1/backup-recovery/restore-requests/{restoreRequestId}/approve` 请求字段为 `reviewComment`、`confirmText`、`reason` 和 `idempotencyKey`。`confirmText` 必须为 `APPROVE_SIMULATED_RESTORE`。只有 `PENDING_APPROVAL` 可审批。审批人不能审批自己创建的 `CRITICAL` 申请，返回 `49810`。审批通过后第一版只进入 `COMPLETED_SIMULATED` 或 `EXECUTION_BLOCKED`，并写入审批摘要。
+
+审批通过不得创建 `ops-control` 的真实 `BACKUP_RESTORE` 任务，不得调用 `node-daemon`，不得修改任何业务模块数据。响应中的 `approvalSummary` 必须明确 `executionMode=SIMULATED_ONLY` 或 `executionMode=BLOCKED_BY_CONTRACT`，方便前端和审计区分审批完成与真实恢复完成。
 
 `PATCH /api/v1/backup-recovery/restore-requests/{restoreRequestId}/reject` 请求字段为 `reviewComment`、`reason` 和 `idempotencyKey`。只有 `PENDING_APPROVAL` 可拒绝。拒绝后状态为 `REJECTED`。
 
