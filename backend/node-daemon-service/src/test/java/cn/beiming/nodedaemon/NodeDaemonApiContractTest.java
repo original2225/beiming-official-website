@@ -62,7 +62,7 @@ class NodeDaemonApiContractTest {
         addRange(mapped, "ND-PORT", 1, 20);
         addRange(mapped, "ND-CYCLE", 1, 90);
         assertThat(mapped).contains("ND-COM-001", "ND-TASK-180", "ND-HARDEN-170", "ND-CYCLE-090");
-        assertThat(mapped).hasSize(1900);
+        assertThat(mapped).hasSize(1910);
     }
 
     @Test

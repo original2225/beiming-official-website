@@ -1,0 +1,7 @@
+server:
+  port: 8117
+
+node-daemon:
+  service: node-daemon
+  test-controls:
+    enabled: false

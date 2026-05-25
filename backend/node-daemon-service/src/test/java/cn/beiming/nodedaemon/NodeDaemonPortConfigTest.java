@@ -15,7 +15,7 @@ class NodeDaemonPortConfigTest {
     void applicationPortIsFixedTo8117() throws Exception {
         StandardEnvironment environment = new StandardEnvironment();
         YamlPropertySourceLoader loader = new YamlPropertySourceLoader();
-        loader.load("node-daemon", new FileSystemResource("backend/node-daemon-service/src/main/resources/application.yml"))
+        loader.load("node-daemon", new FileSystemResource("src/main/resources/application.yml"))
                 .forEach(environment.getPropertySources()::addFirst);
 
         Integer port = Binder.get(environment).bind("server.port", Integer.class).orElse(null);
