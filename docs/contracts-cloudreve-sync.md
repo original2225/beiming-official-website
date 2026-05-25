@@ -55,6 +55,8 @@ Cloudreve 真实凭据只能通过环境变量、启动参数或受控配置注�
 
 浏览器请求体不得传入并覆盖 `actorUserId`、`actorRole`、`actorPermissions`、`credential`、`tokenDigest`、`rawToken`、`cookie`、`refreshToken`、`authorizationHeader`、`internalPath`、`resolvedPath`、`sharePassword`、`beforeState`、`afterState`、`auditResult`、`createdBy`、`updatedBy`、`lastSyncedAt`、`taskStatus` 等服务端可信字段。出现可信字段时返回 `40001`。
 
+所有写接口都必须执行同一套可信字段拒绝规则，包括 provider 创建、provider 更新、provider 禁用、provider 启用、分享解析、同步任务创建和同步任务取消。禁用、启用和取消接口虽然请求体较小，也不能只校验 `reason`，必须拒绝浏览器伪造的操作者、审计、任务状态、内部路径和凭据字段。
+
 ## 本地测试控制头
 
 `cloudreve-sync` 允许在本地自动化测试中使用 `X-Test-Auth-Mode`、`X-Test-Cloudreve-Mode`、`X-Test-Resource-Mode`、`X-Test-Fail-Audit`、`X-Test-Fail-Store` 和 `X-Test-Now` 模拟认证失败、上游不可用、上游超时、上游坏 schema、上游 401、资源兼容快照不可用、审计失败、状态写入失败和时间边界。
@@ -257,6 +259,8 @@ Cloudreve 真实凭据只能通过环境变量、启动参数或受控配置注�
 
 自检摘要必须提供配额和成本估算摘要。第一版只根据 provider 快照计算 `quotaUsagePercent`、告警数量和 `estimatedMonthlyCostCents`，不连接真实账单、不生成扣费、不保存支付信息。配额达到告警阈值时 provider 返回 `quotaStatus=WARNING`，已用容量大于总容量时返回 `EXCEEDED`。同步读取旧快照仍允许，但写入类接口不得把超额状态伪装为健康。
 
+`quotaStatus=EXCEEDED` 时，本服务必须进入容量保护模式。读取 provider、文件、分享、任务和审计仍然允许，`PROVIDER_HEALTH_CHECK` 仍然允许用于恢复状态；新的 `DIRECTORY_SYNC` 和 `SHARE_REFRESH` 必须返回 `49710`，避免继续扩大快照、分享刷新和上游资源消耗。`RESOURCE_LINK_VERIFY` 只写兼容摘要，不新增上游文件或分享，可继续按依赖状态处理。
+
 ## provider 接口
 
 `GET /api/v1/cloudreve-sync/providers` 支持 `page`、`pageSize`、`keyword`、`status`、`authMode`、`capability` 和 `sort`。`sort` 允许 `updatedAt_desc`、`createdAt_desc`、`displayName_asc`。成功响应分页 `items` 为 `CloudreveProviderSummary[]`。
@@ -266,6 +270,8 @@ Cloudreve 真实凭据只能通过环境变量、启动参数或受控配置注�
 `POST /api/v1/cloudreve-sync/providers` 请求字段为 `displayName`、`baseUrl`、`authMode`、`credential`、`capabilities`、`timeoutMs`、`opsAssetRef`、`quotaTotalBytes`、`quotaUsedBytes`、`quotaWarningThresholdPercent`、`estimatedMonthlyCostCents`、`pricingPlanSummary`、`enabled`、`reason` 和 `idempotencyKey`。成功响应 HTTP `201`，`data` 为 `CloudreveProvider`。`credential` 只写入受控配置或测试桩，不回显；响应只返回 `credentialStored=true` 或 `credentialRotated=true` 摘要。provider 名称冲突返回 `49710`。同一操作者、同一幂等键、同一请求体重复提交返回同一 provider，相同键不同体返回 `49712`。审计失败返回 `55301`，不得创建 provider。
 
 `PATCH /api/v1/cloudreve-sync/providers/{providerId}` 可修改 `displayName`、`baseUrl`、`authMode`、`credential`、`capabilities`、`timeoutMs`、`opsAssetRef`、`quotaTotalBytes`、`quotaUsedBytes`、`quotaWarningThresholdPercent`、`estimatedMonthlyCostCents`、`pricingPlanSummary`、`reason` 和 `idempotencyKey`。`DISABLED` provider 可以更新配置摘要，但不能触发同步任务。更新凭据只记录轮换摘要，不返回原文。provider 不存在返回 `49700`，审计失败不得改变状态。
+
+`opsAssetRef` 必须按请求体写入 provider 快照，创建和更新都要生效。服务端只保留安全摘要，至少允许 `assetId`、`assetType`、`displayName`、`source` 和 `syncedAt`，不得保存节点密钥、内部绝对路径、运维凭据或完整资产响应。未传 `opsAssetRef` 时使用默认 Cloudreve 服务资产摘要；传入 null 时清空引用摘要。
 
 `PATCH /api/v1/cloudreve-sync/providers/{providerId}/disable` 请求字段为 `reason` 和 `idempotencyKey`。禁用后状态为 `DISABLED`，不删除历史文件和分享快照，不允许创建新的同步任务。重复禁用保持幂等。
 
@@ -289,6 +295,8 @@ Cloudreve 真实凭据只能通过环境变量、启动参数或受控配置注�
 
 `GET /api/v1/cloudreve-sync/sync-jobs` 支持 `page`、`pageSize`、`providerId`、`jobType`、`status`、`trigger`、`createdBy`、`from`、`to` 和 `sort`。`sort` 允许 `createdAt_desc`、`updatedAt_desc`、`finishedAt_desc`。成功响应分页 `items` 为 `CloudreveSyncJob[]`。
 
+`from` 和 `to` 使用 UTC ISO-8601 时间，反向时间范围返回 `40001`。时间范围必须实际过滤任务 `createdAt`，不能只校验格式或只校验反向时间。
+
 `GET /api/v1/cloudreve-sync/sync-jobs/{jobId}` 返回任务详情、步骤、结果摘要和失败原因。任务不存在返回 `49703`。
 
 `PATCH /api/v1/cloudreve-sync/sync-jobs/{jobId}/cancel` 请求字段为 `reason` 和 `idempotencyKey`。只有 `PENDING` 和 `RUNNING` 任务可取消。`SUCCEEDED`、`FAILED`、`CANCELLED` 和 `TIMEOUT` 为终态，取消返回 `49711`。取消成功必须写审计；审计失败时任务状态保持不变。
@@ -298,6 +306,8 @@ Cloudreve 真实凭据只能通过环境变量、启动参数或受控配置注�
 `GET /api/v1/cloudreve-sync/audit-logs` 支持 `page`、`pageSize`、`actorUserId`、`providerId`、`fileId`、`shareSnapshotId`、`jobId`、`action`、`result`、`from`、`to` 和 `sort`。`sort` 允许 `createdAt_desc`、`createdAt_asc`。只有 `ADMIN` 和 `OWNER` 可访问。审计列表只读，不提供删除、修改或恢复接口。
 
 审计中的 `requestId` 必须来自当前 HTTP 请求，不能使用固定占位值。后台写操作必须记录调用者、`reason`、操作前状态、操作后状态、请求编号、结果和失败原因。审计写入失败时，provider 创建修改启停、分享解析、同步任务创建和取消不得假装成功，必须返回 `55301` 并保持业务状态不变。
+
+审计列表的 `from` 和 `to` 使用 UTC ISO-8601 时间，反向时间范围返回 `40001`。时间范围必须实际过滤审计 `createdAt`，不能把范围外审计混入结果。
 
 ## 状态、幂等和并发
 
