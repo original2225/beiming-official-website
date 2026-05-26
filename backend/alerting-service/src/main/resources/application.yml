@@ -1,0 +1,7 @@
+server:
+  port: 8120
+
+alerting:
+  service: alerting
+  test-controls:
+    enabled: false
