@@ -105,6 +105,7 @@ class AlertingApiContractTest {
                 .header("Authorization", bearer("alert-viewer-token"))
                 .header("X-Test-Fail-Store", "true"), 500, 55500);
         performJson(get("/api/v1/alerting/sources").header("Authorization", bearer("alert-viewer-token")).param("page", "0"), 400, 40002);
+        performJson(get("/api/v1/alerting/sources").header("Authorization", bearer("alert-viewer-token")).param("page", "bad"), 400, 40002);
         performJson(get("/api/v1/alerting/sources").header("Authorization", bearer("alert-viewer-token")).param("sort", "bad"), 400, 40003);
 
         JsonNode sources = performJson(get("/api/v1/alerting/sources")
@@ -157,6 +158,12 @@ class AlertingApiContractTest {
         JsonNode patched = performJson(patch("/api/v1/alerting/rules/" + ruleId).header("Authorization", bearer("alert-admin-token")),
                 Map.of("displayName", "Updated alerting rule", "severity", "CRITICAL", "reason", "更新告警级别", "idempotencyKey", "patch-rule"), 200);
         assertThat(patched.at("/data/severity").asText()).isEqualTo("CRITICAL");
+        performJson(patch("/api/v1/alerting/rules/" + ruleId).header("Authorization", bearer("alert-admin-token")),
+                Map.of("conditionSummary", Map.of("bad", true), "reason", "拒绝非法条件更新", "idempotencyKey", "patch-bad-condition"), 400, 49911);
+        performJson(patch("/api/v1/alerting/rules/" + ruleId).header("Authorization", bearer("alert-admin-token")),
+                Map.of("evaluationWindowSeconds", "bad", "reason", "拒绝非法评估窗口", "idempotencyKey", "patch-bad-window"), 400, 49911);
+        performJson(patch("/api/v1/alerting/rules/" + ruleId).header("Authorization", bearer("alert-admin-token")),
+                Map.of("routeId", "missing-route", "reason", "拒绝不存在路由", "idempotencyKey", "patch-missing-route"), 404, 49904);
         JsonNode enabled = performJson(patch("/api/v1/alerting/rules/" + ruleId + "/enable").header("Authorization", bearer("alert-admin-token")),
                 Map.of("reason", "启用告警规则", "idempotencyKey", "enable-rule"), 200);
         assertThat(enabled.at("/data/status").asText()).isEqualTo("ENABLED");
@@ -223,12 +230,27 @@ class AlertingApiContractTest {
         assertThat(silence.at("/data/status").asText()).isEqualTo("ACTIVE");
         performJson(post("/api/v1/alerting/silences").header("Authorization", bearer("alert-admin-token")),
                 with(silenceBody("silence-bad-time"), "endsAt", "2020-01-01T00:00:00Z"), 400, 49913);
+        performJson(post("/api/v1/alerting/silences").header("Authorization", bearer("alert-admin-token")),
+                with(silenceBody("silence-bad-matcher"), "matchers", Map.of("unknown", "value")), 400, 49914);
         JsonNode suppressed = performJson(post("/api/v1/alerting/rules/rule-node-offline/evaluate").header("Authorization", bearer("alert-admin-token")),
                 Map.of("sourceSnapshot", sourceSnapshot("silenced-node"), "dryRun", false, "reason", "静默命中", "idempotencyKey", "eval-suppressed"), 201);
         assertThat(suppressed.at("/data/suppressed").asBoolean()).isTrue();
         JsonNode cancelled = performJson(patch("/api/v1/alerting/silences/" + silence.at("/data/silenceId").asText() + "/cancel").header("Authorization", bearer("alert-admin-token")),
                 Map.of("reason", "结束维护窗口", "idempotencyKey", "cancel-silence"), 200);
         assertThat(cancelled.at("/data/status").asText()).isEqualTo("CANCELLED");
+        performJson(post("/api/v1/alerting/rules/rule-node-offline/evaluate").header("Authorization", bearer("alert-admin-token")),
+                Map.of("sourceSnapshot", sourceSnapshot("silenced-node"), "dryRun", false, "reason", "静默取消后恢复", "idempotencyKey", "eval-unsuppressed"), 201);
+        JsonNode resumed = performJson(get("/api/v1/alerting/alerts/" + suppressed.at("/data/createdAlertId").asText()).header("Authorization", bearer("alert-viewer-token")), 200);
+        assertThat(resumed.at("/data/status").asText()).isEqualTo("FIRING");
+
+        performJson(post("/api/v1/alerting/silences").header("Authorization", bearer("alert-admin-token")),
+                with(silenceBody("silence-group-key"), "matchers", Map.of("groupKey", "OPS_CONTROL:groupkey-target")), 201);
+        JsonNode groupMiss = performJson(post("/api/v1/alerting/rules/rule-node-offline/evaluate").header("Authorization", bearer("alert-admin-token")),
+                Map.of("sourceSnapshot", sourceSnapshot("groupkey-other"), "dryRun", false, "reason", "groupKey 不应误命中", "idempotencyKey", "eval-groupkey-miss"), 201);
+        assertThat(groupMiss.at("/data/suppressed").asBoolean()).isFalse();
+        JsonNode groupHit = performJson(post("/api/v1/alerting/rules/rule-node-offline/evaluate").header("Authorization", bearer("alert-admin-token")),
+                Map.of("sourceSnapshot", sourceSnapshot("groupkey-target"), "dryRun", false, "reason", "groupKey 命中", "idempotencyKey", "eval-groupkey-hit"), 201);
+        assertThat(groupHit.at("/data/suppressed").asBoolean()).isTrue();
 
         JsonNode route = performJson(post("/api/v1/alerting/routes").header("Authorization", bearer("alert-admin-token")),
                 routeBody("route-create"), 201);
@@ -236,6 +258,10 @@ class AlertingApiContractTest {
         JsonNode routePatched = performJson(patch("/api/v1/alerting/routes/" + route.at("/data/routeId").asText()).header("Authorization", bearer("alert-admin-token")),
                 Map.of("displayName", "Updated route", "repeatIntervalSeconds", 1200, "reason", "更新重复提醒", "idempotencyKey", "patch-route"), 200);
         assertThat(routePatched.at("/data/repeatIntervalSeconds").asInt()).isEqualTo(1200);
+        performJson(patch("/api/v1/alerting/routes/" + route.at("/data/routeId").asText()).header("Authorization", bearer("alert-admin-token")),
+                Map.of("repeatIntervalSeconds", 120, "reason", "拒绝非法重复提醒间隔", "idempotencyKey", "patch-route-bad-repeat"), 400, 40001);
+        performJson(patch("/api/v1/alerting/routes/" + route.at("/data/routeId").asText()).header("Authorization", bearer("alert-admin-token")),
+                Map.of("groupIntervalSeconds", "bad", "reason", "拒绝非法分组间隔", "idempotencyKey", "patch-route-bad-group-interval"), 400, 40001);
         JsonNode delivery = performJson(post("/api/v1/alerting/routes/" + route.at("/data/routeId").asText() + "/test").header("Authorization", bearer("alert-admin-token")),
                 Map.of("sampleAlert", sampleAlert(), "reason", "测试路由", "idempotencyKey", "test-route"), 201);
         assertThat(delivery.at("/data/status").asText()).isEqualTo("SENT");
@@ -251,6 +277,10 @@ class AlertingApiContractTest {
                 .param("from", "2020-01-01T00:00:00Z")
                 .param("to", "2030-01-01T00:00:00Z"), 200);
         assertThat(deliveries.toString()).contains(delivery.at("/data/deliveryId").asText());
+        performJson(get("/api/v1/alerting/deliveries")
+                .header("Authorization", bearer("alert-viewer-token"))
+                .param("from", "not-a-time")
+                .param("to", "2030-01-01T00:00:00Z"), 400, 40001);
 
         JsonNode audit = performJson(get("/api/v1/alerting/audit-logs")
                 .header("Authorization", bearer("alert-admin-token"))

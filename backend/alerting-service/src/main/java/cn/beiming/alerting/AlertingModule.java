@@ -166,12 +166,17 @@ class AlertingController {
         auth.requireAdmin(actor);
         rejectTrusted(body);
         validateReason(body);
+        validateRuleBody(body, false);
         return idempotent(request, actor, "rule:patch:" + ruleId, body, () -> {
             store.failAuditIfRequested(request, properties.enabled());
             synchronized (store) {
                 AlertRule rule = store.rule(ruleId);
                 if ("ARCHIVED".equals(rule.status)) {
                     throw new AlertingException(HttpStatus.CONFLICT, 49910, "alert rule state conflict");
+                }
+                String routeId = text(body.get("routeId"));
+                if (body.containsKey("routeId") && !routeId.isBlank() && !store.routes.containsKey(routeId)) {
+                    throw new AlertingException(HttpStatus.NOT_FOUND, 49904, "alert route not found");
                 }
                 String before = rule.status;
                 rule.patch(body, actor.userId);
@@ -262,6 +267,11 @@ class AlertingController {
                         if (suppressed) {
                             existing.status = "SUPPRESSED";
                             existing.suppressionSummary = Map.of("suppressed", true, "reason", "MATCHED_SILENCE");
+                            existing.notificationSummary = Map.of("status", "SUPPRESSED");
+                        } else if ("SUPPRESSED".equals(existing.status)) {
+                            existing.status = "FIRING";
+                            existing.suppressionSummary = Map.of("suppressed", false, "reason", "SILENCE_NOT_MATCHED");
+                            existing.notificationSummary = Map.of("status", "PENDING");
                         }
                     }
                 }
@@ -456,6 +466,7 @@ class AlertingController {
         auth.requireAdmin(actor);
         rejectTrusted(body);
         validateReason(body);
+        validateRoutePatch(body);
         return idempotent(request, actor, "route:patch:" + routeId, body, () -> {
             store.failAuditIfRequested(request, properties.enabled());
             synchronized (store) {
@@ -572,21 +583,24 @@ class AlertingController {
     }
 
     private static void validateRuleBody(Map<String, Object> body, boolean create) {
-        validateText(body, "displayName");
-        validateText(body, "sourceService");
-        validateText(body, "sourceType");
-        validateText(body, "severity");
-        validateText(body, "conditionType");
+        if (create || body.containsKey("displayName")) validateText(body, "displayName");
+        if (create || body.containsKey("sourceService")) validateText(body, "sourceService");
+        if (create || body.containsKey("sourceType")) validateText(body, "sourceType");
+        if (create || body.containsKey("severity")) validateText(body, "severity");
+        if (create || body.containsKey("conditionType")) validateText(body, "conditionType");
         validateText(body, "reason");
-        if (create && objectMap(body.get("conditionSummary")).isEmpty()) {
+        if ((create || body.containsKey("conditionSummary")) && objectMap(body.get("conditionSummary")).isEmpty()) {
             throw new AlertingException(HttpStatus.BAD_REQUEST, 49911, "alert rule condition invalid");
         }
         if (objectMap(body.get("conditionSummary")).containsKey("bad")) {
             throw new AlertingException(HttpStatus.BAD_REQUEST, 49911, "alert rule condition invalid");
         }
-        int window = intValue(body.get("evaluationWindowSeconds"), 300);
-        int duration = intValue(body.get("forDurationSeconds"), 0);
-        if (window < 60 || window > 86400 || duration < 0 || duration > 86400) {
+        int window = bodyIntValue(body, "evaluationWindowSeconds", 300, 49911, "alert rule condition invalid");
+        int duration = bodyIntValue(body, "forDurationSeconds", 0, 49911, "alert rule condition invalid");
+        if ((create || body.containsKey("evaluationWindowSeconds")) && (window < 60 || window > 86400)) {
+            throw new AlertingException(HttpStatus.BAD_REQUEST, 49911, "alert rule condition invalid");
+        }
+        if ((create || body.containsKey("forDurationSeconds")) && (duration < 0 || duration > 86400)) {
             throw new AlertingException(HttpStatus.BAD_REQUEST, 49911, "alert rule condition invalid");
         }
     }
@@ -594,12 +608,25 @@ class AlertingController {
     private static void validateSilence(Map<String, Object> body) {
         validateText(body, "reason");
         Map<String, Object> matchers = objectMap(body.get("matchers"));
-        if (matchers.isEmpty()) {
+        boolean hasKnownMatcher = matchers.containsKey("sourceService")
+                || matchers.containsKey("severity")
+                || matchers.containsKey("groupKey")
+                || !objectMap(matchers.get("labels")).isEmpty();
+        if (!hasKnownMatcher) {
             throw new AlertingException(HttpStatus.BAD_REQUEST, 49914, "silence matchers invalid");
         }
         String startsAt = text(body.get("startsAt"));
         String endsAt = text(body.get("endsAt"));
-        if (startsAt.isBlank() || endsAt.isBlank() || Instant.parse(endsAt).compareTo(Instant.parse(startsAt)) <= 0) {
+        if (startsAt.isBlank() || endsAt.isBlank()) {
+            throw new AlertingException(HttpStatus.BAD_REQUEST, 49913, "silence time range invalid");
+        }
+        try {
+            if (Instant.parse(endsAt).compareTo(Instant.parse(startsAt)) <= 0) {
+                throw new AlertingException(HttpStatus.BAD_REQUEST, 49913, "silence time range invalid");
+            }
+        } catch (AlertingException exception) {
+            throw exception;
+        } catch (Exception exception) {
             throw new AlertingException(HttpStatus.BAD_REQUEST, 49913, "silence time range invalid");
         }
     }
@@ -610,9 +637,31 @@ class AlertingController {
         if (objectMap(body.get("matchers")).isEmpty() || stringList(body.get("groupBy")).isEmpty()) {
             throw new AlertingException(HttpStatus.BAD_REQUEST, 40001, "alert route invalid");
         }
-        int groupInterval = intValue(body.get("groupIntervalSeconds"), 60);
-        int repeatInterval = intValue(body.get("repeatIntervalSeconds"), 300);
-        if (groupInterval < 60 || repeatInterval < 300) {
+        validateRouteIntervals(body, true);
+    }
+
+    private static void validateRoutePatch(Map<String, Object> body) {
+        validateRouteIntervals(body, false);
+        if (body.containsKey("displayName")) validateText(body, "displayName");
+        if (body.containsKey("matchers") && objectMap(body.get("matchers")).isEmpty()) {
+            throw new AlertingException(HttpStatus.BAD_REQUEST, 40001, "alert route invalid");
+        }
+        if (body.containsKey("groupBy") && stringList(body.get("groupBy")).isEmpty()) {
+            throw new AlertingException(HttpStatus.BAD_REQUEST, 40001, "alert route invalid");
+        }
+    }
+
+    private static void validateRouteIntervals(Map<String, Object> body, boolean create) {
+        int groupWait = bodyIntValue(body, "groupWaitSeconds", 0, 40001, "alert route invalid");
+        int groupInterval = bodyIntValue(body, "groupIntervalSeconds", 60, 40001, "alert route invalid");
+        int repeatInterval = bodyIntValue(body, "repeatIntervalSeconds", 300, 40001, "alert route invalid");
+        if ((create || body.containsKey("groupWaitSeconds")) && (groupWait < 0 || groupWait > 3600)) {
+            throw new AlertingException(HttpStatus.BAD_REQUEST, 40001, "alert route invalid");
+        }
+        if ((create || body.containsKey("groupIntervalSeconds")) && (groupInterval < 60 || groupInterval > 86400)) {
+            throw new AlertingException(HttpStatus.BAD_REQUEST, 40001, "alert route invalid");
+        }
+        if ((create || body.containsKey("repeatIntervalSeconds")) && (repeatInterval < 300 || repeatInterval > 604800)) {
             throw new AlertingException(HttpStatus.BAD_REQUEST, 40001, "alert route invalid");
         }
     }
@@ -640,8 +689,8 @@ class AlertingController {
     }
 
     private static void validatePage(Map<String, String> query) {
-        int page = intValue(query.get("page"), 1);
-        int pageSize = intValue(query.get("pageSize"), 20);
+        int page = queryIntValue(query, "page", 1, 40002, "invalid page");
+        int pageSize = queryIntValue(query, "pageSize", 20, 40002, "invalid page");
         if (page < 1 || pageSize < 1 || pageSize > 100) {
             throw new AlertingException(HttpStatus.BAD_REQUEST, 40002, "invalid page");
         }
@@ -656,7 +705,13 @@ class AlertingController {
 
     private static void validateTimeRange(Map<String, String> query) {
         if (query.get("from") == null || query.get("to") == null) return;
-        if (Instant.parse(query.get("from")).compareTo(Instant.parse(query.get("to"))) > 0) {
+        try {
+            if (Instant.parse(query.get("from")).compareTo(Instant.parse(query.get("to"))) > 0) {
+                throw new AlertingException(HttpStatus.BAD_REQUEST, 40001, "invalid time range");
+            }
+        } catch (AlertingException exception) {
+            throw exception;
+        } catch (Exception exception) {
             throw new AlertingException(HttpStatus.BAD_REQUEST, 40001, "invalid time range");
         }
     }
@@ -769,6 +824,29 @@ class AlertingController {
         }
     }
 
+    private static int bodyIntValue(Map<String, Object> body, String field, int fallback, int code, String message) {
+        if (body == null || !body.containsKey(field)) return fallback;
+        return strictIntValue(body.get(field), code, message);
+    }
+
+    private static int queryIntValue(Map<String, String> query, String field, int fallback, int code, String message) {
+        String value = query.get(field);
+        if (value == null) return fallback;
+        return strictIntValue(value, code, message);
+    }
+
+    private static int strictIntValue(Object value, int code, String message) {
+        String raw = text(value).trim();
+        if (!raw.matches("-?\\d+")) {
+            throw new AlertingException(HttpStatus.BAD_REQUEST, code, message);
+        }
+        try {
+            return Integer.parseInt(raw);
+        } catch (NumberFormatException exception) {
+            throw new AlertingException(HttpStatus.BAD_REQUEST, code, message);
+        }
+    }
+
     private static boolean bool(Object value) {
         return value instanceof Boolean bool ? bool : Boolean.parseBoolean(text(value));
     }
@@ -860,6 +938,7 @@ class AlertingStore {
 
     boolean activeSilenceMatches(AlertRule rule, Map<String, Object> sourceSnapshot) {
         String sourceRef = AlertingText.textOr(sourceSnapshot.get("nodeId"), AlertingText.textOr(sourceSnapshot.get("sourceRef"), ""));
+        String groupKey = rule.sourceService + ":" + sourceRef;
         Instant now = Instant.now();
         return silences.values().stream().anyMatch(silence -> {
             if (!"ACTIVE".equals(silence.status)) return false;
@@ -868,6 +947,7 @@ class AlertingStore {
             if (now.isBefore(start) || now.isAfter(end)) return false;
             if (silence.matchers.get("sourceService") != null && !Objects.equals(silence.matchers.get("sourceService"), rule.sourceService)) return false;
             if (silence.matchers.get("severity") != null && !Objects.equals(silence.matchers.get("severity"), rule.severity)) return false;
+            if (silence.matchers.get("groupKey") != null && !Objects.equals(String.valueOf(silence.matchers.get("groupKey")), groupKey)) return false;
             Map<String, Object> labels = AlertingText.objectMap(silence.matchers.get("labels"));
             Object node = labels.get("node");
             return node == null || Objects.equals(String.valueOf(node), sourceRef);
