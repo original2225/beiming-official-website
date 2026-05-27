@@ -425,6 +425,75 @@ class AlertingApiContractTest {
                 "targetDatabaseUrl", "restorePath", "shellCommand", "/srv/", "C:\\\\", ".env", "token=");
     }
 
+    @Test
+    @DisplayName("ALT-EVAL, ALT-SILENCE, ALT-ROUTE, ALT-DELIVERY, ALT-AUDIT, and ALT-HARDEN cover refined alerting contract gaps")
+    void refinedContractGapsAreCovered() throws Exception {
+        performJson(post("/api/v1/alerting/rules/rule-node-offline/evaluate").header("Authorization", bearer("alert-admin-token")),
+                Map.of(
+                        "sourceSnapshot", Map.of("nodeId", "nested-secret-node", "nested", Map.of("webhookSecret", "must-not-enter")),
+                        "dryRun", false,
+                        "reason", "拒绝嵌套可信字段",
+                        "idempotencyKey", "eval-nested-secret"), 400, 40001);
+
+        JsonNode firstTemplateRule = performJson(post("/api/v1/alerting/rules").header("Authorization", bearer("alert-admin-token")),
+                with(with(ruleBody("rule-template-alpha"), "displayName", "Template Alpha"),
+                        "labels", Map.of("service", "template-alpha", "scope", "node")), 201);
+        JsonNode secondTemplateRule = performJson(post("/api/v1/alerting/rules").header("Authorization", bearer("alert-admin-token")),
+                with(with(ruleBody("rule-template-beta"), "displayName", "Template Beta"),
+                        "labels", Map.of("service", "template-beta", "scope", "node")), 201);
+        String firstRuleId = firstTemplateRule.at("/data/ruleId").asText();
+        String secondRuleId = secondTemplateRule.at("/data/ruleId").asText();
+        performJson(patch("/api/v1/alerting/rules/" + firstRuleId + "/enable").header("Authorization", bearer("alert-admin-token")),
+                Map.of("reason", "启用模板规则一", "idempotencyKey", "enable-template-alpha"), 200);
+        performJson(patch("/api/v1/alerting/rules/" + secondRuleId + "/enable").header("Authorization", bearer("alert-admin-token")),
+                Map.of("reason", "启用模板规则二", "idempotencyKey", "enable-template-beta"), 200);
+
+        JsonNode firstEvaluation = performJson(post("/api/v1/alerting/rules/" + firstRuleId + "/evaluate").header("Authorization", bearer("alert-admin-token")),
+                Map.of("sourceSnapshot", sourceSnapshot("template-node"), "dryRun", false, "reason", "模板去重一", "idempotencyKey", "eval-template-alpha"), 201);
+        JsonNode secondEvaluation = performJson(post("/api/v1/alerting/rules/" + secondRuleId + "/evaluate").header("Authorization", bearer("alert-admin-token")),
+                Map.of("sourceSnapshot", sourceSnapshot("template-node"), "dryRun", false, "reason", "模板去重二", "idempotencyKey", "eval-template-beta"), 201);
+        assertThat(firstEvaluation.at("/data/dedupeHit").asBoolean()).isFalse();
+        assertThat(secondEvaluation.at("/data/dedupeHit").asBoolean()).isFalse();
+        assertThat(secondEvaluation.at("/data/createdAlertId").asText()).isNotEqualTo(firstEvaluation.at("/data/createdAlertId").asText());
+
+        JsonNode repeatedTemplateEvaluation = performJson(post("/api/v1/alerting/rules/" + firstRuleId + "/evaluate").header("Authorization", bearer("alert-admin-token")),
+                Map.of("sourceSnapshot", sourceSnapshot("template-node"), "dryRun", false, "reason", "模板重复评估", "idempotencyKey", "eval-template-alpha-repeat"), 201);
+        assertThat(repeatedTemplateEvaluation.at("/data/dedupeHit").asBoolean()).isTrue();
+
+        JsonNode routedEvaluation = performJson(post("/api/v1/alerting/rules/rule-node-offline/evaluate").header("Authorization", bearer("alert-admin-token")),
+                Map.of("sourceSnapshot", sourceSnapshot("delivered-node"), "dryRun", false, "reason", "正常路由投递", "idempotencyKey", "eval-delivered-node"), 201);
+        JsonNode routedAlert = performJson(get("/api/v1/alerting/alerts/" + routedEvaluation.at("/data/createdAlertId").asText())
+                .header("Authorization", bearer("alert-viewer-token")), 200);
+        assertThat(routedAlert.at("/data/notificationSummary/status").asText()).isEqualTo("SENT");
+        JsonNode routedDeliveries = performJson(get("/api/v1/alerting/deliveries")
+                .header("Authorization", bearer("alert-viewer-token"))
+                .param("alertId", routedEvaluation.at("/data/createdAlertId").asText())
+                .param("routeId", "route-default")
+                .param("status", "SENT"), 200);
+        assertThat(routedDeliveries.at("/data/total").asInt()).isEqualTo(1);
+
+        JsonNode expiredSilence = performJson(post("/api/v1/alerting/silences").header("Authorization", bearer("alert-admin-token")),
+                with(with(silenceBody("silence-expired"), "startsAt", "2020-01-01T00:00:00Z"), "endsAt", "2021-01-01T00:00:00Z"), 201);
+        JsonNode expiredList = performJson(get("/api/v1/alerting/silences")
+                .header("Authorization", bearer("alert-viewer-token"))
+                .param("status", "EXPIRED"), 200);
+        assertThat(expiredList.toString()).contains(expiredSilence.at("/data/silenceId").asText());
+        JsonNode notSuppressedByExpired = performJson(post("/api/v1/alerting/rules/rule-node-offline/evaluate").header("Authorization", bearer("alert-admin-token")),
+                Map.of("sourceSnapshot", sourceSnapshot("silenced-node"), "dryRun", false, "reason", "过期静默不抑制", "idempotencyKey", "eval-expired-silence"), 201);
+        assertThat(notSuppressedByExpired.at("/data/suppressed").asBoolean()).isFalse();
+
+        JsonNode auditedRoute = performJson(post("/api/v1/alerting/routes").header("Authorization", bearer("alert-admin-token")),
+                routeBody("route-audit-detail"), 201);
+        JsonNode audit = performJson(get("/api/v1/alerting/audit-logs")
+                .header("Authorization", bearer("alert-admin-token"))
+                .param("routeId", auditedRoute.at("/data/routeId").asText())
+                .param("action", "ALERT_ROUTE_CREATED"), 200);
+        assertThat(audit.at("/data/items/0/reason").asText()).isEqualTo("创建告警路由");
+        assertThat(audit.at("/data/items/0/paramsSummary/sanitized").asBoolean()).isTrue();
+        assertThat(audit.at("/data/items/0/paramsSummary/fieldNames").toString()).contains("displayName", "idempotencyKey");
+        assertNoSecrets(audit);
+    }
+
     private void addRange(Set<String> target, String prefix, int start, int end) {
         for (int index = start; index <= end; index++) {
             target.add(prefix + "-" + "%03d".formatted(index));
