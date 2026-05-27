@@ -1,6 +1,6 @@
 # 北冥官网 online-map API 契约
 
-版本：0.1
+版本：0.2
 
 ## 文档定位
 
@@ -377,7 +377,7 @@
 
 `GET /api/v1/online-map/regions` 支持 `providerId`、`worldId`、`layerId`、`sourceModule`、`keyword`、`bounds` 和 `sort`。只返回 `PUBLISHED`、`visibility=PUBLIC`、未过期且点位合法的区域。
 
-`GET /api/v1/online-map/embed` 支持 `providerId`、`worldId` 和 `origin`。当传入 `origin` 时，必须命中 provider 的 `allowedOrigins`，否则返回 `49715`。成功返回 `PublicMapEmbedConfig`。没有可用 provider 时返回 `data=null`，不能返回内部默认地址。
+`GET /api/v1/online-map/embed` 支持 `providerId`、`worldId` 和 `origin`。当传入 `origin` 时，必须命中 provider 的 `allowedOrigins`，否则返回 `49715`。传入 `worldId` 时，必须选择该 provider 下启用、公开且未归档的 world 作为默认世界；world 不存在、属于其他 provider、未公开、未启用或已归档时返回 `49701`。成功返回 `PublicMapEmbedConfig`。没有可用 provider 时返回 `data=null`，不能返回内部默认地址，也不能因为默认 provider 为空抛出内部错误。
 
 ## 后台 provider 接口
 
@@ -405,7 +405,7 @@
 | `reason` | string | 是 | 1 到 200 位。 |
 | `idempotencyKey` | string | 否 | 创建重试幂等键，24 小时内有效。 |
 
-成功响应 HTTP `201`，`data` 为 `AdminMapProvider`，默认状态为 `DRAFT`。同名、公开入口或 embed URL 冲突返回 `49711`。URL 不安全返回 `49713`。审计失败返回 `55601`，不得创建 provider。
+成功响应 HTTP `201`，`data` 为 `AdminMapProvider`，默认状态为 `DRAFT`。同名、公开入口或 embed URL 冲突返回 `49711`。URL 冲突比较必须基于规范化后的公开 URL 和 embed URL，忽略末尾 `/`、协议和 host 大小写差异，但不能把不同路径误判为同一入口。URL 不安全返回 `49713`。审计失败返回 `55601`，不得创建 provider。
 
 `PATCH /api/v1/online-map/admin/providers/{providerId}` 可修改创建字段中的业务字段，`reason` 必填。修改 `publicBaseUrl`、`embedUrl`、`allowedOrigins` 或把 `publicVisible` 从 `false` 改为 `true` 时属于 `HIGH` 风险，必须携带 `confirmText=UPDATE_PUBLIC_MAP_ENTRY`，否则返回 `42003`。`ARCHIVED` provider 不允许修改，返回 `49710`。
 
@@ -413,9 +413,9 @@
 
 `PATCH /api/v1/online-map/admin/providers/{providerId}/disable` 请求字段为 `reason` 和 `idempotencyKey`。`ENABLED` 或 `DEGRADED` 可流转为 `DISABLED`。禁用后公开接口不再返回该 provider。重复禁用保持幂等。
 
-`PATCH /api/v1/online-map/admin/providers/{providerId}/archive` 请求字段为 `reason`、`confirmText` 和 `idempotencyKey`。`confirmText` 必须为 `ARCHIVE_MAP_PROVIDER`。只有 `DRAFT`、`DISABLED` 或 `DEGRADED` 可归档；仍有 `publicVisible=true` 且未归档的 world、layer、marker 或 region 时返回 `49717`。`ARCHIVED` 为终态。
+`PATCH /api/v1/online-map/admin/providers/{providerId}/archive` 请求字段为 `reason`、`confirmText` 和 `idempotencyKey`。`confirmText` 必须为 `ARCHIVE_MAP_PROVIDER`。只有 `DRAFT`、`DISABLED` 或 `DEGRADED` 可归档；`ENABLED` provider 必须先禁用后归档；仍有 `publicVisible=true` 或 `visibility=PUBLIC` 且未归档的 world、layer、marker 或 region 时返回 `49717`，不得自动静默归档子对象。`ARCHIVED` 为终态。
 
-`POST /api/v1/online-map/admin/providers/{providerId}/health/refresh` 请求字段为 `reason` 和 `idempotencyKey`。只允许 `ENABLED` 或 `DEGRADED` provider 刷新健康。相同 provider 刷新必须加锁；已有刷新进行中或冷却窗口内重复刷新返回 `49716`。provider 探测失败不得清空旧公开入口，只写入降级健康快照；快照写入失败返回 `55603`。
+`POST /api/v1/online-map/admin/providers/{providerId}/health/refresh` 请求字段为 `reason` 和 `idempotencyKey`。只允许 `ENABLED` 或 `DEGRADED` provider 刷新健康。相同 provider 刷新必须加锁；已有刷新进行中或冷却窗口内重复刷新返回 `49716`。第一版冷却窗口固定为 60 秒，幂等重放同一请求不受冷却影响；不同幂等键或无幂等键在冷却窗口内重复刷新必须返回 `49716`。provider 探测失败不得清空旧公开入口，只写入降级健康快照；快照写入失败返回 `55603`。
 
 `GET /api/v1/online-map/admin/providers/{providerId}/health/snapshots` 支持 `page`、`pageSize`、`healthStatus`、`from`、`to` 和 `sort`。`sort` 允许 `checkedAt_desc`、`checkedAt_asc`、`latencyMs_asc`。成功响应分页 `items` 为 `MapHealthSnapshot[]`。
 
@@ -469,13 +469,13 @@ provider 状态流转为 `DRAFT` 可到 `ENABLED`、`DISABLED` 或 `ARCHIVED`；
 
 创建、修改、状态流转、归档、保存世界快照和健康刷新支持 `idempotencyKey`。同一操作者、同一接口语义、同一幂等键、同一请求体重复提交时返回同一结果；相同幂等键搭配不同请求体返回 `49712`。请求体指纹必须基于结构化 JSON 规范化结果，所有嵌套对象按字段名递归排序，数组保留顺序，不能依赖 Java `Map.toString()` 或浏览器字段顺序。
 
-并发创建相同 provider URL、同名图层、相同 marker 来源引用或相同区域来源引用时只能一个成功，其余返回冲突。健康刷新必须以 provider 为粒度加锁。所有写接口必须在同一个临界区内完成状态校验、业务写入、审计写入、幂等记录和响应快照保存。后续数据库实现必须迁移为事务、唯一约束、条件更新或等效机制，不能降低并发口径。
+并发创建相同 provider URL、同名图层、相同 marker 来源引用或相同区域来源引用时只能一个成功，其余返回冲突。marker 和区域来源引用冲突以同一 provider、world、layer、sourceModule 和结构化规范化后的 sourceRef 为口径，`sourceRef=null` 或空对象不参与唯一约束。健康刷新必须以 provider 为粒度加锁并执行冷却窗口判断。所有写接口必须在同一个临界区内完成状态校验、业务写入、审计写入、幂等记录和响应快照保存。后续数据库实现必须迁移为事务、唯一约束、条件更新或等效机制，不能降低并发口径。
 
 ## 安全、降级和脱敏
 
 所有 URL 必须拒绝 `file:`、`data:`、`javascript:`、带用户名密码 URL、内网 IP、localhost、链路本地地址、未解析主机、空 host 和控制字符。公开接口只允许返回公开 URL 或站内路径。allowed origins 不允许 `*`，不允许内网 origin。
 
-坐标必须是有限数字。公开 marker 查询的 `bounds` 必须限制在合理范围内，不能因为异常范围导致全量扫描。HTML marker 的 `summary` 和 `styleSummary` 不允许 `<script>`、事件处理器、危险协议或内联敏感数据。
+坐标必须是有限数字。公开 marker 查询的 `bounds` 必须限制在合理范围内，不能因为异常范围导致全量扫描。providerType、dimension、renderStatus、layerType、layer status、markerType、visibility、object status 和 sourceModule 必须严格匹配本文档枚举，未知枚举返回 `40001`。HTML marker 的 `summary` 和所有对象的 `styleSummary` 不允许 `<script>`、事件处理器、危险协议、CSS `expression()`、`url(javascript:...)` 或内联敏感数据。
 
 任何请求体和响应都不得包含访问 token、节点密钥、地图后台密码、Cloudreve 管理 token、分享密码、外部 webhook secret、SMTP 密码、短信 token、完整 Authorization 请求头、内部绝对路径、真实世界目录、节点地址、异常堆栈、数据库连接串、`.env`、`authorized_keys`、`id_rsa`、服务器密码或 shell 命令。检查必须递归覆盖嵌套对象和数组。
 
