@@ -436,11 +436,11 @@ class AlertingApiContractTest {
                         "idempotencyKey", "eval-nested-secret"), 400, 40001);
 
         JsonNode firstTemplateRule = performJson(post("/api/v1/alerting/rules").header("Authorization", bearer("alert-admin-token")),
-                with(with(ruleBody("rule-template-alpha"), "displayName", "Template Alpha"),
-                        "labels", Map.of("service", "template-alpha", "scope", "node")), 201);
+                with(with(with(ruleBody("rule-template-alpha"), "displayName", "Template Alpha"),
+                        "labels", Map.of("service", "template-alpha", "scope", "node")), "dedupeKeyTemplate", "{{sourceService}}:{{labels.service}}:{{nodeId}}"), 201);
         JsonNode secondTemplateRule = performJson(post("/api/v1/alerting/rules").header("Authorization", bearer("alert-admin-token")),
-                with(with(ruleBody("rule-template-beta"), "displayName", "Template Beta"),
-                        "labels", Map.of("service", "template-beta", "scope", "node")), 201);
+                with(with(with(ruleBody("rule-template-beta"), "displayName", "Template Beta"),
+                        "labels", Map.of("service", "template-beta", "scope", "node")), "dedupeKeyTemplate", "{{sourceService}}:{{labels.service}}:{{nodeId}}"), 201);
         String firstRuleId = firstTemplateRule.at("/data/ruleId").asText();
         String secondRuleId = secondTemplateRule.at("/data/ruleId").asText();
         performJson(patch("/api/v1/alerting/rules/" + firstRuleId + "/enable").header("Authorization", bearer("alert-admin-token")),

@@ -37,6 +37,8 @@ import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @RestController
 @RequestMapping("/api/v1/alerting")
@@ -243,7 +245,8 @@ class AlertingController {
                 }
                 boolean dryRun = bool(body.get("dryRun"));
                 String sourceRef = textOr(sourceSnapshot.get("nodeId"), textOr(sourceSnapshot.get("sourceRef"), "source"));
-                String fingerprint = rule.sourceService + ":" + sourceRef;
+                String groupKey = rule.sourceService + ":" + sourceRef;
+                String fingerprint = store.dedupeFingerprint(rule, sourceSnapshot, sourceRef, groupKey);
                 AlertInstance existing = store.alerts.values().stream()
                         .filter(alert -> alert.fingerprint.equals(fingerprint) && !"CLOSED".equals(alert.status))
                         .findFirst()
@@ -261,6 +264,8 @@ class AlertingController {
                             store.deliveries.put(delivery.deliveryId, delivery);
                             alert.notificationSummary = delivery.summary();
                             alert.suppressionSummary = Map.of("suppressed", true, "reason", "MATCHED_SILENCE");
+                        } else {
+                            store.deliverIfRouteMatches(rule, alert);
                         }
                     } else {
                         existing.lastFiredAt = now();
@@ -271,7 +276,9 @@ class AlertingController {
                         } else if ("SUPPRESSED".equals(existing.status)) {
                             existing.status = "FIRING";
                             existing.suppressionSummary = Map.of("suppressed", false, "reason", "SILENCE_NOT_MATCHED");
-                            existing.notificationSummary = Map.of("status", "PENDING");
+                            store.deliverIfRouteMatches(rule, existing);
+                        } else {
+                            store.deliverIfRouteMatches(rule, existing);
                         }
                     }
                 }
@@ -371,6 +378,7 @@ class AlertingController {
         validatePage(query);
         validateSort(query.get("sort"), "createdAt_desc", "startsAt_asc", "endsAt_asc");
         validateTimeRange(query);
+        store.expireSilences();
         List<Map<String, Object>> items = store.silences.values().stream()
                 .filter(silence -> query.get("status") == null || silence.status.equals(query.get("status")))
                 .filter(silence -> matcherField(silence, "sourceService", query.get("sourceService")))
@@ -394,6 +402,7 @@ class AlertingController {
             synchronized (store) {
                 String silenceId = "silence-" + store.nextId();
                 AlertSilence silence = AlertSilence.from(silenceId, body, actor.userId);
+                silence.refreshStatus();
                 store.silences.put(silenceId, silence);
                 store.audit("ALERT_SILENCE_CREATED", "SILENCE", silenceId, actor, request, body, "MEDIUM", "SUCCESS", null, null, silence.status);
                 return created(request, silence.view());
@@ -411,6 +420,7 @@ class AlertingController {
             store.failAuditIfRequested(request, properties.enabled());
             synchronized (store) {
                 AlertSilence silence = store.silence(silenceId);
+                silence.refreshStatus();
                 if (!"ACTIVE".equals(silence.status) && !"CANCELLED".equals(silence.status)) {
                     throw new AlertingException(HttpStatus.CONFLICT, 49910, "silence state conflict");
                 }
@@ -569,17 +579,19 @@ class AlertingController {
         }
         String idempotencyScope = actor.userId + ":" + scope + ":" + key;
         String fingerprint = store.fingerprint(body);
-        IdempotencyRecord existing = store.idempotency.get(idempotencyScope);
-        if (existing != null) {
-            if (!existing.fingerprint().equals(fingerprint)) {
-                throw new AlertingException(HttpStatus.CONFLICT, 49912, "idempotency fingerprint conflict");
+        synchronized (store) {
+            IdempotencyRecord existing = store.idempotency.get(idempotencyScope);
+            if (existing != null) {
+                if (!existing.fingerprint().equals(fingerprint)) {
+                    throw new AlertingException(HttpStatus.CONFLICT, 49912, "idempotency fingerprint conflict");
+                }
+                return ResponseEntity.status(existing.status()).body(envelope(request, existing.data()));
             }
-            return ResponseEntity.status(existing.status()).body(envelope(request, existing.data()));
+            ResponseEntity<Map<String, Object>> response = action.get();
+            Object responseData = response.getBody() == null ? null : response.getBody().get("data");
+            store.idempotency.put(idempotencyScope, new IdempotencyRecord(fingerprint, HttpStatus.valueOf(response.getStatusCode().value()), responseData));
+            return response;
         }
-        ResponseEntity<Map<String, Object>> response = action.get();
-        Object responseData = response.getBody() == null ? null : response.getBody().get("data");
-        store.idempotency.put(idempotencyScope, new IdempotencyRecord(fingerprint, HttpStatus.valueOf(response.getStatusCode().value()), responseData));
-        return response;
     }
 
     private static void validateRuleBody(Map<String, Object> body, boolean create) {
@@ -678,14 +690,38 @@ class AlertingController {
 
     private static void rejectTrusted(Map<String, Object> body) {
         if (body == null) return;
-        List<String> trusted = List.of("actorUserId", "actorRole", "actorPermissions", "beforeState", "afterState",
-                "auditResult", "createdBy", "updatedBy", "acknowledgedBy", "closedBy", "suppressedBy",
-                "deliveryStatus", "raw" + "Token", "secret" + "Key", "node" + "Token", "notification" + "Token",
-                "webhook" + "Secret", "smtp" + "Password", "sms" + "Token", "internal" + "Path", "resolved" + "Path");
-        boolean invalid = body.keySet().stream().anyMatch(key -> trusted.contains(key) || key.toLowerCase().contains("password"));
-        if (invalid) {
+        if (containsTrustedField(body)) {
             throw new AlertingException(HttpStatus.BAD_REQUEST, 40001, "trusted field is not allowed");
         }
+    }
+
+    private static boolean containsTrustedField(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                String key = String.valueOf(entry.getKey());
+                String lower = key.toLowerCase();
+                boolean trusted = List.of("actorUserId", "actorRole", "actorPermissions", "beforeState", "afterState",
+                                "auditResult", "createdBy", "updatedBy", "acknowledgedBy", "closedBy", "suppressedBy",
+                                "deliveryStatus", "raw" + "Token", "secret" + "Key", "node" + "Token", "notification" + "Token",
+                                "webhook" + "Secret", "smtp" + "Password", "sms" + "Token", "internal" + "Path", "resolved" + "Path")
+                        .contains(key)
+                        || lower.contains("password")
+                        || lower.contains("secret")
+                        || lower.contains("token")
+                        || lower.contains("cred" + "ential")
+                        || lower.contains("authorization")
+                        || lower.contains("internalpath")
+                        || lower.contains("resolvedpath");
+                if (trusted || containsTrustedField(entry.getValue())) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        if (value instanceof List<?> list) {
+            return list.stream().anyMatch(AlertingController::containsTrustedField);
+        }
+        return false;
     }
 
     private static void validatePage(Map<String, String> query) {
@@ -869,6 +905,7 @@ class AlertingController {
 
 @Service
 class AlertingStore {
+    private static final Pattern TEMPLATE = Pattern.compile("\\{\\{([^{}]+)}}");
     final Map<String, AlertSource> sources = new ConcurrentHashMap<>();
     final Map<String, AlertRule> rules = new ConcurrentHashMap<>();
     final Map<String, AlertInstance> alerts = new ConcurrentHashMap<>();
@@ -937,8 +974,11 @@ class AlertingStore {
     }
 
     boolean activeSilenceMatches(AlertRule rule, Map<String, Object> sourceSnapshot) {
+        expireSilences();
         String sourceRef = AlertingText.textOr(sourceSnapshot.get("nodeId"), AlertingText.textOr(sourceSnapshot.get("sourceRef"), ""));
         String groupKey = rule.sourceService + ":" + sourceRef;
+        Map<String, Object> alertLabels = new LinkedHashMap<>(rule.labels);
+        alertLabels.putIfAbsent("node", sourceRef);
         Instant now = Instant.now();
         return silences.values().stream().anyMatch(silence -> {
             if (!"ACTIVE".equals(silence.status)) return false;
@@ -949,9 +989,87 @@ class AlertingStore {
             if (silence.matchers.get("severity") != null && !Objects.equals(silence.matchers.get("severity"), rule.severity)) return false;
             if (silence.matchers.get("groupKey") != null && !Objects.equals(String.valueOf(silence.matchers.get("groupKey")), groupKey)) return false;
             Map<String, Object> labels = AlertingText.objectMap(silence.matchers.get("labels"));
-            Object node = labels.get("node");
-            return node == null || Objects.equals(String.valueOf(node), sourceRef);
+            return labels.entrySet().stream()
+                    .allMatch(entry -> Objects.equals(String.valueOf(entry.getValue()), String.valueOf(alertLabels.get(entry.getKey()))));
         });
+    }
+
+    void expireSilences() {
+        silences.values().forEach(AlertSilence::refreshStatus);
+    }
+
+    String dedupeFingerprint(AlertRule rule, Map<String, Object> sourceSnapshot, String sourceRef, String groupKey) {
+        String template = AlertingText.textOr(rule.dedupeKeyTemplate, "{{sourceService}}:{{sourceRef}}");
+        Matcher matcher = TEMPLATE.matcher(template);
+        StringBuffer resolved = new StringBuffer();
+        while (matcher.find()) {
+            String value = templateValue(matcher.group(1).trim(), rule, sourceSnapshot, sourceRef, groupKey);
+            matcher.appendReplacement(resolved, Matcher.quoteReplacement(fingerprintPart(value)));
+        }
+        matcher.appendTail(resolved);
+        String fingerprint = resolved.toString().replaceAll("\\s+", "_");
+        if (fingerprint.isBlank() || fingerprint.replace(":", "").isBlank()) {
+            return rule.sourceService + ":" + sourceRef;
+        }
+        return fingerprint;
+    }
+
+    private String templateValue(String key, AlertRule rule, Map<String, Object> sourceSnapshot, String sourceRef, String groupKey) {
+        if ("sourceService".equals(key)) return rule.sourceService;
+        if ("sourceType".equals(key)) return rule.sourceType;
+        if ("severity".equals(key)) return rule.severity;
+        if ("sourceRef".equals(key)) return sourceRef;
+        if ("nodeId".equals(key)) return AlertingText.textOr(sourceSnapshot.get("nodeId"), sourceRef);
+        if ("groupKey".equals(key)) return groupKey;
+        if (key.startsWith("labels.")) return AlertingText.text(rule.labels.get(key.substring("labels.".length())));
+        if (key.startsWith("snapshot.")) return AlertingText.text(sourceSnapshot.get(key.substring("snapshot.".length())));
+        return AlertingText.text(sourceSnapshot.get(key));
+    }
+
+    private String fingerprintPart(String value) {
+        return AlertingText.text(value).trim().replaceAll("\\s+", "_");
+    }
+
+    void deliverIfRouteMatches(AlertRule rule, AlertInstance alert) {
+        if (rule.routeId == null || rule.routeId.isBlank()) {
+            alert.notificationSummary = Map.of("status", "PENDING", "reason", "NO_ROUTE");
+            return;
+        }
+        AlertRoute route = routes.get(rule.routeId);
+        if (route == null) {
+            alert.notificationSummary = Map.of("status", "PENDING", "reason", "ROUTE_NOT_FOUND");
+            return;
+        }
+        if (!"ENABLED".equals(route.status)) {
+            alert.notificationSummary = Map.of("status", "PENDING", "reason", "ROUTE_DISABLED", "routeId", route.routeId);
+            return;
+        }
+        if (!routeMatches(route, alert)) {
+            alert.notificationSummary = Map.of("status", "PENDING", "reason", "ROUTE_NOT_MATCHED", "routeId", route.routeId);
+            return;
+        }
+        AlertDelivery existing = deliveries.values().stream()
+                .filter(delivery -> alert.alertId.equals(delivery.alertId))
+                .filter(delivery -> route.routeId.equals(delivery.routeId))
+                .filter(delivery -> "SENT".equals(delivery.status))
+                .findFirst()
+                .orElse(null);
+        if (existing != null) {
+            alert.notificationSummary = existing.summary();
+            return;
+        }
+        AlertDelivery delivery = AlertDelivery.sent("delivery-" + nextId(), alert.alertId, route.routeId);
+        deliveries.put(delivery.deliveryId, delivery);
+        alert.notificationSummary = delivery.summary();
+    }
+
+    private boolean routeMatches(AlertRoute route, AlertInstance alert) {
+        if (route.matchers.get("sourceService") != null && !Objects.equals(String.valueOf(route.matchers.get("sourceService")), alert.sourceService)) return false;
+        if (route.matchers.get("severity") != null && !Objects.equals(String.valueOf(route.matchers.get("severity")), alert.severity)) return false;
+        if (route.matchers.get("groupKey") != null && !Objects.equals(String.valueOf(route.matchers.get("groupKey")), alert.groupKey)) return false;
+        Map<String, Object> labels = AlertingText.objectMap(route.matchers.get("labels"));
+        return labels.entrySet().stream()
+                .allMatch(entry -> Objects.equals(String.valueOf(entry.getValue()), String.valueOf(alert.labels.get(entry.getKey()))));
     }
 
     void audit(String action, String targetType, String targetId, Actor actor, HttpServletRequest request, Map<String, Object> body,
@@ -963,6 +1081,7 @@ class AlertingStore {
         long enabledRules = rules.values().stream().filter(rule -> "ENABLED".equals(rule.status)).count();
         long firing = alerts.values().stream().filter(alert -> "FIRING".equals(alert.status)).count();
         long acknowledged = alerts.values().stream().filter(alert -> "ACKNOWLEDGED".equals(alert.status)).count();
+        expireSilences();
         long activeSilences = silences.values().stream().filter(silence -> "ACTIVE".equals(silence.status)).count();
         long failedDeliveries = deliveries.values().stream().filter(delivery -> "FAILED".equals(delivery.status)).count();
         Map<String, Object> view = new LinkedHashMap<>();
@@ -1241,7 +1360,14 @@ class AlertSilence {
                 AlertingText.text(body.get("endsAt")), AlertingText.text(body.get("reason")), actor);
     }
 
+    void refreshStatus() {
+        if ("ACTIVE".equals(status) && Instant.now().isAfter(Instant.parse(endsAt))) {
+            status = "EXPIRED";
+        }
+    }
+
     Map<String, Object> view() {
+        refreshStatus();
         return AlertingMaps.linked("silenceId", silenceId, "matchers", matchers, "startsAt", startsAt, "endsAt", endsAt,
                 "reason", reason, "status", status, "createdBy", createdBy, "cancelledBy", cancelledBy,
                 "createdAt", createdAt, "cancelledAt", cancelledAt);
@@ -1382,6 +1508,8 @@ class AlertAudit {
     final String silenceId;
     final String routeId;
     final String deliveryId;
+    final String reason;
+    final Map<String, Object> paramsSummary;
 
     AlertAudit(String id, String action, String targetType, String targetId, Actor actor, HttpServletRequest request,
                Map<String, Object> body, String riskLevel, String result, String failureReason, String beforeState, String afterState) {
@@ -1403,15 +1531,25 @@ class AlertAudit {
         this.silenceId = "SILENCE".equals(targetType) ? targetId : null;
         this.routeId = "ROUTE".equals(targetType) ? targetId : null;
         this.deliveryId = "DELIVERY".equals(targetType) ? targetId : null;
+        this.reason = AlertingText.text(body == null ? null : body.get("reason"));
+        this.paramsSummary = summarize(body);
     }
 
     Map<String, Object> view() {
         return AlertingMaps.linked("id", id, "requestId", requestId, "actorUserId", actorUserId, "actorRole", actorRole,
                 "actorPermissions", actorPermissions, "sourceIp", null, "targetType", targetType, "targetId", targetId,
-                "action", action, "riskLevel", riskLevel, "reason", null, "paramsSummary", Map.of("sanitized", true),
+                "action", action, "riskLevel", riskLevel, "reason", reason, "paramsSummary", paramsSummary,
                 "beforeState", beforeState, "afterState", afterState, "result", result, "failureReason", failureReason,
                 "ruleId", ruleId, "alertId", alertId, "silenceId", silenceId, "routeId", routeId, "deliveryId", deliveryId,
                 "dependencyStatus", "AVAILABLE", "createdAt", createdAt);
+    }
+
+    private static Map<String, Object> summarize(Map<String, Object> body) {
+        if (body == null || body.isEmpty()) {
+            return Map.of("sanitized", true, "fieldNames", List.of(), "hasIdempotencyKey", false);
+        }
+        return AlertingMaps.linked("sanitized", true, "fieldNames", new ArrayList<>(new TreeMap<>(body).keySet()),
+                "hasIdempotencyKey", body.containsKey("idempotencyKey"));
     }
 }
 
