@@ -380,11 +380,11 @@
 
 `GET /api/v1/plugin-integration/admin/providers/{providerId}` 返回 provider、最近健康快照、实例摘要、能力摘要、最近事件、依赖摘要和最近审计。provider 不存在返回 `49800`。
 
-`POST /api/v1/plugin-integration/admin/providers` 请求字段包括 `providerType`、`displayName`、`pluginName`、`pluginVersion`、`serverKind`、`instanceRef`、`nodeRef`、`publicVisible`、`eventEndpointSummary`、`allowedEventTypes`、`allowedOrigins`、`adminNote`、`reason` 和 `idempotencyKey`。创建默认状态为 `DRAFT`，成功响应 HTTP `201`。同一未归档 provider 下 `displayName`、`pluginName + serverKind + instanceRef` 或规范化 `eventEndpointSummary` 冲突返回 `49811`。外部 endpoint、allowed origins 或来源不安全返回 `49813`。涉及公开来源、外部 endpoint 或 allowlist 时必须携带 `confirmText=REGISTER_PLUGIN_PROVIDER_ENDPOINT`，否则返回 `42003`。
+`POST /api/v1/plugin-integration/admin/providers` 请求字段包括 `providerType`、`displayName`、`pluginName`、`pluginVersion`、`serverKind`、`instanceRef`、`nodeRef`、`publicVisible`、`eventEndpointSummary`、`allowedEventTypes`、`allowedOrigins`、`adminNote`、`reason` 和 `idempotencyKey`。创建默认状态为 `DRAFT`，成功响应 HTTP `201`。`providerType`、`serverKind` 和后续状态枚举必须命中本文档枚举表，非法枚举返回 `40001`。同一未归档 provider 下 `displayName`、`pluginName + serverKind + instanceRef` 或规范化 `eventEndpointSummary` 冲突返回 `49811`。外部 endpoint、allowed origins 或来源不安全返回 `49813`。涉及公开来源、外部 endpoint 或 allowlist 时必须携带 `confirmText=REGISTER_PLUGIN_PROVIDER_ENDPOINT`，否则返回 `42003`。
 
 `PATCH /api/v1/plugin-integration/admin/providers/{providerId}` 可修改创建字段中的业务字段，`reason` 必填。修改 `eventEndpointSummary`、`allowedOrigins`、`allowedEventTypes` 或把 `publicVisible` 从 `false` 改为 `true` 属于 `HIGH` 风险，必须携带 `confirmText=UPDATE_PLUGIN_PROVIDER_ENDPOINT`。`ARCHIVED` provider 不允许修改，返回 `49810`。
 
-`PATCH /api/v1/plugin-integration/admin/providers/{providerId}/enable` 请求字段为 `reason`、`confirmText` 和 `idempotencyKey`。`confirmText` 必须为 `ENABLE_PLUGIN_PROVIDER`。`DRAFT`、`DISABLED` 和 `DEGRADED` 可流转为 `ENABLED`。启用时必须校验 allowed event types、来源 allowlist 和至少一个启用 schema 或可用实例摘要，不满足返回 `40001` 或 `49810`。重复启用保持幂等。
+`PATCH /api/v1/plugin-integration/admin/providers/{providerId}/enable` 请求字段为 `reason`、`confirmText` 和 `idempotencyKey`。`confirmText` 必须为 `ENABLE_PLUGIN_PROVIDER`。`DRAFT`、`DISABLED` 和 `DEGRADED` 可流转为 `ENABLED`。启用时必须校验 allowed event types 非空、allowed origins 均安全、至少存在一个同 provider 的 `ENABLED` schema 或一个可用实例摘要。不满足字段完整性返回 `40001`，不满足状态或依赖前置返回 `49810`。重复启用保持幂等。
 
 `PATCH /api/v1/plugin-integration/admin/providers/{providerId}/disable` 请求字段为 `reason` 和 `idempotencyKey`。`ENABLED` 或 `DEGRADED` 可流转为 `DISABLED`。禁用后事件接收返回 `49815` 或 `49810`。重复禁用保持幂等。
 
@@ -420,7 +420,7 @@
 
 `GET /api/v1/plugin-integration/admin/events/{eventId}` 返回事件详情、路由摘要、同步任务摘要和审计摘要。事件不存在返回 `49803`。响应不得返回 raw payload、token、内部 URL、内部路径、完整请求头或异常堆栈。
 
-`POST /api/v1/plugin-integration/admin/events/{eventId}/replay` 请求字段包括 `reason`、`confirmText`、`idempotencyKey` 和可选 `targetRuleIds`。`confirmText` 必须为 `REPLAY_PLUGIN_EVENT`。只有 `VALIDATED` 或 `REJECTED` 后经修复且仍在 7 天窗口内的事件可重放；重复重放同一幂等键返回同一结果；窗口过期或事件终态不允许返回 `49816`。重放不修改原事件 payload，只创建新的处理摘要、同步任务或失败摘要。
+`POST /api/v1/plugin-integration/admin/events/{eventId}/replay` 请求字段包括 `reason`、`confirmText`、`idempotencyKey` 和可选 `targetRuleIds`。`confirmText` 必须为 `REPLAY_PLUGIN_EVENT`。只有 `VALIDATED` 或 `REJECTED` 后经修复且仍在 7 天窗口内的事件可重放；重复重放同一幂等键返回同一结果；窗口过期或事件状态不允许返回 `49816`。`targetRuleIds` 传入时每个规则必须存在、启用、事件类型匹配且不得指向 `OPS_CONTROL`，否则返回 `49804`、`49810` 或 `49817`。重放不修改原事件 payload，只创建新的处理摘要、同步任务或失败摘要。
 
 ## 路由规则接口
 
@@ -428,7 +428,7 @@
 
 `GET /api/v1/plugin-integration/admin/route-rules/{ruleId}` 返回规则详情、最近命中事件和最近同步摘要。不存在返回 `49804`。
 
-`POST /api/v1/plugin-integration/admin/route-rules` 请求字段包括 `displayName`、`eventType`、`matchers`、`targetModule`、`targetAction`、`enabled`、`riskLevel`、`rateLimitSummary`、`reason` 和 `idempotencyKey`。成功响应 HTTP `201`。同一 eventType、targetModule、targetAction 和 matcher 指纹冲突返回 `49811`。`targetModule=ONLINE_MAP` 且会公开创建对象、`targetModule=OPS_CONTROL`、`riskLevel=HIGH` 或 `CRITICAL` 时必须携带 `confirmText=CONFIGURE_PLUGIN_ROUTE`，否则返回 `42003`。第一版不允许真实写 `OPS_CONTROL`，对应创建或启用返回 `49817` 或保存为禁用规则。
+`POST /api/v1/plugin-integration/admin/route-rules` 请求字段包括 `displayName`、`eventType`、`matchers`、`targetModule`、`targetAction`、`enabled`、`riskLevel`、`rateLimitSummary`、`reason` 和 `idempotencyKey`。成功响应 HTTP `201`。`targetModule` 和 `riskLevel` 必须命中本文档枚举表，非法枚举返回 `40001`。同一 eventType、targetModule、targetAction 和 matcher 指纹冲突返回 `49811`。`targetModule=ONLINE_MAP` 且会公开创建对象、`targetModule=OPS_CONTROL`、`riskLevel=HIGH` 或 `CRITICAL` 时必须携带 `confirmText=CONFIGURE_PLUGIN_ROUTE`，否则返回 `42003`。第一版不允许真实写 `OPS_CONTROL`，对应创建或启用返回 `49817` 或保存为禁用规则。
 
 `PATCH /api/v1/plugin-integration/admin/route-rules/{ruleId}` 可修改规则字段，`reason` 必填。修改 target、matcher、riskLevel 或启用高风险路由必须携带 `confirmText=UPDATE_PLUGIN_ROUTE`。`ARCHIVED` 规则不可修改。
 
@@ -438,7 +438,7 @@
 
 ## 同步任务接口
 
-`POST /api/v1/plugin-integration/admin/sync-tasks` 请求字段包括 `providerId`、`eventId`、`targetModule`、`targetAction`、`params`、`riskLevel`、`reason`、`confirmText` 和 `idempotencyKey`。成功响应 HTTP `201`，`data` 为 `PluginSyncTask`。第一版对真实写 `ONLINE_MAP`、`NOTIFICATION`、`ALERTING` 以外的目标默认返回 `SIMULATED_BLOCKED` 或 `49817`，不得伪造真实成功。`riskLevel=HIGH` 或目标会公开对象时必须携带 `confirmText=CREATE_PLUGIN_SYNC_TASK`。同步任务写入失败返回 `55704`。
+`POST /api/v1/plugin-integration/admin/sync-tasks` 请求字段包括 `providerId`、`eventId`、`targetModule`、`targetAction`、`params`、`riskLevel`、`reason`、`confirmText` 和 `idempotencyKey`。成功响应 HTTP `201`，`data` 为 `PluginSyncTask`。`providerId` 和 `eventId` 必须存在且属于同一 provider，不存在返回 `49800` 或 `49803`，不匹配返回 `49810`。`targetModule` 和 `riskLevel` 必须命中本文档枚举表，非法枚举返回 `40001`。第一版对真实写 `ONLINE_MAP`、`NOTIFICATION`、`ALERTING` 以外的目标默认返回 `SIMULATED_BLOCKED` 或 `49817`，不得伪造真实成功。`riskLevel=HIGH` 或目标会公开对象时必须携带 `confirmText=CREATE_PLUGIN_SYNC_TASK`。同步任务写入失败返回 `55704`。
 
 `GET /api/v1/plugin-integration/admin/sync-tasks` 支持 `page`、`pageSize`、`providerId`、`eventId`、`targetModule`、`status`、`riskLevel`、`from`、`to` 和 `sort`。`sort` 允许 `updatedAt_desc`、`createdAt_desc`、`riskLevel_desc`。成功响应分页 `items` 为 `PluginSyncTask[]`。
 
@@ -484,7 +484,7 @@ schema 状态流转为 `DRAFT` 可到 `ENABLED`、`DISABLED` 或 `ARCHIVED`；`E
 
 任何请求体和响应都不得包含访问 token、插件 token、插件 secret、webhook secret、Discord token、SMTP 密码、短信 token、完整 Authorization 请求头、完整请求 headers、完整 raw payload、内部 URL、内部路径、真实世界目录、节点地址、服务器密码、RCON 密码、完整异常栈、数据库连接串、`.env`、`authorized_keys`、`id_rsa`、shell 命令或前序服务私有数据。检查必须递归覆盖嵌套对象和数组。
 
-外部 endpoint 和 allowed origins 必须拒绝 `file:`、`data:`、`javascript:`、带用户名密码 URL、localhost、内网 IP、链路本地地址、未解析 host、通配符 `*`、空 host 和控制字符。`eventEndpointSummary` 只能是公开安全摘要或站内受控路径，不得是内网完整地址。
+外部 endpoint 和 allowed origins 必须拒绝 `file:`、`data:`、`javascript:`、带用户名密码 URL、localhost、回环 IP、内网 IP、链路本地地址、未解析 host、通配符 `*`、空 host、控制字符和非法 URI。`eventEndpointSummary` 只能是公开安全摘要或站内受控路径，不得是内网完整地址。站内受控路径必须以 `/` 开头，不能以 `//` 开头，不能包含反斜杠或控制字符。
 
 事件 payload 必须按 schema 脱敏和摘要化。第一版 `rawPayloadStored` 固定为 `false`。`payloadSummary` 只能保存字段名、类型、必要业务摘要和已脱敏值，不得保存完整玩家 IP、完整请求头、外部 token、路径或密钥。
 

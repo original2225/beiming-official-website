@@ -149,6 +149,12 @@ class PluginIntegrationApiContractTest {
                 with(providerBody("bad-endpoint"), "eventEndpointSummary", "http://127.0.0.1:8122/plugin"), 400, 49813);
         performJson(post("/api/v1/plugin-integration/admin/providers").header("Authorization", bearer("plugin-admin-token")),
                 providerBody("no-confirm"), 403, 42003);
+        performJson(post("/api/v1/plugin-integration/admin/providers").header("Authorization", bearer("plugin-admin-token")),
+                with(with(providerBody("bad-provider-type"), "providerType", "BAD_PROVIDER"), "confirmText", "REGISTER_PLUGIN_PROVIDER_ENDPOINT"), 400, 40001);
+        performJson(post("/api/v1/plugin-integration/admin/providers").header("Authorization", bearer("plugin-admin-token")),
+                with(with(providerBody("bad-private-origin"), "allowedOrigins", List.of("http://10.0.0.5/plugin")), "confirmText", "REGISTER_PLUGIN_PROVIDER_ENDPOINT"), 400, 49813);
+        performJson(post("/api/v1/plugin-integration/admin/providers").header("Authorization", bearer("plugin-admin-token")),
+                with(with(providerBody("bad-userinfo-origin"), "allowedOrigins", List.of("https://user:pass@plugins.example.com")), "confirmText", "REGISTER_PLUGIN_PROVIDER_ENDPOINT"), 400, 49813);
 
         JsonNode created = performJson(post("/api/v1/plugin-integration/admin/providers").header("Authorization", bearer("plugin-admin-token")),
                 with(providerBody("provider-create"), "confirmText", "REGISTER_PLUGIN_PROVIDER_ENDPOINT"), 201);
@@ -175,6 +181,12 @@ class PluginIntegrationApiContractTest {
         JsonNode enabled = performJson(patch("/api/v1/plugin-integration/admin/providers/" + providerId + "/enable").header("Authorization", bearer("plugin-admin-token")),
                 Map.of("confirmText", "ENABLE_PLUGIN_PROVIDER", "reason", "启用 provider", "idempotencyKey", "enable-provider"), 200);
         assertThat(enabled.at("/data/status").asText()).isEqualTo("ENABLED");
+
+        JsonNode emptyEventsProvider = performJson(post("/api/v1/plugin-integration/admin/providers").header("Authorization", bearer("plugin-admin-token")),
+                with(with(providerBody("provider-empty-events"), "allowedEventTypes", List.of()), "confirmText", "REGISTER_PLUGIN_PROVIDER_ENDPOINT"), 201);
+        String emptyEventsProviderId = emptyEventsProvider.at("/data/providerId").asText();
+        performJson(patch("/api/v1/plugin-integration/admin/providers/" + emptyEventsProviderId + "/enable").header("Authorization", bearer("plugin-admin-token")),
+                Map.of("confirmText", "ENABLE_PLUGIN_PROVIDER", "reason", "缺少允许事件类型", "idempotencyKey", "enable-empty-events"), 400, 40001);
 
         JsonNode snapshots = performJson(get("/api/v1/plugin-integration/admin/providers/" + providerId + "/health-snapshots")
                 .header("Authorization", bearer("plugin-viewer-token"))
@@ -215,6 +227,10 @@ class PluginIntegrationApiContractTest {
                 routeBody("route-create"), 201);
         String ruleId = route.at("/data/ruleId").asText();
         performJson(post("/api/v1/plugin-integration/admin/route-rules").header("Authorization", bearer("plugin-admin-token")),
+                with(routeBody("route-duplicate"), "targetAction", "UPSERT_MARKER_PREVIEW_route-create"), 409, 49811);
+        performJson(post("/api/v1/plugin-integration/admin/route-rules").header("Authorization", bearer("plugin-admin-token")),
+                with(routeBody("route-bad-target"), "targetModule", "BAD_TARGET"), 400, 40001);
+        performJson(post("/api/v1/plugin-integration/admin/route-rules").header("Authorization", bearer("plugin-admin-token")),
                 with(routeBody("route-high-no-confirm"), "riskLevel", "HIGH"), 403, 42003);
         JsonNode highRoute = performJson(post("/api/v1/plugin-integration/admin/route-rules").header("Authorization", bearer("plugin-admin-token")),
                 with(with(with(routeBody("route-high-disabled"), "riskLevel", "HIGH"), "enabled", false), "confirmText", "CONFIGURE_PLUGIN_ROUTE"), 201);
@@ -254,6 +270,10 @@ class PluginIntegrationApiContractTest {
         assertThat(replay.at("/data/eventId").asText()).isEqualTo(eventId);
         performJson(post("/api/v1/plugin-integration/admin/events/" + eventId + "/replay").header("Authorization", bearer("plugin-admin-token")),
                 Map.of("reason", "缺重放确认", "idempotencyKey", "replay-no-confirm"), 403, 42003);
+        performJson(post("/api/v1/plugin-integration/admin/events/" + eventId + "/replay").header("Authorization", bearer("plugin-admin-token")),
+                Map.of("confirmText", "REPLAY_PLUGIN_EVENT", "targetRuleIds", List.of("missing-rule"), "reason", "重放目标规则不存在", "idempotencyKey", "replay-missing-rule"), 404, 49804);
+        performJson(post("/api/v1/plugin-integration/admin/events/" + eventId + "/replay").header("Authorization", bearer("plugin-admin-token")),
+                Map.of("confirmText", "REPLAY_PLUGIN_EVENT", "targetRuleIds", List.of(highRuleId), "reason", "重放目标规则未启用", "idempotencyKey", "replay-disabled-rule"), 409, 49810);
     }
 
     @Test
@@ -270,6 +290,14 @@ class PluginIntegrationApiContractTest {
                 with(syncTaskBody("sync-high-no-confirm"), "riskLevel", "HIGH"), 403, 42003);
         performJson(post("/api/v1/plugin-integration/admin/sync-tasks").header("Authorization", bearer("plugin-admin-token")),
                 with(with(syncTaskBody("sync-ops-blocked"), "targetModule", "OPS_CONTROL"), "confirmText", "CREATE_PLUGIN_SYNC_TASK"), 409, 49817);
+        performJson(post("/api/v1/plugin-integration/admin/sync-tasks").header("Authorization", bearer("plugin-admin-token")),
+                with(syncTaskBody("sync-missing-event"), "eventId", "missing-event"), 404, 49803);
+        JsonNode mismatchProvider = performJson(post("/api/v1/plugin-integration/admin/providers").header("Authorization", bearer("plugin-admin-token")),
+                with(providerBody("sync-mismatch-provider"), "confirmText", "REGISTER_PLUGIN_PROVIDER_ENDPOINT"), 201);
+        performJson(post("/api/v1/plugin-integration/admin/sync-tasks").header("Authorization", bearer("plugin-admin-token")),
+                with(syncTaskBody("sync-provider-mismatch"), "providerId", mismatchProvider.at("/data/providerId").asText()), 409, 49810);
+        performJson(post("/api/v1/plugin-integration/admin/sync-tasks").header("Authorization", bearer("plugin-admin-token")),
+                with(syncTaskBody("sync-bad-risk"), "riskLevel", "BAD_RISK"), 400, 40001);
         JsonNode canceled = performJson(patch("/api/v1/plugin-integration/admin/sync-tasks/" + taskId + "/cancel").header("Authorization", bearer("plugin-admin-token")),
                 Map.of("reason", "取消模拟同步", "idempotencyKey", "cancel-sync"), 200);
         assertThat(canceled.at("/data/status").asText()).isEqualTo("CANCELED");
@@ -436,7 +464,7 @@ class PluginIntegrationApiContractTest {
         body.put("eventType", "beiming.player_join");
         body.put("matchers", Map.of("providerId", "provider-paper-main", "sourcePlugin", "BeimingBridge"));
         body.put("targetModule", "ONLINE_MAP");
-        body.put("targetAction", "UPSERT_MARKER_PREVIEW");
+        body.put("targetAction", "UPSERT_MARKER_PREVIEW_" + idempotencyKey);
         body.put("enabled", true);
         body.put("riskLevel", "MEDIUM");
         body.put("rateLimitSummary", Map.of("windowSeconds", 60, "maxEvents", 100));

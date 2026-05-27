@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.net.URI;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -133,7 +134,7 @@ class PluginIntegrationController {
         Actor actor = auth.requireWrite(request);
         auth.requireAdmin(actor);
         rejectTrusted(body);
-        validateReason(body);
+        validateProvider(body, false);
         if (providerPatchHighRisk(body) && !"UPDATE_PLUGIN_PROVIDER_ENDPOINT".equals(text(body.get("confirmText")))) {
             throw new PluginApiException(HttpStatus.FORBIDDEN, 42003, "high risk operation not confirmed");
         }
@@ -182,6 +183,12 @@ class PluginIntegrationController {
                 PluginProvider provider = store.provider(providerId);
                 if ("ARCHIVED".equals(provider.status) || ("ARCHIVED".equals(target) && "ENABLED".equals(provider.status))) {
                     throw new PluginApiException(HttpStatus.CONFLICT, 49810, "provider state conflict");
+                }
+                if ("ENABLED".equals(target)) {
+                    validateProviderReady(provider);
+                    if (!store.providerHasEnabledSchema(providerId) && !store.providerHasUsableInstance(providerId)) {
+                        throw new PluginApiException(HttpStatus.CONFLICT, 49810, "provider enable prerequisites missing");
+                    }
                 }
                 if ("ARCHIVED".equals(target) && store.providerHasActiveReferences(providerId)) {
                     throw new PluginApiException(HttpStatus.CONFLICT, 49810, "provider state conflict");
@@ -427,9 +434,11 @@ class PluginIntegrationController {
             store.failAuditIfRequested(request, properties.enabled());
             synchronized (store.lock) {
                 PluginEvent event = store.event(eventId);
+                validateReplay(event, body, store);
                 event.processedAt = now();
                 store.audit("PLUGIN_EVENT_REPLAYED", "EVENT", eventId, actor, request, body, "HIGH", "SUCCESS", null, event.routeStatus, "ROUTED");
-                return created(request, map("eventId", eventId, "replayStatus", "ROUTED", "createdTaskIds", List.of(), "raw" + "PayloadStored", false));
+                return created(request, map("eventId", eventId, "replayStatus", "ROUTED", "targetRuleIds", stringList(body.get("targetRuleIds")),
+                        "createdTaskIds", List.of(), "raw" + "PayloadStored", false));
             }
         });
     }
@@ -473,6 +482,9 @@ class PluginIntegrationController {
         return idempotent(request, actor, "route:create", body, () -> {
             store.failAuditIfRequested(request, properties.enabled());
             synchronized (store.lock) {
+                if (store.routeConflict(null, body)) {
+                    throw new PluginApiException(HttpStatus.CONFLICT, 49811, "plugin route conflict");
+                }
                 String ruleId = "rule-" + store.nextId(text(body.get("idempotencyKey")));
                 PluginRoute route = PluginRoute.from(ruleId, body, actor.userId);
                 store.routes.put(ruleId, route);
@@ -487,7 +499,7 @@ class PluginIntegrationController {
         Actor actor = auth.requireWrite(request);
         auth.requireAdmin(actor);
         rejectTrusted(body);
-        validateReason(body);
+        validateRoutePatch(body);
         if (routeHighRisk(body) && !"UPDATE_PLUGIN_ROUTE".equals(text(body.get("confirmText")))) {
             throw new PluginApiException(HttpStatus.FORBIDDEN, 42003, "high risk operation not confirmed");
         }
@@ -498,6 +510,10 @@ class PluginIntegrationController {
             store.failAuditIfRequested(request, properties.enabled());
             synchronized (store.lock) {
                 PluginRoute route = store.route(ruleId);
+                Map<String, Object> merged = route.patchCandidate(body);
+                if (store.routeConflict(ruleId, merged)) {
+                    throw new PluginApiException(HttpStatus.CONFLICT, 49811, "plugin route conflict");
+                }
                 String before = route.enabled ? "ENABLED" : "DISABLED";
                 route.patch(body, actor.userId);
                 store.audit("PLUGIN_ROUTE_RULE_UPDATED", "ROUTE_RULE", ruleId, actor, request, body, routeHighRisk(body) ? "HIGH" : "MEDIUM", "SUCCESS", null, before, route.enabled ? "ENABLED" : "DISABLED");
@@ -548,7 +564,7 @@ class PluginIntegrationController {
         Actor actor = auth.requireWrite(request);
         auth.requireAdmin(actor);
         rejectTrusted(body);
-        validateReason(body);
+        validateTask(body);
         if (dependencyFailed(request, properties.enabled(), "online-map")) {
             throw new PluginApiException(HttpStatus.BAD_GATEWAY, 47080, "online-map unavailable");
         }
@@ -564,7 +580,11 @@ class PluginIntegrationController {
         return idempotent(request, actor, "task:create", body, () -> {
             store.failAuditIfRequested(request, properties.enabled());
             synchronized (store.lock) {
-                store.provider(text(body.get("providerId")));
+                PluginProvider provider = store.provider(text(body.get("providerId")));
+                PluginEvent event = store.event(text(body.get("eventId")));
+                if (!provider.providerId.equals(event.providerId)) {
+                    throw new PluginApiException(HttpStatus.CONFLICT, 49810, "sync task provider mismatch");
+                }
                 String taskId = "task-" + store.nextId(text(body.get("idempotencyKey")));
                 PluginTask task = PluginTask.from(taskId, body, actor.userId);
                 store.tasks.put(taskId, task);
@@ -847,6 +867,16 @@ class PluginStore {
                 && !"ARCHIVED".equals(schema.status));
     }
 
+    boolean routeConflict(String ruleId, Map<String, Object> body) {
+        String matcherFingerprint = fingerprint(objectMap(body.get("matchers")));
+        return routes.values().stream()
+                .filter(route -> ruleId == null || !route.ruleId.equals(ruleId))
+                .anyMatch(route -> route.eventType.equals(text(body.get("eventType")))
+                        && route.targetModule.equals(text(body.get("targetModule")))
+                        && route.targetAction.equals(text(body.get("targetAction")))
+                        && fingerprint(route.matchers).equals(matcherFingerprint));
+    }
+
     boolean mappingConflict(String mappingId, Map<String, Object> body) {
         return mappings.values().stream()
                 .filter(mapping -> !mapping.mappingId.equals(mappingId))
@@ -868,6 +898,16 @@ class PluginStore {
         boolean hasOpenTask = tasks.values().stream()
                 .anyMatch(task -> providerId.equals(task.providerId) && !taskTerminal(task.status));
         return hasActiveMapping || hasEnabledRoute || hasOpenTask;
+    }
+
+    boolean providerHasEnabledSchema(String providerId) {
+        return schemas.values().stream()
+                .anyMatch(schema -> providerId.equals(schema.providerId) && "ENABLED".equals(schema.status));
+    }
+
+    boolean providerHasUsableInstance(String providerId) {
+        return instances.values().stream()
+                .anyMatch(instance -> providerId.equals(instance.providerId()) && instance.loaded() && instance.enabled() && !instance.stale());
     }
 
     private static boolean taskTerminal(String status) {
@@ -1211,6 +1251,13 @@ class PluginRoute {
         if (body.containsKey("rateLimitSummary")) rateLimitSummary = objectMap(body.get("rateLimitSummary"));
         updatedBy = actor;
         updatedAt = now();
+    }
+
+    Map<String, Object> patchCandidate(Map<String, Object> body) {
+        return map("eventType", body.containsKey("eventType") ? text(body.get("eventType")) : eventType,
+                "matchers", body.containsKey("matchers") ? objectMap(body.get("matchers")) : matchers,
+                "targetModule", body.containsKey("targetModule") ? text(body.get("targetModule")) : targetModule,
+                "targetAction", body.containsKey("targetAction") ? text(body.get("targetAction")) : targetAction);
     }
 
     Map<String, Object> view() {
@@ -1699,11 +1746,30 @@ class PluginSupport {
         if (create && (text(body.get("providerType")).isBlank() || text(body.get("displayName")).isBlank() || text(body.get("pluginName")).isBlank())) {
             throw new PluginApiException(HttpStatus.BAD_REQUEST, 40001, "provider fields are required");
         }
+        if (create || body.containsKey("providerType")) {
+            validateEnum(text(body.get("providerType")), "providerType", "PAPER", "SPIGOT", "BUKKIT", "VELOCITY", "BLUEMAP", "DYNMAP",
+                    "SQUAREMAP", "LUCKPERMS", "PLACEHOLDER_API", "DISCORDSRV", "PROMETHEUS_EXPORTER", "MODRINTH", "CURSEFORGE", "HANGAR", "CUSTOM");
+        }
+        if (create || body.containsKey("serverKind")) {
+            validateEnum(text(body.get("serverKind")), "serverKind", "SERVER", "PROXY", "MAP_PROVIDER", "PERMISSION_PROVIDER",
+                    "NOTIFICATION_BRIDGE", "METRIC_EXPORTER", "MARKETPLACE", "CUSTOM");
+        }
         String endpoint = text(body.get("eventEndpointSummary"));
         if (!endpoint.isBlank() && unsafeEndpoint(endpoint)) {
             throw new PluginApiException(HttpStatus.BAD_REQUEST, 49813, "unsafe plugin endpoint");
         }
         for (String origin : stringList(body.get("allowedOrigins"))) {
+            if ("*".equals(origin) || unsafeEndpoint(origin)) {
+                throw new PluginApiException(HttpStatus.BAD_REQUEST, 49813, "unsafe plugin origin");
+            }
+        }
+    }
+
+    static void validateProviderReady(PluginProvider provider) {
+        if (provider.allowedEventTypes == null || provider.allowedEventTypes.isEmpty()) {
+            throw new PluginApiException(HttpStatus.BAD_REQUEST, 40001, "provider allowed event types are required");
+        }
+        for (String origin : provider.allowedOrigins) {
             if ("*".equals(origin) || unsafeEndpoint(origin)) {
                 throw new PluginApiException(HttpStatus.BAD_REQUEST, 49813, "unsafe plugin origin");
             }
@@ -1723,6 +1789,31 @@ class PluginSupport {
         if (text(body.get("eventType")).isBlank() || text(body.get("targetModule")).isBlank() || text(body.get("targetAction")).isBlank()) {
             throw new PluginApiException(HttpStatus.BAD_REQUEST, 40001, "route fields are required");
         }
+        validateRouteEnums(body);
+    }
+
+    static void validateRoutePatch(Map<String, Object> body) {
+        validateReason(body);
+        validateRouteEnums(body);
+    }
+
+    static void validateRouteEnums(Map<String, Object> body) {
+        if (body.containsKey("targetModule")) {
+            validateTargetModule(text(body.get("targetModule")));
+        }
+        if (body.containsKey("riskLevel")) {
+            validateRiskLevel(text(body.get("riskLevel")));
+        }
+    }
+
+    static void validateTask(Map<String, Object> body) {
+        validateReason(body);
+        if (text(body.get("providerId")).isBlank() || text(body.get("eventId")).isBlank() || text(body.get("targetModule")).isBlank()
+                || text(body.get("targetAction")).isBlank()) {
+            throw new PluginApiException(HttpStatus.BAD_REQUEST, 40001, "sync task fields are required");
+        }
+        validateTargetModule(text(body.get("targetModule")));
+        validateRiskLevel(textOr(body.get("riskLevel"), "MEDIUM"));
     }
 
     static void validatePayload(PluginSchema schema, Map<String, Object> payload) {
@@ -1739,10 +1830,79 @@ class PluginSupport {
         }
     }
 
+    static void validateReplay(PluginEvent event, Map<String, Object> body, PluginStore store) {
+        if (!List.of("VALIDATED", "REJECTED").contains(event.validationStatus)) {
+            throw new PluginApiException(HttpStatus.CONFLICT, 49816, "plugin event replay not allowed");
+        }
+        Instant received = parseInstantOrNull(event.receivedAt);
+        if (received == null || received.isBefore(Instant.now().minusSeconds(7 * 24 * 60 * 60L))) {
+            throw new PluginApiException(HttpStatus.CONFLICT, 49816, "plugin event replay window expired");
+        }
+        for (String ruleId : stringList(body.get("targetRuleIds"))) {
+            PluginRoute route = store.route(ruleId);
+            if (!route.enabled || !route.eventType.equals(event.eventType)) {
+                throw new PluginApiException(HttpStatus.CONFLICT, 49810, "plugin route state conflict");
+            }
+            if ("OPS_CONTROL".equals(route.targetModule)) {
+                throw new PluginApiException(HttpStatus.CONFLICT, 49817, "plugin sync target blocked");
+            }
+        }
+    }
+
+    static void validateTargetModule(String value) {
+        validateEnum(value, "targetModule", "ONLINE_MAP", "SERVER_STATUS", "CHANGELOG", "NOTIFICATION", "ALERTING", "OPS_CONTROL", "PLUGIN_INTEGRATION");
+    }
+
+    static void validateRiskLevel(String value) {
+        validateEnum(value, "riskLevel", "LOW", "MEDIUM", "HIGH", "CRITICAL");
+    }
+
+    static void validateEnum(String value, String field, String... allowed) {
+        if (value.isBlank() || !List.of(allowed).contains(value)) {
+            throw new PluginApiException(HttpStatus.BAD_REQUEST, 40001, field + " is invalid");
+        }
+    }
+
     static boolean unsafeEndpoint(String value) {
-        String lower = value.toLowerCase(Locale.ROOT);
-        return lower.contains("127.0.0.1") || lower.contains("localhost") || lower.startsWith("file:")
-                || lower.startsWith("data:") || lower.startsWith("javascript:") || lower.contains("@");
+        if (value.chars().anyMatch(Character::isISOControl) || value.contains("\\")) {
+            return true;
+        }
+        if (value.startsWith("/")) {
+            return value.startsWith("//");
+        }
+        try {
+            URI uri = URI.create(value);
+            String scheme = text(uri.getScheme()).toLowerCase(Locale.ROOT);
+            String host = text(uri.getHost()).toLowerCase(Locale.ROOT);
+            if (scheme.isBlank() || host.isBlank() || uri.getUserInfo() != null) {
+                return true;
+            }
+            if (!List.of("http", "https").contains(scheme)) {
+                return true;
+            }
+            return unsafeHost(host);
+        } catch (IllegalArgumentException exception) {
+            return true;
+        }
+    }
+
+    static boolean unsafeHost(String host) {
+        if (host.equals("localhost") || host.endsWith(".localhost") || host.equals("0.0.0.0") || host.equals("::1")
+                || host.startsWith("fc") || host.startsWith("fd") || host.startsWith("fe80")) {
+            return true;
+        }
+        String[] parts = host.split("\\.");
+        if (parts.length == 4) {
+            try {
+                int first = Integer.parseInt(parts[0]);
+                int second = Integer.parseInt(parts[1]);
+                return first == 10 || first == 127 || first == 0 || (first == 169 && second == 254)
+                        || (first == 172 && second >= 16 && second <= 31) || (first == 192 && second == 168);
+            } catch (NumberFormatException exception) {
+                return true;
+            }
+        }
+        return false;
     }
 
     static boolean providerPatchHighRisk(Map<String, Object> body) {
