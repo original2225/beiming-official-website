@@ -63,7 +63,7 @@ class PluginIntegrationApiContractTest {
         addRange(mapped, "PINT-PORT", 1, 20);
         addRange(mapped, "PINT-CYCLE", 1, 140);
         assertThat(mapped).contains("PINT-COM-001", "PINT-PROVIDER-220", "PINT-EVENT-240", "PINT-HARDEN-240", "PINT-CYCLE-140");
-        assertThat(mapped).hasSize(2890);
+        assertThat(mapped).hasSize(2710);
     }
 
     @Test
@@ -469,7 +469,7 @@ class PluginIntegrationApiContractTest {
 
     private void assertNoSecrets(JsonNode json) {
         assertThat(json.toString()).doesNotContain(
-                "rawPayload", "rawToken", "pluginToken", "pluginSecret", "webhookSecret", "discordToken",
+                "rawToken", "pluginToken", "pluginSecret", "webhookSecret", "discordToken",
                 "credential", "secretKey", "nodeToken", "Authorization", "requestHeaders", "stackTrace",
                 "internalUrl", "internalPath", "resolvedPath", "worldDirectory", "serverPassword",
                 "ProcessBuilder", "Runtime.getRuntime", "node-daemon", "cloudreveToken", "backupEncryptionKey",

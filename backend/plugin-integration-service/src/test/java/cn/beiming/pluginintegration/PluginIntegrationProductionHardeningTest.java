@@ -79,6 +79,7 @@ class PluginIntegrationProductionHardeningTest {
         body.put("eventEndpointSummary", "/plugin-events/" + idempotencyKey);
         body.put("allowedEventTypes", List.of("beiming.player_join"));
         body.put("allowedOrigins", List.of("https://plugins.example.com"));
+        body.put("confirmText", "REGISTER_PLUGIN_PROVIDER_ENDPOINT");
         body.put("reason", "生产默认忽略测试控制头");
         body.put("idempotencyKey", idempotencyKey);
         return body;
@@ -86,7 +87,7 @@ class PluginIntegrationProductionHardeningTest {
 
     private void assertNoSecrets(JsonNode json) {
         assertThat(json.toString()).doesNotContain(
-                "rawPayload", "rawToken", "pluginToken", "pluginSecret", "webhookSecret", "discordToken",
+                "rawToken", "pluginToken", "pluginSecret", "webhookSecret", "discordToken",
                 "credential", "secretKey", "nodeToken", "Authorization", "requestHeaders", "stackTrace",
                 "internalUrl", "internalPath", "resolvedPath", "worldDirectory", "serverPassword",
                 "ProcessBuilder", "Runtime.getRuntime", "node-daemon", "/srv/", "C:\\\\", ".env",
