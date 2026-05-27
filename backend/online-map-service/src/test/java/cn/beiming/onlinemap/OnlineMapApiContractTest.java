@@ -125,6 +125,10 @@ class OnlineMapApiContractTest {
         performJson(get("/api/v1/online-map/regions").param("bounds", "-200,-200,200,200"), 200);
         performJson(get("/api/v1/online-map/embed").param("origin", "https://beiming.example"), 200);
         performJson(get("/api/v1/online-map/embed").param("origin", "https://evil.example"), 400, 49715);
+        performJson(patch("/api/v1/online-map/admin/providers/provider-blue-main/disable").header("Authorization", bearer("map-admin-token")),
+                Map.of("reason", "关闭默认公开地图", "idempotencyKey", "disable-default-for-empty-embed"), 200);
+        JsonNode emptyEmbed = performJson(get("/api/v1/online-map/embed"), 200);
+        assertThat(emptyEmbed.at("/data").isNull()).isTrue();
     }
 
     @Test
@@ -163,6 +167,12 @@ class OnlineMapApiContractTest {
         assertThat(replay.at("/data/providerId").asText()).isEqualTo(providerId);
         performJson(post("/api/v1/online-map/admin/providers").header("Authorization", bearer("map-admin-token")),
                 with(providerBody("provider-create"), "displayName", "Changed map"), 409, 49712);
+        performJson(post("/api/v1/online-map/admin/providers").header("Authorization", bearer("map-admin-token")),
+                with(providerBody("provider-url-conflict"), "publicBaseUrl", "https://maps.example.com/blue-main/"), 409, 49711);
+        performJson(post("/api/v1/online-map/admin/providers").header("Authorization", bearer("map-admin-token")),
+                with(providerBody("provider-embed-conflict"), "embedUrl", "https://maps.example.com/blue-main/embed/"), 409, 49711);
+        performJson(post("/api/v1/online-map/admin/providers").header("Authorization", bearer("map-admin-token")),
+                with(providerBody("provider-bad-type"), "providerType", "GOOGLE_MAPS"), 400, 40001);
 
         performJson(patch("/api/v1/online-map/admin/providers/" + providerId).header("Authorization", bearer("map-admin-token")),
                 Map.of("publicVisible", true, "reason", "公开入口变更缺确认", "idempotencyKey", "patch-no-confirm"), 403, 42003);
@@ -181,15 +191,22 @@ class OnlineMapApiContractTest {
                 Map.of("reason", "刷新健康", "idempotencyKey", "refresh-provider"), 200);
         assertThat(snapshot.at("/data/providerId").asText()).isEqualTo(providerId);
         assertThat(snapshot.at("/data/healthStatus").asText()).isIn("ONLINE", "DEGRADED", "OFFLINE", "UNKNOWN");
+        JsonNode refreshReplay = performJson(post("/api/v1/online-map/admin/providers/" + providerId + "/health/refresh")
+                        .header("Authorization", bearer("map-admin-token")),
+                Map.of("reason", "刷新健康", "idempotencyKey", "refresh-provider"), 200);
+        assertThat(refreshReplay.at("/data/snapshotId").asText()).isEqualTo(snapshot.at("/data/snapshotId").asText());
+        performJson(post("/api/v1/online-map/admin/providers/" + providerId + "/health/refresh")
+                        .header("Authorization", bearer("map-admin-token")),
+                Map.of("reason", "刷新冷却冲突", "idempotencyKey", "refresh-provider-cooldown"), 409, 49716);
 
-        performJson(post("/api/v1/online-map/admin/providers/" + providerId + "/health/refresh")
-                        .header("Authorization", bearer("map-admin-token"))
-                        .header("X-Test-Provider-Mode", "unavailable"),
-                Map.of("reason", "provider 不可用", "idempotencyKey", "refresh-provider-down"), 200);
-        performJson(post("/api/v1/online-map/admin/providers/" + providerId + "/health/refresh")
+        performJson(post("/api/v1/online-map/admin/providers/provider-blue-main/health/refresh")
                         .header("Authorization", bearer("map-admin-token"))
                         .header("X-Test-Fail-Store", "true"),
                 Map.of("reason", "快照写入失败", "idempotencyKey", "refresh-store-fail"), 500, 55603);
+        performJson(post("/api/v1/online-map/admin/providers/provider-blue-main/health/refresh")
+                        .header("Authorization", bearer("map-admin-token"))
+                        .header("X-Test-Provider-Mode", "unavailable"),
+                Map.of("reason", "provider 不可用", "idempotencyKey", "refresh-seed-down"), 200);
 
         JsonNode snapshots = performJson(get("/api/v1/online-map/admin/providers/" + providerId + "/health/snapshots")
                 .header("Authorization", bearer("map-viewer-token"))
@@ -203,9 +220,18 @@ class OnlineMapApiContractTest {
 
         performJson(patch("/api/v1/online-map/admin/providers/" + providerId + "/archive").header("Authorization", bearer("map-admin-token")),
                 Map.of("reason", "缺归档确认", "idempotencyKey", "archive-no-confirm"), 403, 42003);
-        JsonNode archived = performJson(patch("/api/v1/online-map/admin/providers/" + providerId + "/archive").header("Authorization", bearer("map-admin-token")),
-                Map.of("confirmText", "ARCHIVE_MAP_PROVIDER", "reason", "归档 provider", "idempotencyKey", "archive-provider"), 200);
+        performJson(patch("/api/v1/online-map/admin/providers/" + providerId + "/archive").header("Authorization", bearer("map-admin-token")),
+                Map.of("confirmText", "ARCHIVE_MAP_PROVIDER", "reason", "仍有自动世界不可归档", "idempotencyKey", "archive-provider"), 409, 49717);
+        JsonNode archived = performJson(patch("/api/v1/online-map/admin/providers/provider-disabled/archive").header("Authorization", bearer("map-admin-token")),
+                Map.of("confirmText", "ARCHIVE_MAP_PROVIDER", "reason", "归档无公开对象 provider", "idempotencyKey", "archive-provider-disabled"), 200);
         assertThat(archived.at("/data/status").asText()).isEqualTo("ARCHIVED");
+
+        performJson(patch("/api/v1/online-map/admin/providers/provider-blue-main/archive").header("Authorization", bearer("map-admin-token")),
+                Map.of("confirmText", "ARCHIVE_MAP_PROVIDER", "reason", "启用 provider 不可直接归档", "idempotencyKey", "archive-enabled"), 409, 49710);
+        performJson(patch("/api/v1/online-map/admin/providers/provider-blue-main/disable").header("Authorization", bearer("map-admin-token")),
+                Map.of("reason", "先禁用公开 provider", "idempotencyKey", "disable-seeded-provider"), 200);
+        performJson(patch("/api/v1/online-map/admin/providers/provider-blue-main/archive").header("Authorization", bearer("map-admin-token")),
+                Map.of("confirmText", "ARCHIVE_MAP_PROVIDER", "reason", "仍有公开对象不可归档", "idempotencyKey", "archive-public-children"), 409, 49717);
     }
 
     @Test
@@ -219,11 +245,24 @@ class OnlineMapApiContractTest {
                 with(worldBody("world-bad-path"), "sourceWorldKey", "../world"), 400, 40001);
         performJson(put("/api/v1/online-map/admin/worlds/world-bad-coord").header("Authorization", bearer("map-admin-token")),
                 with(worldBody("world-bad-coord"), "center", Map.of("x", "NaN", "z", 0)), 400, 49714);
+        performJson(put("/api/v1/online-map/admin/worlds/world-bad-dimension").header("Authorization", bearer("map-admin-token")),
+                with(worldBody("world-bad-dimension"), "dimension", "SKYLAND"), 400, 40001);
+        JsonNode selectedEmbed = performJson(get("/api/v1/online-map/embed")
+                .param("providerId", "provider-blue-main")
+                .param("worldId", "world-contract"), 200);
+        assertThat(selectedEmbed.at("/data/defaultWorldId").asText()).isEqualTo("world-contract");
+        performJson(put("/api/v1/online-map/admin/worlds/world-hidden-embed").header("Authorization", bearer("map-admin-token")),
+                with(worldBody("world-hidden-embed"), "publicVisible", false), 200);
+        performJson(get("/api/v1/online-map/embed")
+                .param("providerId", "provider-blue-main")
+                .param("worldId", "world-hidden-embed"), 404, 49701);
 
         JsonNode layer = performJson(post("/api/v1/online-map/admin/layers").header("Authorization", bearer("map-admin-token")),
                 layerBody("layer-create"), 201);
         String layerId = layer.at("/data/layerId").asText();
         assertThat(layer.at("/data/status").asText()).isEqualTo("VISIBLE");
+        performJson(post("/api/v1/online-map/admin/layers").header("Authorization", bearer("map-admin-token")),
+                with(layerBody("layer-bad-type"), "layerType", "BAD_LAYER"), 400, 40001);
         performJson(post("/api/v1/online-map/admin/layers").header("Authorization", bearer("map-admin-token")),
                 with(layerBody("layer-trusted"), "styleSummary", Map.of("secretKey", "nope")), 400, 40001);
         JsonNode layerPatch = performJson(patch("/api/v1/online-map/admin/layers/" + layerId).header("Authorization", bearer("map-admin-token")),
@@ -237,6 +276,14 @@ class OnlineMapApiContractTest {
         performJson(post("/api/v1/online-map/admin/markers").header("Authorization", bearer("map-admin-token")),
                 with(markerBody("marker-bad-line", layerId), "markerType", "LINE"), 400, 49714);
         performJson(post("/api/v1/online-map/admin/markers").header("Authorization", bearer("map-admin-token")),
+                with(markerBody("marker-bad-enum", layerId), "sourceModule", "PLUGIN_SECRET"), 400, 40001);
+        Map<String, Object> htmlMarker = with(markerBody("marker-html-script", layerId), "markerType", "HTML");
+        htmlMarker.put("summary", "<script>alert(1)</script>");
+        performJson(post("/api/v1/online-map/admin/markers").header("Authorization", bearer("map-admin-token")),
+                htmlMarker, 400, 40001);
+        performJson(post("/api/v1/online-map/admin/markers").header("Authorization", bearer("map-admin-token")),
+                with(markerBody("marker-source-duplicate", layerId), "sourceRef", marker.at("/data/sourceRef")), 409, 49711);
+        performJson(post("/api/v1/online-map/admin/markers").header("Authorization", bearer("map-admin-token")),
                 with(markerBody("marker-internal-icon", layerId), "iconRef", Map.of("url", "http://localhost/icon.png")), 400, 40001);
         performJson(post("/api/v1/online-map/admin/markers").header("Authorization", bearer("map-admin-token")),
                 with(markerBody("marker-nested-secret", layerId), "sourceRef", Map.of("nested", List.of(Map.of("mapAdminPassword", "nope")))), 400, 40001);
@@ -249,6 +296,10 @@ class OnlineMapApiContractTest {
         String regionId = region.at("/data/regionId").asText();
         performJson(post("/api/v1/online-map/admin/regions").header("Authorization", bearer("map-admin-token")),
                 with(regionBody("region-bad-y", layerId), "maxY", -1), 400, 49714);
+        performJson(post("/api/v1/online-map/admin/regions").header("Authorization", bearer("map-admin-token")),
+                with(regionBody("region-bad-source-module", layerId), "sourceModule", "PLUGIN_SECRET"), 400, 40001);
+        performJson(post("/api/v1/online-map/admin/regions").header("Authorization", bearer("map-admin-token")),
+                with(regionBody("region-source-duplicate", layerId), "sourceRef", region.at("/data/sourceRef")), 409, 49711);
         JsonNode regionPatch = performJson(patch("/api/v1/online-map/admin/regions/" + regionId).header("Authorization", bearer("map-admin-token")),
                 Map.of("status", "HIDDEN", "reason", "隐藏区域", "idempotencyKey", "patch-region"), 200);
         assertThat(regionPatch.at("/data/status").asText()).isEqualTo("HIDDEN");

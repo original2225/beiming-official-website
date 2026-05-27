@@ -166,10 +166,14 @@ class OnlineMapController {
     @GetMapping("/embed")
     ResponseEntity<Map<String, Object>> embed(HttpServletRequest request, @RequestParam Map<String, String> query) {
         OnlineMapProvider provider = query.containsKey("providerId") ? store.publicProvider(query.get("providerId")) : store.defaultPublicProvider();
+        if (provider == null) {
+            return ok(request, null);
+        }
         if (query.containsKey("origin") && !provider.allowedOrigins.contains(query.get("origin"))) {
             throw new OnlineMapException(HttpStatus.BAD_REQUEST, 49715, "embed origin denied");
         }
-        return ok(request, provider.embedView());
+        OnlineMapWorld world = query.containsKey("worldId") ? store.publicWorldForEmbed(provider.providerId, query.get("worldId")) : store.defaultPublicWorld(provider);
+        return ok(request, store.embedView(provider, world));
     }
 
     @GetMapping("/admin/ops/summary")
@@ -222,6 +226,9 @@ class OnlineMapController {
             synchronized (store.lock) {
                 String displayName = text(body.get("displayName"));
                 if (store.providerNameConflict(displayName)) {
+                    throw new OnlineMapException(HttpStatus.CONFLICT, 49711, "provider conflict");
+                }
+                if (store.providerUrlConflict(text(body.get("publicBaseUrl")), textOr(body.get("embedUrl"), text(body.get("publicBaseUrl")) + "/embed"))) {
                     throw new OnlineMapException(HttpStatus.CONFLICT, 49711, "provider conflict");
                 }
                 String providerId = sanitizeId(textOr(body.get("idempotencyKey"), displayName));
@@ -328,6 +335,12 @@ class OnlineMapController {
             store.failAuditIfRequested(request, properties.enabled());
             synchronized (store.lock) {
                 OnlineMapProvider provider = store.provider(providerId);
+                if ("ENABLED".equals(provider.status)) {
+                    throw new OnlineMapException(HttpStatus.CONFLICT, 49710, "provider state conflict");
+                }
+                if (store.hasPublicChildren(providerId)) {
+                    throw new OnlineMapException(HttpStatus.CONFLICT, 49717, "provider has public children");
+                }
                 String before = provider.status;
                 provider.status = "ARCHIVED";
                 provider.publicVisible = false;
@@ -353,6 +366,11 @@ class OnlineMapController {
                 if (!Set.of("ENABLED", "DEGRADED").contains(provider.status)) {
                     throw new OnlineMapException(HttpStatus.CONFLICT, 49710, "provider state conflict");
                 }
+                Instant refreshStartedAt = Instant.now();
+                Instant lastRefreshStartedAt = store.providerRefreshStartedAt.get(providerId);
+                if (lastRefreshStartedAt != null && refreshStartedAt.isBefore(lastRefreshStartedAt.plusSeconds(60))) {
+                    throw new OnlineMapException(HttpStatus.CONFLICT, 49716, "provider refresh cooldown");
+                }
                 String mode = properties.enabled() ? request.getHeader("X-Test-Provider-Mode") : null;
                 Map<String, Object> snapshot;
                 if (properties.enabled() && "timeout".equals(mode)) {
@@ -370,6 +388,7 @@ class OnlineMapController {
                 }
                 provider.updatedBy = actor.userId;
                 provider.updatedAt = now();
+                store.providerRefreshStartedAt.put(providerId, refreshStartedAt);
                 store.healthSnapshots.put((String) snapshot.get("snapshotId"), snapshot);
                 store.audit("MAP_PROVIDER_HEALTH_REFRESHED", "PROVIDER", providerId, actor, request, body, "MEDIUM", "SUCCESS", null, null, provider.healthStatus);
                 return ok(request, snapshot);
@@ -575,6 +594,10 @@ class OnlineMapController {
                 if (!provider.providerId.equals(world.providerId) || !world.worldId.equals(layer.worldId)) {
                     throw new OnlineMapException(HttpStatus.BAD_REQUEST, 40001, "marker parent mismatch");
                 }
+                if (store.markerSourceConflict(text(body.get("providerId")), text(body.get("worldId")), text(body.get("layerId")),
+                        text(body.get("sourceModule")), body.get("sourceRef"))) {
+                    throw new OnlineMapException(HttpStatus.CONFLICT, 49711, "marker conflict");
+                }
                 String markerId = "marker-" + store.nextId(textOr(body.get("idempotencyKey"), text(body.get("title"))));
                 OnlineMapMarker marker = OnlineMapMarker.from(markerId, body, actor.userId);
                 store.markers.put(markerId, marker);
@@ -670,6 +693,10 @@ class OnlineMapController {
                 OnlineMapLayer layer = store.layer(text(body.get("layerId")));
                 if (!provider.providerId.equals(world.providerId) || !world.worldId.equals(layer.worldId)) {
                     throw new OnlineMapException(HttpStatus.BAD_REQUEST, 40001, "region parent mismatch");
+                }
+                if (store.regionSourceConflict(text(body.get("providerId")), text(body.get("worldId")), text(body.get("layerId")),
+                        text(body.get("sourceModule")), body.get("sourceRef"))) {
+                    throw new OnlineMapException(HttpStatus.CONFLICT, 49711, "region conflict");
                 }
                 String regionId = "region-" + store.nextId(textOr(body.get("idempotencyKey"), text(body.get("title"))));
                 OnlineMapRegion region = OnlineMapRegion.from(regionId, body, actor.userId);
@@ -791,6 +818,9 @@ class OnlineMapController {
     }
 
     private void validateProviderBody(Map<String, Object> body, boolean create) {
+        if (create || body.containsKey("providerType")) {
+            requireEnum(body, "providerType", "BLUEMAP", "DYNMAP", "SQUAREMAP", "OVERVIEWER", "CUSTOM");
+        }
         if (create || body.containsKey("displayName")) {
             requireString(body, "displayName", 2, 80);
         }
@@ -823,6 +853,7 @@ class OnlineMapController {
         requireString(body, "worldName", 1, 80);
         requireString(body, "displayName", 1, 80);
         requireString(body, "dimension", 1, 40);
+        requireEnum(body, "dimension", "OVERWORLD", "NETHER", "END", "CUSTOM");
         if (body.containsKey("sourceWorldKey")) {
             String sourceWorldKey = text(body.get("sourceWorldKey"));
             if (sourceWorldKey.contains("..") || sourceWorldKey.contains("\\") || sourceWorldKey.contains("/") || sourceWorldKey.contains("\0")) {
@@ -849,8 +880,17 @@ class OnlineMapController {
             requireString(body, "displayName", 2, 80);
             requireString(body, "layerType", 1, 40);
         }
+        if (body.containsKey("layerType")) {
+            requireEnum(body, "layerType", "BASE", "MARKER_SET", "POI", "REGION", "ROUTE", "CLAIM", "SYSTEM", "CUSTOM");
+        }
+        if (body.containsKey("status")) {
+            requireEnum(body, "status", "VISIBLE", "HIDDEN", "ARCHIVED");
+        }
+        if (body.containsKey("visibility")) {
+            requireEnum(body, "visibility", "PUBLIC", "MEMBER_ONLY", "STAFF_ONLY");
+        }
         if (body.containsKey("styleSummary")) {
-            if (containsTrusted(body.get("styleSummary"))) {
+            if (containsTrusted(body.get("styleSummary")) || containsUnsafeHtml(body.get("styleSummary"))) {
                 throw new OnlineMapException(HttpStatus.BAD_REQUEST, 40001, "trusted field denied");
             }
         }
@@ -863,6 +903,24 @@ class OnlineMapController {
             requireString(body, "layerId", 1, 80);
             requireString(body, "markerType", 1, 40);
             requireString(body, "title", 1, 120);
+        }
+        if (body.containsKey("markerType")) {
+            requireEnum(body, "markerType", "POI", "HTML", "LINE", "SHAPE", "EXTRUDE", "ICON", "PLAYER_SNAPSHOT", "CUSTOM");
+        }
+        if (body.containsKey("visibility")) {
+            requireEnum(body, "visibility", "PUBLIC", "MEMBER_ONLY", "STAFF_ONLY");
+        }
+        if (body.containsKey("status")) {
+            requireEnum(body, "status", "PUBLISHED", "HIDDEN", "ARCHIVED");
+        }
+        if (body.containsKey("sourceModule")) {
+            requireEnum(body, "sourceModule", "MANUAL", "CONTENT", "SERVER_STATUS", "OPS_CONTROL", "CHANGELOG", "ALERTING");
+        }
+        if (body.containsKey("summary") && containsUnsafeHtml(body.get("summary"))) {
+            throw new OnlineMapException(HttpStatus.BAD_REQUEST, 40001, "unsafe summary");
+        }
+        if (body.containsKey("styleSummary") && containsUnsafeHtml(body.get("styleSummary"))) {
+            throw new OnlineMapException(HttpStatus.BAD_REQUEST, 40001, "unsafe style");
         }
         if (body.containsKey("iconRef")) {
             Map<String, Object> iconRef = objectMap(body.get("iconRef"));
@@ -885,6 +943,21 @@ class OnlineMapController {
             requireString(body, "worldId", 1, 80);
             requireString(body, "layerId", 1, 80);
             requireString(body, "title", 1, 120);
+        }
+        if (body.containsKey("visibility")) {
+            requireEnum(body, "visibility", "PUBLIC", "MEMBER_ONLY", "STAFF_ONLY");
+        }
+        if (body.containsKey("status")) {
+            requireEnum(body, "status", "PUBLISHED", "HIDDEN", "ARCHIVED");
+        }
+        if (body.containsKey("sourceModule")) {
+            requireEnum(body, "sourceModule", "MANUAL", "CONTENT", "SERVER_STATUS", "OPS_CONTROL", "CHANGELOG", "ALERTING");
+        }
+        if (body.containsKey("summary") && containsUnsafeHtml(body.get("summary"))) {
+            throw new OnlineMapException(HttpStatus.BAD_REQUEST, 40001, "unsafe summary");
+        }
+        if (body.containsKey("styleSummary") && containsUnsafeHtml(body.get("styleSummary"))) {
+            throw new OnlineMapException(HttpStatus.BAD_REQUEST, 40001, "unsafe style");
         }
         if (create || body.containsKey("points")) {
             parseRegionPoints(body.get("points"));
@@ -911,6 +984,13 @@ class OnlineMapController {
     private void requireString(Map<String, Object> body, String key, int min, int max) {
         String value = text(body.get(key));
         if (value.isBlank() || value.length() < min || value.length() > max) {
+            throw new OnlineMapException(HttpStatus.BAD_REQUEST, 40001, "invalid " + key);
+        }
+    }
+
+    private void requireEnum(Map<String, Object> body, String key, String... allowed) {
+        String value = text(body.get(key));
+        if (value.isBlank() || !Set.of(allowed).contains(value)) {
             throw new OnlineMapException(HttpStatus.BAD_REQUEST, 40001, "invalid " + key);
         }
     }
@@ -1083,6 +1163,33 @@ class OnlineMapController {
 
     private boolean isUnsafeIconUrl(String url) {
         return isUnsafePublicUrl(url);
+    }
+
+    private boolean containsUnsafeHtml(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            for (Object item : map.values()) {
+                if (containsUnsafeHtml(item)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        if (value instanceof Collection<?> collection) {
+            for (Object item : collection) {
+                if (containsUnsafeHtml(item)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        String lower = text(value).toLowerCase(Locale.ROOT);
+        return lower.contains("<script")
+                || lower.contains("javascript:")
+                || lower.contains("expression(")
+                || lower.contains("url(javascript:")
+                || lower.contains("onerror=")
+                || lower.contains("onclick=")
+                || lower.contains("onload=");
     }
 
     private boolean isUnsafeUrl(String url) {
@@ -1480,6 +1587,7 @@ class OnlineMapStore {
     final Map<String, Map<String, Object>> healthSnapshots = new LinkedHashMap<>();
     final Map<String, OnlineMapAudit> audits = new LinkedHashMap<>();
     final Map<String, IdempotencyRecord> idempotencyRecords = new ConcurrentHashMap<>();
+    final Map<String, Instant> providerRefreshStartedAt = new ConcurrentHashMap<>();
     final Object lock = new Object();
     private final OnlineMapProperties properties;
     private long sequence = 1L;
@@ -1636,9 +1744,66 @@ class OnlineMapStore {
                 .anyMatch(provider -> !"ARCHIVED".equals(provider.status) && provider.displayName.equalsIgnoreCase(displayName));
     }
 
+    boolean providerUrlConflict(String publicBaseUrl, String embedUrl) {
+        String normalizedPublicBaseUrl = normalizeUrlKey(publicBaseUrl);
+        String normalizedEmbedUrl = normalizeUrlKey(embedUrl);
+        return providers.values().stream()
+                .filter(provider -> !"ARCHIVED".equals(provider.status))
+                .anyMatch(provider -> Objects.equals(normalizedPublicBaseUrl, normalizeUrlKey(provider.publicBaseUrl))
+                        || Objects.equals(normalizedPublicBaseUrl, normalizeUrlKey(provider.embedUrl))
+                        || Objects.equals(normalizedEmbedUrl, normalizeUrlKey(provider.publicBaseUrl))
+                        || Objects.equals(normalizedEmbedUrl, normalizeUrlKey(provider.embedUrl)));
+    }
+
     boolean layerNameConflict(String worldId, String displayName) {
         return layers.values().stream()
                 .anyMatch(layer -> layer.worldId.equals(worldId) && !"ARCHIVED".equals(layer.status) && layer.displayName.equalsIgnoreCase(displayName));
+    }
+
+    boolean markerSourceConflict(String providerId, String worldId, String layerId, String sourceModule, Object sourceRef) {
+        String sourceKey = normalizeSourceRef(sourceRef);
+        if (sourceKey == null) {
+            return false;
+        }
+        return markers.values().stream()
+                .anyMatch(marker -> !"ARCHIVED".equals(marker.status)
+                        && marker.providerId.equals(providerId)
+                        && marker.worldId.equals(worldId)
+                        && marker.layerId.equals(layerId)
+                        && Objects.equals(marker.sourceModule, sourceModule)
+                        && Objects.equals(normalizeSourceRef(marker.sourceRef), sourceKey));
+    }
+
+    boolean regionSourceConflict(String providerId, String worldId, String layerId, String sourceModule, Object sourceRef) {
+        String sourceKey = normalizeSourceRef(sourceRef);
+        if (sourceKey == null) {
+            return false;
+        }
+        return regions.values().stream()
+                .anyMatch(region -> !"ARCHIVED".equals(region.status)
+                        && region.providerId.equals(providerId)
+                        && region.worldId.equals(worldId)
+                        && region.layerId.equals(layerId)
+                        && Objects.equals(region.sourceModule, sourceModule)
+                        && Objects.equals(normalizeSourceRef(region.sourceRef), sourceKey));
+    }
+
+    boolean hasPublicChildren(String providerId) {
+        return worlds.values().stream().anyMatch(world -> world.providerId.equals(providerId) && world.publicVisible && world.enabled && !"ARCHIVED".equals(world.status))
+                || layers.values().stream().anyMatch(layer -> {
+            OnlineMapWorld world = worlds.get(layer.worldId);
+            return world != null && world.providerId.equals(providerId) && "VISIBLE".equals(layer.status) && "PUBLIC".equals(layer.visibility);
+        })
+                || markers.values().stream().anyMatch(marker -> {
+            OnlineMapLayer layer = layers.get(marker.layerId);
+            OnlineMapWorld world = layer == null ? null : worlds.get(layer.worldId);
+            return world != null && world.providerId.equals(providerId) && "PUBLISHED".equals(marker.status) && "PUBLIC".equals(marker.visibility);
+        })
+                || regions.values().stream().anyMatch(region -> {
+            OnlineMapLayer layer = layers.get(region.layerId);
+            OnlineMapWorld world = layer == null ? null : worlds.get(layer.worldId);
+            return world != null && world.providerId.equals(providerId) && "PUBLISHED".equals(region.status) && "PUBLIC".equals(region.visibility);
+        });
     }
 
     Map<String, Object> summary(boolean testControlsEnabled) {
@@ -1682,6 +1847,100 @@ class OnlineMapStore {
             gaps.add("TEST_CONTROLS_DISABLED_OUTSIDE_TEST");
         }
         return gaps;
+    }
+
+    OnlineMapWorld publicWorldForEmbed(String providerId, String worldId) {
+        OnlineMapWorld world = world(worldId);
+        if (!providerId.equals(world.providerId) || !world.publicVisible || !world.enabled || "ARCHIVED".equals(world.status)) {
+            throw new OnlineMapException(HttpStatus.NOT_FOUND, 49701, "world not found");
+        }
+        OnlineMapProvider provider = provider(providerId);
+        if (!provider.publicVisible || !Set.of("ENABLED", "DEGRADED").contains(provider.status) || "ARCHIVED".equals(provider.status)) {
+            throw new OnlineMapException(HttpStatus.NOT_FOUND, 49700, "provider not found");
+        }
+        return world;
+    }
+
+    OnlineMapWorld defaultPublicWorld(OnlineMapProvider provider) {
+        return worlds.values().stream()
+                .filter(world -> world.providerId.equals(provider.providerId) && world.publicVisible && world.enabled && !"ARCHIVED".equals(world.status))
+                .findFirst()
+                .orElse(null);
+    }
+
+    Map<String, Object> embedView(OnlineMapProvider provider, OnlineMapWorld world) {
+        List<String> layerIds = world == null ? new ArrayList<>() : new ArrayList<>(world.layerIds);
+        Map<String, Object> center = world == null ? maps("x", 0, "z", 0) : world.center;
+        return maps(
+                "providerId", provider.providerId,
+                "embedUrl", provider.embedUrl,
+                "allowedOrigins", provider.allowedOrigins,
+                "defaultWorldId", world == null ? provider.firstPublicWorldId() : world.worldId,
+                "defaultLayerIds", layerIds,
+                "defaultCenter", center,
+                "minZoom", 0,
+                "maxZoom", 8,
+                "updatedAt", provider.updatedAt);
+    }
+
+    private String normalizeUrlKey(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String candidate = value.trim();
+        if (candidate.endsWith("/")) {
+            candidate = candidate.substring(0, candidate.length() - 1);
+        }
+        if (candidate.startsWith("/")) {
+            return candidate;
+        }
+        try {
+            URI uri = new URI(candidate);
+            String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
+            String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT);
+            int port = uri.getPort();
+            String path = uri.getPath() == null ? "" : uri.getPath();
+            String query = uri.getQuery() == null ? "" : "?" + uri.getQuery();
+            String fragment = uri.getFragment() == null ? "" : "#" + uri.getFragment();
+            return scheme + "://" + host + (port >= 0 ? ":" + port : "") + path + query + fragment;
+        } catch (URISyntaxException exception) {
+            return candidate.toLowerCase(Locale.ROOT);
+        }
+    }
+
+    private String normalizeSourceRef(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Map<?, ?> map && map.isEmpty()) {
+            return null;
+        }
+        if (value instanceof Map<?, ?> map) {
+            TreeMap<String, String> sorted = new TreeMap<>();
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                sorted.put(String.valueOf(entry.getKey()), normalizeSourceRefValue(entry.getValue()));
+            }
+            return sorted.toString();
+        }
+        return normalizeSourceRefValue(value);
+    }
+
+    private String normalizeSourceRefValue(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            TreeMap<String, String> sorted = new TreeMap<>();
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                sorted.put(String.valueOf(entry.getKey()), normalizeSourceRefValue(entry.getValue()));
+            }
+            return sorted.toString();
+        }
+        if (value instanceof Collection<?> collection) {
+            List<String> values = new ArrayList<>();
+            for (Object item : collection) {
+                values.add(normalizeSourceRefValue(item));
+            }
+            return values.toString();
+        }
+        return String.valueOf(value);
     }
 
     void guardDependencies(HttpServletRequest request, String scope) {
