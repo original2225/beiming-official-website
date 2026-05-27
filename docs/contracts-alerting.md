@@ -1,6 +1,6 @@
 # 北冥官网 alerting API 契约
 
-版本：0.1
+版本：0.2
 
 ## 文档定位
 
@@ -8,7 +8,7 @@
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `alerting` 的职责边界、数据归属、前序服务兼容、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
 
-本文档参考 Prometheus Alertmanager、Grafana Alerting、PagerDuty、Amazon CloudWatch 和 Datadog Monitor 的公开设计。Alertmanager 的 grouping、deduplication、routing、silencing 和 inhibition 适合告警风暴控制；Grafana 的 contact point、notification policy、silence 和 mute timing 适合把告警规则与通知渠道拆开；PagerDuty 的事件编排和告警分组适合把来源事件整理成可处理事件；CloudWatch 的复合告警和抑制等待窗口适合维护窗口和上游故障抑制；Datadog 的 monitor、renotify 和 escalation message 适合重复提醒和升级摘要。本文档只吸收规则、事件、抑制、路由和闭环模型，不接入这些平台的主数据，也不在第一版发送真实外部通知。
+本文档参考 Prometheus Alertmanager、Grafana Alerting、PagerDuty、Opsgenie、Amazon CloudWatch 和 Datadog Monitor 的公开设计。Alertmanager 的 grouping、deduplication、routing、silencing 和 inhibition 适合告警风暴控制；Grafana 的 contact point、notification policy、silence 和 mute timing 适合把告警规则与通知渠道拆开；PagerDuty 的事件编排、`dedup_key` 和通用事件字段适合把来源事件整理成可处理事件；Opsgenie 的 `alias` 去重和 acknowledge、close、snooze 生命周期适合告警处理闭环；CloudWatch 的复合告警和抑制等待窗口适合维护窗口和上游故障抑制；Datadog 的 monitor、renotify 和 escalation message 适合重复提醒和升级摘要。本文档只吸收规则、事件、抑制、路由、去重键和闭环模型，不接入这些平台的主数据，也不在第一版发送真实外部通知。
 
 参考资料：
 
@@ -17,6 +17,7 @@
 | [Prometheus Alertmanager](https://prometheus.io/docs/alerting/latest/alertmanager/) | 告警服务负责去重、分组、路由、静默和抑制，不直接替代指标采集。 |
 | [Grafana Alerting notifications](https://grafana.com/docs/grafana/latest/alerting/fundamentals/notifications/) | 通知目的地和通知策略独立于规则，避免规则里硬编码渠道。 |
 | [PagerDuty Event Orchestration](https://support.pagerduty.com/main/docs/event-orchestration) | 来源事件先经过编排和路由，再进入处理闭环。 |
+| [Opsgenie Alert API](https://docs.opsgenie.com/docs/alert-api) | 告警别名可作为客户端定义的去重键，确认、关闭和静默类操作需要保留处理记录。 |
 | [Amazon CloudWatch alarm suppression](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/alarm-suppression.html) | 复合告警、等待期和扩展期可减少维护窗口和上游故障产生的噪音。 |
 | [Datadog monitor notifications](https://docs.datadoghq.com/monitors/notify/) | 重复提醒、升级消息和通知变量应是告警路由策略的一部分。 |
 
@@ -42,7 +43,7 @@
 
 除健康检查外，全部接口要求 `Authorization: Bearer <token>`。读取类接口要求后台角色 `HELPER`、`ADMIN` 或 `OWNER`，并具备 `NODE_READ`、`HIGH_RISK_APPROVE` 或等效后台读取能力。规则、静默、通知路由、确认和关闭写接口要求 `ADMIN` 或 `OWNER`。高风险升级策略、强制关闭严重告警和路由测试要求 `HIGH_RISK_APPROVE` 或 `OWNER`。
 
-浏览器请求体不得传入并覆盖 `actorUserId`、`actorRole`、`actorPermissions`、`beforeState`、`afterState`、`auditResult`、`internalPath`、`resolvedPath`、`rawToken`、`credential`、`secretKey`、`nodeToken`、`notificationToken`、`webhookSecret`、`smtpPassword`、`smsToken`、`deliveryStatus`、`createdBy`、`updatedBy`、`acknowledgedBy`、`closedBy` 和 `suppressedBy` 等服务端可信字段。出现可信字段时返回 `40001`。
+浏览器请求体不得传入并覆盖 `actorUserId`、`actorRole`、`actorPermissions`、`beforeState`、`afterState`、`auditResult`、`internalPath`、`resolvedPath`、`rawToken`、`credential`、`secretKey`、`nodeToken`、`notificationToken`、`webhookSecret`、`smtpPassword`、`smsToken`、`deliveryStatus`、`createdBy`、`updatedBy`、`acknowledgedBy`、`closedBy` 和 `suppressedBy` 等服务端可信字段。可信字段必须递归检查，嵌套在 `sourceSnapshot`、`labels`、`conditionSummary`、`matchers`、`notificationTemplateRef`、`receiverSummary` 或任意数组对象中也必须拒绝。出现可信字段时返回 `40001`。
 
 ## 本地测试控制头
 
@@ -116,7 +117,7 @@
 | `conditionSummary` | object | 是 | 条件摘要，不保存原始查询密钥。 |
 | `evaluationWindowSeconds` | integer | 是 | 评估窗口，60 到 86400。 |
 | `forDurationSeconds` | integer | 是 | 持续触发时间，0 到 86400。 |
-| `dedupeKeyTemplate` | string | 是 | 去重键模板，最多 200 位。 |
+| `dedupeKeyTemplate` | string | 是 | 去重键模板，最多 200 位。第一版支持 `{{sourceService}}`、`{{sourceType}}`、`{{severity}}`、`{{sourceRef}}`、`{{nodeId}}`、`{{groupKey}}`、`{{labels.<key>}}` 和 `{{snapshot.<key>}}` 占位符。无法解析的占位符按空字符串处理，生成后的空白字符归一为 `_`，连续空值不得导致指纹为空。 |
 | `routeId` | string 或 null | 是 | 默认通知路由。 |
 | `runbookUrl` | string 或 null | 是 | 处理说明链接，只允许 http、https 或站内路径。 |
 | `status` | string | 是 | `AlertRuleStatus`。 |
@@ -127,7 +128,7 @@
 
 ### AlertEvaluation
 
-字段为 `evaluationId`、`ruleId`、`status`、`matchedSourceId`、`createdAlertId`、`dedupeHit`、`suppressed`、`dependencyStatus`、`resultSummary`、`failureReason`、`evaluatedBy` 和 `evaluatedAt`。手动评估只读取来源快照，不主动采集真实指标。
+字段为 `evaluationId`、`ruleId`、`status`、`matchedSourceId`、`createdAlertId`、`dedupeHit`、`suppressed`、`dependencyStatus`、`resultSummary`、`failureReason`、`evaluatedBy` 和 `evaluatedAt`。手动评估只读取来源快照，不主动采集真实指标。命中时必须按 `dedupeKeyTemplate` 生成稳定指纹；未静默且规则绑定启用路由、路由匹配成功时，必须生成 `SENT` 投递摘要；未静默但路由缺失、禁用或不匹配时，不得伪造投递成功，告警的 `notificationSummary.status` 应返回 `PENDING` 并带安全原因摘要。
 
 ### AlertInstance
 
@@ -158,7 +159,7 @@
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `silenceId` | string | 是 | 静默 ID。 |
-| `matchers` | object | 是 | 标签、来源、级别匹配器。 |
+| `matchers` | object | 是 | 标签、来源、级别匹配器。第一版支持 `sourceService`、`severity`、`groupKey` 和 `labels` 精确匹配。 |
 | `startsAt` | string | 是 | 开始时间。 |
 | `endsAt` | string | 是 | 结束时间，必须晚于开始时间。 |
 | `reason` | string | 是 | 静默原因，1 到 200 位。 |
@@ -174,7 +175,7 @@
 | --- | --- | --- | --- |
 | `routeId` | string | 是 | 路由 ID。 |
 | `displayName` | string | 是 | 路由名称。 |
-| `matchers` | object | 是 | 匹配器。 |
+| `matchers` | object | 是 | 匹配器。第一版支持 `sourceService`、`severity`、`groupKey` 和 `labels` 精确匹配，路由必须启用且全部 matcher 命中后才允许生成正常投递摘要。 |
 | `groupBy` | string[] | 是 | 分组字段。 |
 | `groupWaitSeconds` | integer | 是 | 首次分组等待，0 到 3600。 |
 | `groupIntervalSeconds` | integer | 是 | 分组重复间隔，60 到 86400。 |
@@ -193,7 +194,7 @@
 
 ### AlertingAuditLog
 
-审计字段继承公共契约，允许补充 `ruleId`、`alertId`、`silenceId`、`routeId`、`deliveryId`、`dependencyStatus`、`stateFrom`、`stateTo`、`idempotencyKey` 和 `notificationHint`。审计列表不得提供删除接口。审计响应不得返回 token、密钥、外部渠道 secret、完整请求头、完整通知正文、内部路径、完整来源 payload 或异常堆栈。
+审计字段继承公共契约，允许补充 `ruleId`、`alertId`、`silenceId`、`routeId`、`deliveryId`、`dependencyStatus`、`stateFrom`、`stateTo`、`idempotencyKey` 和 `notificationHint`。写接口传入的 `reason` 必须进入审计响应；`paramsSummary` 只能返回脱敏后的字段名、幂等键是否存在和安全摘要，不能回显完整请求体。审计列表不得提供删除接口。审计响应不得返回 token、密钥、外部渠道 secret、完整请求头、完整通知正文、内部路径、完整来源 payload 或异常堆栈。
 
 ### AlertingOpsSummary
 
@@ -284,7 +285,7 @@
 
 `PATCH /api/v1/alerting/rules/{ruleId}/disable` 请求字段为 `reason` 和 `idempotencyKey`。`ENABLED` 可禁用为 `DISABLED`。重复禁用保持幂等。禁用规则不删除已有告警实例。
 
-`POST /api/v1/alerting/rules/{ruleId}/evaluate` 请求字段为 `sourceSnapshot`、`dryRun`、`reason` 和 `idempotencyKey`。`sourceSnapshot` 只能是测试或服务端适配器提供的安全摘要，不能包含 token、内部路径或完整日志。成功返回 `AlertEvaluation`。规则未启用返回 `49910`。来源不可用返回 `46910`，来源超时返回 `46911`，来源 schema 不兼容返回 `46912`。命中时按 `dedupeKeyTemplate` 生成指纹，重复指纹更新已有 `AlertInstance.lastFiredAt`，不新建告警实例。
+`POST /api/v1/alerting/rules/{ruleId}/evaluate` 请求字段为 `sourceSnapshot`、`dryRun`、`reason` 和 `idempotencyKey`。`sourceSnapshot` 只能是测试或服务端适配器提供的安全摘要，不能包含 token、内部路径、完整日志或任何嵌套可信字段。成功返回 `AlertEvaluation`。规则未启用返回 `49910`。来源不可用返回 `46910`，来源超时返回 `46911`，来源 schema 不兼容返回 `46912`。命中时按 `dedupeKeyTemplate` 生成指纹，重复指纹更新已有 `AlertInstance.lastFiredAt`，不新建告警实例。未静默告警必须先按规则 `routeId` 找到启用路由，再按 route matcher 匹配来源、级别、分组和标签；匹配成功生成 `SENT` 投递摘要，匹配失败保留 `PENDING` 摘要并记录不投递原因。
 
 ## 告警实例接口
 
@@ -298,7 +299,7 @@
 
 ## 静默接口
 
-`GET /api/v1/alerting/silences` 支持 `page`、`pageSize`、`status`、`sourceService`、`severity`、`labelKey`、`labelValue`、`from`、`to` 和 `sort`。`sort` 允许 `createdAt_desc`、`startsAt_asc`、`endsAt_asc`。
+`GET /api/v1/alerting/silences` 支持 `page`、`pageSize`、`status`、`sourceService`、`severity`、`labelKey`、`labelValue`、`from`、`to` 和 `sort`。`sort` 允许 `createdAt_desc`、`startsAt_asc`、`endsAt_asc`。读取和匹配静默前必须懒更新过期状态，`endsAt` 早于当前时间且仍为 `ACTIVE` 的静默必须转为 `EXPIRED`。
 
 `POST /api/v1/alerting/silences` 请求字段为 `matchers`、`startsAt`、`endsAt`、`reason` 和 `idempotencyKey`。成功响应 HTTP `201`，`data` 为 `AlertSilence`。`endsAt` 必须晚于 `startsAt`，否则返回 `49913`。匹配器必须至少包含来源、级别、标签或 groupKey 中的一类，非法返回 `49914`。静默只暂停通知，不删除告警实例，不停止规则评估。
 
@@ -330,11 +331,11 @@
 
 静默状态流转为 `ACTIVE` 到 `EXPIRED` 或 `CANCELLED`。过期和取消都不删除历史记录。路由状态为 `ENABLED` 或 `DISABLED`，禁用路由不删除历史投递。
 
-写接口使用幂等键时，必须使用字段名排序后的稳定 JSON 语义计算请求体指纹，嵌套对象按字段名递归排序，数组保留顺序，不能依赖 Java `Map.toString()` 或浏览器字段顺序。所有写接口必须用本服务内串行临界区保护状态推进、幂等记录、审计和响应快照。后续数据库实现必须使用事务、唯一约束、条件更新或等效机制，不能降低并发口径。
+写接口使用幂等键时，必须使用字段名排序后的稳定 JSON 语义计算请求体指纹，嵌套对象按字段名递归排序，数组保留顺序，不能依赖 Java `Map.toString()` 或浏览器字段顺序。幂等键的查找、冲突判断、业务状态推进、审计写入、响应快照保存和幂等记录写入必须处于同一临界区内；并发相同幂等键同请求体只能执行一次业务动作，并返回同一响应快照；并发相同幂等键不同请求体必须返回 `49912`。后续数据库实现必须使用事务、唯一约束、条件更新或等效机制，不能降低并发口径。
 
 ## 安全、降级和脱敏
 
-任何响应不得包含访问 token、节点密钥、Cloudreve 管理 token、分享密码、外部 webhook secret、SMTP 密码、短信 token、完整 Authorization 请求头、完整通知正文、内部绝对路径、完整来源 payload、异常堆栈、数据库连接串、`.env`、`authorized_keys`、`id_rsa`、服务器密码或 shell 命令。
+任何请求体都不得包含访问 token、节点密钥、Cloudreve 管理 token、分享密码、外部 webhook secret、SMTP 密码、短信 token、完整 Authorization 请求头、完整通知正文、内部绝对路径、完整来源 payload、异常堆栈、数据库连接串、`.env`、`authorized_keys`、`id_rsa`、服务器密码或 shell 命令。任何响应也不得包含这些字段或值。检查必须递归覆盖嵌套对象和数组。
 
 外部依赖不可用时，读取类接口可以返回已有快照并标记 `degraded=true` 和 `degradeReasons`。写入类接口不得假装成功。通知投递失败不得关闭告警，也不得把告警主状态改成已处理。来源服务不可用时，规则评估必须返回明确依赖错误或降级评估摘要。
 
