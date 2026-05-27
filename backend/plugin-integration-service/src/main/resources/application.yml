@@ -1,0 +1,10 @@
+server:
+  port: 8122
+
+spring:
+  application:
+    name: plugin-integration-service
+
+plugin-integration:
+  test-controls:
+    enabled: false
