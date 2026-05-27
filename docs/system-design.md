@@ -46,6 +46,7 @@ API 网关或后端入口
   |-- activity        活动、报名、结果
   |-- calendar        日程、维护、工程节点
   |-- changelog       版本更新与维护记录
+  |-- online-map      在线地图接入控制面和公开展示快照
   |-- admin           后台聚合、配置、审计
   |-- ops-control     服务器与资源运维控制面
   |-- cloudreve-sync  Cloudreve API 深度接入与同步快照
@@ -91,6 +92,8 @@ API 网关或后端入口
 `calendar` 负责活动、维护、工程节点、投票截止、版本更新等时间线。
 
 `changelog` 负责服务器版本、插件变更、规则调整、资源包更新、地图更新和维护记录。
+
+`online-map` 负责在线地图接入控制面和公开展示快照。它管理地图 provider、公开地图入口、世界列表、图层、marker、区域、嵌入配置、健康快照和审计摘要，不负责真实渲染、真实瓦片代理或节点命令执行。
 
 `admin` 负责后台聚合入口、审核待办、运营配置、数据看板和操作日志。它不直接吞掉业务模块职责。
 
@@ -229,7 +232,7 @@ Cloudreve 第一阶段可以作为外部分享链接存在。后续接入 API �
 
 后续如果采用微服务，网关负责路由、跨域、基础鉴权、限流和请求日志。业务服务负责自己的业务规则。网关不直接访问数据库。
 
-本地开发端口必须固定，避免 IDEA、命令行、前端代理和后续网关联调互相抢占默认端口。P0 阶段端口段从 `8101` 开始，已实现服务必须在自己的 `application.yml` 或等价配置中固定端口。当前规划为 `auth` 使用 `8101`，`profile` 使用 `8102`，`notification` 使用 `8103`，`content` 使用 `8104`，`server-status` 使用 `8105`，`resource` 使用 `8106`，`admin` 使用 `8107`，`onboarding` 使用 `8108`，`exam` 使用 `8109`，`whitelist` 使用 `8110`，`attendance` 使用 `8111`，`community` 使用 `8112`，`activity` 使用 `8113`，`calendar` 使用 `8114`，`changelog` 使用 `8115`，`ops-control` 使用 `8116`，`node-daemon` 使用 `8117`，`cloudreve-sync` 使用 `8118`，`backup-recovery` 使用 `8119`，后续模块按开发顺序递增。新增或调整端口时，必须同步更新正式文档和对应自动化测试。
+本地开发端口必须固定，避免 IDEA、命令行、前端代理和后续网关联调互相抢占默认端口。P0 阶段端口段从 `8101` 开始，已实现服务必须在自己的 `application.yml` 或等价配置中固定端口。当前规划为 `auth` 使用 `8101`，`profile` 使用 `8102`，`notification` 使用 `8103`，`content` 使用 `8104`，`server-status` 使用 `8105`，`resource` 使用 `8106`，`admin` 使用 `8107`，`onboarding` 使用 `8108`，`exam` 使用 `8109`，`whitelist` 使用 `8110`，`attendance` 使用 `8111`，`community` 使用 `8112`，`activity` 使用 `8113`，`calendar` 使用 `8114`，`changelog` 使用 `8115`，`ops-control` 使用 `8116`，`node-daemon` 使用 `8117`，`cloudreve-sync` 使用 `8118`，`backup-recovery` 使用 `8119`，`alerting` 使用 `8120`，`online-map` 使用 `8121`，后续模块按开发顺序递增。新增或调整端口时，必须同步更新正式文档和对应自动化测试。
 
 ## 技术选型原则
 
