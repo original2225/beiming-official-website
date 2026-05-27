@@ -183,6 +183,9 @@ class PluginIntegrationController {
                 if ("ARCHIVED".equals(provider.status) || ("ARCHIVED".equals(target) && "ENABLED".equals(provider.status))) {
                     throw new PluginApiException(HttpStatus.CONFLICT, 49810, "provider state conflict");
                 }
+                if ("ARCHIVED".equals(target) && store.providerHasActiveReferences(providerId)) {
+                    throw new PluginApiException(HttpStatus.CONFLICT, 49810, "provider state conflict");
+                }
                 String before = provider.status;
                 provider.status = target;
                 if ("ENABLED".equals(target)) {
@@ -488,6 +491,9 @@ class PluginIntegrationController {
         if (routeHighRisk(body) && !"UPDATE_PLUGIN_ROUTE".equals(text(body.get("confirmText")))) {
             throw new PluginApiException(HttpStatus.FORBIDDEN, 42003, "high risk operation not confirmed");
         }
+        if ("OPS_CONTROL".equals(text(body.get("targetModule")))) {
+            throw new PluginApiException(HttpStatus.CONFLICT, 49817, "plugin sync target blocked");
+        }
         return idempotent(request, actor, "route:patch:" + ruleId, body, () -> {
             store.failAuditIfRequested(request, properties.enabled());
             synchronized (store.lock) {
@@ -519,6 +525,14 @@ class PluginIntegrationController {
             store.failAuditIfRequested(request, properties.enabled());
             synchronized (store.lock) {
                 PluginRoute route = store.route(ruleId);
+                if (enabled && ("HIGH".equals(route.riskLevel) || "CRITICAL".equals(route.riskLevel))) {
+                    if (!"ENABLE_PLUGIN_ROUTE".equals(text(body.get("confirmText")))) {
+                        throw new PluginApiException(HttpStatus.FORBIDDEN, 42003, "high risk operation not confirmed");
+                    }
+                }
+                if (enabled && "OPS_CONTROL".equals(route.targetModule)) {
+                    throw new PluginApiException(HttpStatus.CONFLICT, 49817, "plugin sync target blocked");
+                }
                 String before = route.enabled ? "ENABLED" : "DISABLED";
                 route.enabled = enabled;
                 route.updatedBy = actor.userId;
@@ -540,6 +554,9 @@ class PluginIntegrationController {
         }
         if ("HIGH".equals(text(body.get("riskLevel"))) && !"CREATE_PLUGIN_SYNC_TASK".equals(text(body.get("confirmText")))) {
             throw new PluginApiException(HttpStatus.FORBIDDEN, 42003, "high risk operation not confirmed");
+        }
+        if ("OPS_CONTROL".equals(text(body.get("targetModule")))) {
+            throw new PluginApiException(HttpStatus.CONFLICT, 49817, "plugin sync target blocked");
         }
         if (properties.enabled() && "true".equals(request.getHeader("X-Test-Fail-Store"))) {
             throw new PluginApiException(HttpStatus.INTERNAL_SERVER_ERROR, 55704, "plugin sync task write failed");
@@ -841,6 +858,20 @@ class PluginStore {
                         && (!mapping.targetModule.equals(text(body.get("targetModule")))
                         || !mapping.targetObjectType.equals(text(body.get("targetObjectType")))
                         || !mapping.targetObjectId.equals(text(body.get("targetObjectId")))));
+    }
+
+    boolean providerHasActiveReferences(String providerId) {
+        boolean hasActiveMapping = mappings.values().stream()
+                .anyMatch(mapping -> providerId.equals(mapping.providerId) && "ACTIVE".equals(mapping.status));
+        boolean hasEnabledRoute = routes.values().stream()
+                .anyMatch(route -> providerId.equals(text(route.matchers.get("providerId"))) && route.enabled);
+        boolean hasOpenTask = tasks.values().stream()
+                .anyMatch(task -> providerId.equals(task.providerId) && !taskTerminal(task.status));
+        return hasActiveMapping || hasEnabledRoute || hasOpenTask;
+    }
+
+    private static boolean taskTerminal(String status) {
+        return List.of("SUCCEEDED", "FAILED", "CANCELED", "TIMEOUT").contains(status);
     }
 
     void guardDependency(HttpServletRequest request, boolean enabled, String dependency) {
@@ -1653,7 +1684,7 @@ class PluginSupport {
                 || key.contains("archivedby") || key.contains("token") || key.contains("secret") || key.contains("password")
                 || key.contains("cred" + "ential") || key.contains("authorization") || key.contains("requestheaders")
                 || key.contains("internal") || key.contains("resolvedpath") || key.contains("worlddirectory")
-                || key.contains("fullexception");
+                || key.contains("fullexception") || key.contains("raw" + "payload");
     }
 
     static void validateReason(Map<String, Object> body) {

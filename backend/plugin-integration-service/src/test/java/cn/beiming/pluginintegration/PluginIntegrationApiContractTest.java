@@ -216,6 +216,13 @@ class PluginIntegrationApiContractTest {
         String ruleId = route.at("/data/ruleId").asText();
         performJson(post("/api/v1/plugin-integration/admin/route-rules").header("Authorization", bearer("plugin-admin-token")),
                 with(routeBody("route-high-no-confirm"), "riskLevel", "HIGH"), 403, 42003);
+        JsonNode highRoute = performJson(post("/api/v1/plugin-integration/admin/route-rules").header("Authorization", bearer("plugin-admin-token")),
+                with(with(with(routeBody("route-high-disabled"), "riskLevel", "HIGH"), "enabled", false), "confirmText", "CONFIGURE_PLUGIN_ROUTE"), 201);
+        String highRuleId = highRoute.at("/data/ruleId").asText();
+        performJson(patch("/api/v1/plugin-integration/admin/route-rules/" + highRuleId + "/enable").header("Authorization", bearer("plugin-admin-token")),
+                Map.of("reason", "缺高风险路由启用确认", "idempotencyKey", "enable-high-route-no-confirm"), 403, 42003);
+        performJson(patch("/api/v1/plugin-integration/admin/route-rules/" + highRuleId).header("Authorization", bearer("plugin-admin-token")),
+                Map.of("targetModule", "OPS_CONTROL", "confirmText", "UPDATE_PLUGIN_ROUTE", "reason", "禁止改到真实运维目标", "idempotencyKey", "patch-route-ops"), 409, 49817);
         performJson(post("/api/v1/plugin-integration/admin/route-rules").header("Authorization", bearer("plugin-admin-token")),
                 with(with(routeBody("route-ops-blocked"), "targetModule", "OPS_CONTROL"), "confirmText", "CONFIGURE_PLUGIN_ROUTE"), 409, 49817);
         performJson(patch("/api/v1/plugin-integration/admin/route-rules/" + ruleId + "/disable").header("Authorization", bearer("plugin-admin-token")),
@@ -234,6 +241,8 @@ class PluginIntegrationApiContractTest {
 
         performJson(post("/api/v1/plugin-integration/admin/events/ingest").header("Authorization", bearer("plugin-admin-token")),
                 with(eventBody("event-missing-field"), "payload", Map.of("player", "Steve")), 400, 49814);
+        performJson(post("/api/v1/plugin-integration/admin/events/ingest").header("Authorization", bearer("plugin-admin-token")),
+                with(eventBody("event-trusted-raw"), "payload", Map.of("player", "Steve", "world", "world", "rawPayload", Map.of("hidden", true))), 400, 40001);
         performJson(post("/api/v1/plugin-integration/admin/events/ingest").header("Authorization", bearer("plugin-admin-token")),
                 with(eventBody("event-sensitive"), "payload", Map.of("player", "Steve", "world", "world", "webhookSecret", "nope")), 400, 40001);
         performJson(post("/api/v1/plugin-integration/admin/events/ingest").header("Authorization", bearer("plugin-admin-token")),
@@ -259,6 +268,8 @@ class PluginIntegrationApiContractTest {
         assertThat(taskReplay.at("/data/taskId").asText()).isEqualTo(taskId);
         performJson(post("/api/v1/plugin-integration/admin/sync-tasks").header("Authorization", bearer("plugin-admin-token")),
                 with(syncTaskBody("sync-high-no-confirm"), "riskLevel", "HIGH"), 403, 42003);
+        performJson(post("/api/v1/plugin-integration/admin/sync-tasks").header("Authorization", bearer("plugin-admin-token")),
+                with(with(syncTaskBody("sync-ops-blocked"), "targetModule", "OPS_CONTROL"), "confirmText", "CREATE_PLUGIN_SYNC_TASK"), 409, 49817);
         JsonNode canceled = performJson(patch("/api/v1/plugin-integration/admin/sync-tasks/" + taskId + "/cancel").header("Authorization", bearer("plugin-admin-token")),
                 Map.of("reason", "取消模拟同步", "idempotencyKey", "cancel-sync"), 200);
         assertThat(canceled.at("/data/status").asText()).isEqualTo("CANCELED");
@@ -270,6 +281,13 @@ class PluginIntegrationApiContractTest {
         JsonNode mapping = performJson(put("/api/v1/plugin-integration/admin/object-mappings/mapping-public").header("Authorization", bearer("plugin-admin-token")),
                 with(mappingBody("mapping-public"), "confirmText", "UPSERT_PLUGIN_OBJECT_MAPPING"), 201);
         assertThat(mapping.at("/data/status").asText()).isEqualTo("ACTIVE");
+        JsonNode mappedProvider = performJson(post("/api/v1/plugin-integration/admin/providers").header("Authorization", bearer("plugin-admin-token")),
+                with(providerBody("provider-with-active-mapping"), "confirmText", "REGISTER_PLUGIN_PROVIDER_ENDPOINT"), 201);
+        String mappedProviderId = mappedProvider.at("/data/providerId").asText();
+        performJson(put("/api/v1/plugin-integration/admin/object-mappings/mapping-blocks-provider-archive").header("Authorization", bearer("plugin-admin-token")),
+                with(with(mappingBody("mapping-blocks-provider-archive"), "providerId", mappedProviderId), "confirmText", "UPSERT_PLUGIN_OBJECT_MAPPING"), 201);
+        performJson(patch("/api/v1/plugin-integration/admin/providers/" + mappedProviderId + "/archive").header("Authorization", bearer("plugin-admin-token")),
+                Map.of("confirmText", "ARCHIVE_PLUGIN_PROVIDER", "reason", "仍有活动对象映射", "idempotencyKey", "archive-provider-with-active-mapping"), 409, 49810);
         performJson(put("/api/v1/plugin-integration/admin/object-mappings/mapping-conflict").header("Authorization", bearer("plugin-admin-token")),
                 with(with(mappingBody("mapping-conflict"), "sourceObjectKey", "source-mapping-public"), "confirmText", "UPSERT_PLUGIN_OBJECT_MAPPING"), 409, 49811);
         JsonNode archivedMapping = performJson(patch("/api/v1/plugin-integration/admin/object-mappings/mapping-public/archive").header("Authorization", bearer("plugin-admin-token")),
