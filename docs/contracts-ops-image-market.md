@@ -349,17 +349,21 @@
 | 批准版本 | PATCH | `/api/v1/ops-image-market/admin/versions/{imageVersionId}/approve` | 是 | `NODE_WRITE`，高风险需 `HIGH_RISK_APPROVE` 或 `OWNER` | MEDIUM 到 CRITICAL |
 | 废弃版本 | PATCH | `/api/v1/ops-image-market/admin/versions/{imageVersionId}/deprecate` | 是 | `NODE_WRITE` | MEDIUM |
 | 阻断版本 | PATCH | `/api/v1/ops-image-market/admin/versions/{imageVersionId}/block` | 是 | `NODE_WRITE` | HIGH |
+| 归档版本 | PATCH | `/api/v1/ops-image-market/admin/versions/{imageVersionId}/archive` | 是 | `NODE_WRITE` | MEDIUM |
 | 兼容配置列表 | GET | `/api/v1/ops-image-market/admin/compatibility-profiles` | 是 | `NODE_READ` | LOW |
 | 兼容配置详情 | GET | `/api/v1/ops-image-market/admin/compatibility-profiles/{profileId}` | 是 | `NODE_READ` | LOW |
 | 创建兼容配置 | POST | `/api/v1/ops-image-market/admin/compatibility-profiles` | 是 | `NODE_WRITE` | MEDIUM |
 | 更新兼容配置 | PATCH | `/api/v1/ops-image-market/admin/compatibility-profiles/{profileId}` | 是 | `NODE_WRITE` | MEDIUM |
 | 启用兼容配置 | PATCH | `/api/v1/ops-image-market/admin/compatibility-profiles/{profileId}/enable` | 是 | `NODE_WRITE` | MEDIUM |
+| 禁用兼容配置 | PATCH | `/api/v1/ops-image-market/admin/compatibility-profiles/{profileId}/disable` | 是 | `NODE_WRITE` | MEDIUM |
+| 归档兼容配置 | PATCH | `/api/v1/ops-image-market/admin/compatibility-profiles/{profileId}/archive` | 是 | `NODE_WRITE` | MEDIUM |
 | 镜像模板列表 | GET | `/api/v1/ops-image-market/admin/templates` | 是 | `NODE_READ` | LOW |
 | 镜像模板详情 | GET | `/api/v1/ops-image-market/admin/templates/{templateId}` | 是 | `NODE_READ` | LOW |
 | 创建镜像模板 | POST | `/api/v1/ops-image-market/admin/templates` | 是 | `NODE_WRITE` | MEDIUM |
 | 更新镜像模板 | PATCH | `/api/v1/ops-image-market/admin/templates/{templateId}` | 是 | `NODE_WRITE` | MEDIUM |
 | 启用镜像模板 | PATCH | `/api/v1/ops-image-market/admin/templates/{templateId}/enable` | 是 | `NODE_WRITE` | MEDIUM |
 | 禁用镜像模板 | PATCH | `/api/v1/ops-image-market/admin/templates/{templateId}/disable` | 是 | `NODE_WRITE` | MEDIUM |
+| 归档镜像模板 | PATCH | `/api/v1/ops-image-market/admin/templates/{templateId}/archive` | 是 | `NODE_WRITE` | MEDIUM |
 | 风险扫描列表 | GET | `/api/v1/ops-image-market/admin/scans` | 是 | `NODE_READ` | LOW |
 | 风险扫描详情 | GET | `/api/v1/ops-image-market/admin/scans/{scanId}` | 是 | `NODE_READ` | LOW |
 | 创建扫描摘要 | POST | `/api/v1/ops-image-market/admin/versions/{imageVersionId}/scans` | 是 | `NODE_WRITE` | MEDIUM |
@@ -412,11 +416,13 @@
 
 `POST /api/v1/ops-image-market/admin/images/{imageId}/versions` 请求字段包括 `tag`、`digestSummary`、`manifestSummary`、`os`、`architecture`、`sizeSummary`、`publishedAt`、`signed`、`signatureSummary`、`changeSummary`、`reason` 和 `idempotencyKey`。创建默认状态为 `DISCOVERED`。tag、digest 和 manifest 摘要必须脱敏，不允许完整 manifest、layer URL、内部 registry 地址或凭据。相同 imageId 下 tag 或 digest 摘要冲突返回 `49711`。
 
-`PATCH /api/v1/ops-image-market/admin/versions/{imageVersionId}/approve` 请求字段为 `reason`、`confirmText` 和 `idempotencyKey`。普通版本可省略 confirmText；当扫描最高风险为 `HIGH`、签名为 `UNSIGNED` 或 provider 允许高风险时，`confirmText` 必须为 `APPROVE_IMAGE_VERSION_RISK`。当扫描最高风险为 `CRITICAL` 时，仅 `OWNER` 可带同一确认文本批准。批准前必须存在未过期扫描摘要和启用兼容配置；扫描过期返回 `49715`，兼容性失败返回 `49716`，签名策略失败返回 `49718`。
+`PATCH /api/v1/ops-image-market/admin/versions/{imageVersionId}/approve` 请求字段为 `reason`、`confirmText` 和 `idempotencyKey`。只有 `DISCOVERED` 或 `DEPRECATED` 可批准为 `APPROVED`；`APPROVED`、`BLOCKED` 或 `ARCHIVED` 直接批准返回 `49710`，同一幂等键重放除外。普通版本可省略 confirmText；当扫描最高风险为 `HIGH`、签名为 `UNSIGNED` 或 provider 允许高风险时，`confirmText` 必须为 `APPROVE_IMAGE_VERSION_RISK`。当扫描最高风险为 `CRITICAL` 时，仅 `OWNER` 可带同一确认文本批准。批准前必须存在未过期扫描摘要和启用兼容配置；扫描过期返回 `49715`，兼容性失败返回 `49716`，签名策略失败返回 `49718`。
 
 `PATCH /api/v1/ops-image-market/admin/versions/{imageVersionId}/deprecate` 请求字段为 `reason` 和 `idempotencyKey`。`DISCOVERED` 或 `APPROVED` 可变为 `DEPRECATED`。废弃后不得被新模板或新拉取计划引用。
 
-`PATCH /api/v1/ops-image-market/admin/versions/{imageVersionId}/block` 请求字段为 `reason`、`confirmText` 和 `idempotencyKey`。`confirmText` 必须为 `BLOCK_IMAGE_VERSION`。阻断后新拉取计划必须返回 `49714`。
+`PATCH /api/v1/ops-image-market/admin/versions/{imageVersionId}/block` 请求字段为 `reason`、`confirmText` 和 `idempotencyKey`。`confirmText` 必须为 `BLOCK_IMAGE_VERSION`。`DISCOVERED`、`APPROVED` 或 `DEPRECATED` 可变为 `BLOCKED`；`ARCHIVED` 为终态，返回 `49710`。阻断后新拉取计划必须返回 `49714`。
+
+`PATCH /api/v1/ops-image-market/admin/versions/{imageVersionId}/archive` 请求字段为 `reason` 和 `idempotencyKey`。只有 `DISCOVERED`、`DEPRECATED` 或 `BLOCKED` 可归档；`APPROVED` 版本必须先废弃或阻断；存在启用模板或非终态拉取计划引用时返回 `49710`。`ARCHIVED` 为终态，归档后不得批准、废弃、阻断、更新为模板固定版本或创建拉取计划。
 
 ## 兼容性和模板接口
 
@@ -428,7 +434,11 @@
 
 `PATCH /api/v1/ops-image-market/admin/compatibility-profiles/{profileId}` 可修改创建接口中的业务字段，`reason` 必填。`ARCHIVED` 配置不可修改。修改后引用该 profile 的启用模板必须标记 `degraded=true` 或要求重新启用。
 
-`PATCH /api/v1/ops-image-market/admin/compatibility-profiles/{profileId}/enable` 请求字段为 `reason` 和 `idempotencyKey`。启用前必须校验镜像未归档、runtime 和 architecture 合法、端口和卷摘要安全、env schema 不含 secret 值。重复启用保持幂等。
+`PATCH /api/v1/ops-image-market/admin/compatibility-profiles/{profileId}/enable` 请求字段为 `reason` 和 `idempotencyKey`。`DRAFT` 或 `DISABLED` 可启用为 `ENABLED`；`ARCHIVED` 返回 `49710`。启用前必须校验镜像未归档、runtime 和 architecture 合法、端口和卷摘要安全、env schema 不含 secret 值。重复启用保持幂等。
+
+`PATCH /api/v1/ops-image-market/admin/compatibility-profiles/{profileId}/disable` 请求字段为 `reason` 和 `idempotencyKey`。只有 `ENABLED` 可禁用为 `DISABLED`。禁用后新模板启用和新拉取计划不得使用该配置；重复禁用保持同一目标状态响应，不重复写审计。
+
+`PATCH /api/v1/ops-image-market/admin/compatibility-profiles/{profileId}/archive` 请求字段为 `reason` 和 `idempotencyKey`。只有 `DRAFT` 或 `DISABLED` 可归档；`ENABLED` 必须先禁用；存在启用模板或非终态拉取计划间接引用时返回 `49710`。`ARCHIVED` 为终态，归档后不可修改、启用、禁用、被新模板引用或被新拉取计划使用。
 
 `GET /api/v1/ops-image-market/admin/templates` 支持 `page`、`pageSize`、`keyword`、`imageId`、`imageVersionId`、`templateKind`、`runtime`、`status`、`from`、`to` 和 `sort`。`sort` 允许 `updatedAt_desc`、`createdAt_desc`、`displayName_asc`。成功响应分页 `items` 为 `ImageTemplate[]`。
 
@@ -438,9 +448,11 @@
 
 `PATCH /api/v1/ops-image-market/admin/templates/{templateId}` 可修改模板业务字段，`reason` 必填。`ARCHIVED` 模板不可修改。修改 imageVersionId 时必须校验版本 `APPROVED`、扫描未过期和兼容性通过。
 
-`PATCH /api/v1/ops-image-market/admin/templates/{templateId}/enable` 请求字段为 `reason` 和 `idempotencyKey`。启用前必须校验 provider `ENABLED`、镜像 `PUBLISHED`、版本 `APPROVED`、扫描未过期、兼容配置启用、模板摘要安全。重复启用保持幂等。
+`PATCH /api/v1/ops-image-market/admin/templates/{templateId}/enable` 请求字段为 `reason` 和 `idempotencyKey`。`DRAFT` 或 `DISABLED` 可启用为 `ENABLED`；`ARCHIVED` 返回 `49710`。启用前必须校验 provider `ENABLED`、镜像 `PUBLISHED`、版本 `APPROVED`、扫描未过期、兼容配置启用、模板摘要安全。重复启用保持幂等。
 
 `PATCH /api/v1/ops-image-market/admin/templates/{templateId}/disable` 请求字段为 `reason` 和 `idempotencyKey`。`ENABLED` 可禁用为 `DISABLED`。禁用后新拉取计划不能使用该模板。
+
+`PATCH /api/v1/ops-image-market/admin/templates/{templateId}/archive` 请求字段为 `reason` 和 `idempotencyKey`。只有 `DRAFT` 或 `DISABLED` 可归档；`ENABLED` 必须先禁用；存在非终态拉取计划引用时返回 `49710`。`ARCHIVED` 为终态，归档后不可修改、启用、禁用或创建新拉取计划。
 
 ## 风险扫描接口
 
@@ -460,7 +472,7 @@
 
 创建计划时必须按目标节点摘要校验架构、runtime、最小内存、端口需求、卷需求、模板状态和 provider 风险策略。无法从 `ops-control` 获取目标节点摘要时，不得伪造兼容成功。`targetNodeIds` 不允许为空，最多 20 个。重复幂等键同体返回同一计划，不同体返回 `49712`。
 
-`PATCH /api/v1/ops-image-market/admin/pull-plans/{planId}/approve` 请求字段为 `reason`、`confirmText` 和 `idempotencyKey`。`confirmText` 必须为 `APPROVE_IMAGE_PULL_PLAN`。只有 `DRAFT` 和 `RISK_REVIEW_REQUIRED` 可批准。批准后低中风险计划进入 `SIMULATED_READY`，高风险计划进入 `APPROVED` 或 `SIMULATED_READY`，但不得进入真实执行状态。扫描过期、版本废弃、provider 禁用或节点兼容性变化时返回 `49715`、`49710`、`49719` 或 `49716`。
+`PATCH /api/v1/ops-image-market/admin/pull-plans/{planId}/approve` 请求字段为 `reason`、`confirmText` 和 `idempotencyKey`。`confirmText` 必须为 `APPROVE_IMAGE_PULL_PLAN`。只有 `DRAFT` 和 `RISK_REVIEW_REQUIRED` 可批准。批准时必须重新校验 provider 仍为 `ENABLED`、镜像仍为 `PUBLISHED`、版本仍为 `APPROVED` 且未废弃/阻断/归档、模板仍为 `ENABLED`、目标节点仍兼容、扫描仍未过期。批准后低中风险计划进入 `SIMULATED_READY`，高风险计划进入 `APPROVED` 或 `SIMULATED_READY`，但不得进入真实执行状态。扫描过期返回 `49715`，provider 禁用返回 `49719`，镜像、版本或模板状态失效返回 `49710`，节点兼容性变化返回 `49716`。
 
 `PATCH /api/v1/ops-image-market/admin/pull-plans/{planId}/cancel` 请求字段为 `reason` 和 `idempotencyKey`。`DRAFT`、`RISK_REVIEW_REQUIRED`、`APPROVED`、`SIMULATED_READY` 和 `EXECUTION_BLOCKED` 可取消为 `CANCELED`。取消 `HIGH` 或 `CRITICAL` 计划必须校验高风险权限；`CRITICAL` 仍只允许 `OWNER`。终态计划重复取消按固定幂等语义返回状态冲突或相同结果，同一实现版本必须写入测试。
 
@@ -477,6 +489,8 @@
 ## 状态、幂等和并发
 
 provider 状态流转为 `DRAFT` 可到 `ENABLED`、`DISABLED` 或 `ARCHIVED`；`ENABLED` 可到 `DEGRADED` 或 `DISABLED`；`DISABLED` 可到 `ENABLED` 或 `ARCHIVED`；`DEGRADED` 可恢复为 `ENABLED`、禁用或归档；`ARCHIVED` 为终态。
+
+所有状态写接口必须先按当前状态和目标状态执行统一流转校验，再做依赖校验、审计写入和状态更新。未列入本节的源状态到目标状态转换必须返回 `49710`，不能靠接口实现自行放宽。
 
 镜像目录状态流转为 `DRAFT` 可到 `PUBLISHED`、`BLOCKED` 或 `ARCHIVED`；`PUBLISHED` 可到 `DEPRECATED` 或 `BLOCKED`；`DEPRECATED` 可到 `PUBLISHED`、`BLOCKED` 或 `ARCHIVED`；`BLOCKED` 可到 `DRAFT` 或 `ARCHIVED`；`ARCHIVED` 为终态。
 
