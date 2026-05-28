@@ -455,6 +455,81 @@ class OpsImageMarketApiContractTest {
                 pullPlanBody(first.versionId(), second.templateId(), "mismatch-plan", "MEDIUM"), 409, 49716);
     }
 
+    @Test
+    @DisplayName("OIM-VERSION, OIM-COMPAT, OIM-TEMPLATE, and OIM-PULL enforce archive lifecycles and approval revalidation")
+    void lifecycleArchiveAndApprovalRevalidationHardening() throws Exception {
+        ReadyImage lifecycle = prepareReadyImage("lifecycle-base");
+
+        JsonNode extraVersion = performJson(post("/api/v1/ops-image-market/admin/images/" + lifecycle.imageId() + "/versions").header("Authorization", bearer("oim-admin-token")),
+                versionBody("lifecycle-archive"), 201);
+        String extraVersionId = extraVersion.at("/data/imageVersionId").asText();
+        performJson(post("/api/v1/ops-image-market/admin/versions/" + extraVersionId + "/scans").header("Authorization", bearer("oim-admin-token")),
+                scanBody("lifecycle-archive", "PASSED", "LOW", "SIGNED"), 201);
+        JsonNode archivedVersion = performJson(patch("/api/v1/ops-image-market/admin/versions/" + extraVersionId + "/archive").header("Authorization", bearer("oim-admin-token")),
+                Map.of("reason", "归档未引用版本", "idempotencyKey", "archive-version-lifecycle"), 200);
+        assertThat(archivedVersion.at("/data/status").asText()).isEqualTo("ARCHIVED");
+        performJson(patch("/api/v1/ops-image-market/admin/versions/" + extraVersionId + "/approve").header("Authorization", bearer("oim-admin-token")),
+                Map.of("reason", "归档版本不可批准", "idempotencyKey", "approve-archived-version"), 409, 49710);
+        performJson(patch("/api/v1/ops-image-market/admin/versions/" + extraVersionId + "/block").header("Authorization", bearer("oim-admin-token")),
+                Map.of("confirmText", "BLOCK_IMAGE_VERSION", "reason", "归档版本不可阻断", "idempotencyKey", "block-archived-version"), 409, 49710);
+
+        JsonNode profile = performJson(post("/api/v1/ops-image-market/admin/compatibility-profiles").header("Authorization", bearer("oim-admin-token")),
+                compatibilityBody(lifecycle.imageId(), "lifecycle-archive"), 201);
+        String profileId = profile.at("/data/profileId").asText();
+        performJson(patch("/api/v1/ops-image-market/admin/compatibility-profiles/" + profileId + "/enable").header("Authorization", bearer("oim-admin-token")),
+                Map.of("reason", "启用待归档兼容配置", "idempotencyKey", "enable-profile-lifecycle"), 200);
+        JsonNode disabledProfile = performJson(patch("/api/v1/ops-image-market/admin/compatibility-profiles/" + profileId + "/disable").header("Authorization", bearer("oim-admin-token")),
+                Map.of("reason", "禁用待归档兼容配置", "idempotencyKey", "disable-profile-lifecycle"), 200);
+        assertThat(disabledProfile.at("/data/status").asText()).isEqualTo("DISABLED");
+        JsonNode archivedProfile = performJson(patch("/api/v1/ops-image-market/admin/compatibility-profiles/" + profileId + "/archive").header("Authorization", bearer("oim-admin-token")),
+                Map.of("reason", "归档兼容配置", "idempotencyKey", "archive-profile-lifecycle"), 200);
+        assertThat(archivedProfile.at("/data/status").asText()).isEqualTo("ARCHIVED");
+        performJson(patch("/api/v1/ops-image-market/admin/compatibility-profiles/" + profileId).header("Authorization", bearer("oim-admin-token")),
+                Map.of("reason", "归档配置不可更新", "minimumMemoryMb", 4096, "idempotencyKey", "patch-archived-profile"), 409, 49710);
+        performJson(patch("/api/v1/ops-image-market/admin/compatibility-profiles/" + profileId + "/enable").header("Authorization", bearer("oim-admin-token")),
+                Map.of("reason", "归档配置不可启用", "idempotencyKey", "enable-archived-profile"), 409, 49710);
+
+        JsonNode template = performJson(post("/api/v1/ops-image-market/admin/templates").header("Authorization", bearer("oim-admin-token")),
+                templateBody(lifecycle.imageId(), lifecycle.versionId(), lifecycle.profileId(), "lifecycle-archive"), 201);
+        String templateId = template.at("/data/templateId").asText();
+        performJson(patch("/api/v1/ops-image-market/admin/templates/" + templateId + "/enable").header("Authorization", bearer("oim-admin-token")),
+                Map.of("reason", "启用待归档模板", "idempotencyKey", "enable-template-lifecycle"), 200);
+        JsonNode disabledTemplate = performJson(patch("/api/v1/ops-image-market/admin/templates/" + templateId + "/disable").header("Authorization", bearer("oim-admin-token")),
+                Map.of("reason", "禁用待归档模板", "idempotencyKey", "disable-template-lifecycle"), 200);
+        assertThat(disabledTemplate.at("/data/status").asText()).isEqualTo("DISABLED");
+        JsonNode archivedTemplate = performJson(patch("/api/v1/ops-image-market/admin/templates/" + templateId + "/archive").header("Authorization", bearer("oim-admin-token")),
+                Map.of("reason", "归档模板", "idempotencyKey", "archive-template-lifecycle"), 200);
+        assertThat(archivedTemplate.at("/data/status").asText()).isEqualTo("ARCHIVED");
+        performJson(patch("/api/v1/ops-image-market/admin/templates/" + templateId).header("Authorization", bearer("oim-admin-token")),
+                Map.of("reason", "归档模板不可更新", "displayName", "Archived Template", "idempotencyKey", "patch-archived-template"), 409, 49710);
+        performJson(patch("/api/v1/ops-image-market/admin/templates/" + templateId + "/enable").header("Authorization", bearer("oim-admin-token")),
+                Map.of("reason", "归档模板不可启用", "idempotencyKey", "enable-archived-template"), 409, 49710);
+
+        ReadyImage templateDrift = prepareReadyImage("approval-template-drift");
+        JsonNode templateDriftPlan = performJson(post("/api/v1/ops-image-market/admin/pull-plans").header("Authorization", bearer("oim-admin-token")),
+                with(pullPlanBody(templateDrift.versionId(), templateDrift.templateId(), "approval-template-drift", "HIGH"), "confirmText", "CREATE_IMAGE_PULL_PLAN_RISK"), 201);
+        performJson(patch("/api/v1/ops-image-market/admin/templates/" + templateDrift.templateId() + "/disable").header("Authorization", bearer("oim-admin-token")),
+                Map.of("reason", "批准前模板被禁用", "idempotencyKey", "disable-template-before-approval"), 200);
+        performJson(patch("/api/v1/ops-image-market/admin/pull-plans/" + templateDriftPlan.at("/data/planId").asText() + "/approve").header("Authorization", bearer("oim-admin-token")),
+                Map.of("confirmText", "APPROVE_IMAGE_PULL_PLAN", "reason", "模板失效后不可批准", "idempotencyKey", "approve-disabled-template-plan"), 409, 49710);
+
+        ReadyImage versionDrift = prepareReadyImage("approval-version-drift");
+        JsonNode versionDriftPlan = performJson(post("/api/v1/ops-image-market/admin/pull-plans").header("Authorization", bearer("oim-admin-token")),
+                with(pullPlanBody(versionDrift.versionId(), versionDrift.templateId(), "approval-version-drift", "HIGH"), "confirmText", "CREATE_IMAGE_PULL_PLAN_RISK"), 201);
+        performJson(patch("/api/v1/ops-image-market/admin/versions/" + versionDrift.versionId() + "/deprecate").header("Authorization", bearer("oim-admin-token")),
+                Map.of("reason", "批准前版本被废弃", "idempotencyKey", "deprecate-version-before-approval"), 200);
+        performJson(patch("/api/v1/ops-image-market/admin/pull-plans/" + versionDriftPlan.at("/data/planId").asText() + "/approve").header("Authorization", bearer("oim-admin-token")),
+                Map.of("confirmText", "APPROVE_IMAGE_PULL_PLAN", "reason", "版本失效后不可批准", "idempotencyKey", "approve-deprecated-version-plan"), 409, 49710);
+
+        ReadyImage providerDrift = prepareReadyImage("approval-provider-drift");
+        JsonNode providerDriftPlan = performJson(post("/api/v1/ops-image-market/admin/pull-plans").header("Authorization", bearer("oim-admin-token")),
+                with(pullPlanBody(providerDrift.versionId(), providerDrift.templateId(), "approval-provider-drift", "HIGH"), "confirmText", "CREATE_IMAGE_PULL_PLAN_RISK"), 201);
+        performJson(patch("/api/v1/ops-image-market/admin/providers/provider-dockerhub-minecraft/disable").header("Authorization", bearer("oim-admin-token")),
+                Map.of("reason", "批准前 provider 被禁用", "idempotencyKey", "disable-provider-before-approval"), 200);
+        performJson(patch("/api/v1/ops-image-market/admin/pull-plans/" + providerDriftPlan.at("/data/planId").asText() + "/approve").header("Authorization", bearer("oim-admin-token")),
+                Map.of("confirmText", "APPROVE_IMAGE_PULL_PLAN", "reason", "provider 失效后不可批准", "idempotencyKey", "approve-disabled-provider-plan"), 409, 49719);
+    }
+
     private ReadyImage prepareReadyImage(String suffix) throws Exception {
         JsonNode image = performJson(post("/api/v1/ops-image-market/admin/images").header("Authorization", bearer("oim-admin-token")),
                 imageBody(suffix), 201);
