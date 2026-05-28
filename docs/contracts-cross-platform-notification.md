@@ -1,6 +1,6 @@
 # 北冥官网 cross-platform-notification API 契约
 
-版本：0.1
+版本：0.2
 
 ## 文档定位
 
@@ -47,7 +47,9 @@
 
 健康检查 `GET /api/v1/cross-platform-notification/health` 不要求认证，只能返回 `service`、`version`、`status` 和 `requestId`，不得返回 provider 数量、receiver、endpoint、外部平台错误详情、依赖明细或任何敏感字段。
 
-后台接口统一使用 `/api/v1/cross-platform-notification/admin` 前缀，全部要求 `Authorization: Bearer <token>`。后台读取接口要求基础角色为 `HELPER`、`ADMIN` 或 `OWNER`，并具备 `NODE_READ` 或等效后台读取能力。后台写接口要求 `ADMIN` 或 `OWNER`，并具备 `NODE_WRITE`。涉及外部 endpoint、receiver、provider 启用、路由启用、测试路由、投递请求、批量重试、取消高风险投递或真实发送开关的接口要求 `HIGH_RISK_APPROVE` 或 `OWNER`，并要求固定 `confirmText`。
+后台接口统一使用 `/api/v1/cross-platform-notification/admin` 前缀，全部要求 `Authorization: Bearer <token>`。后台读取接口要求基础角色为 `HELPER`、`ADMIN` 或 `OWNER`，并具备 `NODE_READ` 或等效后台读取能力。后台写接口要求 `ADMIN` 或 `OWNER`，并具备 `NODE_WRITE`。涉及外部 endpoint、receiver、provider 启用、路由启用、测试路由、投递请求、批量重试、取消高风险投递或真实发送开关的接口要求 `HIGH_RISK_APPROVE` 或 `OWNER`，并要求固定 `confirmText`。`ADMIN` 具备 `NODE_WRITE` 但缺少 `HIGH_RISK_APPROVE` 时，高风险写接口必须返回 `42002`；`OWNER` 可绕过该能力点但仍必须满足确认文本、状态流转和审计规则。
+
+第一版支持公共风险等级 `LOW`、`MEDIUM`、`HIGH` 和 `CRITICAL`。`HIGH` 写操作要求 `HIGH_RISK_APPROVE` 或 `OWNER`。`CRITICAL` 只允许 `OWNER` 执行；非 `OWNER` 账号即使具备 `HIGH_RISK_APPROVE`，在创建或更新 provider 允许风险等级、创建或更新路由、创建投递时传入 `CRITICAL` 也必须返回 `42004`。后续如果接入独立审批记录，必须先补充本契约、测试文档、红灯测试和回归记录。
 
 浏览器请求体不得传入并覆盖 `actorUserId`、`actorRole`、`actorPermissions`、`beforeState`、`afterState`、`auditResult`、`createdBy`、`updatedBy`、`enabledBy`、`disabledBy`、`archivedBy`、`rawPayload`、`rawToken`、`webhookSecret`、`discordToken`、`qqToken`、`oopzToken`、`smtpPassword`、`smsToken`、`botToken`、`rconPassword`、`credential`、`secretKey`、`Authorization`、`requestHeaders`、`internalUrl`、`internalPath`、`resolvedPath`、`fullException`、`databaseUrl`、`deliveryStatus`、`attemptStatus`、`externalMessageId` 和 `providerRawResponse` 等服务端可信字段。可信字段必须递归检查，嵌套在 `payloadSummary`、`receiverSummary`、`endpointSummary`、`metadata`、`matchers`、`requestSummary`、`responseSummary` 或任意数组对象中也必须拒绝。出现可信字段时返回 `40001`。
 
@@ -85,7 +87,7 @@
 | `ExternalDependencyStatus` | `AVAILABLE`、`UNAVAILABLE`、`TIMEOUT`、`BAD_SCHEMA`、`STALE`、`SKIPPED` | 依赖摘要状态。 |
 | `ExternalNotificationAuditResult` | `SUCCESS`、`FAILED` | 审计结果。 |
 
-`sourceModule` 使用模块英文名，例如 `notification`、`alerting`、`plugin-integration`、`ops-control`、`community`、`activity`、`calendar`、`changelog`、`whitelist`、`attendance`、`resource`、`server-status` 和 `custom`。第一版不允许浏览器伪装为 `auth`、`node-daemon` 或内部系统用户。
+`sourceModule` 使用模块英文名，例如 `notification`、`alerting`、`plugin-integration`、`ops-control`、`community`、`activity`、`calendar`、`changelog`、`whitelist`、`attendance`、`resource`、`server-status` 和 `custom`。第一版不允许浏览器伪装为 `auth`、`node-daemon` 或内部系统用户。浏览器传入未列入本契约的来源模块、`auth`、`node-daemon` 或以 `internal`、`system` 开头的来源模块时必须返回 `40001`，不得创建投递、路由、模板映射或审计记录。
 
 ## 通用对象
 
@@ -188,7 +190,7 @@
 | `channel` | string | 是 | `ExternalChannel`。 |
 | `templateMappingId` | string 或 null | 是 | 模板映射 ID。 |
 | `receiverSummary` | object | 是 | receiver 脱敏摘要。 |
-| `payloadSummary` | object | 是 | 载荷摘要，只保存变量白名单、字段名、长度和脱敏值。 |
+| `payloadSummary` | object | 是 | 载荷摘要，只保存变量白名单、字段名、字段数量、字符串长度、值类型和短 hash，不保存完整通知正文或完整变量值。 |
 | `status` | string | 是 | `ExternalDeliveryStatus`。 |
 | `attempts` | integer | 是 | 尝试次数。 |
 | `lastAttemptAt` | string 或 null | 是 | 最近尝试时间。 |
@@ -392,7 +394,7 @@
 
 ## 投递接口
 
-`POST /api/v1/cross-platform-notification/admin/deliveries` 请求字段包括 `sourceModule`、`sourceId`、`eventType`、`riskLevel`、`routeId`、`providerId`、`templateMappingId`、`receiverSummary`、`payloadSummary`、`expiresAt`、`reason`、`confirmText` 和 `idempotencyKey`。`confirmText` 必须为 `CREATE_EXTERNAL_DELIVERY`。成功响应 HTTP `201`，`data` 为 `ExternalDeliveryRequest`。第一版必须创建模拟 attempt，结果只能为 `SIMULATED_SENT`、`SIMULATED_FAILED`、`BLOCKED` 或 `RETRY_SCHEDULED`，不得返回真实 `SENT`。路由启用时优先使用路由的 provider、模板映射、receiver 和 retry policy；显式 provider 或模板与路由冲突返回 `49961`。
+`POST /api/v1/cross-platform-notification/admin/deliveries` 请求字段包括 `sourceModule`、`sourceId`、`eventType`、`riskLevel`、`routeId`、`providerId`、`templateMappingId`、`receiverSummary`、`payloadSummary`、`expiresAt`、`reason`、`confirmText` 和 `idempotencyKey`。`confirmText` 必须为 `CREATE_EXTERNAL_DELIVERY`。成功响应 HTTP `201`，`data` 为 `ExternalDeliveryRequest`。第一版必须创建模拟 attempt，结果只能为 `SIMULATED_SENT`、`SIMULATED_FAILED`、`BLOCKED` 或 `RETRY_SCHEDULED`，不得返回真实 `SENT`。路由启用时优先使用路由的 provider、模板映射、receiver 和 retry policy；显式 provider 或模板与路由冲突返回 `49961`。未传入 `routeId` 时，投递必须使用请求中的 `sourceModule`、`sourceId`、`eventType`、`riskLevel`、`receiverSummary` 和 `expiresAt` 生成投递快照，不能降级为固定 `custom`、`manual.external` 或 `MEDIUM`。未传入 `routeId` 时必须校验 provider 已启用、模板映射已启用、provider 允许该 `sourceModule` 和 `riskLevel`、receiver 类型在 provider 的 `receiverPolicy.allowedReceiverTypes` 内，且 payload 字段只包含模板映射允许变量；不满足时返回 `40001`、`49960`、`49964`、`49965` 或 `49966`。
 
 `GET /api/v1/cross-platform-notification/admin/deliveries` 支持 `page`、`pageSize`、`sourceModule`、`sourceId`、`eventType`、`riskLevel`、`routeId`、`providerId`、`channel`、`status`、`receiverType`、`from`、`to`、`keyword` 和 `sort`。`sort` 允许 `createdAt_desc`、`updatedAt_desc`、`lastAttemptAt_desc`、`riskLevel_desc`、`status_asc`。成功响应分页 `items` 为 `ExternalDeliveryRequest[]`。
 
@@ -416,7 +418,7 @@
 
 `GET /api/v1/cross-platform-notification/admin/audit-logs` 支持 `page`、`pageSize`、`actorUserId`、`action`、`targetType`、`targetId`、`providerId`、`mappingId`、`routeId`、`deliveryId`、`attemptId`、`receiverId`、`sourceModule`、`result`、`riskLevel`、`from`、`to` 和 `sort`。`sort` 允许 `createdAt_desc`、`createdAt_asc`、`riskLevel_desc`。只有 `ADMIN` 和 `OWNER` 可访问。审计列表只读，不提供删除、修改或恢复接口。
 
-后台写操作必须记录调用者、`reason`、操作前状态、操作后状态、请求编号、结果和失败原因。审计写入失败时，provider、模板映射、路由策略、投递请求、重试、取消和测试路由不得假装成功，必须返回 `55801` 并保持业务状态不变。投递模拟失败可以保存失败 attempt 和失败审计，但不得返回真实发送成功。
+后台写操作必须记录调用者、调用者角色、调用者能力点摘要、来源 IP、`reason`、操作前状态、操作后状态、请求编号、结果和失败原因。审计响应字段必须至少包含公共契约要求的 `id`、`requestId`、`actorUserId`、`actorRole`、`actorPermissions`、`sourceIp`、`targetType`、`targetId`、`action`、`riskLevel`、`reason`、`paramsSummary`、`beforeState`、`afterState`、`result`、`failureReason` 和 `createdAt`，并可补充本模块的 provider、route、delivery、attempt 和 receiver 摘要 ID。审计写入失败时，provider、模板映射、路由策略、投递请求、重试、取消和测试路由不得假装成功，必须返回 `55801` 并保持业务状态不变。投递模拟失败可以保存失败 attempt 和失败审计，但不得返回真实发送成功。
 
 ## 状态、幂等和并发
 
@@ -431,6 +433,8 @@ provider 状态流转为 `DRAFT` 可到 `ENABLED`、`DISABLED` 或 `ARCHIVED`；
 写接口使用幂等键时，必须使用字段名排序后的稳定 JSON 语义计算请求体指纹，嵌套对象按字段名递归排序，数组保留顺序，不能依赖 Java `Map.toString()` 或浏览器字段顺序。同一操作者、同一接口语义、同一幂等键、同一请求体重复提交时返回同一响应快照；相同幂等键搭配不同请求体返回 `49962`。幂等键查找、状态校验、业务写入、审计写入、响应快照保存和幂等记录写入必须处于同一临界区内。
 
 并发创建相同 provider、模板映射、路由策略、delivery 或 receiver 摘要时只能一个成功，其余返回冲突或相同幂等结果。后续数据库实现必须迁移为事务、唯一约束、条件更新或等效机制，不能降低并发口径。
+
+所有支持 `from` 和 `to` 的列表接口必须按该资源主时间字段过滤时间范围。provider 使用 `updatedAt`，投递使用 `createdAt`，attempt 使用 `startedAt`，审计使用 `createdAt`。只传 `from` 时返回主时间大于等于 `from` 的记录，只传 `to` 时返回主时间小于等于 `to` 的记录，同时传入且 `from` 晚于 `to` 时返回 `40001`。`from` 或 `to` 不是 ISO 8601 时间字符串时返回 `40001`。
 
 ## 安全、降级和脱敏
 
