@@ -150,6 +150,17 @@ class OpsImageMarketApiContractTest {
                 with(with(providerBody("bad-endpoint"), "confirmText", "REGISTER_IMAGE_PROVIDER"),
                         "endpointSummary", Map.of("url", "http://127.0.0.1:5000/v2")), 400, 49713);
         performJson(post("/api/v1/ops-image-market/admin/providers").header("Authorization", bearer("oim-admin-token")),
+                with(with(providerBody("bad-private-endpoint"), "confirmText", "REGISTER_IMAGE_PROVIDER"),
+                        "endpointSummary", Map.of("url", "http://172.20.0.1:5000/v2")), 400, 49713);
+        performJson(post("/api/v1/ops-image-market/admin/providers").header("Authorization", bearer("oim-admin-token")),
+                with(with(providerBody("bad-unspecified-endpoint"), "confirmText", "REGISTER_IMAGE_PROVIDER"),
+                        "endpointSummary", Map.of("url", "http://0.0.0.0:5000/v2")), 400, 49713);
+        performJson(post("/api/v1/ops-image-market/admin/providers").header("Authorization", bearer("oim-admin-token")),
+                with(with(providerBody("bad-source-module"), "confirmText", "REGISTER_IMAGE_PROVIDER"),
+                        "allowedSourceModules", List.of("auth")), 400, 40001);
+        performJson(post("/api/v1/ops-image-market/admin/providers").header("Authorization", bearer("oim-admin-token")),
+                without(with(providerBody("missing-reason-provider"), "confirmText", "REGISTER_IMAGE_PROVIDER"), "reason"), 400, 40001);
+        performJson(post("/api/v1/ops-image-market/admin/providers").header("Authorization", bearer("oim-admin-token")),
                 with(with(providerBody("bad-trusted"), "confirmText", "REGISTER_IMAGE_PROVIDER"),
                         "metadata", Map.of("registryToken", "do-not-store")), 400, 40001);
         performJson(post("/api/v1/ops-image-market/admin/providers")
@@ -161,6 +172,7 @@ class OpsImageMarketApiContractTest {
                 with(providerBody("provider-create"), "confirmText", "REGISTER_IMAGE_PROVIDER"), 201);
         String providerId = created.at("/data/providerId").asText();
         assertThat(created.at("/data/status").asText()).isEqualTo("DRAFT");
+        assertThat(created.at("/data/credentialRefSummary/alias").asText()).isEqualTo("managed-provider-create");
         assertThat(created.toString()).doesNotContain("https://registry.example.com");
         assertNoSecrets(created);
 
@@ -178,6 +190,10 @@ class OpsImageMarketApiContractTest {
                 Map.of("allowedRiskLevels", List.of("LOW", "MEDIUM", "HIGH"), "confirmText", "UPDATE_IMAGE_PROVIDER",
                         "reason", "更新允许风险等级", "idempotencyKey", "patch-provider"), 200);
         assertThat(patched.at("/data/allowedRiskLevels").toString()).contains("HIGH");
+        JsonNode credentialPatched = performJson(patch("/api/v1/ops-image-market/admin/providers/" + providerId).header("Authorization", bearer("oim-admin-token")),
+                Map.of("credentialRefSummary", Map.of("alias", "managed-updated", "managedBy", "vault-summary"),
+                        "confirmText", "UPDATE_IMAGE_PROVIDER", "reason", "更新凭据引用摘要", "idempotencyKey", "patch-provider-credential"), 200);
+        assertThat(credentialPatched.at("/data/credentialRefSummary/alias").asText()).isEqualTo("managed-updated");
 
         performJson(patch("/api/v1/ops-image-market/admin/providers/" + providerId + "/enable").header("Authorization", bearer("oim-admin-token")),
                 Map.of("reason", "缺启用确认", "idempotencyKey", "enable-no-confirm"), 403, 42003);
@@ -204,6 +220,10 @@ class OpsImageMarketApiContractTest {
     void imageVersionCompatibilityTemplateAndScanFlow() throws Exception {
         performJson(post("/api/v1/ops-image-market/admin/images").header("Authorization", bearer("oim-admin-token")),
                 with(imageBody("bad-repository"), "repository", "http://127.0.0.1:5000/root/app"), 400, 49713);
+        performJson(post("/api/v1/ops-image-market/admin/images").header("Authorization", bearer("oim-admin-token")),
+                without(imageBody("missing-reason-image"), "reason"), 400, 40001);
+        performJson(post("/api/v1/ops-image-market/admin/images").header("Authorization", bearer("oim-admin-token")),
+                with(imageBody("bad-source-ref"), "sourceRef", Map.of("sourceModule", "auth", "sourceId", "bad")), 400, 40001);
 
         JsonNode image = performJson(post("/api/v1/ops-image-market/admin/images").header("Authorization", bearer("oim-admin-token")),
                 imageBody("main"), 201);
@@ -226,9 +246,15 @@ class OpsImageMarketApiContractTest {
         performJson(patch("/api/v1/ops-image-market/admin/versions/" + versionId + "/approve").header("Authorization", bearer("oim-admin-token")),
                 Map.of("reason", "还没有扫描", "idempotencyKey", "approve-no-scan"), 409, 49715);
 
+        performJson(post("/api/v1/ops-image-market/admin/compatibility-profiles").header("Authorization", bearer("oim-admin-token")),
+                with(compatibilityBody(imageId, "secret-value"),
+                        "envSchemaSummary", Map.of("secretKeys", List.of(Map.of("name", "RCON_PASSWORD", "value", "plain")))), 400, 40001);
         JsonNode profile = performJson(post("/api/v1/ops-image-market/admin/compatibility-profiles").header("Authorization", bearer("oim-admin-token")),
                 compatibilityBody(imageId, "main"), 201);
         String profileId = profile.at("/data/profileId").asText();
+        performJson(patch("/api/v1/ops-image-market/admin/compatibility-profiles/" + profileId).header("Authorization", bearer("oim-admin-token")),
+                Map.of("requiredVolumesSummary", List.of(Map.of("mountAlias", "/srv/world", "required", true)),
+                        "reason", "拒绝宿主路径", "idempotencyKey", "patch-compat-unsafe-volume"), 400, 49713);
         JsonNode profilePatch = performJson(patch("/api/v1/ops-image-market/admin/compatibility-profiles/" + profileId).header("Authorization", bearer("oim-admin-token")),
                 Map.of("minimumMemoryMb", 4096, "reason", "提高内存要求", "idempotencyKey", "patch-compat"), 200);
         assertThat(profilePatch.at("/data/minimumMemoryMb").asInt()).isEqualTo(4096);
@@ -246,9 +272,15 @@ class OpsImageMarketApiContractTest {
                 Map.of("reason", "发布镜像", "idempotencyKey", "publish-image"), 200);
         assertThat(published.at("/data/status").asText()).isEqualTo("PUBLISHED");
 
+        performJson(post("/api/v1/ops-image-market/admin/templates").header("Authorization", bearer("oim-admin-token")),
+                with(templateBody(imageId, versionId, profileId, "template-secret-value"),
+                        "envSchemaSummary", Map.of("secretKeys", List.of(Map.of("name", "RCON_PASSWORD", "value", "plain")))), 400, 40001);
         JsonNode template = performJson(post("/api/v1/ops-image-market/admin/templates").header("Authorization", bearer("oim-admin-token")),
                 templateBody(imageId, versionId, profileId, "main"), 201);
         String templateId = template.at("/data/templateId").asText();
+        performJson(patch("/api/v1/ops-image-market/admin/templates/" + templateId).header("Authorization", bearer("oim-admin-token")),
+                Map.of("volumeMountsSummary", List.of(Map.of("mountAlias", "C:\\nodes\\world", "mode", "READ_WRITE")),
+                        "reason", "拒绝宿主路径", "idempotencyKey", "patch-template-unsafe-volume"), 400, 49713);
         JsonNode templatePatch = performJson(patch("/api/v1/ops-image-market/admin/templates/" + templateId).header("Authorization", bearer("oim-admin-token")),
                 Map.of("displayName", "Minecraft Runtime Template Updated", "reason", "更新模板", "idempotencyKey", "patch-template"), 200);
         assertThat(templatePatch.at("/data/displayName").asText()).contains("Updated");
@@ -409,6 +441,18 @@ class OpsImageMarketApiContractTest {
         assertThat(failedScan.at("/requestId").asText()).isNotBlank();
         assertNoSecrets(detail);
         assertNoSecrets(audits);
+    }
+
+    @Test
+    @DisplayName("OIM-HARDEN rejects cross-image template and pull-plan mismatches")
+    void crossImageReferencesAreRejectedBeforeTemplatesOrPlansCanBeCreated() throws Exception {
+        ReadyImage first = prepareReadyImage("mismatch-a");
+        ReadyImage second = prepareReadyImage("mismatch-b");
+
+        performJson(post("/api/v1/ops-image-market/admin/templates").header("Authorization", bearer("oim-admin-token")),
+                templateBody(first.imageId(), second.versionId(), second.profileId(), "mismatch-template"), 409, 49716);
+        performJson(post("/api/v1/ops-image-market/admin/pull-plans").header("Authorization", bearer("oim-admin-token")),
+                pullPlanBody(first.versionId(), second.templateId(), "mismatch-plan", "MEDIUM"), 409, 49716);
     }
 
     private ReadyImage prepareReadyImage(String suffix) throws Exception {
@@ -592,6 +636,12 @@ class OpsImageMarketApiContractTest {
         return copy;
     }
 
+    private Map<String, Object> without(Map<String, Object> source, String key) {
+        Map<String, Object> copy = new LinkedHashMap<>(source);
+        copy.remove(key);
+        return copy;
+    }
+
     private String bearer(String token) {
         return "Bearer " + token;
     }
@@ -605,7 +655,7 @@ class OpsImageMarketApiContractTest {
     private void assertNoSecrets(JsonNode json) {
         assertThat(json.toString()).doesNotContain(
                 "registryToken", "registryPassword", "dockerPassword", "imageSecret", "pullSecret",
-                "rawToken", "credential", "secretKey", "Authorization", "requestHeaders",
+                "rawToken", "secretKey", "Authorization", "requestHeaders",
                 "manifestPayload", "layerUrl", "internalUrl", "internalPath", "resolvedPath",
                 "fullException", "stackTrace", "databaseUrl", "ProcessBuilder", "Runtime.getRuntime",
                 "node-daemon", "/srv/", "C:\\\\", ".env", "authorized_keys", "id_rsa", "token=");

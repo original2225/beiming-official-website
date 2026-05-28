@@ -112,6 +112,7 @@ class OpsImageMarketController {
         requireHighRisk(actor);
         rejectTrusted(body);
         requireConfirm(body, "REGISTER_IMAGE_PROVIDER");
+        validateReason(body);
         validateProviderBody(body);
         return store.idempotent(request, actor, "provider:create", body, () -> {
             store.failAuditIfRequested(request, properties.enabled());
@@ -145,6 +146,9 @@ class OpsImageMarketController {
             patch(provider, body, "displayName", "registryType", "allowedNamespaces", "allowedSourceModules", "allowedRiskLevels", "syncPolicySummary", "rateLimitSummary");
             if (body.containsKey("endpointSummary")) {
                 provider.put("endpointSummary", endpointSummary(body.get("endpointSummary")));
+            }
+            if (body.containsKey(CRED_REF)) {
+                provider.put(CRED_REF, object(body.get(CRED_REF)));
             }
             touch(provider, actor);
             store.audit("IMAGE_PROVIDER_UPDATED", "PROVIDER", providerId, actor, request, body, containsAny(body.keySet(), "endpointSummary", CRED_REF, "allowedNamespaces", "allowedRiskLevels") ? "HIGH" : "MEDIUM", "SUCCESS", null, before, status(provider));
@@ -257,6 +261,7 @@ class OpsImageMarketController {
     ResponseEntity<Map<String, Object>> createImage(HttpServletRequest request, @RequestBody Map<String, Object> body) {
         Actor actor = auth.requireWrite(request);
         rejectTrusted(body);
+        validateReason(body);
         validateImageBody(body);
         return store.idempotent(request, actor, "image:create", body, () -> {
             String providerId = requiredText(body, "providerId");
@@ -391,6 +396,7 @@ class OpsImageMarketController {
     ResponseEntity<Map<String, Object>> createVersion(HttpServletRequest request, @PathVariable String imageId, @RequestBody Map<String, Object> body) {
         Actor actor = auth.requireWrite(request);
         rejectTrusted(body);
+        validateReason(body);
         return store.idempotent(request, actor, "version:create:" + imageId, body, () -> {
             if (!store.images.containsKey(imageId)) {
                 throw new OimApiException(HttpStatus.NOT_FOUND, 49701, "image not found");
@@ -515,6 +521,8 @@ class OpsImageMarketController {
     ResponseEntity<Map<String, Object>> createProfile(HttpServletRequest request, @RequestBody Map<String, Object> body) {
         Actor actor = auth.requireWrite(request);
         rejectTrusted(body);
+        validateReason(body);
+        validateEnvSchema(body.get("envSchemaSummary"));
         return store.idempotent(request, actor, "profile:create", body, () -> {
             String imageId = requiredText(body, "imageId");
             if (!store.images.containsKey(imageId)) {
@@ -542,6 +550,10 @@ class OpsImageMarketController {
         Actor actor = auth.requireWrite(request);
         rejectTrusted(body);
         validateReason(body);
+        validateEnvSchema(body.get("envSchemaSummary"));
+        if (unsafeVolumes(body.get("requiredVolumesSummary"))) {
+            throw new OimApiException(HttpStatus.BAD_REQUEST, 49713, "unsafe volume");
+        }
         return store.idempotent(request, actor, "profile:patch:" + profileId, body, () -> {
             Map<String, Object> profile = store.get(store.profiles, profileId, 49703, "profile not found");
             requireMutable(profile);
@@ -560,6 +572,15 @@ class OpsImageMarketController {
         validateReason(body);
         return store.idempotent(request, actor, "profile:enable:" + profileId, body, () -> {
             Map<String, Object> profile = store.get(store.profiles, profileId, 49703, "profile not found");
+            requireMutable(profile);
+            Map<String, Object> image = store.get(store.images, text(profile.get("imageId")), 49701, "image not found");
+            if ("ARCHIVED".equals(status(image))) {
+                throw new OimApiException(HttpStatus.CONFLICT, 49710, "profile state conflict");
+            }
+            if (unsafeVolumes(profile.get("requiredVolumesSummary"))) {
+                throw new OimApiException(HttpStatus.BAD_REQUEST, 49713, "unsafe volume");
+            }
+            validateEnvSchema(profile.get("envSchemaSummary"));
             store.failAuditIfRequested(request, properties.enabled());
             String before = status(profile);
             profile.put("status", "ENABLED");
@@ -605,13 +626,16 @@ class OpsImageMarketController {
     ResponseEntity<Map<String, Object>> createTemplate(HttpServletRequest request, @RequestBody Map<String, Object> body) {
         Actor actor = auth.requireWrite(request);
         rejectTrusted(body);
+        validateReason(body);
+        validateEnvSchema(body.get("envSchemaSummary"));
         return store.idempotent(request, actor, "template:create", body, () -> {
             String imageId = requiredText(body, "imageId");
             String versionId = requiredText(body, "imageVersionId");
             String profileId = requiredText(body, "compatibilityProfileId");
             store.get(store.images, imageId, 49701, "image not found");
-            store.get(store.versions, versionId, 49702, "version not found");
-            store.get(store.profiles, profileId, 49703, "profile not found");
+            Map<String, Object> version = store.get(store.versions, versionId, 49702, "version not found");
+            Map<String, Object> profile = store.get(store.profiles, profileId, 49703, "profile not found");
+            requireSameImage(imageId, version, profile);
             if (unsafeVolumes(body.get("volumeMountsSummary"))) {
                 throw new OimApiException(HttpStatus.BAD_REQUEST, 49713, "unsafe volume");
             }
@@ -635,9 +659,24 @@ class OpsImageMarketController {
         Actor actor = auth.requireWrite(request);
         rejectTrusted(body);
         validateReason(body);
+        validateEnvSchema(body.get("envSchemaSummary"));
+        if (unsafeVolumes(body.get("volumeMountsSummary"))) {
+            throw new OimApiException(HttpStatus.BAD_REQUEST, 49713, "unsafe volume");
+        }
         return store.idempotent(request, actor, "template:patch:" + templateId, body, () -> {
             Map<String, Object> template = store.get(store.templates, templateId, 49704, "template not found");
             requireMutable(template);
+            String nextVersionId = text(value(body.get("imageVersionId"), template.get("imageVersionId")));
+            String nextProfileId = text(value(body.get("compatibilityProfileId"), template.get("compatibilityProfileId")));
+            Map<String, Object> version = store.get(store.versions, nextVersionId, 49702, "version not found");
+            Map<String, Object> profile = store.get(store.profiles, nextProfileId, 49703, "profile not found");
+            requireSameImage(text(template.get("imageId")), version, profile);
+            if (body.containsKey("imageVersionId")) {
+                if (!"APPROVED".equals(status(version))) {
+                    throw new OimApiException(HttpStatus.CONFLICT, 49710, "template state conflict");
+                }
+                ensureScanFresh(version);
+            }
             store.failAuditIfRequested(request, properties.enabled());
             String before = status(template);
             patch(template, body, "imageVersionId", "displayName", "templateKind", "runtime", "portMappingsSummary", "volumeMountsSummary", "envSchemaSummary", "resourceLimitsSummary", "compatibilityProfileId");
@@ -662,10 +701,16 @@ class OpsImageMarketController {
         validateReason(body);
         return store.idempotent(request, actor, "template:" + target + ":" + templateId, body, () -> {
             Map<String, Object> template = store.get(store.templates, templateId, 49704, "template not found");
+            requireMutable(template);
+            if (unsafeVolumes(template.get("volumeMountsSummary"))) {
+                throw new OimApiException(HttpStatus.BAD_REQUEST, 49713, "unsafe volume");
+            }
+            validateEnvSchema(template.get("envSchemaSummary"));
             if ("ENABLED".equals(target)) {
                 Map<String, Object> image = store.get(store.images, text(template.get("imageId")), 49701, "image not found");
                 Map<String, Object> version = store.get(store.versions, text(template.get("imageVersionId")), 49702, "version not found");
                 Map<String, Object> profile = store.get(store.profiles, text(template.get("compatibilityProfileId")), 49703, "profile not found");
+                requireSameImage(text(image.get("imageId")), version, profile);
                 if (!"PUBLISHED".equals(status(image)) || !"APPROVED".equals(status(version)) || !"ENABLED".equals(status(profile))) {
                     throw new OimApiException(HttpStatus.CONFLICT, 49710, "template state conflict");
                 }
@@ -718,6 +763,7 @@ class OpsImageMarketController {
     ResponseEntity<Map<String, Object>> createScan(HttpServletRequest request, @PathVariable String imageVersionId, @RequestBody Map<String, Object> body) {
         Actor actor = auth.requireWrite(request);
         rejectTrusted(body);
+        validateReason(body);
         if (testOn(properties, request) && "failed".equals(request.getHeader("X-Test-Scanner-Mode"))) {
             throw new OimApiException(HttpStatus.BAD_GATEWAY, 47220, "scanner unavailable");
         }
@@ -785,6 +831,7 @@ class OpsImageMarketController {
     ResponseEntity<Map<String, Object>> createPlan(HttpServletRequest request, @RequestBody Map<String, Object> body) {
         Actor actor = auth.requireWrite(request);
         rejectTrusted(body);
+        validateReason(body);
         String risk = requiredText(body, "riskLevel");
         requireOwnerForCritical(actor, risk);
         boolean risky = "HIGH".equals(risk) || "CRITICAL".equals(risk) || Boolean.TRUE.equals(body.get("allowUnsigned")) || Boolean.TRUE.equals(body.get("allowHighSeverity"));
@@ -805,6 +852,9 @@ class OpsImageMarketController {
             Map<String, Object> version = store.get(store.versions, versionId, 49702, "version not found");
             Map<String, Object> template = store.get(store.templates, templateId, 49704, "template not found");
             Map<String, Object> image = store.get(store.images, text(version.get("imageId")), 49701, "image not found");
+            if (!Objects.equals(image.get("imageId"), template.get("imageId")) || !Objects.equals(versionId, template.get("imageVersionId"))) {
+                throw new OimApiException(HttpStatus.CONFLICT, 49716, "template compatibility failed");
+            }
             Map<String, Object> provider = store.get(store.providers, text(image.get("providerId")), 49700, "provider not found");
             if (!"ENABLED".equals(status(provider))) {
                 throw new OimApiException(HttpStatus.CONFLICT, 49719, "provider blocked");
@@ -1260,6 +1310,7 @@ class OimSupport {
     static Map<String, Object> providerFrom(String providerId, Map<String, Object> body, Actor actor) {
         return map("providerId", providerId, "displayName", requiredText(body, "displayName"), "registryType", requiredText(body, "registryType"),
                 "status", "DRAFT", "healthStatus", "UNKNOWN", "endpointSummary", endpointSummary(body.get("endpointSummary")),
+                CRED_REF, object(body.get(CRED_REF)),
                 "allowedNamespaces", list(body.get("allowedNamespaces")), "allowedSourceModules", list(body.get("allowedSourceModules")),
                 "allowedRiskLevels", list(body.get("allowedRiskLevels")), "syncPolicySummary", object(body.get("syncPolicySummary")),
                 "rateLimitSummary", object(body.get("rateLimitSummary")), "lastHealthCheckedAt", null, "degraded", false, "degradeReasons", List.of(),
@@ -1283,6 +1334,7 @@ class OimSupport {
         if (list(body.get("allowedNamespaces")).isEmpty() || list(body.get("allowedSourceModules")).isEmpty() || list(body.get("allowedRiskLevels")).isEmpty()) {
             throw new OimApiException(HttpStatus.BAD_REQUEST, 40001, "provider fields missing");
         }
+        validateSourceModules(list(body.get("allowedSourceModules")));
         for (Object namespace : list(body.get("allowedNamespaces"))) {
             if (unsafeRepo(text(namespace))) {
                 throw new OimApiException(HttpStatus.BAD_REQUEST, 49713, "unsafe namespace");
@@ -1296,6 +1348,7 @@ class OimSupport {
         requiredText(body, "displayName");
         requiredText(body, "purpose");
         requiredText(body, "visibility");
+        validateSourceRef(body.get("sourceRef"));
     }
 
     static void validateReason(Map<String, Object> body) {
@@ -1330,6 +1383,51 @@ class OimSupport {
             }
         } catch (DateTimeParseException ex) {
             throw new OimApiException(HttpStatus.BAD_REQUEST, 40001, "invalid time range");
+        }
+    }
+
+    static void validateSourceRef(Object raw) {
+        Map<String, Object> source = object(raw);
+        String module = text(source.get("sourceModule"));
+        if (!module.isBlank()) {
+            validateSourceModules(List.of(module));
+        }
+    }
+
+    static void validateSourceModules(List<Object> modules) {
+        Set<String> allowed = Set.of("ops-control", "node-daemon", "alerting", "cross-platform-notification", "plugin-integration", "custom");
+        if (modules.stream().map(String::valueOf).anyMatch(module -> !allowed.contains(module))) {
+            throw new OimApiException(HttpStatus.BAD_REQUEST, 40001, "source module rejected");
+        }
+    }
+
+    static void validateEnvSchema(Object raw) {
+        validateEnvSchema(raw, false);
+    }
+
+    static void validateEnvSchema(Object raw, boolean restricted) {
+        if (raw instanceof Map<?, ?> mapValue) {
+            for (Map.Entry<?, ?> entry : mapValue.entrySet()) {
+                String key = String.valueOf(entry.getKey());
+                String lower = key.toLowerCase(Locale.ROOT);
+                if (restricted && !Set.of("name", "type", "required", "source", "sourcesummary").contains(lower)) {
+                    throw new OimApiException(HttpStatus.BAD_REQUEST, 40001, "env schema rejected");
+                }
+                validateEnvSchema(entry.getValue(), restricted || "secretkeys".equals(lower));
+            }
+        } else if (raw instanceof Collection<?> collection) {
+            for (Object item : collection) {
+                if (restricted && !(item instanceof String) && !(item instanceof Map<?, ?>)) {
+                    throw new OimApiException(HttpStatus.BAD_REQUEST, 40001, "env schema rejected");
+                }
+                validateEnvSchema(item, restricted && item instanceof Map<?, ?>);
+            }
+        }
+    }
+
+    static void requireSameImage(String imageId, Map<String, Object> version, Map<String, Object> profile) {
+        if (!Objects.equals(imageId, version.get("imageId")) || !Objects.equals(imageId, profile.get("imageId"))) {
+            throw new OimApiException(HttpStatus.CONFLICT, 49716, "image reference mismatch");
         }
     }
 
@@ -1370,10 +1468,26 @@ class OimSupport {
             if (!Set.of("http", "https").contains(scheme) || host.isBlank() || uri.getUserInfo() != null) {
                 return true;
             }
-            return host.equals("localhost") || host.equals("127.0.0.1") || host.startsWith("127.") || host.startsWith("10.") || host.startsWith("192.168.")
-                    || host.startsWith("172.16.") || host.startsWith("169.254.") || host.equals("::1") || host.contains("*");
+            return host.equals("localhost") || host.equals("0.0.0.0") || host.equals("127.0.0.1") || host.startsWith("127.")
+                    || host.startsWith("10.") || host.startsWith("192.168.") || privateIpv4(host)
+                    || host.startsWith("169.254.") || host.equals("::") || host.equals("::1") || host.equals("0:0:0:0:0:0:0:1")
+                    || host.contains("*");
         } catch (IllegalArgumentException ex) {
             return true;
+        }
+    }
+
+    static boolean privateIpv4(String host) {
+        String[] parts = host.split("\\.");
+        if (parts.length != 4) {
+            return false;
+        }
+        try {
+            int first = Integer.parseInt(parts[0]);
+            int second = Integer.parseInt(parts[1]);
+            return first == 172 && second >= 16 && second <= 31;
+        } catch (NumberFormatException ex) {
+            return false;
         }
     }
 

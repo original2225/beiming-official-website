@@ -112,7 +112,7 @@ class OpsImageMarketProductionHardeningTest {
     private void assertNoSecrets(JsonNode json) {
         assertThat(json.toString()).doesNotContain(
                 "registryToken", "registryPassword", "dockerPassword", "imageSecret", "pullSecret",
-                "rawToken", "credential", "secretKey", "Authorization", "requestHeaders",
+                "rawToken", "secretKey", "Authorization", "requestHeaders",
                 "manifestPayload", "layerUrl", "internalUrl", "internalPath", "resolvedPath",
                 "fullException", "stackTrace", "databaseUrl", "ProcessBuilder", "Runtime.getRuntime",
                 "node-daemon", "/srv/", "C:\\\\", ".env", "authorized_keys", "id_rsa", "token=");
