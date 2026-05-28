@@ -83,6 +83,7 @@ class CrossPlatformNotificationController {
         auth.requireRead(request);
         validatePage(query);
         validateSort(query.get("sort"), "updatedAt_desc", "createdAt_desc", "displayName_asc", "lastTestAt_desc", "lastDeliveryAt_desc");
+        validateTimeRange(query);
         List<Map<String, Object>> items = store.providers.values().stream()
                 .filter(item -> matches(item.displayName, query.get("keyword")) || matches(item.providerId, query.get("keyword")))
                 .filter(item -> query.get("channel") == null || item.channel.equals(query.get("channel")))
@@ -90,6 +91,7 @@ class CrossPlatformNotificationController {
                 .filter(item -> query.get("healthStatus") == null || item.healthStatus.equals(query.get("healthStatus")))
                 .filter(item -> query.get("sourceModule") == null || item.allowedSourceModules.contains(query.get("sourceModule")))
                 .filter(item -> query.get("degraded") == null || item.degraded == bool(query.get("degraded")))
+                .filter(item -> withinTimeRange(item.updatedAt, query))
                 .sorted(providerComparator(query.get("sort")))
                 .map(CpnProvider::view)
                 .toList();
@@ -112,9 +114,11 @@ class CrossPlatformNotificationController {
     @PostMapping("/admin/providers")
     ResponseEntity<Map<String, Object>> createProvider(HttpServletRequest request, @RequestBody Map<String, Object> body) {
         Actor actor = auth.requireWrite(request);
+        requireHighRiskActor(actor);
         rejectTrusted(body);
         requireConfirm(body, "REGISTER_EXTERNAL_PROVIDER");
         validateProviderBody(body, true);
+        requireCriticalOwner(actor, body);
         return idempotent(request, actor, "provider:create", body, () -> {
             store.failAuditIfRequested(request, properties.enabled());
             String displayName = requiredText(body, "displayName");
@@ -139,8 +143,10 @@ class CrossPlatformNotificationController {
         validateProviderBody(body, false);
         validateReason(body);
         if (providerPatchNeedsConfirm(body)) {
+            requireHighRiskActor(actor);
             requireConfirm(body, "UPDATE_EXTERNAL_PROVIDER");
         }
+        requireCriticalOwner(actor, body);
         return idempotent(request, actor, "provider:patch:" + providerId, body, () -> {
             CpnProvider provider = store.provider(providerId);
             if ("ARCHIVED".equals(provider.status)) {
@@ -178,10 +184,14 @@ class CrossPlatformNotificationController {
         rejectTrusted(body);
         validateReason(body);
         if (confirm != null) {
+            requireHighRiskActor(actor);
             requireConfirm(body, confirm);
         }
         return idempotent(request, actor, "provider:" + target + ":" + providerId, body, () -> {
             CpnProvider provider = store.provider(providerId);
+            if (provider.allowedRiskLevels.contains("CRITICAL") && !actor.hasRole("OWNER")) {
+                throw new CpnApiException(HttpStatus.FORBIDDEN, 42004, "critical risk approval required");
+            }
             if ("ARCHIVED".equals(provider.status) || ("ARCHIVED".equals(target) && "ENABLED".equals(provider.status))) {
                 throw new CpnApiException(HttpStatus.CONFLICT, 49960, "provider state conflict");
             }
@@ -391,9 +401,11 @@ class CrossPlatformNotificationController {
     @PostMapping("/admin/routes")
     ResponseEntity<Map<String, Object>> createRoute(HttpServletRequest request, @RequestBody Map<String, Object> body) {
         Actor actor = auth.requireWrite(request);
+        requireHighRiskActor(actor);
         rejectTrusted(body);
         requireConfirm(body, "CONFIGURE_EXTERNAL_ROUTE");
         validateRouteBody(body, true);
+        requireCriticalOwner(actor, body);
         return idempotent(request, actor, "route:create", body, () -> {
             CpnProvider provider = store.provider(requiredText(body, "providerId"));
             CpnTemplateMapping mapping = store.mapping(requiredText(body, "templateMappingId"));
@@ -420,8 +432,10 @@ class CrossPlatformNotificationController {
         validateRouteBody(body, false);
         validateReason(body);
         if (routePatchNeedsConfirm(body)) {
+            requireHighRiskActor(actor);
             requireConfirm(body, "UPDATE_EXTERNAL_ROUTE");
         }
+        requireCriticalOwner(actor, body);
         return idempotent(request, actor, "route:patch:" + routeId, body, () -> {
             CpnRoutePolicy route = store.route(routeId);
             if ("ARCHIVED".equals(route.status)) {
@@ -461,10 +475,14 @@ class CrossPlatformNotificationController {
         rejectTrusted(body);
         validateReason(body);
         if (confirm != null) {
+            requireHighRiskActor(actor);
             requireConfirm(body, confirm);
         }
         return idempotent(request, actor, "route:" + target + ":" + routeId, body, () -> {
             CpnRoutePolicy route = store.route(routeId);
+            if ("CRITICAL".equals(route.riskLevel) && !actor.hasRole("OWNER")) {
+                throw new CpnApiException(HttpStatus.FORBIDDEN, 42004, "critical risk approval required");
+            }
             if ("ARCHIVED".equals(route.status) || ("ARCHIVED".equals(target) && "ENABLED".equals(route.status))) {
                 throw new CpnApiException(HttpStatus.CONFLICT, 49960, "route state conflict");
             }
@@ -495,11 +513,15 @@ class CrossPlatformNotificationController {
     @PostMapping("/admin/routes/{routeId}/test")
     ResponseEntity<Map<String, Object>> testRoute(HttpServletRequest request, @PathVariable String routeId, @RequestBody Map<String, Object> body) {
         Actor actor = auth.requireWrite(request);
+        requireHighRiskActor(actor);
         rejectTrusted(body);
         requireConfirm(body, "TEST_EXTERNAL_ROUTE");
         validateReason(body);
         return idempotent(request, actor, "route:test:" + routeId, body, () -> {
             CpnRoutePolicy route = store.route(routeId);
+            if ("CRITICAL".equals(route.riskLevel) && !actor.hasRole("OWNER")) {
+                throw new CpnApiException(HttpStatus.FORBIDDEN, 42004, "critical risk approval required");
+            }
             if (!"ENABLED".equals(route.status)) {
                 throw new CpnApiException(HttpStatus.CONFLICT, 49960, "route not enabled");
             }
@@ -524,9 +546,11 @@ class CrossPlatformNotificationController {
     @PostMapping("/admin/deliveries")
     ResponseEntity<Map<String, Object>> createDelivery(HttpServletRequest request, @RequestBody Map<String, Object> body) {
         Actor actor = auth.requireWrite(request);
+        requireHighRiskActor(actor);
         rejectTrusted(body);
         requireConfirm(body, "CREATE_EXTERNAL_DELIVERY");
         validateDeliveryBody(body);
+        requireCriticalOwner(actor, body);
         if ("REAL".equals(text(body.get("sendMode")))) {
             throw new CpnApiException(HttpStatus.CONFLICT, 49967, "real external send blocked");
         }
@@ -544,6 +568,7 @@ class CrossPlatformNotificationController {
         auth.requireRead(request);
         validatePage(query);
         validateSort(query.get("sort"), "createdAt_desc", "updatedAt_desc", "lastAttemptAt_desc", "riskLevel_desc", "status_asc");
+        validateTimeRange(query);
         List<Map<String, Object>> items = store.deliveries.values().stream()
                 .filter(item -> query.get("sourceModule") == null || item.sourceModule.equals(query.get("sourceModule")))
                 .filter(item -> query.get("sourceId") == null || Objects.equals(item.sourceId, query.get("sourceId")))
@@ -555,6 +580,7 @@ class CrossPlatformNotificationController {
                 .filter(item -> query.get("status") == null || item.status.equals(query.get("status")))
                 .filter(item -> query.get("receiverType") == null || query.get("receiverType").equals(text(item.receiverSummary.get("receiverType"))))
                 .filter(item -> matches(item.deliveryId, query.get("keyword")) || matches(item.sourceId, query.get("keyword")))
+                .filter(item -> withinTimeRange(item.createdAt, query))
                 .sorted(deliveryComparator(query.get("sort")))
                 .map(CpnDelivery::view)
                 .toList();
@@ -578,6 +604,7 @@ class CrossPlatformNotificationController {
     @PatchMapping("/admin/deliveries/{deliveryId}/retry")
     ResponseEntity<Map<String, Object>> retryDelivery(HttpServletRequest request, @PathVariable String deliveryId, @RequestBody Map<String, Object> body) {
         Actor actor = auth.requireWrite(request);
+        requireHighRiskActor(actor);
         rejectTrusted(body);
         requireConfirm(body, "RETRY_EXTERNAL_DELIVERY");
         validateReason(body);
@@ -605,6 +632,9 @@ class CrossPlatformNotificationController {
         validateReason(body);
         return idempotent(request, actor, "delivery:cancel:" + deliveryId, body, () -> {
             CpnDelivery delivery = store.delivery(deliveryId);
+            if (isHighRisk(delivery.riskLevel)) {
+                requireHighRiskActor(actor);
+            }
             if (!List.of("QUEUED", "RETRY_SCHEDULED", "BLOCKED").contains(delivery.status)) {
                 throw new CpnApiException(HttpStatus.CONFLICT, 49960, "delivery state conflict");
             }
@@ -613,7 +643,7 @@ class CrossPlatformNotificationController {
             delivery.status = "CANCELED";
             delivery.updatedBy = actor.userId();
             delivery.updatedAt = now();
-            store.audit("EXTERNAL_DELIVERY_CANCELED", "DELIVERY", deliveryId, actor, request, body, "MEDIUM", "SUCCESS", null, before, delivery.status);
+            store.audit("EXTERNAL_DELIVERY_CANCELED", "DELIVERY", deliveryId, actor, request, body, delivery.riskLevel, "SUCCESS", null, before, delivery.status);
             return new WriteResult(HttpStatus.OK, delivery.view());
         });
     }
@@ -623,11 +653,13 @@ class CrossPlatformNotificationController {
         auth.requireRead(request);
         validatePage(query);
         validateSort(query.get("sort"), "startedAt_desc", "finishedAt_desc", "attemptNo_asc", "status_asc");
+        validateTimeRange(query);
         List<Map<String, Object>> items = store.attempts.values().stream()
                 .filter(item -> query.get("deliveryId") == null || item.deliveryId.equals(query.get("deliveryId")))
                 .filter(item -> query.get("providerId") == null || item.providerId.equals(query.get("providerId")))
                 .filter(item -> query.get("channel") == null || item.channel.equals(query.get("channel")))
                 .filter(item -> query.get("status") == null || item.status.equals(query.get("status")))
+                .filter(item -> withinTimeRange(item.startedAt, query))
                 .sorted(attemptComparator(query.get("sort")))
                 .map(CpnAttempt::view)
                 .toList();
@@ -681,6 +713,7 @@ class CrossPlatformNotificationController {
         auth.requireAudit(actor);
         validatePage(query);
         validateSort(query.get("sort"), "createdAt_desc", "createdAt_asc", "riskLevel_desc");
+        validateTimeRange(query);
         List<Map<String, Object>> items = store.audits.values().stream()
                 .filter(item -> query.get("actorUserId") == null || item.actorUserId.equals(query.get("actorUserId")))
                 .filter(item -> query.get("action") == null || item.action.equals(query.get("action")))
@@ -695,6 +728,7 @@ class CrossPlatformNotificationController {
                 .filter(item -> query.get("sourceModule") == null || Objects.equals(item.sourceModule, query.get("sourceModule")))
                 .filter(item -> query.get("result") == null || item.result.equals(query.get("result")))
                 .filter(item -> query.get("riskLevel") == null || item.riskLevel.equals(query.get("riskLevel")))
+                .filter(item -> withinTimeRange(item.createdAt, query))
                 .sorted(auditComparator(query.get("sort")))
                 .map(CpnAudit::view)
                 .toList();
@@ -942,16 +976,39 @@ class CpnStore {
         Map<String, Object> payload = objectMap(body.get("payloadSummary"));
         validatePayloadVariables(payload, mapping.allowedVariables);
         Map<String, Object> receiver = receiverSummary(body.get("receiverSummary"), provider.channel);
-        return createDelivery(actor, request, route, provider, mapping, receiver, payload, requiredText(body, "reason"), text(body.get("idempotencyKey")), controlsEnabled);
+        String sourceModule = route == null ? requiredText(body, "sourceModule") : route.sourceModule;
+        String sourceId = blankToNull(text(body.get("sourceId")));
+        String eventType = route == null ? requiredText(body, "eventType") : route.eventType;
+        String riskLevel = route == null ? requiredText(body, "riskLevel") : route.riskLevel;
+        String expiresAt = route == null ? blankToNull(text(body.get("expiresAt"))) : null;
+        if (expiresAt != null) {
+            parseInstant(expiresAt);
+        }
+        validateProviderAllows(provider, sourceModule, riskLevel, receiver);
+        return createDelivery(actor, request, route, provider, mapping, receiver, payload,
+                sourceModule, sourceId, eventType, riskLevel, expiresAt,
+                requiredText(body, "reason"), text(body.get("idempotencyKey")), controlsEnabled);
     }
 
     DeliveryBundle createDelivery(Actor actor, HttpServletRequest request, CpnRoutePolicy route, CpnProvider provider, CpnTemplateMapping mapping,
                                   Map<String, Object> receiver, Map<String, Object> payload, String reason, String idSeed, boolean controlsEnabled) {
-        String receiverId = receiverId(provider, route == null ? text(receiver.get("sourceModule")) : route.sourceModule, receiver);
-        CpnReceiver receiverRecord = receivers.computeIfAbsent(receiverId, key -> CpnReceiver.from(key, provider, route == null ? "custom" : route.sourceModule, receiver));
+        return createDelivery(actor, request, route, provider, mapping, receiver, payload,
+                route == null ? "custom" : route.sourceModule, null,
+                route == null ? "manual.external" : route.eventType,
+                route == null ? "MEDIUM" : route.riskLevel, null,
+                reason, idSeed, controlsEnabled);
+    }
+
+    DeliveryBundle createDelivery(Actor actor, HttpServletRequest request, CpnRoutePolicy route, CpnProvider provider, CpnTemplateMapping mapping,
+                                  Map<String, Object> receiver, Map<String, Object> payload, String sourceModule, String sourceId,
+                                  String eventType, String riskLevel, String requestedExpiresAt, String reason, String idSeed,
+                                  boolean controlsEnabled) {
+        String receiverId = receiverId(provider, sourceModule, receiver);
+        CpnReceiver receiverRecord = receivers.computeIfAbsent(receiverId, key -> CpnReceiver.from(key, provider, sourceModule, receiver));
         receiverRecord.lastUsedAt = now();
         String deliveryId = "delivery-" + nextId(idSeed);
-        String expiresAt = route == null ? null : nowInstant(request, controlsEnabled).plusSeconds(longNumber(route.retryPolicySummary.get("expireAfterSeconds"), 3600)).toString();
+        String expiresAt = requestedExpiresAt != null ? requestedExpiresAt
+                : route == null ? null : nowInstant(request, controlsEnabled).plusSeconds(longNumber(route.retryPolicySummary.get("expireAfterSeconds"), 3600)).toString();
         String mode = controlsEnabled ? text(request.getHeader("X-Test-Provider-Mode")) : "";
         String status = switch (mode) {
             case "failed" -> "SIMULATED_FAILED";
@@ -959,8 +1016,7 @@ class CpnStore {
             case "unavailable" -> "BLOCKED";
             default -> "SIMULATED_SENT";
         };
-        CpnDelivery delivery = new CpnDelivery(deliveryId, route == null ? "custom" : route.sourceModule, null,
-                route == null ? "manual.external" : route.eventType, route == null ? "MEDIUM" : route.riskLevel,
+        CpnDelivery delivery = new CpnDelivery(deliveryId, sourceModule, sourceId, eventType, riskLevel,
                 route == null ? null : route.routeId, provider.providerId, provider.channel, mapping.mappingId,
                 receiver, payloadSummary(payload), status, 0, null,
                 "RETRY_SCHEDULED".equals(status) ? nowInstant(request, controlsEnabled).plusSeconds(30).toString() : null,
@@ -1063,7 +1119,8 @@ class CpnStore {
     void audit(String action, String targetType, String targetId, Actor actor, HttpServletRequest request, Map<String, Object> body,
                String riskLevel, String result, String failureReason, String beforeState, String afterState) {
         String auditId = "audit-" + nextId(action.toLowerCase(Locale.ROOT));
-        CpnAudit audit = new CpnAudit(auditId, actor.userId(), actor.displayName(), action, targetType, targetId,
+        CpnAudit audit = new CpnAudit(auditId, actor.userId(), actor.displayName(), primaryRole(actor), actorPermissions(actor), sourceIp(request),
+                action, targetType, targetId,
                 targetType.equals("PROVIDER") ? targetId : text(body.get("providerId")),
                 targetType.equals("TEMPLATE_MAPPING") ? targetId : text(body.get("templateMappingId")),
                 targetType.equals("ROUTE") ? targetId : text(body.get("routeId")),
@@ -1137,6 +1194,7 @@ class CpnAuth {
         return switch (token) {
             case "cpn-viewer-token" -> new Actor("user-cpn-viewer", "CPN Viewer", Set.of("HELPER"), Set.of("NODE_READ"));
             case "cpn-admin-token" -> new Actor("user-cpn-admin", "CPN Admin", Set.of("ADMIN"), Set.of("NODE_READ", "NODE_WRITE", "HIGH_RISK_APPROVE"));
+            case "cpn-admin-write-token" -> new Actor("user-cpn-admin-write", "CPN Admin Write", Set.of("ADMIN"), Set.of("NODE_READ", "NODE_WRITE"));
             case "cpn-admin-no-cap-token" -> new Actor("user-cpn-admin-no-cap", "CPN Admin No Cap", Set.of("ADMIN"), Set.of());
             case "owner-token" -> new Actor("user-owner", "Owner", Set.of("OWNER"), Set.of("NODE_READ", "NODE_WRITE", "HIGH_RISK_APPROVE"));
             case "user-token" -> new Actor("user-normal", "User", Set.of("USER"), Set.of());
@@ -1677,6 +1735,9 @@ class CpnAudit {
     final String auditId;
     final String actorUserId;
     final String actorDisplayName;
+    final String actorRole;
+    final List<String> actorPermissions;
+    final String sourceIp;
     final String action;
     final String targetType;
     final String targetId;
@@ -1697,13 +1758,17 @@ class CpnAudit {
     final String failureReason;
     final String createdAt;
 
-    CpnAudit(String auditId, String actorUserId, String actorDisplayName, String action, String targetType, String targetId,
+    CpnAudit(String auditId, String actorUserId, String actorDisplayName, String actorRole, List<String> actorPermissions,
+             String sourceIp, String action, String targetType, String targetId,
              String providerId, String mappingId, String routeId, String deliveryId, String attemptId, String receiverId,
              String sourceModule, String result, String riskLevel, String reason, Map<String, Object> paramsSummary,
              String beforeState, String afterState, String requestId, String failureReason, String createdAt) {
         this.auditId = auditId;
         this.actorUserId = actorUserId;
         this.actorDisplayName = actorDisplayName;
+        this.actorRole = actorRole;
+        this.actorPermissions = actorPermissions;
+        this.sourceIp = sourceIp;
         this.action = action;
         this.targetType = targetType;
         this.targetId = targetId;
@@ -1726,7 +1791,8 @@ class CpnAudit {
     }
 
     Map<String, Object> view() {
-        return map("auditId", auditId, "actorUserId", actorUserId, "actorDisplayName", actorDisplayName, "action", action,
+        return map("id", auditId, "auditId", auditId, "actorUserId", actorUserId, "actorDisplayName", actorDisplayName,
+                "actorRole", actorRole, "actorPermissions", actorPermissions, "sourceIp", sourceIp, "action", action,
                 "targetType", targetType, "targetId", targetId, "providerId", providerId, "mappingId", mappingId,
                 "routeId", routeId, "deliveryId", deliveryId, "attemptId", attemptId, "receiverId", receiverId,
                 "sourceModule", sourceModule, "result", result, "riskLevel", riskLevel, "reason", reason,
@@ -1743,8 +1809,10 @@ final class CpnSupport {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final Pattern TEMPLATE_VAR = Pattern.compile("\\{\\{([A-Za-z0-9_.-]+)}}");
     private static final Set<String> CHANNELS = Set.of("EMAIL", "SMS", "QQ", "OOPZ", "DISCORD", "SLACK", "TELEGRAM", "WECHAT_WORK", "GAME", "PUSH", "WEBHOOK", "CUSTOM");
-    private static final Set<String> RISKS = Set.of("LOW", "MEDIUM", "HIGH");
+    private static final Set<String> RISKS = Set.of("LOW", "MEDIUM", "HIGH", "CRITICAL");
     private static final Set<String> RENDER_MODES = Set.of("PLAIN_TEXT", "MARKDOWN", "RICH_BLOCK", "PLATFORM_TEMPLATE");
+    private static final Set<String> SOURCE_MODULES = Set.of("notification", "alerting", "plugin-integration", "ops-control",
+            "community", "activity", "calendar", "changelog", "whitelist", "attendance", "resource", "server-status", "custom");
     private static final Set<String> DENIED = denied();
 
     private CpnSupport() {
@@ -1882,6 +1950,38 @@ final class CpnSupport {
         return Instant.now();
     }
 
+    static Instant parseInstant(String value) {
+        try {
+            return Instant.parse(text(value));
+        } catch (DateTimeParseException exception) {
+            throw new CpnApiException(HttpStatus.BAD_REQUEST, 40001, "invalid time range");
+        }
+    }
+
+    static void validateTimeRange(Map<String, String> query) {
+        String from = text(query.get("from"));
+        String to = text(query.get("to"));
+        Instant fromInstant = from.isBlank() ? null : parseInstant(from);
+        Instant toInstant = to.isBlank() ? null : parseInstant(to);
+        if (fromInstant != null && toInstant != null && fromInstant.isAfter(toInstant)) {
+            throw new CpnApiException(HttpStatus.BAD_REQUEST, 40001, "invalid time range");
+        }
+    }
+
+    static boolean withinTimeRange(String timestamp, Map<String, String> query) {
+        String from = text(query.get("from"));
+        String to = text(query.get("to"));
+        if (from.isBlank() && to.isBlank()) {
+            return true;
+        }
+        if (text(timestamp).isBlank()) {
+            return false;
+        }
+        Instant value = parseInstant(timestamp);
+        return (from.isBlank() || !value.isBefore(parseInstant(from)))
+                && (to.isBlank() || !value.isAfter(parseInstant(to)));
+    }
+
     static String latest(List<String> values) {
         return values.stream().filter(Objects::nonNull).max(String::compareTo).orElse(null);
     }
@@ -1912,6 +2012,48 @@ final class CpnSupport {
         }
     }
 
+    static void requireHighRiskActor(Actor actor) {
+        if (!actor.hasRole("OWNER") && !actor.hasPermission("HIGH_RISK_APPROVE")) {
+            throw new CpnApiException(HttpStatus.FORBIDDEN, 42002, "high risk permission denied");
+        }
+    }
+
+    static boolean isHighRisk(String riskLevel) {
+        return "HIGH".equals(text(riskLevel)) || "CRITICAL".equals(text(riskLevel));
+    }
+
+    static void requireCriticalOwner(Actor actor, Map<String, Object> body) {
+        if (containsCriticalRisk(body) && !actor.hasRole("OWNER")) {
+            throw new CpnApiException(HttpStatus.FORBIDDEN, 42004, "critical risk approval required");
+        }
+    }
+
+    static boolean containsCriticalRisk(Map<String, Object> body) {
+        return "CRITICAL".equals(text(body.get("riskLevel"))) || stringList(body.get("allowedRiskLevels")).contains("CRITICAL");
+    }
+
+    static String primaryRole(Actor actor) {
+        if (actor.hasRole("OWNER")) {
+            return "OWNER";
+        }
+        if (actor.hasRole("ADMIN")) {
+            return "ADMIN";
+        }
+        if (actor.hasRole("HELPER")) {
+            return "HELPER";
+        }
+        return actor.roles().stream().sorted().findFirst().orElse("USER");
+    }
+
+    static List<String> actorPermissions(Actor actor) {
+        return actor.permissions().stream().sorted().toList();
+    }
+
+    static String sourceIp(HttpServletRequest request) {
+        String value = text(request.getRemoteAddr());
+        return value.isBlank() ? "unknown" : value;
+    }
+
     static void validateProviderBody(Map<String, Object> body, boolean create) {
         if (create || body.containsKey("channel")) {
             requireEnum(requiredText(body, "channel"), CHANNELS);
@@ -1932,9 +2074,11 @@ final class CpnSupport {
             }
         }
         if (create || body.containsKey("allowedSourceModules")) {
-            if (stringList(body.get("allowedSourceModules")).isEmpty()) {
+            List<String> modules = stringList(body.get("allowedSourceModules"));
+            if (modules.isEmpty()) {
                 throw new CpnApiException(HttpStatus.BAD_REQUEST, 40001, "missing source modules");
             }
+            modules.forEach(CpnSupport::validateSourceModule);
         }
         if (create || body.containsKey("allowedRiskLevels")) {
             List<String> risks = stringList(body.get("allowedRiskLevels"));
@@ -1958,7 +2102,7 @@ final class CpnSupport {
 
     static void validateTemplateBody(Map<String, Object> body, boolean create) {
         if (create || body.containsKey("sourceModule")) {
-            requiredText(body, "sourceModule");
+            validateSourceModule(requiredText(body, "sourceModule"));
         }
         if (create || body.containsKey("providerId")) {
             requiredText(body, "providerId");
@@ -2016,7 +2160,7 @@ final class CpnSupport {
             requiredText(body, "displayName");
         }
         if (create || body.containsKey("sourceModule")) {
-            requiredText(body, "sourceModule");
+            validateSourceModule(requiredText(body, "sourceModule"));
         }
         if (create || body.containsKey("eventType")) {
             requiredText(body, "eventType");
@@ -2045,10 +2189,28 @@ final class CpnSupport {
     }
 
     static void validateDeliveryBody(Map<String, Object> body) {
-        requiredText(body, "sourceModule");
+        validateSourceModule(requiredText(body, "sourceModule"));
         requiredText(body, "eventType");
         requireEnum(requiredText(body, "riskLevel"), RISKS);
         requiredText(body, "reason");
+    }
+
+    static void validateSourceModule(String sourceModule) {
+        String value = text(sourceModule);
+        if (!SOURCE_MODULES.contains(value) || value.startsWith("internal") || value.startsWith("system")
+                || "auth".equals(value)) {
+            throw new CpnApiException(HttpStatus.BAD_REQUEST, 40001, "invalid source module");
+        }
+    }
+
+    static void validateProviderAllows(CpnProvider provider, String sourceModule, String riskLevel, Map<String, Object> receiver) {
+        if (!provider.allowedSourceModules.contains(sourceModule) || !provider.allowedRiskLevels.contains(riskLevel)) {
+            throw new CpnApiException(HttpStatus.BAD_REQUEST, 49966, "provider policy does not allow delivery");
+        }
+        List<String> allowedReceiverTypes = stringList(provider.receiverPolicy.get("allowedReceiverTypes"));
+        if (!allowedReceiverTypes.isEmpty() && !allowedReceiverTypes.contains(text(receiver.get("receiverType")))) {
+            throw new CpnApiException(HttpStatus.BAD_REQUEST, 49964, "receiver type not allowed");
+        }
     }
 
     static void validatePayloadVariables(Map<String, Object> payload, List<String> allowed) {
@@ -2185,7 +2347,31 @@ final class CpnSupport {
     }
 
     static Map<String, Object> payloadSummary(Map<String, Object> payload) {
-        return new LinkedHashMap<>(payload);
+        Map<String, Object> values = new LinkedHashMap<>();
+        payload.forEach((key, value) -> {
+            String rendered = value == null ? "" : String.valueOf(value);
+            values.put(key, map("type", valueType(value), "length", rendered.length(), "hash", shortHash(rendered)));
+        });
+        return map("fieldNames", new ArrayList<>(payload.keySet()), "fieldCount", payload.size(), "values", values, "redacted", true);
+    }
+
+    static String valueType(Object value) {
+        if (value == null) {
+            return "NULL";
+        }
+        if (value instanceof Number) {
+            return "NUMBER";
+        }
+        if (value instanceof Boolean) {
+            return "BOOLEAN";
+        }
+        if (value instanceof Collection<?>) {
+            return "ARRAY";
+        }
+        if (value instanceof Map<?, ?>) {
+            return "OBJECT";
+        }
+        return "STRING";
     }
 
     static Map<String, Object> paramsSummary(Map<String, Object> body) {

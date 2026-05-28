@@ -323,7 +323,7 @@
 | 投递请求列表 | GET | `/api/v1/cross-platform-notification/admin/deliveries` | 是 | `NODE_READ` | LOW |
 | 投递请求详情 | GET | `/api/v1/cross-platform-notification/admin/deliveries/{deliveryId}` | 是 | `NODE_READ` | LOW |
 | 重试投递 | PATCH | `/api/v1/cross-platform-notification/admin/deliveries/{deliveryId}/retry` | 是 | `ADMIN` 或 `OWNER`，`HIGH_RISK_APPROVE` | HIGH |
-| 取消投递 | PATCH | `/api/v1/cross-platform-notification/admin/deliveries/{deliveryId}/cancel` | 是 | `ADMIN` 或 `OWNER`，`NODE_WRITE` | MEDIUM |
+| 取消投递 | PATCH | `/api/v1/cross-platform-notification/admin/deliveries/{deliveryId}/cancel` | 是 | `ADMIN` 或 `OWNER`，`NODE_WRITE`；取消 `HIGH` 或 `CRITICAL` 投递时还要求 `HIGH_RISK_APPROVE` 或 `OWNER` | 按投递风险 |
 | 投递尝试列表 | GET | `/api/v1/cross-platform-notification/admin/attempts` | 是 | `NODE_READ` | LOW |
 | 投递尝试详情 | GET | `/api/v1/cross-platform-notification/admin/attempts/{attemptId}` | 是 | `NODE_READ` | LOW |
 | receiver 摘要列表 | GET | `/api/v1/cross-platform-notification/admin/receivers` | 是 | `NODE_READ` | LOW |
@@ -402,7 +402,7 @@
 
 `PATCH /api/v1/cross-platform-notification/admin/deliveries/{deliveryId}/retry` 请求字段为 `reason`、`confirmText` 和 `idempotencyKey`。`confirmText` 必须为 `RETRY_EXTERNAL_DELIVERY`。只有 `SIMULATED_FAILED`、`RETRY_SCHEDULED` 和可重试的 `BLOCKED` 可重试；`SIMULATED_SENT`、`CANCELED`、`EXPIRED` 不可重试。超过 retry window 返回 `49968`。重试仍只生成模拟 attempt。重复同幂等键返回同一结果。
 
-`PATCH /api/v1/cross-platform-notification/admin/deliveries/{deliveryId}/cancel` 请求字段为 `reason` 和 `idempotencyKey`。只有 `QUEUED`、`RETRY_SCHEDULED` 和未过期的 `BLOCKED` 可取消为 `CANCELED`。`SIMULATED_SENT`、`SIMULATED_FAILED`、`EXPIRED` 和已 `CANCELED` 为终态或按固定幂等语义返回。取消不删除 attempt。
+`PATCH /api/v1/cross-platform-notification/admin/deliveries/{deliveryId}/cancel` 请求字段为 `reason` 和 `idempotencyKey`。只有 `QUEUED`、`RETRY_SCHEDULED` 和未过期的 `BLOCKED` 可取消为 `CANCELED`。取消 `HIGH` 或 `CRITICAL` 投递必须校验 `HIGH_RISK_APPROVE` 或 `OWNER`，缺少时返回 `42002`。审计风险等级必须使用被取消投递自身的 `riskLevel`，不能固定为 `MEDIUM`。`SIMULATED_SENT`、`SIMULATED_FAILED`、`EXPIRED` 和已 `CANCELED` 为终态或按固定幂等语义返回。取消不删除 attempt。
 
 ## 投递尝试和 receiver 接口
 

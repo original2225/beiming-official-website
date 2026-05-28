@@ -295,6 +295,107 @@ class CrossPlatformNotificationApiContractTest {
     }
 
     @Test
+    @DisplayName("CPN-AUTH, CPN-DELIVERY, CPN-ATTEMPT, and CPN-AUDIT cover high-risk capability, critical risk, direct delivery fields, time ranges, and audit identity")
+    void highRiskCriticalDirectDeliveryTimeRangeAndAuditHardening() throws Exception {
+        performJson(post("/api/v1/cross-platform-notification/admin/providers").header("Authorization", bearer("cpn-admin-write-token")),
+                with(providerBody("write-without-risk"), "confirmText", "REGISTER_EXTERNAL_PROVIDER"), 403, 42002);
+        performJson(post("/api/v1/cross-platform-notification/admin/routes").header("Authorization", bearer("cpn-admin-token")),
+                with(with(routeBody("critical-admin", "mapping-notification-discord-main"), "riskLevel", "CRITICAL"),
+                        "confirmText", "CONFIGURE_EXTERNAL_ROUTE"), 403, 42004);
+
+        JsonNode ownerProvider = performJson(post("/api/v1/cross-platform-notification/admin/providers").header("Authorization", bearer("owner-token")),
+                with(with(providerBody("owner-critical"), "allowedRiskLevels", List.of("LOW", "MEDIUM", "HIGH", "CRITICAL")),
+                        "confirmText", "REGISTER_EXTERNAL_PROVIDER"), 201);
+        assertThat(ownerProvider.at("/data/allowedRiskLevels").toString()).contains("CRITICAL");
+
+        JsonNode providerFuture = performJson(get("/api/v1/cross-platform-notification/admin/providers")
+                .header("Authorization", bearer("cpn-viewer-token"))
+                .param("from", "2999-01-01T00:00:00Z"), 200);
+        assertThat(providerFuture.at("/data/total").asInt()).isZero();
+        performJson(get("/api/v1/cross-platform-notification/admin/providers")
+                .header("Authorization", bearer("cpn-viewer-token"))
+                .param("from", "2026-05-30T00:00:00Z")
+                .param("to", "2026-05-01T00:00:00Z"), 400, 40001);
+
+        JsonNode directDelivery = performJson(post("/api/v1/cross-platform-notification/admin/deliveries")
+                        .header("Authorization", bearer("cpn-admin-token")),
+                directDeliveryBody("direct-community"), 201);
+        String deliveryId = directDelivery.at("/data/deliveryId").asText();
+        assertThat(directDelivery.at("/data/sourceModule").asText()).isEqualTo("community");
+        assertThat(directDelivery.at("/data/sourceId").asText()).isEqualTo("post-direct-community");
+        assertThat(directDelivery.at("/data/eventType").asText()).isEqualTo("community.post.featured");
+        assertThat(directDelivery.at("/data/riskLevel").asText()).isEqualTo("LOW");
+        assertThat(directDelivery.at("/data/routeId").isNull()).isTrue();
+        assertThat(directDelivery.at("/data/expiresAt").asText()).isEqualTo("2026-05-29T00:00:00Z");
+        assertThat(directDelivery.at("/data/payloadSummary/fieldNames").toString()).contains("title", "body", "player");
+        assertThat(directDelivery.at("/data/payloadSummary/fieldCount").asInt()).isEqualTo(3);
+        assertThat(directDelivery.at("/data/payloadSummary").toString()).doesNotContain("Server degraded direct", "Alex Direct");
+
+        JsonNode deliveryFiltered = performJson(get("/api/v1/cross-platform-notification/admin/deliveries")
+                .header("Authorization", bearer("cpn-viewer-token"))
+                .param("sourceModule", "community")
+                .param("sourceId", "post-direct-community")
+                .param("eventType", "community.post.featured")
+                .param("riskLevel", "LOW"), 200);
+        assertThat(deliveryFiltered.at("/data/total").asInt()).isEqualTo(1);
+        assertThat(deliveryFiltered.at("/data/items/0/deliveryId").asText()).isEqualTo(deliveryId);
+
+        JsonNode highRiskScheduled = performJson(post("/api/v1/cross-platform-notification/admin/deliveries")
+                        .header("Authorization", bearer("cpn-admin-token"))
+                        .header("X-Test-Provider-Mode", "rate-limited"),
+                with(directDeliveryBody("high-risk-cancel"), "riskLevel", "HIGH"), 201);
+        String highRiskScheduledId = highRiskScheduled.at("/data/deliveryId").asText();
+        assertThat(highRiskScheduled.at("/data/status").asText()).isEqualTo("RETRY_SCHEDULED");
+        performJson(patch("/api/v1/cross-platform-notification/admin/deliveries/" + highRiskScheduledId + "/cancel")
+                        .header("Authorization", bearer("cpn-admin-write-token")),
+                Map.of("reason", "缺少高风险授权时不能取消高风险投递", "idempotencyKey", "cancel-high-risk-denied"), 403, 42002);
+        JsonNode highRiskCanceled = performJson(patch("/api/v1/cross-platform-notification/admin/deliveries/" + highRiskScheduledId + "/cancel")
+                        .header("Authorization", bearer("cpn-admin-token")),
+                Map.of("reason", "取消高风险排队投递", "idempotencyKey", "cancel-high-risk-allowed"), 200);
+        assertThat(highRiskCanceled.at("/data/status").asText()).isEqualTo("CANCELED");
+        JsonNode cancelAudit = performJson(get("/api/v1/cross-platform-notification/admin/audit-logs")
+                .header("Authorization", bearer("cpn-admin-token"))
+                .param("deliveryId", highRiskScheduledId)
+                .param("action", "EXTERNAL_DELIVERY_CANCELED"), 200);
+        assertThat(cancelAudit.at("/data/items/0/riskLevel").asText()).isEqualTo("HIGH");
+
+        JsonNode deliveryFuture = performJson(get("/api/v1/cross-platform-notification/admin/deliveries")
+                .header("Authorization", bearer("cpn-viewer-token"))
+                .param("from", "2999-01-01T00:00:00Z"), 200);
+        assertThat(deliveryFuture.at("/data/total").asInt()).isZero();
+        performJson(get("/api/v1/cross-platform-notification/admin/deliveries")
+                .header("Authorization", bearer("cpn-viewer-token"))
+                .param("from", "2026-05-30T00:00:00Z")
+                .param("to", "2026-05-01T00:00:00Z"), 400, 40001);
+
+        JsonNode attemptFuture = performJson(get("/api/v1/cross-platform-notification/admin/attempts")
+                .header("Authorization", bearer("cpn-viewer-token"))
+                .param("from", "2999-01-01T00:00:00Z"), 200);
+        assertThat(attemptFuture.at("/data/total").asInt()).isZero();
+        performJson(get("/api/v1/cross-platform-notification/admin/attempts")
+                .header("Authorization", bearer("cpn-viewer-token"))
+                .param("from", "2026-05-30T00:00:00Z")
+                .param("to", "2026-05-01T00:00:00Z"), 400, 40001);
+
+        JsonNode audit = performJson(get("/api/v1/cross-platform-notification/admin/audit-logs")
+                .header("Authorization", bearer("cpn-admin-token"))
+                .param("deliveryId", deliveryId), 200);
+        assertThat(audit.at("/data/items/0/actorRole").asText()).isEqualTo("ADMIN");
+        assertThat(audit.at("/data/items/0/actorPermissions").toString()).contains("NODE_WRITE", "HIGH_RISK_APPROVE");
+        assertThat(audit.at("/data/items/0/sourceIp").asText()).isNotBlank();
+        JsonNode auditFuture = performJson(get("/api/v1/cross-platform-notification/admin/audit-logs")
+                .header("Authorization", bearer("cpn-admin-token"))
+                .param("from", "2999-01-01T00:00:00Z"), 200);
+        assertThat(auditFuture.at("/data/total").asInt()).isZero();
+        performJson(get("/api/v1/cross-platform-notification/admin/audit-logs")
+                .header("Authorization", bearer("cpn-admin-token"))
+                .param("from", "2026-05-30T00:00:00Z")
+                .param("to", "2026-05-01T00:00:00Z"), 400, 40001);
+        assertNoSecrets(directDelivery);
+        assertNoSecrets(audit);
+    }
+
+    @Test
     @DisplayName("CPN-DEPS and CPN-HARDEN cover dependency failures, test controls, source boundaries, and production source scan")
     void dependencyFailuresAndHardeningBoundaries() throws Exception {
         performJson(post("/api/v1/cross-platform-notification/admin/template-mappings")
@@ -437,6 +538,23 @@ class CrossPlatformNotificationApiContractTest {
         body.put("expiresAt", "2026-05-29T00:00:00Z");
         body.put("confirmText", "CREATE_EXTERNAL_DELIVERY");
         body.put("reason", "创建模拟投递");
+        body.put("idempotencyKey", idempotencyKey);
+        return body;
+    }
+
+    private Map<String, Object> directDeliveryBody(String idempotencyKey) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("sourceModule", "community");
+        body.put("sourceId", "post-" + idempotencyKey);
+        body.put("eventType", "community.post.featured");
+        body.put("riskLevel", "LOW");
+        body.put("providerId", "provider-discord-main");
+        body.put("templateMappingId", "mapping-notification-discord-main");
+        body.put("receiverSummary", Map.of("receiverType", "CHANNEL", "targetRefSummary", "#community"));
+        body.put("payloadSummary", Map.of("title", "Community digest", "body", "Server degraded direct body", "player", "Alex Direct"));
+        body.put("expiresAt", "2026-05-29T00:00:00Z");
+        body.put("confirmText", "CREATE_EXTERNAL_DELIVERY");
+        body.put("reason", "创建不依赖路由的模拟投递");
         body.put("idempotencyKey", idempotencyKey);
         return body;
     }
