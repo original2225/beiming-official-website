@@ -1,0 +1,10 @@
+server:
+  port: 8124
+
+spring:
+  application:
+    name: ops-image-market-service
+
+ops-image-market:
+  test-controls:
+    enabled: false
