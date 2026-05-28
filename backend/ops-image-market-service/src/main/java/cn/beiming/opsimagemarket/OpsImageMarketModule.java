@@ -330,9 +330,7 @@ class OpsImageMarketController {
         return store.idempotent(request, actor, "image:" + target + ":" + imageId, body, () -> {
             Map<String, Object> image = store.get(store.images, imageId, 49701, "image not found");
             String before = status(image);
-            if ("ARCHIVED".equals(before)) {
-                throw new OimApiException(HttpStatus.CONFLICT, 49710, "image state conflict");
-            }
+            requireTransition("IMAGE", before, target);
             if ("PUBLISHED".equals(target)) {
                 Map<String, Object> provider = store.get(store.providers, text(image.get("providerId")), 49700, "provider not found");
                 if (!"ENABLED".equals(status(provider))) {
@@ -431,6 +429,8 @@ class OpsImageMarketController {
         validateReason(body);
         return store.idempotent(request, actor, "version:approve:" + imageVersionId, body, () -> {
             Map<String, Object> version = store.get(store.versions, imageVersionId, 49702, "version not found");
+            String before = status(version);
+            requireTransition("VERSION", before, "APPROVED");
             Map<String, Object> scan = store.scanForVersion(imageVersionId).orElseThrow(() -> new OimApiException(HttpStatus.CONFLICT, 49715, "scan unavailable"));
             String severity = text(scan.get("highestSeverity"));
             String sig = text(scan.get("signatureStatus"));
@@ -447,7 +447,6 @@ class OpsImageMarketController {
                 throw new OimApiException(HttpStatus.CONFLICT, 49718, "signature blocked");
             }
             store.failAuditIfRequested(request, properties.enabled());
-            String before = status(version);
             version.put("status", "APPROVED");
             version.put("scanSummary", summaryOf(scan, "scanId", "status", "highestSeverity", "signatureStatus", "expiresAt"));
             version.put("compatibilitySummary", map("status", "PASSED"));
@@ -467,6 +466,11 @@ class OpsImageMarketController {
         return versionState(request, imageVersionId, body, "BLOCKED", "IMAGE_VERSION_BLOCKED", "BLOCK_IMAGE_VERSION", "HIGH");
     }
 
+    @PatchMapping("/admin/versions/{imageVersionId}/archive")
+    ResponseEntity<Map<String, Object>> archiveVersion(HttpServletRequest request, @PathVariable String imageVersionId, @RequestBody Map<String, Object> body) {
+        return versionState(request, imageVersionId, body, "ARCHIVED", "IMAGE_VERSION_ARCHIVED", null, "MEDIUM");
+    }
+
     private ResponseEntity<Map<String, Object>> versionState(HttpServletRequest request, String versionId, Map<String, Object> body, String target, String action, String confirm, String risk) {
         Actor actor = auth.requireWrite(request);
         validateReason(body);
@@ -476,8 +480,13 @@ class OpsImageMarketController {
         }
         return store.idempotent(request, actor, "version:" + target + ":" + versionId, body, () -> {
             Map<String, Object> version = store.get(store.versions, versionId, 49702, "version not found");
-            store.failAuditIfRequested(request, properties.enabled());
             String before = status(version);
+            requireTransition("VERSION", before, target);
+            if ("ARCHIVED".equals(target) && (store.any(store.templates, item -> versionId.equals(item.get("imageVersionId")) && "ENABLED".equals(status(item)))
+                    || store.any(store.plans, item -> versionId.equals(item.get("imageVersionId")) && !terminalPlan(status(item))))) {
+                throw new OimApiException(HttpStatus.CONFLICT, 49710, "version state conflict");
+            }
+            store.failAuditIfRequested(request, properties.enabled());
             version.put("status", target);
             if ("DEPRECATED".equals(target)) {
                 version.put("deprecatedAt", now());
@@ -568,24 +577,47 @@ class OpsImageMarketController {
 
     @PatchMapping("/admin/compatibility-profiles/{profileId}/enable")
     ResponseEntity<Map<String, Object>> enableProfile(HttpServletRequest request, @PathVariable String profileId, @RequestBody Map<String, Object> body) {
+        return profileState(request, profileId, body, "ENABLED", "IMAGE_COMPAT_PROFILE_ENABLED");
+    }
+
+    @PatchMapping("/admin/compatibility-profiles/{profileId}/disable")
+    ResponseEntity<Map<String, Object>> disableProfile(HttpServletRequest request, @PathVariable String profileId, @RequestBody Map<String, Object> body) {
+        return profileState(request, profileId, body, "DISABLED", "IMAGE_COMPAT_PROFILE_DISABLED");
+    }
+
+    @PatchMapping("/admin/compatibility-profiles/{profileId}/archive")
+    ResponseEntity<Map<String, Object>> archiveProfile(HttpServletRequest request, @PathVariable String profileId, @RequestBody Map<String, Object> body) {
+        return profileState(request, profileId, body, "ARCHIVED", "IMAGE_COMPAT_PROFILE_ARCHIVED");
+    }
+
+    private ResponseEntity<Map<String, Object>> profileState(HttpServletRequest request, String profileId, Map<String, Object> body, String target, String action) {
         Actor actor = auth.requireWrite(request);
         validateReason(body);
-        return store.idempotent(request, actor, "profile:enable:" + profileId, body, () -> {
+        return store.idempotent(request, actor, "profile:" + target + ":" + profileId, body, () -> {
             Map<String, Object> profile = store.get(store.profiles, profileId, 49703, "profile not found");
-            requireMutable(profile);
-            Map<String, Object> image = store.get(store.images, text(profile.get("imageId")), 49701, "image not found");
-            if ("ARCHIVED".equals(status(image))) {
+            String before = status(profile);
+            if (before.equals(target)) {
+                return new WriteResult(HttpStatus.OK, copy(profile));
+            }
+            requireTransition("PROFILE", before, target);
+            if ("ENABLED".equals(target)) {
+                Map<String, Object> image = store.get(store.images, text(profile.get("imageId")), 49701, "image not found");
+                if ("ARCHIVED".equals(status(image))) {
+                    throw new OimApiException(HttpStatus.CONFLICT, 49710, "profile state conflict");
+                }
+                if (unsafeVolumes(profile.get("requiredVolumesSummary"))) {
+                    throw new OimApiException(HttpStatus.BAD_REQUEST, 49713, "unsafe volume");
+                }
+                validateEnvSchema(profile.get("envSchemaSummary"));
+            }
+            if ("ARCHIVED".equals(target) && (store.any(store.templates, item -> profileId.equals(item.get("compatibilityProfileId")) && "ENABLED".equals(status(item)))
+                    || store.any(store.plans, plan -> !terminalPlan(status(plan)) && store.any(store.templates, template -> profileId.equals(template.get("compatibilityProfileId")) && Objects.equals(template.get("templateId"), plan.get("templateId")))))) {
                 throw new OimApiException(HttpStatus.CONFLICT, 49710, "profile state conflict");
             }
-            if (unsafeVolumes(profile.get("requiredVolumesSummary"))) {
-                throw new OimApiException(HttpStatus.BAD_REQUEST, 49713, "unsafe volume");
-            }
-            validateEnvSchema(profile.get("envSchemaSummary"));
             store.failAuditIfRequested(request, properties.enabled());
-            String before = status(profile);
-            profile.put("status", "ENABLED");
+            profile.put("status", target);
             touch(profile, actor);
-            store.audit("IMAGE_COMPAT_PROFILE_ENABLED", "PROFILE", profileId, actor, request, body, "MEDIUM", "SUCCESS", null, before, "ENABLED");
+            store.audit(action, "PROFILE", profileId, actor, request, body, "MEDIUM", "SUCCESS", null, before, target);
             return new WriteResult(HttpStatus.OK, copy(profile));
         });
     }
@@ -696,12 +728,21 @@ class OpsImageMarketController {
         return templateState(request, templateId, body, "DISABLED", "IMAGE_TEMPLATE_DISABLED");
     }
 
+    @PatchMapping("/admin/templates/{templateId}/archive")
+    ResponseEntity<Map<String, Object>> archiveTemplate(HttpServletRequest request, @PathVariable String templateId, @RequestBody Map<String, Object> body) {
+        return templateState(request, templateId, body, "ARCHIVED", "IMAGE_TEMPLATE_ARCHIVED");
+    }
+
     private ResponseEntity<Map<String, Object>> templateState(HttpServletRequest request, String templateId, Map<String, Object> body, String target, String action) {
         Actor actor = auth.requireWrite(request);
         validateReason(body);
         return store.idempotent(request, actor, "template:" + target + ":" + templateId, body, () -> {
             Map<String, Object> template = store.get(store.templates, templateId, 49704, "template not found");
-            requireMutable(template);
+            String before = status(template);
+            if (before.equals(target)) {
+                return new WriteResult(HttpStatus.OK, copy(template));
+            }
+            requireTransition("TEMPLATE", before, target);
             if (unsafeVolumes(template.get("volumeMountsSummary"))) {
                 throw new OimApiException(HttpStatus.BAD_REQUEST, 49713, "unsafe volume");
             }
@@ -710,14 +751,20 @@ class OpsImageMarketController {
                 Map<String, Object> image = store.get(store.images, text(template.get("imageId")), 49701, "image not found");
                 Map<String, Object> version = store.get(store.versions, text(template.get("imageVersionId")), 49702, "version not found");
                 Map<String, Object> profile = store.get(store.profiles, text(template.get("compatibilityProfileId")), 49703, "profile not found");
+                Map<String, Object> provider = store.get(store.providers, text(image.get("providerId")), 49700, "provider not found");
                 requireSameImage(text(image.get("imageId")), version, profile);
+                if (!"ENABLED".equals(status(provider))) {
+                    throw new OimApiException(HttpStatus.CONFLICT, 49719, "provider blocked");
+                }
                 if (!"PUBLISHED".equals(status(image)) || !"APPROVED".equals(status(version)) || !"ENABLED".equals(status(profile))) {
                     throw new OimApiException(HttpStatus.CONFLICT, 49710, "template state conflict");
                 }
                 ensureScanFresh(version);
             }
+            if ("ARCHIVED".equals(target) && store.any(store.plans, item -> templateId.equals(item.get("templateId")) && !terminalPlan(status(item)))) {
+                throw new OimApiException(HttpStatus.CONFLICT, 49710, "template state conflict");
+            }
             store.failAuditIfRequested(request, properties.enabled());
-            String before = status(template);
             template.put("status", target);
             touch(template, actor);
             store.audit(action, "TEMPLATE", templateId, actor, request, body, "MEDIUM", "SUCCESS", null, before, target);
@@ -893,11 +940,29 @@ class OpsImageMarketController {
         return store.idempotent(request, actor, "plan:approve:" + planId, body, () -> {
             Map<String, Object> plan = store.get(store.plans, planId, 49706, "plan not found");
             requireOwnerForCritical(actor, text(plan.get("riskLevel")));
-            if (!Set.of("DRAFT", "RISK_REVIEW_REQUIRED", "APPROVED").contains(status(plan))) {
+            if (!Set.of("DRAFT", "RISK_REVIEW_REQUIRED").contains(status(plan))) {
                 throw new OimApiException(HttpStatus.CONFLICT, 49710, "plan state conflict");
             }
             Map<String, Object> version = store.get(store.versions, text(plan.get("imageVersionId")), 49702, "version not found");
+            Map<String, Object> image = store.get(store.images, text(plan.get("imageId")), 49701, "image not found");
+            Map<String, Object> provider = store.get(store.providers, text(plan.get("providerId")), 49700, "provider not found");
+            Map<String, Object> template = store.get(store.templates, text(plan.get("templateId")), 49704, "template not found");
+            Map<String, Object> profile = store.get(store.profiles, text(template.get("compatibilityProfileId")), 49703, "profile not found");
+            if (!Objects.equals(image.get("imageId"), version.get("imageId")) || !Objects.equals(image.get("imageId"), template.get("imageId"))
+                    || !Objects.equals(version.get("imageVersionId"), template.get("imageVersionId"))) {
+                throw new OimApiException(HttpStatus.CONFLICT, 49716, "template compatibility failed");
+            }
+            if (!"ENABLED".equals(status(provider))) {
+                throw new OimApiException(HttpStatus.CONFLICT, 49719, "provider blocked");
+            }
+            if (!"PUBLISHED".equals(status(image)) || !"APPROVED".equals(status(version)) || !"ENABLED".equals(status(template)) || !"ENABLED".equals(status(profile))) {
+                throw new OimApiException(HttpStatus.CONFLICT, 49710, "plan state conflict");
+            }
             ensureScanFresh(version);
+            List<Object> nodes = list(plan.get("targetNodeIds"));
+            if (nodes.isEmpty() || nodes.size() > 20 || nodes.stream().anyMatch(node -> !Set.of("node-a", "node-b").contains(text(node)))) {
+                throw new OimApiException(HttpStatus.CONFLICT, 49716, "node compatibility failed");
+            }
             store.failAuditIfRequested(request, properties.enabled());
             String before = status(plan);
             plan.put("status", "SIMULATED_READY");
@@ -1527,6 +1592,42 @@ class OimSupport {
         if ("ARCHIVED".equals(item.get("status"))) {
             throw new OimApiException(HttpStatus.CONFLICT, 49710, "state conflict");
         }
+    }
+
+    static void requireTransition(String domain, String before, String target) {
+        if (!transitionAllowed(domain, before, target)) {
+            throw new OimApiException(HttpStatus.CONFLICT, 49710, lower(domain) + " state conflict");
+        }
+    }
+
+    static boolean transitionAllowed(String domain, String before, String target) {
+        return switch (domain) {
+            case "IMAGE" -> switch (before) {
+                case "DRAFT" -> oneOf(target, "PUBLISHED", "BLOCKED", "ARCHIVED");
+                case "PUBLISHED" -> oneOf(target, "DEPRECATED", "BLOCKED");
+                case "DEPRECATED" -> oneOf(target, "PUBLISHED", "BLOCKED", "ARCHIVED");
+                case "BLOCKED" -> oneOf(target, "DRAFT", "ARCHIVED");
+                default -> false;
+            };
+            case "VERSION" -> switch (before) {
+                case "DISCOVERED" -> oneOf(target, "APPROVED", "DEPRECATED", "BLOCKED", "ARCHIVED");
+                case "APPROVED" -> oneOf(target, "DEPRECATED", "BLOCKED");
+                case "DEPRECATED" -> oneOf(target, "APPROVED", "BLOCKED", "ARCHIVED");
+                case "BLOCKED" -> oneOf(target, "DISCOVERED", "ARCHIVED");
+                default -> false;
+            };
+            case "PROFILE", "TEMPLATE" -> switch (before) {
+                case "DRAFT" -> oneOf(target, "ENABLED", "ARCHIVED");
+                case "ENABLED" -> oneOf(target, "DISABLED");
+                case "DISABLED" -> oneOf(target, "ENABLED", "ARCHIVED");
+                default -> false;
+            };
+            default -> false;
+        };
+    }
+
+    static boolean oneOf(String value, String... options) {
+        return Set.of(options).contains(value);
     }
 
     static void ensureScanFresh(Map<String, Object> versionOrScan) {
