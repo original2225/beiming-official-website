@@ -11,6 +11,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
@@ -172,7 +173,7 @@ class GatewayController {
             String status = response.status() < 500 ? "UP" : "DEGRADED";
             return ok(state.updateHealth(route, status, response.status(), null, null, duration(started)).toView());
         } catch (GatewayUpstreamException ex) {
-            int code = ex.type() == GatewayFailureType.TIMEOUT ? 46211 : 46210;
+            int code = upstreamFailureCode(ex.type());
             String status = ex.type() == GatewayFailureType.TIMEOUT ? "TIMEOUT" : "DOWN";
             return ok(state.updateHealth(route, status, null, code, ex.getMessage(), duration(started)).toView());
         }
@@ -228,7 +229,6 @@ class GatewayController {
         }
         if ("OPTIONS".equals(method)) {
             return ResponseEntity.ok()
-                    .header("X-Request-Id", RequestIdFilter.currentRequestId())
                     .body(envelope(0, "success", null));
         }
 
@@ -244,14 +244,13 @@ class GatewayController {
             int errorCode = upstream.status() >= 400 ? extractErrorCode(upstream.body()).orElse(null) : 0;
             recordLog(started, method, path, route, upstream.status(), upstream.status(), upstream.status() < 400 ? "SUCCESS" : "FAILED", upstream.status() < 400 ? null : errorCode, request);
             HttpHeaders headers = new HttpHeaders();
-            headers.set("X-Request-Id", RequestIdFilter.currentRequestId());
             if (upstream.contentType() != null && !upstream.contentType().isBlank()) {
                 headers.set(HttpHeaders.CONTENT_TYPE, upstream.contentType());
             }
-            return new ResponseEntity<>(upstream.body(), headers, HttpStatus.valueOf(upstream.status()));
+            return new ResponseEntity<>(upstream.body(), headers, HttpStatusCode.valueOf(upstream.status()));
         } catch (GatewayUpstreamException ex) {
-            int code = ex.type() == GatewayFailureType.TIMEOUT ? 46211 : 46210;
-            HttpStatus status = ex.type() == GatewayFailureType.TIMEOUT ? HttpStatus.GATEWAY_TIMEOUT : HttpStatus.BAD_GATEWAY;
+            int code = upstreamFailureCode(ex.type());
+            HttpStatus status = upstreamFailureStatus(ex.type());
             recordLog(started, method, path, route, null, status.value(), "FAILED", code, request);
             throw new GatewayApiException(status, code, ex.getMessage());
         }
@@ -319,6 +318,19 @@ class GatewayController {
 
     private int duration(Instant started) {
         return Math.max(0, (int) Duration.between(started, Instant.now()).toMillis());
+    }
+
+    private int upstreamFailureCode(GatewayFailureType type) {
+        return switch (type) {
+            case TIMEOUT -> 46211;
+            case INVALID_RESPONSE -> 46212;
+            case INVALID_UPSTREAM -> 46213;
+            default -> 46210;
+        };
+    }
+
+    private HttpStatus upstreamFailureStatus(GatewayFailureType type) {
+        return type == GatewayFailureType.TIMEOUT ? HttpStatus.GATEWAY_TIMEOUT : HttpStatus.BAD_GATEWAY;
     }
 
     private String clientIp(HttpServletRequest request) {
@@ -580,7 +592,9 @@ class JavaGatewayHttpClient implements GatewayHttpClient {
         } catch (ConnectException ex) {
             throw GatewayUpstreamException.connection("upstream unavailable");
         } catch (IllegalArgumentException ex) {
-            throw GatewayUpstreamException.connection("upstream address invalid");
+            throw GatewayUpstreamException.invalidUpstream("upstream address invalid");
+        } catch (java.net.ProtocolException ex) {
+            throw GatewayUpstreamException.invalidResponse("invalid upstream response");
         } catch (IOException ex) {
             throw GatewayUpstreamException.connection("upstream unavailable");
         } catch (InterruptedException ex) {
@@ -691,7 +705,9 @@ record GatewayHttpResponse(int status, String contentType, byte[] body, Map<Stri
 
 enum GatewayFailureType {
     CONNECTION,
-    TIMEOUT
+    TIMEOUT,
+    INVALID_RESPONSE,
+    INVALID_UPSTREAM
 }
 
 class GatewayUpstreamException extends RuntimeException {
@@ -712,6 +728,14 @@ class GatewayUpstreamException extends RuntimeException {
 
     static GatewayUpstreamException timeout(String message) {
         return new GatewayUpstreamException(GatewayFailureType.TIMEOUT, message);
+    }
+
+    static GatewayUpstreamException invalidResponse(String message) {
+        return new GatewayUpstreamException(GatewayFailureType.INVALID_RESPONSE, message);
+    }
+
+    static GatewayUpstreamException invalidUpstream(String message) {
+        return new GatewayUpstreamException(GatewayFailureType.INVALID_UPSTREAM, message);
     }
 }
 

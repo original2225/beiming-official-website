@@ -73,12 +73,12 @@ class GatewayApiContractTest {
         addRange(mapped, "GATE-PFX", 1, 24);
         addRange(mapped, "GATE-UP", 1, 20);
         addRange(mapped, "GATE-LOG", 1, 20);
-        addRange(mapped, "GATE-PROXY", 1, 40);
+        addRange(mapped, "GATE-PROXY", 1, 41);
         addRange(mapped, "GATE-CORS", 1, 10);
         addRange(mapped, "GATE-SEC", 1, 10);
 
-        assertThat(mapped).hasSize(170);
-        assertThat(mapped).contains("GATE-COM-001", "GATE-PFX-024", "GATE-UP-020", "GATE-PROXY-040", "GATE-SEC-010");
+        assertThat(mapped).hasSize(171);
+        assertThat(mapped).contains("GATE-COM-001", "GATE-PFX-024", "GATE-UP-020", "GATE-PROXY-041", "GATE-SEC-010");
     }
 
     @Test
@@ -230,7 +230,7 @@ class GatewayApiContractTest {
     @DisplayName("GATE-PROXY covers forwarding, degradation, CORS, and sanitized request logs")
     void proxyForwardingDegradationCorsAndLogs() throws Exception {
         fakeClient.respond("AUTH", 200, Map.of("code", 0, "message", "success", "data", Map.of("ok", true)));
-        mvc.perform(post("/api/v1/auth/login?next=/profile&token=secret-query")
+        MvcResult proxied = mvc.perform(post("/api/v1/auth/login?next=/profile&token=secret-query")
                         .header("Authorization", bearer("secret-upstream-token"))
                         .header("X-Request-Id", "req-proxy")
                         .header("Accept-Language", "zh-CN")
@@ -241,7 +241,9 @@ class GatewayApiContractTest {
                         .content("{\"username\":\"u\",\"password\":\"secret-body\"}"))
                 .andExpect(status().isOk())
                 .andExpect(header().string("X-Request-Id", "req-proxy"))
-                .andExpect(jsonPath("$.code").value(0));
+                .andExpect(jsonPath("$.code").value(0))
+                .andReturn();
+        assertThat(proxied.getResponse().getHeaders("X-Request-Id")).containsExactly("req-proxy");
         GatewayHttpRequest outbound = fakeClient.lastRequest();
         assertThat(outbound.method()).isEqualTo("POST");
         assertThat(outbound.path()).isEqualTo("/api/v1/auth/login");
@@ -264,6 +266,8 @@ class GatewayApiContractTest {
         performJson(get("/api/v1/auth/bad"), 400, 40001);
         fakeClient.respond("AUTH", 500, body(51100, "upstream failed", null));
         performJson(get("/api/v1/auth/fail"), 500, 51100);
+        fakeClient.respond("AUTH", 599, body(59900, "non standard upstream failure", null));
+        performJson(get("/api/v1/auth/non-standard"), 599, 59900);
         fakeClient.respondText("AUTH", 200, "text/plain", "plain-upstream");
         MvcResult text = mvc.perform(get("/api/v1/auth/plain")).andExpect(status().isOk()).andReturn();
         assertThat(text.getResponse().getContentAsString()).isEqualTo("plain-upstream");
@@ -273,6 +277,10 @@ class GatewayApiContractTest {
         performJson(get("/api/v1/auth/down"), 502, 46210);
         fakeClient.failTimeout("AUTH");
         performJson(get("/api/v1/auth/slow"), 504, 46211);
+        fakeClient.failInvalidResponse("AUTH");
+        performJson(get("/api/v1/auth/broken-response"), 502, 46212);
+        fakeClient.failInvalidUpstream("AUTH");
+        performJson(get("/api/v1/auth/invalid-upstream"), 502, 46213);
 
         performJson(get("/api/v1/unknown/path"), 404, 46200);
         performJson(request(HttpMethod.TRACE, "/api/v1/auth/trace"), 405, 46201);
@@ -305,6 +313,34 @@ class GatewayApiContractTest {
         performJson(get("/api/v1/gateway/admin/request-logs").header("Authorization", bearer("admin-token"))
                 .param("from", "2026-05-30T00:00:00Z").param("to", "2026-05-29T00:00:00Z"), 400, 46203);
         performJson(get("/api/v1/gateway/admin/request-logs").header("Authorization", bearer("admin-token")).param("sort", "bad"), 400, 46203);
+    }
+
+    @Test
+    @DisplayName("GATE-PROXY maps invalid upstream route configuration to the contract error code")
+    void invalidUpstreamConfigurationUsesDedicatedFailureType() {
+        GatewayRoute invalidRoute = new GatewayRoute(
+                "invalid",
+                "INVALID",
+                "invalid",
+                "/api/v1/invalid",
+                "http:// bad-host",
+                8199,
+                "/api/v1/invalid/health",
+                50,
+                true,
+                List.of("GET"),
+                true,
+                Instant.parse("2026-05-29T00:00:00Z"),
+                Instant.parse("2026-05-29T00:00:00Z")
+        );
+        GatewayHttpRequest request = new GatewayHttpRequest("GET", "/api/v1/invalid", null, Map.of(), "");
+
+        try {
+            new JavaGatewayHttpClient().exchange(invalidRoute, request);
+            throw new AssertionError("expected invalid upstream failure");
+        } catch (GatewayUpstreamException ex) {
+            assertThat(ex.type()).isEqualTo(GatewayFailureType.INVALID_UPSTREAM);
+        }
     }
 
     @TestConfiguration
@@ -346,6 +382,14 @@ class GatewayApiContractTest {
             responses.put(serviceKey, new FakeResponse(0, null, new byte[0], GatewayFailureType.TIMEOUT));
         }
 
+        void failInvalidResponse(String serviceKey) {
+            responses.put(serviceKey, new FakeResponse(0, null, new byte[0], GatewayFailureType.INVALID_RESPONSE));
+        }
+
+        void failInvalidUpstream(String serviceKey) {
+            responses.put(serviceKey, new FakeResponse(0, null, new byte[0], GatewayFailureType.INVALID_UPSTREAM));
+        }
+
         GatewayHttpRequest lastRequest() {
             return requests.get(requests.size() - 1);
         }
@@ -360,6 +404,12 @@ class GatewayApiContractTest {
             }
             if (response.failureType == GatewayFailureType.TIMEOUT) {
                 throw GatewayUpstreamException.timeout("timeout");
+            }
+            if (response.failureType == GatewayFailureType.INVALID_RESPONSE) {
+                throw GatewayUpstreamException.invalidResponse("invalid upstream response");
+            }
+            if (response.failureType == GatewayFailureType.INVALID_UPSTREAM) {
+                throw GatewayUpstreamException.invalidUpstream("upstream address invalid");
             }
             return new GatewayHttpResponse(response.status, response.contentType, response.body, Map.of());
         }
