@@ -28,6 +28,14 @@
 
 后台接口统一使用 `/api/v1/profile/admin` 前缀。后台读取至少要求 `HELPER`、`ADMIN` 或 `OWNER`。后台写操作至少要求 `ADMIN` 或 `OWNER`。成员移除、归档、恢复公开、恢复状态等会影响成员资格或公开展示的操作必须携带 `reason` 并写入审计。
 
+## 请求编号和输入边界
+
+profile 必须接收或生成 `X-Request-Id`。客户端或网关传入的请求编号只允许 1 到 128 位字母、数字、下划线、短横线、点和冒号。缺失或空白时由 profile 生成请求编号，并在响应头和错误响应体 `requestId` 中保持一致。
+
+当直连 profile 且 `X-Request-Id` 格式非法时，profile 返回 HTTP `400`、错误码 `40001`，`errors.field` 为 `X-Request-Id`，响应头和响应体使用服务端兜底请求编号，不得把非法请求编号写入审计。经 `api-gateway` 访问时，非法请求编号应由网关先按 `docs/contracts-api-gateway.md` 返回 `46205`，正常情况下不应到达 profile。
+
+所有请求体中的时间字段必须是 ISO 8601 字符串。当前契约涉及 `joinedAt` 和 `happenedAt`。时间字段缺失时按各接口默认规则处理；时间字段存在但格式非法时必须返回 HTTP `400`、错误码 `40001`，不得落入 `51200` 内部错误。
+
 ## auth 兼容契约
 
 profile 必须通过 `ProfileAuthContextProvider`、`AuthContextProvider` 或等价适配层读取 auth 信息。生产环境优先消费后端入口传入的已校验认证上下文，也可以调用 auth 正式 API。测试环境使用 auth stub。任何实现都不能导入 auth 的内存存储类、数据表实体、Repository 或测试种子实现。
@@ -513,6 +521,8 @@ profile 需要消费的网关上下文字段如下。
 
 创建成员档案和创建成员组支持 `idempotencyKey`。同一操作者、同一幂等键、同一请求体重复提交时返回同一个结果。相同幂等键搭配不同请求体返回 `43002`。
 
+幂等签名必须基于规范化后的请求语义生成，而不是基于 JSON 字段原始顺序。对象字段顺序不同但字段和值完全一致时，必须视为同一请求体；数组顺序仍然保留业务含义，不得排序。字段值不同、数组顺序不同或缺失字段不同，均视为不同请求体。
+
 后台更新接口必须以服务端当前状态为准。状态流转和归档操作失败时不能写入部分变更。实现可使用版本号、更新时间或事务锁保证并发下同一 `userId`、Minecraft ID、Minecraft UUID、成员组名称不会产生重复主数据。
 
 公开读取接口允许读到更新前或更新后的完整状态，但不能返回半更新对象。
@@ -522,6 +532,8 @@ profile 需要消费的网关上下文字段如下。
 必须审计的动作包括当前用户维护公开资料、创建或激活成员档案、后台修改成员档案、修改成员状态、创建成员组、修改成员组、归档成员组、维护成员事迹和维护代表作品快照。
 
 后台写操作必须记录 `reason`。审计字段继承公共契约。审计写入失败时，后台写操作和当前用户资料修改不得假装成功，必须返回 `51201` 或 `51200`，并保持业务数据不变。
+
+profile 审计返回必须至少包含 `id`、`requestId`、`actorUserId`、`actorRole`、`actorPermissions`、`sourceIp`、`targetType`、`targetId`、`action`、`riskLevel`、`reason`、`paramsSummary`、`beforeState`、`afterState`、`result`、`failureReason` 和 `createdAt`。`paramsSummary` 只能保存脱敏摘要，不得保存完整请求体、`Authorization`、Cookie、邀请码、密码、Minecraft 验证凭据或其他秘密。
 
 公开读取、当前用户读取、后台低风险读取不强制写审计。
 

@@ -27,6 +27,7 @@ import org.springframework.web.HttpRequestMethodNotSupportedException;
 
 import java.io.IOException;
 import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -76,7 +77,7 @@ class ProfileController {
     ResponseEntity<Map<String, Object>> patchMe(HttpServletRequest request,
                                                 @RequestBody(required = false) Map<String, Object> body) {
         AuthUser current = auth.requireCurrent(request);
-        return ok(store.updateSelf(current, bodyOrEmpty(body)));
+        return ok(store.updateSelf(current, request, bodyOrEmpty(body)));
     }
 
     @GetMapping("/admin/members")
@@ -106,7 +107,7 @@ class ProfileController {
                                                        @RequestBody(required = false) Map<String, Object> body) {
         AuthUser current = auth.requireCurrent(request);
         requireWriter(current);
-        return created(store.activateMember(current, auth, bodyOrEmpty(body)));
+        return created(store.activateMember(current, auth, request, bodyOrEmpty(body)));
     }
 
     @PatchMapping("/admin/members/{memberId}")
@@ -115,7 +116,7 @@ class ProfileController {
                                                      @RequestBody(required = false) Map<String, Object> body) {
         AuthUser current = auth.requireCurrent(request);
         requireWriter(current);
-        return ok(store.updateMember(current, memberId, bodyOrEmpty(body)));
+        return ok(store.updateMember(current, request, memberId, bodyOrEmpty(body)));
     }
 
     @PatchMapping("/admin/members/{memberId}/status")
@@ -124,7 +125,7 @@ class ProfileController {
                                                      @RequestBody(required = false) Map<String, Object> body) {
         AuthUser current = auth.requireCurrent(request);
         requireWriter(current);
-        return ok(store.updateStatus(current, memberId, bodyOrEmpty(body)));
+        return ok(store.updateStatus(current, request, memberId, bodyOrEmpty(body)));
     }
 
     @GetMapping("/admin/groups")
@@ -140,7 +141,7 @@ class ProfileController {
                                                     @RequestBody(required = false) Map<String, Object> body) {
         AuthUser current = auth.requireCurrent(request);
         requireWriter(current);
-        return created(store.createGroup(current, bodyOrEmpty(body)));
+        return created(store.createGroup(current, request, bodyOrEmpty(body)));
     }
 
     @PatchMapping("/admin/groups/{groupId}")
@@ -149,7 +150,7 @@ class ProfileController {
                                                     @RequestBody(required = false) Map<String, Object> body) {
         AuthUser current = auth.requireCurrent(request);
         requireWriter(current);
-        return ok(store.updateGroup(current, groupId, bodyOrEmpty(body)));
+        return ok(store.updateGroup(current, request, groupId, bodyOrEmpty(body)));
     }
 
     @PatchMapping("/admin/groups/{groupId}/archive")
@@ -158,7 +159,7 @@ class ProfileController {
                                                      @RequestBody(required = false) Map<String, Object> body) {
         AuthUser current = auth.requireCurrent(request);
         requireWriter(current);
-        return ok(store.archiveGroup(current, groupId, bodyOrEmpty(body)));
+        return ok(store.archiveGroup(current, request, groupId, bodyOrEmpty(body)));
     }
 
     @PutMapping("/admin/members/{memberId}/milestones")
@@ -167,7 +168,7 @@ class ProfileController {
                                                           @RequestBody(required = false) Map<String, Object> body) {
         AuthUser current = auth.requireCurrent(request);
         requireWriter(current);
-        return ok(store.replaceMilestones(current, memberId, bodyOrEmpty(body)));
+        return ok(store.replaceMilestones(current, request, memberId, bodyOrEmpty(body)));
     }
 
     @PutMapping("/admin/members/{memberId}/work-snapshots")
@@ -176,7 +177,7 @@ class ProfileController {
                                                      @RequestBody(required = false) Map<String, Object> body) {
         AuthUser current = auth.requireCurrent(request);
         requireWriter(current);
-        return ok(store.replaceWorks(current, memberId, bodyOrEmpty(body)));
+        return ok(store.replaceWorks(current, request, memberId, bodyOrEmpty(body)));
     }
 
     @GetMapping("/admin/members/{memberId}/audit-logs")
@@ -544,7 +545,7 @@ class ProfileStore {
         return currentView(profileByUserId(userId));
     }
 
-    synchronized Map<String, Object> updateSelf(AuthUser actor, Map<String, Object> body) {
+    synchronized Map<String, Object> updateSelf(AuthUser actor, HttpServletRequest request, Map<String, Object> body) {
         MemberProfile profile = profileByUserId(actor.userId);
         if ("REMOVED".equals(profile.status) || "ARCHIVED".equals(profile.status)) {
             throw new ApiException(43212, HttpStatus.CONFLICT, "invalid status");
@@ -571,7 +572,7 @@ class ProfileStore {
         if (body.containsKey("bio")) next.bio = bio;
         if (visibility != null) next.visibility = visibility;
         next.updatedAt = now();
-        audit("PROFILE_SELF_UPDATED", actor, profile.memberId, reason, state(profile), state(next));
+        audit("PROFILE_SELF_UPDATED", actor, request, profile.memberId, reason, Set.of("avatarUrl", "skinUrl", "bio", "visibility"), state(profile), state(next));
         profilesById.put(profile.memberId, next);
         return currentView(next);
     }
@@ -598,7 +599,7 @@ class ProfileStore {
         return adminProfile(profile(memberId));
     }
 
-    synchronized Map<String, Object> activateMember(AuthUser actor, ProfileAuthContextProvider auth, Map<String, Object> body) {
+    synchronized Map<String, Object> activateMember(AuthUser actor, ProfileAuthContextProvider auth, HttpServletRequest request, Map<String, Object> body) {
         String userId = requiredString(body, "userId");
         String reason = requiredString(body, "reason");
         String idempotencyKey = optionalString(body, "idempotencyKey");
@@ -629,7 +630,7 @@ class ProfileStore {
         validateUrlNullable(profile.avatarUrl, "avatarUrl");
         validateUrlNullable(profile.skinUrl, "skinUrl");
         validateLengthNullable(profile.bio, 1000, "bio");
-        audit("PROFILE_MEMBER_ACTIVATED", actor, profile.memberId, reason, null, state(profile));
+        audit("PROFILE_MEMBER_ACTIVATED", actor, request, profile.memberId, reason, Set.of("userId", "groupId", "joinedAt", "visibility"), null, state(profile));
         profilesById.put(profile.memberId, profile);
         memberIdByUserId.put(userId, profile.memberId);
         Map<String, Object> payload = adminProfile(profile);
@@ -639,7 +640,7 @@ class ProfileStore {
         return payload;
     }
 
-    synchronized Map<String, Object> updateMember(AuthUser actor, String memberId, Map<String, Object> body) {
+    synchronized Map<String, Object> updateMember(AuthUser actor, HttpServletRequest request, String memberId, Map<String, Object> body) {
         MemberProfile current = profile(memberId);
         String reason = requiredString(body, "reason");
         if ("ARCHIVED".equals(current.status) && "PUBLIC".equals(optionalString(body, "visibility"))) {
@@ -655,19 +656,19 @@ class ProfileStore {
         if (body.containsKey("minecraftUuid")) next.minecraftUuid = optionalString(body, "minecraftUuid");
         if (body.containsKey("skinUrl")) next.skinUrl = optionalString(body, "skinUrl");
         if (body.containsKey("groupId")) next.groupId = optionalString(body, "groupId");
-        if (body.containsKey("joinedAt")) next.joinedAt = optionalString(body, "joinedAt") == null ? null : Instant.parse(optionalString(body, "joinedAt"));
+        if (body.containsKey("joinedAt")) next.joinedAt = optionalInstant(body, "joinedAt", null);
         if (body.containsKey("bio")) next.bio = optionalString(body, "bio");
         if (body.containsKey("visibility")) next.visibility = requiredString(body, "visibility");
         if (body.containsKey("adminNote")) next.adminNote = optionalString(body, "adminNote");
         validateProfilePatch(next);
         ensureMinecraftUnique(memberId, next.minecraftId, next.minecraftUuid);
         next.updatedAt = now();
-        audit("PROFILE_MEMBER_UPDATED", actor, memberId, reason, state(current), state(next));
+        audit("PROFILE_MEMBER_UPDATED", actor, request, memberId, reason, changedFields(body), state(current), state(next));
         profilesById.put(memberId, next);
         return adminProfile(next);
     }
 
-    synchronized Map<String, Object> updateStatus(AuthUser actor, String memberId, Map<String, Object> body) {
+    synchronized Map<String, Object> updateStatus(AuthUser actor, HttpServletRequest request, String memberId, Map<String, Object> body) {
         MemberProfile current = profile(memberId);
         String status = requiredString(body, "status");
         String reason = requiredString(body, "reason");
@@ -683,7 +684,7 @@ class ProfileStore {
         if ("ARCHIVED".equals(status)) {
             next.archivedAt = now();
         }
-        audit("PROFILE_MEMBER_STATUS_CHANGED", actor, memberId, reason, current.status, status);
+        audit("PROFILE_MEMBER_STATUS_CHANGED", actor, request, memberId, reason, Set.of("status"), current.status, status);
         profilesById.put(memberId, next);
         return adminProfile(next);
     }
@@ -696,7 +697,7 @@ class ProfileStore {
                 .toList();
     }
 
-    synchronized Map<String, Object> createGroup(AuthUser actor, Map<String, Object> body) {
+    synchronized Map<String, Object> createGroup(AuthUser actor, HttpServletRequest request, Map<String, Object> body) {
         String name = requiredString(body, "name");
         String reason = requiredString(body, "reason");
         validateGroupFields(name, optionalString(body, "description"), optionalString(body, "color"));
@@ -712,7 +713,7 @@ class ProfileStore {
         }
         ensureGroupNameAvailable(name, null);
         MemberGroup group = new MemberGroup("grp_" + UUID.randomUUID(), name, optionalString(body, "description"), optionalString(body, "color"), intOrDefault(body, "sortOrder", 100), false, now(), now(), null);
-        audit("PROFILE_GROUP_CREATED", actor, group.id, reason, null, group.name);
+        audit("PROFILE_GROUP_CREATED", actor, request, group.id, reason, Set.of("name", "description", "color", "sortOrder"), null, group.name);
         groupsById.put(group.id, group);
         Map<String, Object> payload = groupMap(group);
         if (idempotencyKey != null) {
@@ -721,7 +722,7 @@ class ProfileStore {
         return payload;
     }
 
-    synchronized Map<String, Object> updateGroup(AuthUser actor, String groupId, Map<String, Object> body) {
+    synchronized Map<String, Object> updateGroup(AuthUser actor, HttpServletRequest request, String groupId, Map<String, Object> body) {
         MemberGroup group = group(groupId);
         String reason = requiredString(body, "reason");
         MemberGroup next = group.copy();
@@ -732,12 +733,12 @@ class ProfileStore {
         validateGroupFields(next.name, next.description, next.color);
         ensureGroupNameAvailable(next.name, groupId);
         next.updatedAt = now();
-        audit("PROFILE_GROUP_UPDATED", actor, groupId, reason, group.name, next.name);
+        audit("PROFILE_GROUP_UPDATED", actor, request, groupId, reason, changedFields(body), group.name, next.name);
         groupsById.put(groupId, next);
         return groupMap(next);
     }
 
-    synchronized Map<String, Object> archiveGroup(AuthUser actor, String groupId, Map<String, Object> body) {
+    synchronized Map<String, Object> archiveGroup(AuthUser actor, HttpServletRequest request, String groupId, Map<String, Object> body) {
         MemberGroup group = group(groupId);
         String reason = requiredString(body, "reason");
         if (group.archived) {
@@ -751,31 +752,31 @@ class ProfileStore {
         next.archived = true;
         next.archivedAt = now();
         next.updatedAt = now();
-        audit("PROFILE_GROUP_ARCHIVED", actor, groupId, reason, group.name, "archived");
+        audit("PROFILE_GROUP_ARCHIVED", actor, request, groupId, reason, Set.of("archived"), group.name, "archived");
         groupsById.put(groupId, next);
         return groupMap(next);
     }
 
-    synchronized Map<String, Object> replaceMilestones(AuthUser actor, String memberId, Map<String, Object> body) {
+    synchronized Map<String, Object> replaceMilestones(AuthUser actor, HttpServletRequest request, String memberId, Map<String, Object> body) {
         MemberProfile profile = profile(memberId);
         String reason = requiredString(body, "reason");
         List<MemberMilestone> nextItems = milestoneItems(body.get("items"));
         MemberProfile next = profile.copy();
         next.milestones = nextItems;
         next.updatedAt = now();
-        audit("PROFILE_MEMBER_MILESTONES_REPLACED", actor, memberId, reason, String.valueOf(profile.milestones.size()), String.valueOf(nextItems.size()));
+        audit("PROFILE_MEMBER_MILESTONES_REPLACED", actor, request, memberId, reason, Set.of("items"), String.valueOf(profile.milestones.size()), String.valueOf(nextItems.size()));
         profilesById.put(memberId, next);
         return adminProfile(next);
     }
 
-    synchronized Map<String, Object> replaceWorks(AuthUser actor, String memberId, Map<String, Object> body) {
+    synchronized Map<String, Object> replaceWorks(AuthUser actor, HttpServletRequest request, String memberId, Map<String, Object> body) {
         MemberProfile profile = profile(memberId);
         String reason = requiredString(body, "reason");
         List<MemberWork> nextItems = workItems(body.get("items"));
         MemberProfile next = profile.copy();
         next.works = nextItems;
         next.updatedAt = now();
-        audit("PROFILE_MEMBER_WORKS_REPLACED", actor, memberId, reason, String.valueOf(profile.works.size()), String.valueOf(nextItems.size()));
+        audit("PROFILE_MEMBER_WORKS_REPLACED", actor, request, memberId, reason, Set.of("items"), String.valueOf(profile.works.size()), String.valueOf(nextItems.size()));
         profilesById.put(memberId, next);
         return adminProfile(next);
     }
@@ -806,7 +807,7 @@ class ProfileStore {
             if (!MILESTONE_TYPES.contains(type)) throw ApiException.badRequest("type");
             validateLength(title, 2, 80, "title");
             String id = optionalString(map, "id");
-            items.add(new MemberMilestone(id == null ? "milestone_" + UUID.randomUUID() : id, type, title, optionalString(map, "description"), Instant.parse(requiredString(map, "happenedAt")), booleanValue(map, "publicVisible"), intValue(map, "sortOrder"), now(), now()));
+            items.add(new MemberMilestone(id == null ? "milestone_" + UUID.randomUUID() : id, type, title, optionalString(map, "description"), requiredInstant(map, "happenedAt"), booleanValue(map, "publicVisible"), intValue(map, "sortOrder"), now(), now()));
         }
         return items.stream().sorted(Comparator.comparingInt((MemberMilestone item) -> item.sortOrder).thenComparing(item -> item.happenedAt)).toList();
     }
@@ -960,7 +961,25 @@ class ProfileStore {
     }
 
     private Map<String, Object> auditMap(ProfileAudit audit) {
-        return ProfileController.mapOf("id", audit.id, "requestId", audit.requestId, "actorUserId", audit.actorUserId, "actorRole", audit.actorRole, "targetType", "MEMBER_PROFILE", "targetId", audit.targetId, "action", audit.action, "riskLevel", "MEDIUM", "reason", audit.reason, "paramsSummary", null, "beforeState", audit.beforeState, "afterState", audit.afterState, "result", "SUCCESS", "failureReason", null, "createdAt", audit.createdAt.toString());
+        return ProfileController.mapOf(
+                "id", audit.id,
+                "requestId", audit.requestId,
+                "actorUserId", audit.actorUserId,
+                "actorRole", audit.actorRole,
+                "actorPermissions", audit.actorPermissions,
+                "sourceIp", audit.sourceIp,
+                "targetType", "MEMBER_PROFILE",
+                "targetId", audit.targetId,
+                "action", audit.action,
+                "riskLevel", audit.riskLevel,
+                "reason", audit.reason,
+                "paramsSummary", audit.paramsSummary,
+                "beforeState", audit.beforeState,
+                "afterState", audit.afterState,
+                "result", audit.result,
+                "failureReason", audit.failureReason,
+                "createdAt", audit.createdAt.toString()
+        );
     }
 
     private MemberProfile profile(String memberId) {
@@ -1026,12 +1045,29 @@ class ProfileStore {
         }
     }
 
-    private void audit(String action, AuthUser actor, String targetId, String reason, String before, String after) {
+    private void audit(String action, AuthUser actor, HttpServletRequest request, String targetId, String reason, Set<String> changedFields, String before, String after) {
         if (failNextAudit) {
             failNextAudit = false;
             throw new AuditWriteException("profile audit failed");
         }
-        audits.add(new ProfileAudit("aud_" + UUID.randomUUID(), RequestIdFilter.currentRequestId(), actor.userId, String.join(",", actor.roles), targetId, action, reason, before, after, now()));
+        audits.add(new ProfileAudit(
+                "aud_" + UUID.randomUUID(),
+                RequestIdFilter.currentRequestId(),
+                actor.userId,
+                String.join(",", actor.roles),
+                String.join(",", actor.permissions),
+                sourceIp(request),
+                targetId,
+                action,
+                reason,
+                paramsSummary(changedFields),
+                before,
+                after,
+                "MEDIUM",
+                "SUCCESS",
+                null,
+                now()
+        ));
     }
 
     private Map<String, Object> page(List<Map<String, Object>> rows, int page, int pageSize) {
@@ -1082,7 +1118,23 @@ class ProfileStore {
 
     private Instant optionalInstant(Map<String, Object> body, String field, Instant fallback) {
         String value = optionalString(body, field);
-        return value == null ? fallback : Instant.parse(value);
+        if (value == null) {
+            return fallback;
+        }
+        try {
+            return Instant.parse(value);
+        } catch (DateTimeParseException ex) {
+            throw ApiException.badRequest(field);
+        }
+    }
+
+    private Instant requiredInstant(Map<String, Object> body, String field) {
+        String value = requiredString(body, field);
+        try {
+            return Instant.parse(value);
+        } catch (DateTimeParseException ex) {
+            throw ApiException.badRequest(field);
+        }
     }
 
     private void validateUrlNullable(String value, String field) {
@@ -1106,10 +1158,42 @@ class ProfileStore {
 
     private String signature(Object value) {
         try {
-            return objectMapper.writeValueAsString(value);
+            return objectMapper.writeValueAsString(canonicalize(value));
         } catch (JsonProcessingException e) {
             return String.valueOf(value);
         }
+    }
+
+    private Object canonicalize(Object value) {
+        if (value instanceof Map<?, ?> rawMap) {
+            Map<String, Object> sorted = new java.util.TreeMap<>();
+            rawMap.forEach((key, item) -> sorted.put(String.valueOf(key), canonicalize(item)));
+            return sorted;
+        }
+        if (value instanceof List<?> rows) {
+            return rows.stream().map(this::canonicalize).toList();
+        }
+        return value;
+    }
+
+    private Set<String> changedFields(Map<String, Object> body) {
+        LinkedHashSet<String> fields = new LinkedHashSet<>(body.keySet());
+        fields.remove("reason");
+        fields.remove("idempotencyKey");
+        return fields;
+    }
+
+    private String paramsSummary(Set<String> changedFields) {
+        return "fields=" + changedFields.stream().sorted().toList();
+    }
+
+    private String sourceIp(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            return forwarded.split(",")[0].trim();
+        }
+        String remote = request.getRemoteAddr();
+        return remote == null || remote.isBlank() ? null : remote;
     }
 
     private String state(MemberProfile profile) {
@@ -1204,6 +1288,7 @@ class ProfileExceptionHandler {
 @Component
 class RequestIdFilter extends OncePerRequestFilter {
     private static final ThreadLocal<String> REQUEST_ID = new ThreadLocal<>();
+    private static final Pattern REQUEST_ID_PATTERN = Pattern.compile("[A-Za-z0-9_.:-]{1,128}");
 
     static String currentRequestId() {
         String id = REQUEST_ID.get();
@@ -1215,6 +1300,15 @@ class RequestIdFilter extends OncePerRequestFilter {
         String requestId = request.getHeader("X-Request-Id");
         if (requestId == null || requestId.isBlank()) {
             requestId = "req_" + UUID.randomUUID();
+        } else if (!REQUEST_ID_PATTERN.matcher(requestId).matches()) {
+            REQUEST_ID.set("req_invalid");
+            response.setStatus(HttpStatus.BAD_REQUEST.value());
+            response.setHeader("X-Request-Id", "req_invalid");
+            response.setContentType("application/json");
+            response.setCharacterEncoding("UTF-8");
+            response.getWriter().write("{\"code\":40001,\"message\":\"invalid request\",\"data\":null,\"requestId\":\"req_invalid\",\"errors\":[{\"field\":\"X-Request-Id\",\"reason\":\"invalid request\"}]}");
+            REQUEST_ID.remove();
+            return;
         }
         REQUEST_ID.set(requestId);
         response.setHeader("X-Request-Id", requestId);
@@ -1425,23 +1519,35 @@ class ProfileAudit {
     final String requestId;
     final String actorUserId;
     final String actorRole;
+    final String actorPermissions;
+    final String sourceIp;
     final String targetId;
     final String action;
     final String reason;
+    final String paramsSummary;
     final String beforeState;
     final String afterState;
+    final String riskLevel;
+    final String result;
+    final String failureReason;
     final Instant createdAt;
 
-    ProfileAudit(String id, String requestId, String actorUserId, String actorRole, String targetId, String action, String reason, String beforeState, String afterState, Instant createdAt) {
+    ProfileAudit(String id, String requestId, String actorUserId, String actorRole, String actorPermissions, String sourceIp, String targetId, String action, String reason, String paramsSummary, String beforeState, String afterState, String riskLevel, String result, String failureReason, Instant createdAt) {
         this.id = id;
         this.requestId = requestId;
         this.actorUserId = actorUserId;
         this.actorRole = actorRole;
+        this.actorPermissions = actorPermissions;
+        this.sourceIp = sourceIp;
         this.targetId = targetId;
         this.action = action;
         this.reason = reason;
+        this.paramsSummary = paramsSummary;
         this.beforeState = beforeState;
         this.afterState = afterState;
+        this.riskLevel = riskLevel;
+        this.result = result;
+        this.failureReason = failureReason;
         this.createdAt = createdAt;
     }
 }

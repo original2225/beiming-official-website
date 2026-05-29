@@ -35,6 +35,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class ProfileApiContractTest {
     private static final String TEST_DOCUMENT_COVERAGE = """
             PROF-COM-001 PROF-COM-002 PROF-COM-003 PROF-COM-004 PROF-COM-005 PROF-COM-006 PROF-COM-007 PROF-COM-008 PROF-COM-009 PROF-COM-010
+            PROF-COM-011 PROF-COM-012 PROF-COM-013 PROF-COM-014 PROF-COM-015
             PROF-AUTH-001 PROF-AUTH-002 PROF-AUTH-003 PROF-AUTH-004 PROF-AUTH-005 PROF-AUTH-006 PROF-AUTH-007 PROF-AUTH-008 PROF-AUTH-009 PROF-AUTH-010 PROF-AUTH-011 PROF-AUTH-012 PROF-AUTH-013 PROF-AUTH-014 PROF-AUTH-015 PROF-AUTH-016
             PROF-GW-AUTH-001 PROF-GW-AUTH-002 PROF-GW-AUTH-003 PROF-GW-AUTH-004 PROF-GW-AUTH-005 PROF-GW-AUTH-006 PROF-GW-AUTH-007 PROF-GW-AUTH-008 PROF-GW-AUTH-009 PROF-GW-AUTH-010 PROF-GW-AUTH-011 PROF-GW-AUTH-012
             PROF-PUB-LIST-001 PROF-PUB-LIST-002 PROF-PUB-LIST-003 PROF-PUB-LIST-004 PROF-PUB-LIST-005 PROF-PUB-LIST-006 PROF-PUB-LIST-007 PROF-PUB-LIST-008 PROF-PUB-LIST-009 PROF-PUB-LIST-010
@@ -82,8 +83,8 @@ class ProfileApiContractTest {
         Set<String> mapped = pattern.matcher(TEST_DOCUMENT_COVERAGE).results()
                 .map(java.util.regex.MatchResult::group)
                 .collect(java.util.stream.Collectors.toCollection(java.util.TreeSet::new));
-        assertThat(mapped).hasSize(166);
-        assertThat(TEST_DOCUMENT_COVERAGE).contains("PROF-COM-001", "PROF-AUTH-016", "PROF-GW-AUTH-012", "PROF-ACTIVATE-018", "PROF-SEC-008");
+        assertThat(mapped).hasSize(171);
+        assertThat(TEST_DOCUMENT_COVERAGE).contains("PROF-COM-001", "PROF-COM-015", "PROF-AUTH-016", "PROF-GW-AUTH-012", "PROF-ACTIVATE-018", "PROF-SEC-008");
     }
 
     @Test
@@ -131,6 +132,36 @@ class ProfileApiContractTest {
         mvc.perform(get("/api/v1/profile/admin/members").header("Authorization", bearer("user-token")))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value(42001));
+    }
+
+    @Test
+    @DisplayName("PROF-COM-011/012/013 reject malformed request ids and time fields as validation errors")
+    void requestIdAndTimeValidationContract() throws Exception {
+        mvc.perform(get("/api/v1/profile/members")
+                        .header("X-Request-Id", "bad request id"))
+                .andExpect(status().isBadRequest())
+                .andExpect(header().string("X-Request-Id", "req_invalid"))
+                .andExpect(jsonPath("$.code").value(40001))
+                .andExpect(jsonPath("$.requestId").value("req_invalid"))
+                .andExpect(jsonPath("$.errors[0].field").value("X-Request-Id"));
+
+        String memberId = store.memberIdByUserId("active_member");
+        String beforeBio = store.profileBioByUserId("active_member");
+        performJson(patch("/api/v1/profile/admin/members/" + memberId)
+                .header("Authorization", bearer("admin-token")), Map.of(
+                "joinedAt", "bad-time",
+                "bio", "Should not persist",
+                "reason", "bad joinedAt"
+        ), 400, 40001);
+        assertThat(store.profileBioByUserId("active_member")).isEqualTo(beforeBio);
+
+        int before = store.milestoneCount(store.memberIdByUserId("member_with_milestones"));
+        performJson(put("/api/v1/profile/admin/members/" + store.memberIdByUserId("member_with_milestones") + "/milestones")
+                .header("Authorization", bearer("admin-token")), Map.of(
+                "items", List.of(Map.of("type", "PROJECT", "title", "Bad Time", "happenedAt", "bad-time", "publicVisible", true, "sortOrder", 1)),
+                "reason", "bad happenedAt"
+        ), 400, 40001);
+        assertThat(store.milestoneCount(store.memberIdByUserId("member_with_milestones"))).isEqualTo(before);
     }
 
     @Test
@@ -502,6 +533,24 @@ class ProfileApiContractTest {
         ), 201);
         assertThat(retried.at("/data/id").asText()).isEqualTo(created.at("/data/id").asText());
 
+        JsonNode ordered = performJson(post("/api/v1/profile/admin/groups").header("Authorization", bearer("admin-token")), mapOf(
+                "name", "Order Test",
+                "description", "Same semantic body",
+                "color", "#654321",
+                "sortOrder", 11,
+                "reason", "canonical",
+                "idempotencyKey", "group-idem-order"
+        ), 201);
+        JsonNode reordered = performJson(post("/api/v1/profile/admin/groups").header("Authorization", bearer("admin-token")), mapOf(
+                "idempotencyKey", "group-idem-order",
+                "reason", "canonical",
+                "sortOrder", 11,
+                "color", "#654321",
+                "description", "Same semantic body",
+                "name", "Order Test"
+        ), 201);
+        assertThat(reordered.at("/data/id").asText()).isEqualTo(ordered.at("/data/id").asText());
+
         performJson(post("/api/v1/profile/admin/groups").header("Authorization", bearer("helper-token")), Map.of("name", "HelperGroup", "reason", "bad"), 403, 42001);
         performJson(post("/api/v1/profile/admin/groups").header("Authorization", bearer("admin-token")), Map.of("name", "Builder", "reason", "dup"), 409, 43001);
         performJson(post("/api/v1/profile/admin/groups").header("Authorization", bearer("admin-token")), Map.of("name", "x", "color", "bad", "reason", "bad"), 400, 40001);
@@ -576,11 +625,22 @@ class ProfileApiContractTest {
     @DisplayName("PROF-AUDIT and PROF-SEC cover audit reads, immutability, and auth boundary")
     void auditAndSecurityContract() throws Exception {
         String memberId = store.memberIdByUserId("active_member");
-        performJson(patch("/api/v1/profile/admin/members/" + memberId).header("Authorization", bearer("admin-token")).header("X-Request-Id", "req-profile-audit"), Map.of("bio", "Audit bio", "reason", "audit"), 200);
+        performJson(patch("/api/v1/profile/admin/members/" + memberId)
+                .header("Authorization", bearer("admin-token"))
+                .header("Cookie", "SESSION=secret")
+                .header("X-Forwarded-For", "203.0.113.10")
+                .header("X-Request-Id", "req-profile-audit"), Map.of("bio", "Audit bio", "reason", "audit"), 200);
 
-        mvc.perform(get("/api/v1/profile/admin/members/" + memberId + "/audit-logs").header("Authorization", bearer("admin-token")))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.items[0].requestId").value("req-profile-audit"));
+        JsonNode audit = performJson(get("/api/v1/profile/admin/members/" + memberId + "/audit-logs").header("Authorization", bearer("admin-token")), 200);
+        JsonNode item = audit.at("/data/items/0");
+        assertThat(item.path("requestId").asText()).isEqualTo("req-profile-audit");
+        assertThat(item.hasNonNull("actorPermissions")).isTrue();
+        assertThat(item.path("sourceIp").asText()).isEqualTo("203.0.113.10");
+        assertThat(item.has("paramsSummary")).isTrue();
+        assertThat(item.hasNonNull("riskLevel")).isTrue();
+        assertThat(item.hasNonNull("result")).isTrue();
+        assertThat(item.has("failureReason")).isTrue();
+        assertThat(item.path("paramsSummary").asText()).doesNotContain("admin-token", "SESSION=secret", "Audit bio");
 
         mvc.perform(get("/api/v1/profile/admin/members/" + memberId + "/audit-logs").header("Authorization", bearer("owner-token")))
                 .andExpect(status().isOk());
