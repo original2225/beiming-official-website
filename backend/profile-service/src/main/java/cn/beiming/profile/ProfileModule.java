@@ -290,7 +290,7 @@ class ProfileAuthContextProvider {
 
     AuthUser requireCurrent(HttpServletRequest request) {
         String gatewayRequestId = request.getHeader("X-Gateway-Internal-Request-Id");
-        if (gatewayRequestId != null && !gatewayRequestId.isBlank()) {
+        if (gatewayRequestId != null) {
             return requireGatewayContext(request, gatewayRequestId);
         }
         return requireCurrent(request.getHeader("Authorization"));

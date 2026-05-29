@@ -236,6 +236,11 @@ class ProfileApiContractTest {
                 .header("X-Gateway-Internal-Request-Id", "bad request id")
                 .header("X-Beiming-Actor-User-Id", "active_member")
                 .header("X-Beiming-Actor-Roles", "USER"), 502, 46202);
+
+        performJson(get("/api/v1/profile/me")
+                .header("X-Gateway-Internal-Request-Id", " ")
+                .header("X-Beiming-Actor-User-Id", "active_member")
+                .header("X-Beiming-Actor-Roles", "USER"), 502, 46202);
     }
 
     @Test
