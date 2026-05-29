@@ -477,6 +477,7 @@ class NotificationAuthContextProvider {
 
 @Service
 class NotificationStore {
+    private static final long IDEMPOTENCY_RETENTION_SECONDS = 24 * 60 * 60;
     private static final Set<String> TYPES = Set.of("SYSTEM", "AUDIT", "WHITELIST", "EXAM", "CONTENT", "RESOURCE", "ATTENDANCE", "COMMUNITY", "ACTIVITY", "OPS");
     private static final Set<String> RECIPIENT_STATUSES = Set.of("UNREAD", "READ", "ARCHIVED");
     private static final Set<String> DELIVERY_STATUSES = Set.of("PENDING", "DELIVERED", "FAILED", "CANCELED");
@@ -631,9 +632,13 @@ class NotificationStore {
         NotificationRecipient recipient = message.recipients.get(current.userId);
         if (recipient == null) throw notFoundMessage();
         if (!"ARCHIVED".equals(recipient.status)) {
+            String beforeStatus = recipient.status;
             recipient.status = "ARCHIVED";
             recipient.archivedAt = now();
-            audit("NOTIFICATION_RECIPIENT_ARCHIVED", current, notificationId, reason, "LOW");
+            audit("NOTIFICATION_RECIPIENT_ARCHIVED", current, notificationId, reason, "LOW",
+                    NotificationController.mapOf("notificationId", notificationId, "reasonPresent", reason != null && !reason.isBlank()),
+                    NotificationController.mapOf("status", beforeStatus),
+                    NotificationController.mapOf("status", "ARCHIVED"));
         }
         return recipientView(message, recipient);
     }
@@ -665,6 +670,7 @@ class NotificationStore {
     }
 
     synchronized Map<String, Object> createMessage(AuthUser actor, NotificationAuthContextProvider auth, Map<String, Object> body, boolean fromTemplate) {
+        cleanupExpiredIdempotencyRecords();
         String idempotencyKey = optionalString(body, "idempotencyKey");
         String idempotencyScope = actor.userId + ":" + (fromTemplate ? "template:" : "direct:") + idempotencyKey;
         String signature = signature(body);
@@ -714,12 +720,15 @@ class NotificationStore {
             throw new ApiException(51302, HttpStatus.INTERNAL_SERVER_ERROR, "delivery write failed");
         }
         NotificationMessage message = new NotificationMessage("msg_" + UUID.randomUUID(), title, text, type, channels, sourceModule, sourceId, riskLevel, actionUrl, templateId, templateCode, templateVersion, variables, actor.userId, now(), expiresAt);
-        audit("NOTIFICATION_MESSAGE_CREATED", actor, message.notificationId, reason, riskLevel);
+        audit("NOTIFICATION_MESSAGE_CREATED", actor, message.notificationId, reason, riskLevel,
+                createMessageParams(message, uniqueRecipients.size(), idempotencyKey != null),
+                NotificationController.mapOf("status", "NONE"),
+                NotificationController.mapOf("status", "CREATED", "recipientTotal", uniqueRecipients.size()));
         recipients.forEach(recipient -> message.recipients.put(recipient.recipientUserId, recipient));
         messages.put(message.notificationId, message);
         Map<String, Object> payload = adminMessageMap(message);
         if (idempotencyKey != null) {
-            messageIdempotency.put(idempotencyScope, new IdempotencyRecord(signature, payload));
+            messageIdempotency.put(idempotencyScope, new IdempotencyRecord(signature, payload, now(), now().plusSeconds(IDEMPOTENCY_RETENTION_SECONDS)));
         }
         return payload;
     }
@@ -806,6 +815,7 @@ class NotificationStore {
     }
 
     synchronized Map<String, Object> createTemplate(AuthUser actor, Map<String, Object> body) {
+        cleanupExpiredIdempotencyRecords();
         String idempotencyKey = optionalString(body, "idempotencyKey");
         String scope = actor.userId + ":" + idempotencyKey;
         String signature = signature(body);
@@ -820,12 +830,15 @@ class NotificationStore {
         if (templateIdByCode.containsKey(candidate.code)) {
             throw new ApiException(43317, HttpStatus.CONFLICT, "template code exists");
         }
-        audit("NOTIFICATION_TEMPLATE_CREATED", actor, candidate.templateId, requiredString(body, "reason"), "MEDIUM");
+        audit("NOTIFICATION_TEMPLATE_CREATED", actor, candidate.templateId, requiredString(body, "reason"), "MEDIUM",
+                templateParams(candidate, idempotencyKey != null),
+                NotificationController.mapOf("status", "NONE"),
+                NotificationController.mapOf("status", candidate.status, "version", candidate.version));
         templates.put(candidate.templateId, candidate);
         templateIdByCode.put(candidate.code, candidate.templateId);
         Map<String, Object> payload = templateMapRecord(candidate);
         if (idempotencyKey != null) {
-            templateIdempotency.put(scope, new IdempotencyRecord(signature, payload));
+            templateIdempotency.put(scope, new IdempotencyRecord(signature, payload, now(), now().plusSeconds(IDEMPOTENCY_RETENTION_SECONDS)));
         }
         return payload;
     }
@@ -839,7 +852,10 @@ class NotificationStore {
             throw new ApiException(43317, HttpStatus.CONFLICT, "template code exists");
         }
         validateTemplate(candidate);
-        audit("NOTIFICATION_TEMPLATE_UPDATED", actor, templateId, reason, "MEDIUM");
+        audit("NOTIFICATION_TEMPLATE_UPDATED", actor, templateId, reason, "MEDIUM",
+                templateParams(candidate, false),
+                NotificationController.mapOf("status", existing.status, "version", existing.version, "code", existing.code),
+                NotificationController.mapOf("status", candidate.status, "version", existing.version + 1, "code", candidate.code));
         if (!candidate.code.equals(existing.code)) {
             templateIdByCode.remove(existing.code);
             templateIdByCode.put(candidate.code, templateId);
@@ -854,7 +870,10 @@ class NotificationStore {
     synchronized Map<String, Object> disableTemplate(AuthUser actor, String templateId, String reason) {
         NotificationTemplateRecord template = template(templateId);
         if (!"DISABLED".equals(template.status)) {
-            audit("NOTIFICATION_TEMPLATE_DISABLED", actor, templateId, reason, "MEDIUM");
+            audit("NOTIFICATION_TEMPLATE_DISABLED", actor, templateId, reason, "MEDIUM",
+                    NotificationController.mapOf("templateId", templateId, "code", template.code),
+                    NotificationController.mapOf("status", template.status),
+                    NotificationController.mapOf("status", "DISABLED"));
             template.status = "DISABLED";
             template.disabledAt = now();
             template.updatedBy = actor.userId;
@@ -867,7 +886,10 @@ class NotificationStore {
         NotificationTemplateRecord template = template(templateId);
         validateTemplate(template);
         if (!"ENABLED".equals(template.status)) {
-            audit("NOTIFICATION_TEMPLATE_ENABLED", actor, templateId, reason, "MEDIUM");
+            audit("NOTIFICATION_TEMPLATE_ENABLED", actor, templateId, reason, "MEDIUM",
+                    NotificationController.mapOf("templateId", templateId, "code", template.code),
+                    NotificationController.mapOf("status", template.status),
+                    NotificationController.mapOf("status", "ENABLED"));
             template.status = "ENABLED";
             template.disabledAt = null;
             template.updatedBy = actor.userId;
@@ -890,6 +912,7 @@ class NotificationStore {
     }
 
     synchronized Map<String, Object> opsSummary() {
+        cleanupExpiredIdempotencyRecords();
         int recipientsTotal = messages.values().stream().mapToInt(message -> message.recipients.size()).sum();
         long unreadTotal = messages.values().stream()
                 .flatMap(message -> message.recipients.values().stream())
@@ -925,6 +948,9 @@ class NotificationStore {
                 "deliveredTotal", (int) deliveredTotal,
                 "failedTotal", (int) failedTotal,
                 "pendingExternalDeliveries", 0,
+                "idempotencyRecordsTotal", messageIdempotency.size() + templateIdempotency.size(),
+                "idempotencyRetentionHours", 24,
+                "auditCompletenessMode", "SAFE_SUMMARY",
                 "lastAuditAt", lastAuditAt,
                 "warnings", List.of("P0_IN_MEMORY_STORAGE", "P0_AUTH_STUB")
         );
@@ -1057,11 +1083,31 @@ class NotificationStore {
     }
 
     private void audit(String action, AuthUser actor, String targetId, String reason, String riskLevel) {
+        audit(action, actor, targetId, reason, riskLevel, null, null, null);
+    }
+
+    private void audit(String action, AuthUser actor, String targetId, String reason, String riskLevel, Map<String, Object> paramsSummary, Map<String, Object> beforeState, Map<String, Object> afterState) {
         if (failNextAudit) {
             failNextAudit = false;
             throw new ApiException(51301, HttpStatus.INTERNAL_SERVER_ERROR, "notification audit failed");
         }
-        audits.add(new NotificationAudit("aud_" + UUID.randomUUID(), RequestIdFilter.currentRequestId(), actor.userId, String.join(",", actor.roles), targetId, action, reason, "SUCCESS", now()));
+        audits.add(new NotificationAudit(
+                "aud_" + UUID.randomUUID(),
+                RequestIdFilter.currentRequestId(),
+                actor.userId,
+                String.join(",", actor.roles),
+                new ArrayList<>(actor.permissions),
+                RequestContext.currentSourceIp(),
+                targetId,
+                action,
+                riskLevel,
+                reason,
+                paramsSummary == null ? NotificationController.mapOf("action", action) : paramsSummary,
+                beforeState == null ? NotificationController.mapOf("status", "UNKNOWN") : beforeState,
+                afterState == null ? NotificationController.mapOf("status", "UNKNOWN") : afterState,
+                "SUCCESS",
+                null,
+                now()));
     }
 
     private Map<String, Object> recipientView(NotificationMessage message, NotificationRecipient recipient) {
@@ -1158,20 +1204,50 @@ class NotificationStore {
                 "requestId", audit.requestId,
                 "actorUserId", audit.actorUserId,
                 "actorRole", audit.actorRole,
-                "actorPermissions", List.of(),
-                "sourceIp", null,
+                "actorPermissions", audit.actorPermissions,
+                "sourceIp", audit.sourceIp,
                 "targetType", "NOTIFICATION",
                 "targetId", audit.targetId,
                 "action", audit.action,
-                "riskLevel", "MEDIUM",
+                "riskLevel", audit.riskLevel,
                 "reason", audit.reason,
-                "paramsSummary", null,
-                "beforeState", null,
-                "afterState", null,
+                "paramsSummary", audit.paramsSummary,
+                "beforeState", audit.beforeState,
+                "afterState", audit.afterState,
                 "result", audit.result,
-                "failureReason", null,
+                "failureReason", audit.failureReason,
                 "createdAt", audit.createdAt.toString()
         );
+    }
+
+    private Map<String, Object> createMessageParams(NotificationMessage message, int recipientTotal, boolean hasIdempotencyKey) {
+        return NotificationController.mapOf(
+                "sourceModule", message.sourceModule,
+                "sourceId", message.sourceId,
+                "recipientTotal", recipientTotal,
+                "channels", message.channels,
+                "riskLevel", message.riskLevel,
+                "idempotencyKeyPresent", hasIdempotencyKey,
+                "templateCode", message.templateCode
+        );
+    }
+
+    private Map<String, Object> templateParams(NotificationTemplateRecord template, boolean hasIdempotencyKey) {
+        return NotificationController.mapOf(
+                "templateId", template.templateId,
+                "code", template.code,
+                "type", template.type,
+                "channels", template.channels,
+                "status", template.status,
+                "version", template.version,
+                "idempotencyKeyPresent", hasIdempotencyKey
+        );
+    }
+
+    private void cleanupExpiredIdempotencyRecords() {
+        Instant current = now();
+        messageIdempotency.entrySet().removeIf(entry -> entry.getValue().isExpired(current));
+        templateIdempotency.entrySet().removeIf(entry -> entry.getValue().isExpired(current));
     }
 
     private NotificationMessage message(String notificationId) {
@@ -1410,6 +1486,12 @@ class NotificationStore {
     boolean whitelistStatusChanged() {
         return whitelistStatusChanged;
     }
+
+    synchronized void expireIdempotencyRecordsForTest() {
+        Instant expiredAt = now().minusSeconds(1);
+        messageIdempotency.values().forEach(record -> record.expiresAt = expiredAt);
+        templateIdempotency.values().forEach(record -> record.expiresAt = expiredAt);
+    }
 }
 
 @RestControllerAdvice
@@ -1456,21 +1538,54 @@ class RequestIdFilter extends OncePerRequestFilter {
             requestId = "req_" + UUID.randomUUID();
         } else if (!REQUEST_ID_PATTERN.matcher(requestId).matches()) {
             REQUEST_ID.set("req_invalid");
+            RequestContext.setSourceIp(resolveSourceIp(request));
             response.setStatus(HttpStatus.BAD_REQUEST.value());
             response.setHeader("X-Request-Id", "req_invalid");
             response.setContentType("application/json");
             response.setCharacterEncoding("UTF-8");
             response.getWriter().write("{\"code\":40001,\"message\":\"invalid request\",\"data\":null,\"requestId\":\"req_invalid\",\"errors\":[{\"field\":\"X-Request-Id\",\"reason\":\"invalid request\"}]}");
             REQUEST_ID.remove();
+            RequestContext.clear();
             return;
         }
         REQUEST_ID.set(requestId);
+        RequestContext.setSourceIp(resolveSourceIp(request));
         response.setHeader("X-Request-Id", requestId);
         try {
             filterChain.doFilter(request, response);
         } finally {
             REQUEST_ID.remove();
+            RequestContext.clear();
         }
+    }
+
+    private String resolveSourceIp(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            String first = forwarded.split(",")[0].trim();
+            if (!first.isBlank()) {
+                return first;
+            }
+        }
+        String remote = request.getRemoteAddr();
+        return remote == null || remote.isBlank() ? "unknown" : remote;
+    }
+}
+
+class RequestContext {
+    private static final ThreadLocal<String> SOURCE_IP = new ThreadLocal<>();
+
+    static String currentSourceIp() {
+        String value = SOURCE_IP.get();
+        return value == null || value.isBlank() ? "unknown" : value;
+    }
+
+    static void setSourceIp(String value) {
+        SOURCE_IP.set(value == null || value.isBlank() ? "unknown" : value);
+    }
+
+    static void clear() {
+        SOURCE_IP.remove();
     }
 }
 
@@ -1638,21 +1753,41 @@ class NotificationAudit {
     final String requestId;
     final String actorUserId;
     final String actorRole;
+    final List<String> actorPermissions;
+    final String sourceIp;
     final String targetId;
     final String action;
+    final String riskLevel;
     final String reason;
+    final Map<String, Object> paramsSummary;
+    final Map<String, Object> beforeState;
+    final Map<String, Object> afterState;
     final String result;
+    final String failureReason;
     final Instant createdAt;
 
     NotificationAudit(String id, String requestId, String actorUserId, String actorRole, String targetId, String action, String reason, String result, Instant createdAt) {
+        this(id, requestId, actorUserId, actorRole, List.of(), "unknown", targetId, action, "MEDIUM", reason,
+                NotificationController.mapOf("action", action), NotificationController.mapOf("status", "UNKNOWN"),
+                NotificationController.mapOf("status", "UNKNOWN"), result, null, createdAt);
+    }
+
+    NotificationAudit(String id, String requestId, String actorUserId, String actorRole, List<String> actorPermissions, String sourceIp, String targetId, String action, String riskLevel, String reason, Map<String, Object> paramsSummary, Map<String, Object> beforeState, Map<String, Object> afterState, String result, String failureReason, Instant createdAt) {
         this.id = id;
         this.requestId = requestId;
         this.actorUserId = actorUserId;
         this.actorRole = actorRole;
+        this.actorPermissions = new ArrayList<>(actorPermissions);
+        this.sourceIp = sourceIp;
         this.targetId = targetId;
         this.action = action;
+        this.riskLevel = riskLevel;
         this.reason = reason;
+        this.paramsSummary = paramsSummary;
+        this.beforeState = beforeState;
+        this.afterState = afterState;
         this.result = result;
+        this.failureReason = failureReason;
         this.createdAt = createdAt;
     }
 }
@@ -1660,9 +1795,21 @@ class NotificationAudit {
 class IdempotencyRecord {
     final String signature;
     final Map<String, Object> payload;
+    final Instant createdAt;
+    Instant expiresAt;
 
     IdempotencyRecord(String signature, Map<String, Object> payload) {
+        this(signature, payload, Instant.now(), Instant.now().plusSeconds(24 * 60 * 60));
+    }
+
+    IdempotencyRecord(String signature, Map<String, Object> payload, Instant createdAt, Instant expiresAt) {
         this.signature = signature;
         this.payload = payload;
+        this.createdAt = createdAt;
+        this.expiresAt = expiresAt;
+    }
+
+    boolean isExpired(Instant now) {
+        return !expiresAt.isAfter(now);
     }
 }
