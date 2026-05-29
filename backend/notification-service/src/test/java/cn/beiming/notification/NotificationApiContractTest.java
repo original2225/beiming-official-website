@@ -34,6 +34,7 @@ class NotificationApiContractTest {
     private static final String TEST_DOCUMENT_COVERAGE = """
             NOTIF-COM-001 NOTIF-COM-002 NOTIF-COM-003 NOTIF-COM-004 NOTIF-COM-005 NOTIF-COM-006 NOTIF-COM-007 NOTIF-COM-008 NOTIF-COM-009 NOTIF-COM-010 NOTIF-COM-011 NOTIF-COM-012
             NOTIF-AUTH-001 NOTIF-AUTH-002 NOTIF-AUTH-003 NOTIF-AUTH-004 NOTIF-AUTH-005 NOTIF-AUTH-006 NOTIF-AUTH-007 NOTIF-AUTH-008 NOTIF-AUTH-009 NOTIF-AUTH-010 NOTIF-AUTH-011 NOTIF-AUTH-012 NOTIF-AUTH-013 NOTIF-AUTH-014 NOTIF-AUTH-015 NOTIF-AUTH-016 NOTIF-AUTH-017 NOTIF-AUTH-018
+            NOTIF-GW-AUTH-001 NOTIF-GW-AUTH-002 NOTIF-GW-AUTH-003 NOTIF-GW-AUTH-004 NOTIF-GW-AUTH-005 NOTIF-GW-AUTH-006 NOTIF-GW-AUTH-007 NOTIF-GW-AUTH-008 NOTIF-GW-AUTH-009 NOTIF-GW-AUTH-010 NOTIF-GW-AUTH-011 NOTIF-GW-AUTH-012
             NOTIF-ME-LIST-001 NOTIF-ME-LIST-002 NOTIF-ME-LIST-003 NOTIF-ME-LIST-004 NOTIF-ME-LIST-005 NOTIF-ME-LIST-006 NOTIF-ME-LIST-007 NOTIF-ME-LIST-008 NOTIF-ME-LIST-009 NOTIF-ME-LIST-010
             NOTIF-UNREAD-001 NOTIF-UNREAD-002 NOTIF-UNREAD-003 NOTIF-UNREAD-004 NOTIF-UNREAD-005 NOTIF-UNREAD-006
             NOTIF-ME-DETAIL-001 NOTIF-ME-DETAIL-002 NOTIF-ME-DETAIL-003 NOTIF-ME-DETAIL-004 NOTIF-ME-DETAIL-005 NOTIF-ME-DETAIL-006 NOTIF-ME-DETAIL-007
@@ -66,7 +67,7 @@ class NotificationApiContractTest {
     NotificationStore store;
 
     @Autowired
-    TestAuthContextProvider auth;
+    NotificationAuthContextProvider auth;
 
     @BeforeEach
     void setUp() {
@@ -82,8 +83,8 @@ class NotificationApiContractTest {
         Set<String> mapped = pattern.matcher(TEST_DOCUMENT_COVERAGE).results()
                 .map(java.util.regex.MatchResult::group)
                 .collect(java.util.stream.Collectors.toCollection(java.util.TreeSet::new));
-        assertThat(mapped).hasSize(216);
-        assertThat(TEST_DOCUMENT_COVERAGE).contains("NOTIF-COM-001", "NOTIF-AUTH-018", "NOTIF-CREATE-021", "NOTIF-TPL-PREVIEW-009", "NOTIF-OPS-SUMMARY-007", "NOTIF-SEC-012");
+        assertThat(mapped).hasSize(228);
+        assertThat(TEST_DOCUMENT_COVERAGE).contains("NOTIF-COM-001", "NOTIF-AUTH-018", "NOTIF-GW-AUTH-012", "NOTIF-CREATE-021", "NOTIF-TPL-PREVIEW-009", "NOTIF-OPS-SUMMARY-007", "NOTIF-SEC-012");
     }
 
     @Test
@@ -176,6 +177,86 @@ class NotificationApiContractTest {
 
         assertThat(store.usesAuthImplementation()).isFalse();
         assertThat(auth.writeCallCount()).isZero();
+    }
+
+    @Test
+    @DisplayName("NOTIF-GW-AUTH consumes gateway trusted auth context before Bearer fallback")
+    void gatewayTrustedAuthContextContract() throws Exception {
+        JsonNode list = performJson(gateway(get("/api/v1/notifications/me"), "user", "USER"), 200);
+        assertThat(valuesAt(list, "/data/items", "recipientUserId")).containsOnly("user");
+
+        JsonNode unread = performJson(gateway(get("/api/v1/notifications/me/unread-count"), "user", "USER"), 200);
+        assertThat(unread.at("/data/unreadCount").asInt()).isEqualTo(store.unreadCount("user"));
+        assertThat(unread.at("/data/unreadCount").asInt()).isNotEqualTo(store.unreadCount("another_user"));
+
+        mvc.perform(gateway(get("/api/v1/notifications/admin/messages"), "gateway_helper", "HELPER"))
+                .andExpect(status().isOk());
+
+        performJson(gateway(post("/api/v1/notifications/admin/messages"), "gateway_user", "USER"),
+                messageBody(List.of("user"), "Gateway User Denied"), 403, 42001);
+        assertThat(store.messageCountByTitle("Gateway User Denied")).isZero();
+
+        performJson(get("/api/v1/notifications/me")
+                .header("X-Gateway-Internal-Request-Id", "req-gateway-missing-user")
+                .header("X-Beiming-Actor-Roles", "USER"), 502, 46302);
+
+        performJson(gateway(get("/api/v1/notifications/admin/messages"), "empty_role_actor", ""), 403, 42001);
+
+        JsonNode trustedWins = performJson(gateway(get("/api/v1/notifications/me"), "user", "USER")
+                .header("Authorization", bearer("another-user-token")), 200);
+        assertThat(valuesAt(trustedWins, "/data/items", "recipientUserId")).containsOnly("user");
+
+        JsonNode fallback = performJson(get("/api/v1/notifications/me")
+                .header("X-Beiming-Actor-User-Id", "user")
+                .header("X-Beiming-Actor-Roles", "USER")
+                .header("Authorization", bearer("another-user-token")), 200);
+        assertThat(valuesAt(fallback, "/data/items", "recipientUserId")).containsOnly("another_user");
+
+        performJson(get("/api/v1/notifications/me")
+                .header("X-Gateway-Internal-Request-Id", "bad request id")
+                .header("X-Beiming-Actor-User-Id", "user")
+                .header("X-Beiming-Actor-Roles", "USER"), 502, 46302);
+
+        performJson(get("/api/v1/notifications/me")
+                .header("X-Gateway-Internal-Request-Id", " ")
+                .header("X-Beiming-Actor-User-Id", "user")
+                .header("X-Beiming-Actor-Roles", "USER"), 502, 46302);
+    }
+
+    @Test
+    @DisplayName("NOTIF-GW-AUTH writes audit actor from gateway context and keeps target snapshots isolated")
+    void gatewayTrustedAuthContextWriteAuditAndBoundaryContract() throws Exception {
+        JsonNode created = performJson(gateway(post("/api/v1/notifications/admin/messages"), "gateway_admin", "ADMIN")
+                .header("X-Beiming-Actor-Permissions", "NODE_READ")
+                .header("X-Beiming-Actor-Minecraft-Id", "ActorMc")
+                .header("X-Beiming-Actor-Minecraft-Uuid", "99999999999999999999999999999999"), mapOf(
+                "recipientUserIds", List.of("user"),
+                "title", "Gateway Create",
+                "body", "Notification body",
+                "type", "SYSTEM",
+                "channels", List.of("IN_APP"),
+                "sourceModule", "notification",
+                "sourceId", "source-1",
+                "reason", "gateway create"
+        ), 201);
+        assertThat(created.at("/data/createdBy").asText()).isEqualTo("gateway_admin");
+        assertThat(created.at("/data/recipients/0/recipientDisplayNameSnapshot").asText()).isEqualTo("User");
+
+        mvc.perform(gateway(get("/api/v1/notifications/admin/messages/" + created.at("/data/notificationId").asText() + "/audit-logs"), "gateway_owner", "OWNER"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].actorUserId").value("gateway_admin"));
+
+        performJson(gateway(get("/api/v1/notifications/me"), "user", "BAD_ROLE"), 502, 46302);
+        performJson(gateway(get("/api/v1/notifications/me"), "user", "USER")
+                .header("X-Beiming-Actor-Permissions", "BAD_PERMISSION"), 502, 46302);
+        performJson(gateway(get("/api/v1/notifications/me"), "user", "USER")
+                .header("X-Beiming-Actor-Minecraft-Id", "ActorMc")
+                .header("X-Beiming-Actor-Minecraft-Uuid", "bad-uuid"), 502, 46302);
+
+        String source = java.nio.file.Files.readString(java.nio.file.Path.of("src/main/java/cn/beiming/notification/NotificationModule.java"));
+        assertThat(source).doesNotContain("cn.beiming.auth", "cn.beiming.profile", "cn.beiming.apigateway",
+                "AuthRepository", "ProfileRepository", "JdbcTemplate", "node-daemon", "container", "file-manager",
+                "Remove-Item -Recurse", "rm -rf", "externalWebhookToken");
     }
 
     @Test
@@ -809,6 +890,16 @@ class NotificationApiContractTest {
 
     private String bearer(String token) {
         return "Bearer " + token;
+    }
+
+    private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder gateway(
+            org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request,
+            String userId,
+            String roles) {
+        return request
+                .header("X-Gateway-Internal-Request-Id", "req-gateway-context")
+                .header("X-Beiming-Actor-User-Id", userId)
+                .header("X-Beiming-Actor-Roles", roles);
     }
 
     private String json(Object value) throws Exception {
