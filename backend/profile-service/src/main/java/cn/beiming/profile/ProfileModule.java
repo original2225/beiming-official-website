@@ -18,7 +18,6 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -45,9 +44,9 @@ import java.util.regex.Pattern;
 @RequestMapping("/api/v1/profile")
 class ProfileController {
     private final ProfileStore store;
-    private final TestAuthContextProvider auth;
+    private final ProfileAuthContextProvider auth;
 
-    ProfileController(ProfileStore store, TestAuthContextProvider auth) {
+    ProfileController(ProfileStore store, ProfileAuthContextProvider auth) {
         this.store = store;
         this.auth = auth;
     }
@@ -68,20 +67,20 @@ class ProfileController {
     }
 
     @GetMapping("/me")
-    ResponseEntity<Map<String, Object>> me(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        AuthUser current = auth.requireCurrent(authorization);
+    ResponseEntity<Map<String, Object>> me(HttpServletRequest request) {
+        AuthUser current = auth.requireCurrent(request);
         return ok(store.currentUserProfile(current.userId));
     }
 
     @PatchMapping("/me")
-    ResponseEntity<Map<String, Object>> patchMe(@RequestHeader(value = "Authorization", required = false) String authorization,
+    ResponseEntity<Map<String, Object>> patchMe(HttpServletRequest request,
                                                 @RequestBody(required = false) Map<String, Object> body) {
-        AuthUser current = auth.requireCurrent(authorization);
+        AuthUser current = auth.requireCurrent(request);
         return ok(store.updateSelf(current, bodyOrEmpty(body)));
     }
 
     @GetMapping("/admin/members")
-    ResponseEntity<Map<String, Object>> adminMembers(@RequestHeader(value = "Authorization", required = false) String authorization,
+    ResponseEntity<Map<String, Object>> adminMembers(HttpServletRequest request,
                                                      @RequestParam(defaultValue = "1") int page,
                                                      @RequestParam(defaultValue = "20") int pageSize,
                                                      @RequestParam(required = false) String keyword,
@@ -89,103 +88,103 @@ class ProfileController {
                                                      @RequestParam(required = false) String status,
                                                      @RequestParam(required = false) String visibility,
                                                      @RequestParam(required = false) String sort) {
-        AuthUser current = auth.requireCurrent(authorization);
+        AuthUser current = auth.requireCurrent(request);
         requireReader(current);
         return ok(store.adminMembers(page, pageSize, keyword, groupId, status, visibility, sort));
     }
 
     @GetMapping("/admin/members/{memberId}")
-    ResponseEntity<Map<String, Object>> adminMember(@RequestHeader(value = "Authorization", required = false) String authorization,
+    ResponseEntity<Map<String, Object>> adminMember(HttpServletRequest request,
                                                     @PathVariable String memberId) {
-        AuthUser current = auth.requireCurrent(authorization);
+        AuthUser current = auth.requireCurrent(request);
         requireReader(current);
         return ok(store.adminMember(memberId));
     }
 
     @PostMapping("/admin/members/activate")
-    ResponseEntity<Map<String, Object>> activateMember(@RequestHeader(value = "Authorization", required = false) String authorization,
+    ResponseEntity<Map<String, Object>> activateMember(HttpServletRequest request,
                                                        @RequestBody(required = false) Map<String, Object> body) {
-        AuthUser current = auth.requireCurrent(authorization);
+        AuthUser current = auth.requireCurrent(request);
         requireWriter(current);
         return created(store.activateMember(current, auth, bodyOrEmpty(body)));
     }
 
     @PatchMapping("/admin/members/{memberId}")
-    ResponseEntity<Map<String, Object>> updateMember(@RequestHeader(value = "Authorization", required = false) String authorization,
+    ResponseEntity<Map<String, Object>> updateMember(HttpServletRequest request,
                                                      @PathVariable String memberId,
                                                      @RequestBody(required = false) Map<String, Object> body) {
-        AuthUser current = auth.requireCurrent(authorization);
+        AuthUser current = auth.requireCurrent(request);
         requireWriter(current);
         return ok(store.updateMember(current, memberId, bodyOrEmpty(body)));
     }
 
     @PatchMapping("/admin/members/{memberId}/status")
-    ResponseEntity<Map<String, Object>> updateStatus(@RequestHeader(value = "Authorization", required = false) String authorization,
+    ResponseEntity<Map<String, Object>> updateStatus(HttpServletRequest request,
                                                      @PathVariable String memberId,
                                                      @RequestBody(required = false) Map<String, Object> body) {
-        AuthUser current = auth.requireCurrent(authorization);
+        AuthUser current = auth.requireCurrent(request);
         requireWriter(current);
         return ok(store.updateStatus(current, memberId, bodyOrEmpty(body)));
     }
 
     @GetMapping("/admin/groups")
-    ResponseEntity<Map<String, Object>> groups(@RequestHeader(value = "Authorization", required = false) String authorization,
+    ResponseEntity<Map<String, Object>> groups(HttpServletRequest request,
                                                @RequestParam(defaultValue = "false") boolean includeArchived) {
-        AuthUser current = auth.requireCurrent(authorization);
+        AuthUser current = auth.requireCurrent(request);
         requireReader(current);
         return ok(mapOf("items", store.groups(includeArchived)));
     }
 
     @PostMapping("/admin/groups")
-    ResponseEntity<Map<String, Object>> createGroup(@RequestHeader(value = "Authorization", required = false) String authorization,
+    ResponseEntity<Map<String, Object>> createGroup(HttpServletRequest request,
                                                     @RequestBody(required = false) Map<String, Object> body) {
-        AuthUser current = auth.requireCurrent(authorization);
+        AuthUser current = auth.requireCurrent(request);
         requireWriter(current);
         return created(store.createGroup(current, bodyOrEmpty(body)));
     }
 
     @PatchMapping("/admin/groups/{groupId}")
-    ResponseEntity<Map<String, Object>> updateGroup(@RequestHeader(value = "Authorization", required = false) String authorization,
+    ResponseEntity<Map<String, Object>> updateGroup(HttpServletRequest request,
                                                     @PathVariable String groupId,
                                                     @RequestBody(required = false) Map<String, Object> body) {
-        AuthUser current = auth.requireCurrent(authorization);
+        AuthUser current = auth.requireCurrent(request);
         requireWriter(current);
         return ok(store.updateGroup(current, groupId, bodyOrEmpty(body)));
     }
 
     @PatchMapping("/admin/groups/{groupId}/archive")
-    ResponseEntity<Map<String, Object>> archiveGroup(@RequestHeader(value = "Authorization", required = false) String authorization,
+    ResponseEntity<Map<String, Object>> archiveGroup(HttpServletRequest request,
                                                      @PathVariable String groupId,
                                                      @RequestBody(required = false) Map<String, Object> body) {
-        AuthUser current = auth.requireCurrent(authorization);
+        AuthUser current = auth.requireCurrent(request);
         requireWriter(current);
         return ok(store.archiveGroup(current, groupId, bodyOrEmpty(body)));
     }
 
     @PutMapping("/admin/members/{memberId}/milestones")
-    ResponseEntity<Map<String, Object>> replaceMilestones(@RequestHeader(value = "Authorization", required = false) String authorization,
+    ResponseEntity<Map<String, Object>> replaceMilestones(HttpServletRequest request,
                                                           @PathVariable String memberId,
                                                           @RequestBody(required = false) Map<String, Object> body) {
-        AuthUser current = auth.requireCurrent(authorization);
+        AuthUser current = auth.requireCurrent(request);
         requireWriter(current);
         return ok(store.replaceMilestones(current, memberId, bodyOrEmpty(body)));
     }
 
     @PutMapping("/admin/members/{memberId}/work-snapshots")
-    ResponseEntity<Map<String, Object>> replaceWorks(@RequestHeader(value = "Authorization", required = false) String authorization,
+    ResponseEntity<Map<String, Object>> replaceWorks(HttpServletRequest request,
                                                      @PathVariable String memberId,
                                                      @RequestBody(required = false) Map<String, Object> body) {
-        AuthUser current = auth.requireCurrent(authorization);
+        AuthUser current = auth.requireCurrent(request);
         requireWriter(current);
         return ok(store.replaceWorks(current, memberId, bodyOrEmpty(body)));
     }
 
     @GetMapping("/admin/members/{memberId}/audit-logs")
-    ResponseEntity<Map<String, Object>> auditLogs(@RequestHeader(value = "Authorization", required = false) String authorization,
+    ResponseEntity<Map<String, Object>> auditLogs(HttpServletRequest request,
                                                   @PathVariable String memberId,
                                                   @RequestParam(defaultValue = "1") int page,
                                                   @RequestParam(defaultValue = "20") int pageSize) {
-        AuthUser current = auth.requireCurrent(authorization);
+        AuthUser current = auth.requireCurrent(request);
         if (!current.roles.contains("ADMIN") && !current.roles.contains("OWNER")) {
             throw new ApiException(42001, HttpStatus.FORBIDDEN, "role insufficient");
         }
@@ -234,7 +233,11 @@ class ProfileController {
 }
 
 @Service
-class TestAuthContextProvider {
+class ProfileAuthContextProvider {
+    private static final Pattern REQUEST_ID_PATTERN = Pattern.compile("[A-Za-z0-9_.:-]{1,128}");
+    private static final Pattern MINECRAFT_UUID_PATTERN = Pattern.compile("[a-f0-9]{32}");
+    private static final Set<String> VALID_ROLES = Set.of("OWNER", "ADMIN", "HELPER", "USER");
+    private static final Set<String> VALID_PERMISSIONS = Set.of("NODE_READ", "NODE_WRITE", "CONTAINER_OPERATE", "VM_OPERATE", "FILE_MANAGE", "TERMINAL_ACCESS", "HIGH_RISK_APPROVE");
     private final Map<String, AuthUser> usersByToken = new ConcurrentHashMap<>();
     private final Map<String, AuthUser> targetsByUserId = new ConcurrentHashMap<>();
     private final Set<String> missingTargets = ConcurrentHashMap.newKeySet();
@@ -285,6 +288,14 @@ class TestAuthContextProvider {
         targetsByUserId.put(userId, new AuthUser(userId, displayName, new LinkedHashSet<>(List.of("USER")), new LinkedHashSet<>(), status, binding));
     }
 
+    AuthUser requireCurrent(HttpServletRequest request) {
+        String gatewayRequestId = request.getHeader("X-Gateway-Internal-Request-Id");
+        if (gatewayRequestId != null && !gatewayRequestId.isBlank()) {
+            return requireGatewayContext(request, gatewayRequestId);
+        }
+        return requireCurrent(request.getHeader("Authorization"));
+    }
+
     AuthUser requireCurrent(String authorization) {
         if (authorization == null || authorization.isBlank()) {
             throw new ApiException(41000, HttpStatus.UNAUTHORIZED, "unauthenticated");
@@ -315,6 +326,54 @@ class TestAuthContextProvider {
             throw new ApiException(41001, HttpStatus.UNAUTHORIZED, "invalid session");
         }
         return user.copy();
+    }
+
+    private AuthUser requireGatewayContext(HttpServletRequest request, String gatewayRequestId) {
+        if (!REQUEST_ID_PATTERN.matcher(gatewayRequestId).matches()) {
+            throw incompatibleGatewayContext();
+        }
+        String userId = request.getHeader("X-Beiming-Actor-User-Id");
+        if (userId == null || userId.isBlank()) {
+            throw incompatibleGatewayContext();
+        }
+        LinkedHashSet<String> roles = parseCsvHeader(request.getHeader("X-Beiming-Actor-Roles"), VALID_ROLES);
+        LinkedHashSet<String> permissions = parseCsvHeader(request.getHeader("X-Beiming-Actor-Permissions"), VALID_PERMISSIONS);
+        String minecraftId = blankToNull(request.getHeader("X-Beiming-Actor-Minecraft-Id"));
+        String minecraftUuid = blankToNull(request.getHeader("X-Beiming-Actor-Minecraft-Uuid"));
+        MinecraftBinding binding = null;
+        if (minecraftId != null || minecraftUuid != null) {
+            if (minecraftId == null || minecraftUuid == null || !MINECRAFT_UUID_PATTERN.matcher(minecraftUuid).matches()) {
+                throw incompatibleGatewayContext();
+            }
+            binding = mc(minecraftId, minecraftUuid);
+        }
+        return new AuthUser(userId.trim(), userId.trim(), roles, permissions, "ACTIVE", binding);
+    }
+
+    private LinkedHashSet<String> parseCsvHeader(String value, Set<String> allowed) {
+        LinkedHashSet<String> parsed = new LinkedHashSet<>();
+        if (value == null || value.isBlank()) {
+            return parsed;
+        }
+        for (String part : value.split(",")) {
+            String item = part.trim();
+            if (item.isEmpty()) {
+                continue;
+            }
+            if (!allowed.contains(item)) {
+                throw incompatibleGatewayContext();
+            }
+            parsed.add(item);
+        }
+        return parsed;
+    }
+
+    private String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private ApiException incompatibleGatewayContext() {
+        return new ApiException(46202, HttpStatus.BAD_GATEWAY, "auth incompatible");
     }
 
     AuthUser targetUser(String userId) {
@@ -423,7 +482,7 @@ class ProfileStore {
         failNextAudit = false;
     }
 
-    synchronized void seedTestData(TestAuthContextProvider auth) {
+    synchronized void seedTestData(ProfileAuthContextProvider auth) {
         MemberGroup builder = seedGroup("grp_builder", "Builder", "Build team", "#123ABC", 1, false);
         MemberGroup redstone = seedGroup("grp_redstone", "Redstone", "Redstone team", "#AA0000", 2, false);
         seedGroup("grp_archived", "Old Group", "Archived", "#CCCCCC", 99, true);
@@ -539,7 +598,7 @@ class ProfileStore {
         return adminProfile(profile(memberId));
     }
 
-    synchronized Map<String, Object> activateMember(AuthUser actor, TestAuthContextProvider auth, Map<String, Object> body) {
+    synchronized Map<String, Object> activateMember(AuthUser actor, ProfileAuthContextProvider auth, Map<String, Object> body) {
         String userId = requiredString(body, "userId");
         String reason = requiredString(body, "reason");
         String idempotencyKey = optionalString(body, "idempotencyKey");

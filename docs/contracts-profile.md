@@ -24,13 +24,13 @@
 
 公开读取接口无需 `Authorization`，但只能返回公开字段，并且必须遵守统一响应、请求编号、分页和错误码。
 
-当前用户接口必须使用 `Authorization: Bearer <token>`，只能读取或维护当前认证用户自己的成员档案。
+当前用户接口必须使用已认证上下文，只能读取或维护当前认证用户自己的成员档案。认证上下文优先来自后端入口注入的网关可信身份头；没有完整网关可信上下文时，保留 `Authorization: Bearer <token>` 本地兼容路径。
 
 后台接口统一使用 `/api/v1/profile/admin` 前缀。后台读取至少要求 `HELPER`、`ADMIN` 或 `OWNER`。后台写操作至少要求 `ADMIN` 或 `OWNER`。成员移除、归档、恢复公开、恢复状态等会影响成员资格或公开展示的操作必须携带 `reason` 并写入审计。
 
 ## auth 兼容契约
 
-profile 必须通过 `AuthContextProvider` 或等价适配层读取 auth 信息。生产环境可以由后端入口传入已校验认证上下文，也可以调用 auth 正式 API。测试环境使用 auth stub。任何实现都不能导入 auth 的内存存储类、数据表实体、Repository 或测试种子实现。
+profile 必须通过 `ProfileAuthContextProvider`、`AuthContextProvider` 或等价适配层读取 auth 信息。生产环境优先消费后端入口传入的已校验认证上下文，也可以调用 auth 正式 API。测试环境使用 auth stub。任何实现都不能导入 auth 的内存存储类、数据表实体、Repository 或测试种子实现。
 
 当前请求认证上下文至少包含以下字段：`userId`、`displayName`、`roles`、`permissions`、`status`、`minecraftBinding`。`minecraftBinding` 字段结构必须兼容 `docs/contracts-auth.md` 中的 `MinecraftBinding`。
 
@@ -39,6 +39,31 @@ profile 必须通过 `AuthContextProvider` 或等价适配层读取 auth 信息�
 auth 用户状态为 `PENDING_PROFILE` 或 `ACTIVE` 时允许创建或激活成员档案。`DISABLED`、`BANNED`、`DELETED` 不允许激活。目标用户不存在返回 `43204`。目标用户状态不允许激活返回 `43215`。auth 不可用返回 `46200`，auth 调用超时返回 `46201`，auth 返回字段缺失或枚举不兼容返回 `46202`。
 
 profile 不能修改 auth 用户状态、角色、权限或 Minecraft 绑定。profile 写接口完成后，auth 用户快照只允许作为 profile 本地快照保存，不得反写 auth。
+
+## 网关可信认证上下文
+
+profile 对网关可信认证上下文的消费只补充认证来源，不新增业务 API，不改变现有路径、响应结构、角色规则、端口或 Bearer stub 兼容行为。
+
+本轮适配参考成熟网关生态的通用边界。Spring Cloud Gateway 使用过滤器向下游请求新增请求头，也支持在转发前移除请求头；Kong Correlation ID 插件把请求相关编号放入 HTTP 头并可传给上游；Nginx 反向代理通过 `proxy_set_header` 显式设置发往上游的头；Traefik ForwardAuth 支持把认证服务响应头复制到转发请求，并强调可信转发头应由入口层清洗。profile 只吸收这些边界思路：入口统一认证并注入上下文，业务服务只消费格式完整的服务端上下文，缺失时回退既有兼容路径。
+
+网关可信上下文必须同时具备 `X-Gateway-Internal-Request-Id` 和 `X-Beiming-Actor-User-Id`。只有 `X-Gateway-Internal-Request-Id` 存在时，profile 才进入网关上下文解析；若该头缺失，即使请求带有 `X-Beiming-Actor-*`，profile 也必须忽略这些头并继续走 `Authorization: Bearer <token>` 兼容路径。这样可以保持本地直连测试和旧调用不受影响。
+
+profile 需要消费的网关上下文字段如下。
+
+| 请求头 | 必填 | 说明 |
+| --- | --- | --- |
+| `X-Gateway-Internal-Request-Id` | 是 | 网关注入的内部请求编号，格式必须与公共请求编号规则一致。 |
+| `X-Beiming-Actor-User-Id` | 是 | 当前认证用户 ID。 |
+| `X-Beiming-Actor-Roles` | 否 | 逗号分隔基础角色。可为空；为空时后台接口按角色不足返回 `42001`。非空项必须是 `OWNER`、`ADMIN`、`HELPER` 或 `USER`。 |
+| `X-Beiming-Actor-Permissions` | 否 | 逗号分隔能力点。可为空；非空项必须兼容公共契约中的能力点。 |
+| `X-Beiming-Actor-Minecraft-Id` | 否 | 当前认证用户账号级 Minecraft 展示 ID，只能作为当前 actor 上下文快照。 |
+| `X-Beiming-Actor-Minecraft-Uuid` | 否 | 当前认证用户账号级 Minecraft UUID，只能作为当前 actor 上下文快照。 |
+
+逗号分隔字段必须先 trim，再丢弃空白项。角色头为空不代表后台权限通过，只能形成没有后台角色的当前用户上下文。`X-Beiming-Actor-Minecraft-Id` 和 `X-Beiming-Actor-Minecraft-Uuid` 只属于当前 actor，不得用于覆盖后台激活目标用户的快照。后台激活成员档案仍必须读取目标用户快照，不能把当前 actor 的 Minecraft 头当成目标用户资料。
+
+当 `X-Gateway-Internal-Request-Id` 存在但缺少 `X-Beiming-Actor-User-Id`、内部请求编号格式非法、角色或能力点格式非法、Minecraft UUID 格式非法，或任一必需字段无法解析时，profile 返回 HTTP `502`、错误码 `46202`。当网关上下文不存在且 Bearer 缺失或 Bearer 格式非法时，仍按公共认证错误返回 `41000` 或 `41003`。
+
+安全边界固定为：浏览器伪造可信头的剥离责任归 `api-gateway`；profile 的责任是只消费格式完整的服务端上下文，并在上下文缺失时继续走 Bearer 兼容路径。当前 P0 没有内部签名，不能把本轮适配宣称为生产级内部认证。生产部署必须要求 profile 只暴露给网关或可信内网；后续若增加网关到上游共享密钥或内部签名，需要先更新 `api-gateway`、`profile` 契约和对应测试闭环。
 
 ## 枚举
 
@@ -177,7 +202,7 @@ profile 不能修改 auth 用户状态、角色、权限或 Minecraft 绑定。p
 | `43215` | 409 | auth 目标用户状态不允许激活成员档案。 |
 | `46200` | 502 | auth 认证上下文不可用。 |
 | `46201` | 504 | auth 认证上下文调用超时。 |
-| `46202` | 502 | auth 返回的认证上下文或用户快照不兼容 profile 契约。 |
+| `46202` | 502 | auth 返回的认证上下文、用户快照或网关可信身份头不兼容 profile 契约。 |
 | `51200` | 500 | profile 内部错误。 |
 | `51201` | 500 | profile 审计写入失败。 |
 
@@ -512,4 +537,4 @@ profile 不能修改 auth 用户状态、角色、权限或 Minecraft 绑定。p
 
 `profile` API 文档按 `docs/contracts-profile.md` 独立存在，并由 `.local-docs/tests-profile.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级和审计要求。
 
-`profile` 完成时必须满足以下条件：全部接口按本文档实现；公开接口不泄露后台字段和 auth 安全字段；当前用户接口只能访问当前用户自己的档案；后台接口按角色限制；创建或激活成员档案不直接读取 auth 数据库；状态流转、成员组、事迹、作品快照和审计全部有自动化测试；`.local-docs/tests-profile.md` 中记录的全部测试用例最终通过；未实现时自动化测试必须先失败，不能跳过红灯验证。
+`profile` 完成时必须满足以下条件：全部接口按本文档实现；公开接口不泄露后台字段和 auth 安全字段；当前用户接口只能访问当前用户自己的档案；后台接口按角色限制；创建或激活成员档案不直接读取 auth 数据库；受保护接口同时支持网关可信认证上下文和旧 Bearer 兼容路径；状态流转、成员组、事迹、作品快照、审计和网关认证上下文消费全部有自动化测试；`.local-docs/tests-profile.md` 中记录的全部测试用例最终通过；未实现时自动化测试必须先失败，不能跳过红灯验证。

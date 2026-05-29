@@ -36,6 +36,7 @@ class ProfileApiContractTest {
     private static final String TEST_DOCUMENT_COVERAGE = """
             PROF-COM-001 PROF-COM-002 PROF-COM-003 PROF-COM-004 PROF-COM-005 PROF-COM-006 PROF-COM-007 PROF-COM-008 PROF-COM-009 PROF-COM-010
             PROF-AUTH-001 PROF-AUTH-002 PROF-AUTH-003 PROF-AUTH-004 PROF-AUTH-005 PROF-AUTH-006 PROF-AUTH-007 PROF-AUTH-008 PROF-AUTH-009 PROF-AUTH-010 PROF-AUTH-011 PROF-AUTH-012 PROF-AUTH-013 PROF-AUTH-014 PROF-AUTH-015 PROF-AUTH-016
+            PROF-GW-AUTH-001 PROF-GW-AUTH-002 PROF-GW-AUTH-003 PROF-GW-AUTH-004 PROF-GW-AUTH-005 PROF-GW-AUTH-006 PROF-GW-AUTH-007 PROF-GW-AUTH-008 PROF-GW-AUTH-009 PROF-GW-AUTH-010 PROF-GW-AUTH-011 PROF-GW-AUTH-012
             PROF-PUB-LIST-001 PROF-PUB-LIST-002 PROF-PUB-LIST-003 PROF-PUB-LIST-004 PROF-PUB-LIST-005 PROF-PUB-LIST-006 PROF-PUB-LIST-007 PROF-PUB-LIST-008 PROF-PUB-LIST-009 PROF-PUB-LIST-010
             PROF-PUB-DETAIL-001 PROF-PUB-DETAIL-002 PROF-PUB-DETAIL-003 PROF-PUB-DETAIL-004 PROF-PUB-DETAIL-005 PROF-PUB-DETAIL-006
             PROF-ME-001 PROF-ME-002 PROF-ME-003 PROF-ME-004 PROF-ME-005 PROF-ME-006
@@ -65,7 +66,7 @@ class ProfileApiContractTest {
     ProfileStore store;
 
     @Autowired
-    TestAuthContextProvider auth;
+    ProfileAuthContextProvider auth;
 
     @BeforeEach
     void setUp() {
@@ -81,8 +82,8 @@ class ProfileApiContractTest {
         Set<String> mapped = pattern.matcher(TEST_DOCUMENT_COVERAGE).results()
                 .map(java.util.regex.MatchResult::group)
                 .collect(java.util.stream.Collectors.toCollection(java.util.TreeSet::new));
-        assertThat(mapped).hasSize(154);
-        assertThat(TEST_DOCUMENT_COVERAGE).contains("PROF-COM-001", "PROF-AUTH-016", "PROF-ACTIVATE-018", "PROF-SEC-008");
+        assertThat(mapped).hasSize(166);
+        assertThat(TEST_DOCUMENT_COVERAGE).contains("PROF-COM-001", "PROF-AUTH-016", "PROF-GW-AUTH-012", "PROF-ACTIVATE-018", "PROF-SEC-008");
     }
 
     @Test
@@ -198,6 +199,69 @@ class ProfileApiContractTest {
 
         auth.setTokenRoles("admin-token", List.of());
         performJson(get("/api/v1/profile/admin/members").header("Authorization", bearer("admin-token")), 403, 42001);
+    }
+
+    @Test
+    @DisplayName("PROF-GW-AUTH consumes gateway trusted auth context before Bearer fallback")
+    void gatewayTrustedAuthContextContract() throws Exception {
+        mvc.perform(gateway(get("/api/v1/profile/me"), "active_member", "USER"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.userId").value("active_member"));
+
+        mvc.perform(gateway(get("/api/v1/profile/admin/members"), "helper_gateway", "HELPER"))
+                .andExpect(status().isOk());
+
+        performJson(gateway(get("/api/v1/profile/admin/members"), "user_gateway", "USER"), 403, 42001);
+
+        performJson(get("/api/v1/profile/me")
+                .header("X-Gateway-Internal-Request-Id", "req-gateway-missing-user")
+                .header("X-Beiming-Actor-Roles", "USER"), 502, 46202);
+
+        performJson(get("/api/v1/profile/admin/members")
+                .header("X-Gateway-Internal-Request-Id", "req-gateway-empty-roles")
+                .header("X-Beiming-Actor-User-Id", "empty_role_actor")
+                .header("X-Beiming-Actor-Roles", ""), 403, 42001);
+
+        mvc.perform(gateway(get("/api/v1/profile/me"), "active_member", "USER")
+                        .header("Authorization", bearer("no-profile-token")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.userId").value("active_member"));
+
+        performJson(get("/api/v1/profile/me")
+                .header("X-Beiming-Actor-User-Id", "active_member")
+                .header("X-Beiming-Actor-Roles", "USER")
+                .header("Authorization", bearer("no-profile-token")), 404, 43200);
+
+        performJson(get("/api/v1/profile/me")
+                .header("X-Gateway-Internal-Request-Id", "bad request id")
+                .header("X-Beiming-Actor-User-Id", "active_member")
+                .header("X-Beiming-Actor-Roles", "USER"), 502, 46202);
+    }
+
+    @Test
+    @DisplayName("PROF-GW-AUTH gateway actor roles write, Minecraft isolation, audit actor, and static auth boundary")
+    void gatewayTrustedAuthContextWriteAndAuditContract() throws Exception {
+        JsonNode created = performJson(gateway(post("/api/v1/profile/admin/members/activate"), "gateway_admin", "ADMIN")
+                .header("X-Beiming-Actor-Minecraft-Id", "ActorMc")
+                .header("X-Beiming-Actor-Minecraft-Uuid", "99999999999999999999999999999999"), Map.of(
+                "userId", "target_user",
+                "reason", "gateway activate"
+        ), 201);
+        assertThat(created.at("/data/minecraftId").asText()).isEqualTo("TargetMc");
+        assertThat(created.at("/data/minecraftUuid").asText()).isEqualTo("dddddddddddddddddddddddddddddddd");
+
+        String memberId = store.memberIdByUserId("active_member");
+        performJson(gateway(patch("/api/v1/profile/admin/members/" + memberId), "gateway_actor", "ADMIN"), Map.of(
+                "bio", "Gateway audit actor",
+                "reason", "gateway audit"
+        ), 200);
+
+        mvc.perform(gateway(get("/api/v1/profile/admin/members/" + memberId + "/audit-logs"), "gateway_owner", "OWNER"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].actorUserId").value("gateway_actor"));
+
+        String source = java.nio.file.Files.readString(java.nio.file.Path.of("src/main/java/cn/beiming/profile/ProfileModule.java"));
+        assertThat(source).doesNotContain("cn.beiming.auth", "AuthStore", "AuthRepository");
     }
 
     @Test
@@ -567,6 +631,16 @@ class ProfileApiContractTest {
 
     private String bearer(String token) {
         return "Bearer " + token;
+    }
+
+    private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder gateway(
+            org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request,
+            String userId,
+            String roles) {
+        return request
+                .header("X-Gateway-Internal-Request-Id", "req-gateway-context")
+                .header("X-Beiming-Actor-User-Id", userId)
+                .header("X-Beiming-Actor-Roles", roles);
     }
 
     private String json(Object value) throws Exception {
