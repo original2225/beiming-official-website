@@ -25,6 +25,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -480,6 +481,7 @@ class NotificationStore {
     private static final Set<String> RECIPIENT_STATUSES = Set.of("UNREAD", "READ", "ARCHIVED");
     private static final Set<String> DELIVERY_STATUSES = Set.of("PENDING", "DELIVERED", "FAILED", "CANCELED");
     private static final Set<String> TEMPLATE_STATUSES = Set.of("ENABLED", "DISABLED");
+    private static final Set<String> RISK_LEVELS = Set.of("LOW", "MEDIUM", "HIGH", "CRITICAL");
     private static final Pattern TEMPLATE_VARIABLE = Pattern.compile("\\$\\{([A-Za-z][A-Za-z0-9_]*)}");
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final Map<String, NotificationMessage> messages = new ConcurrentHashMap<>();
@@ -688,6 +690,9 @@ class NotificationStore {
         String sourceModule = optionalString(body, "sourceModule");
         String sourceId = optionalString(body, "sourceId");
         String riskLevel = optionalStringOrDefault(body, "riskLevel", "LOW");
+        validateLengthNullable(sourceModule, 40, "sourceModule");
+        validateLengthNullable(sourceId, 80, "sourceId");
+        if (!RISK_LEVELS.contains(riskLevel)) throw ApiException.badRequest("riskLevel");
         String actionUrl = optionalString(body, "actionUrl");
         validateActionUrl(actionUrl);
         Instant expiresAt = optionalInstant(body, "expiresAt");
@@ -1285,11 +1290,24 @@ class NotificationStore {
 
     private Instant optionalInstant(Map<String, Object> body, String field) {
         String value = optionalString(body, field);
-        return value == null ? null : Instant.parse(value);
+        if (value == null) {
+            return null;
+        }
+        try {
+            return Instant.parse(value);
+        } catch (DateTimeParseException ex) {
+            throw ApiException.badRequest(field);
+        }
     }
 
     private void validateLength(String value, int min, int max, String field) {
         if (value == null || value.length() < min || value.length() > max) {
+            throw ApiException.badRequest(field);
+        }
+    }
+
+    private void validateLengthNullable(String value, int max, String field) {
+        if (value != null && value.length() > max) {
             throw ApiException.badRequest(field);
         }
     }
@@ -1303,10 +1321,22 @@ class NotificationStore {
 
     private String signature(Object value) {
         try {
-            return objectMapper.writeValueAsString(value);
+            return objectMapper.writeValueAsString(canonicalize(value));
         } catch (JsonProcessingException e) {
             return String.valueOf(value);
         }
+    }
+
+    private Object canonicalize(Object value) {
+        if (value instanceof Map<?, ?> rawMap) {
+            Map<String, Object> sorted = new java.util.TreeMap<>();
+            rawMap.forEach((key, item) -> sorted.put(String.valueOf(key), canonicalize(item)));
+            return sorted;
+        }
+        if (value instanceof List<?> rows) {
+            return rows.stream().map(this::canonicalize).toList();
+        }
+        return value;
     }
 
     private Instant now() {
@@ -1412,6 +1442,7 @@ class NotificationExceptionHandler {
 @Component
 class RequestIdFilter extends OncePerRequestFilter {
     private static final ThreadLocal<String> REQUEST_ID = new ThreadLocal<>();
+    private static final Pattern REQUEST_ID_PATTERN = Pattern.compile("[A-Za-z0-9_.:-]{1,128}");
 
     static String currentRequestId() {
         String id = REQUEST_ID.get();
@@ -1423,6 +1454,15 @@ class RequestIdFilter extends OncePerRequestFilter {
         String requestId = request.getHeader("X-Request-Id");
         if (requestId == null || requestId.isBlank()) {
             requestId = "req_" + UUID.randomUUID();
+        } else if (!REQUEST_ID_PATTERN.matcher(requestId).matches()) {
+            REQUEST_ID.set("req_invalid");
+            response.setStatus(HttpStatus.BAD_REQUEST.value());
+            response.setHeader("X-Request-Id", "req_invalid");
+            response.setContentType("application/json");
+            response.setCharacterEncoding("UTF-8");
+            response.getWriter().write("{\"code\":40001,\"message\":\"invalid request\",\"data\":null,\"requestId\":\"req_invalid\",\"errors\":[{\"field\":\"X-Request-Id\",\"reason\":\"invalid request\"}]}");
+            REQUEST_ID.remove();
+            return;
         }
         REQUEST_ID.set(requestId);
         response.setHeader("X-Request-Id", requestId);

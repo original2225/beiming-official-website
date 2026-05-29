@@ -117,6 +117,15 @@ class NotificationApiContractTest {
 
         mvc.perform(get("/api/v1/notifications/me")
                         .header("Authorization", bearer("user-token"))
+                        .header("X-Request-Id", "bad request id"))
+                .andExpect(status().isBadRequest())
+                .andExpect(header().string("X-Request-Id", "req_invalid"))
+                .andExpect(jsonPath("$.code").value(40001))
+                .andExpect(jsonPath("$.requestId").value("req_invalid"))
+                .andExpect(jsonPath("$.errors[0].field").value("X-Request-Id"));
+
+        mvc.perform(get("/api/v1/notifications/me")
+                        .header("Authorization", bearer("user-token"))
                         .param("sort", "bad_sort"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(40003));
@@ -470,6 +479,18 @@ class NotificationApiContractTest {
         Map<String, Object> expired = messageBody(List.of("user"), "Expired");
         expired.put("expiresAt", "2020-01-01T00:00:00Z");
         performJson(post("/api/v1/notifications/admin/messages").header("Authorization", bearer("admin-token")), expired, 400, 40001);
+        Map<String, Object> malformedExpiresAt = messageBody(List.of("user"), "Malformed Expires");
+        malformedExpiresAt.put("expiresAt", "not-an-instant");
+        performJson(post("/api/v1/notifications/admin/messages").header("Authorization", bearer("admin-token")), malformedExpiresAt, 400, 40001);
+        Map<String, Object> badRiskLevel = messageBody(List.of("user"), "Bad Risk");
+        badRiskLevel.put("riskLevel", "NOPE");
+        performJson(post("/api/v1/notifications/admin/messages").header("Authorization", bearer("admin-token")), badRiskLevel, 400, 40001);
+        Map<String, Object> longSourceModule = messageBody(List.of("user"), "Long Source Module");
+        longSourceModule.put("sourceModule", "x".repeat(41));
+        performJson(post("/api/v1/notifications/admin/messages").header("Authorization", bearer("admin-token")), longSourceModule, 400, 40001);
+        Map<String, Object> longSourceId = messageBody(List.of("user"), "Long Source Id");
+        longSourceId.put("sourceId", "x".repeat(81));
+        performJson(post("/api/v1/notifications/admin/messages").header("Authorization", bearer("admin-token")), longSourceId, 400, 40001);
 
         Map<String, Object> idem = messageBody(List.of("user"), "Idempotent");
         idem.put("idempotencyKey", "msg-idem-1");
@@ -479,6 +500,22 @@ class NotificationApiContractTest {
         Map<String, Object> changed = messageBody(List.of("another_user"), "Changed");
         changed.put("idempotencyKey", "msg-idem-1");
         performJson(post("/api/v1/notifications/admin/messages").header("Authorization", bearer("admin-token")), changed, 409, 43002);
+
+        Map<String, Object> orderedFirst = messageBody(List.of("user"), "Order Stable");
+        orderedFirst.put("idempotencyKey", "msg-idem-order");
+        JsonNode firstOrdered = performJson(post("/api/v1/notifications/admin/messages").header("Authorization", bearer("admin-token")), orderedFirst, 201);
+        Map<String, Object> orderedSecond = new java.util.LinkedHashMap<>();
+        orderedSecond.put("reason", "test");
+        orderedSecond.put("sourceId", "source-1");
+        orderedSecond.put("sourceModule", "notification");
+        orderedSecond.put("channels", List.of("IN_APP"));
+        orderedSecond.put("type", "SYSTEM");
+        orderedSecond.put("body", "Notification body");
+        orderedSecond.put("title", "Order Stable");
+        orderedSecond.put("recipientUserIds", List.of("user"));
+        orderedSecond.put("idempotencyKey", "msg-idem-order");
+        JsonNode secondOrdered = performJson(post("/api/v1/notifications/admin/messages").header("Authorization", bearer("admin-token")), orderedSecond, 201);
+        assertThat(secondOrdered.at("/data/notificationId").asText()).isEqualTo(firstOrdered.at("/data/notificationId").asText());
 
         int beforeUnread = store.unreadCount("user");
         store.failNextAudit();
@@ -636,6 +673,9 @@ class NotificationApiContractTest {
         Map<String, Object> missingVar = fromTemplateBody("ENABLED_TEMPLATE");
         missingVar.put("variables", Map.of("playerName", "Steve"));
         performJson(post("/api/v1/notifications/admin/messages/from-template").header("Authorization", bearer("admin-token")), missingVar, 400, 43313);
+        Map<String, Object> longVariableValue = fromTemplateBody("ENABLED_TEMPLATE");
+        longVariableValue.put("variables", Map.of("playerName", "Steve", "result", "x".repeat(501)));
+        performJson(post("/api/v1/notifications/admin/messages/from-template").header("Authorization", bearer("admin-token")), longVariableValue, 400, 40001);
         Map<String, Object> badChannel = fromTemplateBody("ENABLED_TEMPLATE");
         badChannel.put("channels", List.of("EMAIL"));
         performJson(post("/api/v1/notifications/admin/messages/from-template").header("Authorization", bearer("admin-token")), badChannel, 400, 40001);
