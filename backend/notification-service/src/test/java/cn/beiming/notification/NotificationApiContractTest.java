@@ -55,6 +55,7 @@ class NotificationApiContractTest {
             NOTIF-AUDIT-001 NOTIF-AUDIT-002 NOTIF-AUDIT-003 NOTIF-AUDIT-004 NOTIF-AUDIT-005 NOTIF-AUDIT-006 NOTIF-AUDIT-007 NOTIF-AUDIT-008 NOTIF-AUDIT-009
             NOTIF-OPS-SUMMARY-001 NOTIF-OPS-SUMMARY-002 NOTIF-OPS-SUMMARY-003 NOTIF-OPS-SUMMARY-004 NOTIF-OPS-SUMMARY-005 NOTIF-OPS-SUMMARY-006 NOTIF-OPS-SUMMARY-007
             NOTIF-SEC-001 NOTIF-SEC-002 NOTIF-SEC-003 NOTIF-SEC-004 NOTIF-SEC-005 NOTIF-SEC-006 NOTIF-SEC-007 NOTIF-SEC-008 NOTIF-SEC-009 NOTIF-SEC-010 NOTIF-SEC-011 NOTIF-SEC-012
+            NOTIF-HARDEN-001 NOTIF-HARDEN-002 NOTIF-HARDEN-003 NOTIF-HARDEN-004 NOTIF-HARDEN-005 NOTIF-HARDEN-006 NOTIF-HARDEN-007 NOTIF-HARDEN-008 NOTIF-HARDEN-009 NOTIF-HARDEN-010 NOTIF-HARDEN-011 NOTIF-HARDEN-012
             """;
 
     @Autowired
@@ -83,8 +84,8 @@ class NotificationApiContractTest {
         Set<String> mapped = pattern.matcher(TEST_DOCUMENT_COVERAGE).results()
                 .map(java.util.regex.MatchResult::group)
                 .collect(java.util.stream.Collectors.toCollection(java.util.TreeSet::new));
-        assertThat(mapped).hasSize(228);
-        assertThat(TEST_DOCUMENT_COVERAGE).contains("NOTIF-COM-001", "NOTIF-AUTH-018", "NOTIF-GW-AUTH-012", "NOTIF-CREATE-021", "NOTIF-TPL-PREVIEW-009", "NOTIF-OPS-SUMMARY-007", "NOTIF-SEC-012");
+        assertThat(mapped).hasSize(240);
+        assertThat(TEST_DOCUMENT_COVERAGE).contains("NOTIF-COM-001", "NOTIF-AUTH-018", "NOTIF-GW-AUTH-012", "NOTIF-CREATE-021", "NOTIF-TPL-PREVIEW-009", "NOTIF-OPS-SUMMARY-007", "NOTIF-SEC-012", "NOTIF-HARDEN-012");
     }
 
     @Test
@@ -770,10 +771,13 @@ class NotificationApiContractTest {
         assertThat(summary.at("/data/templatesTotal").asInt()).isGreaterThan(0);
         assertThat(summary.at("/data/auditsTotal").asInt()).isGreaterThan(0);
         assertThat(summary.at("/data/pendingExternalDeliveries").asInt()).isZero();
+        assertThat(summary.at("/data/idempotencyRecordsTotal").isNumber()).isTrue();
+        assertThat(summary.at("/data/idempotencyRetentionHours").asInt()).isEqualTo(24);
+        assertThat(summary.at("/data/auditCompletenessMode").asText()).isEqualTo("SAFE_SUMMARY");
         assertThat(java.util.stream.StreamSupport.stream(summary.at("/data/warnings").spliterator(), false)
                 .map(JsonNode::asText)
                 .toList()).contains("P0_IN_MEMORY_STORAGE", "P0_AUTH_STUB");
-        assertThat(summary.toString()).doesNotContain("Bearer", "token", "Notification body", "Result ${result}", "admin reason");
+        assertThat(summary.toString()).doesNotContain("Bearer", "token", "Notification body", "Result ${result}", "admin reason", "idempotencyKey");
 
         mvc.perform(get("/api/v1/notifications/admin/ops/summary")
                         .header("Authorization", bearer("owner-token")))
@@ -794,6 +798,99 @@ class NotificationApiContractTest {
         assertThat(changed.at("/data/messagesTotal").asInt()).isEqualTo(beforeMessages + 1);
         assertThat(changed.at("/data/archivedTotal").asInt()).isEqualTo(beforeArchived + 1);
         assertThat(changed.at("/data/auditsTotal").asInt()).isGreaterThan(summary.at("/data/auditsTotal").asInt());
+    }
+
+    @Test
+    @DisplayName("NOTIF-HARDEN audit records include safe actor, source, risk, and state summaries")
+    void productionHardeningAuditSummaryContract() throws Exception {
+        JsonNode created = performJson(gateway(post("/api/v1/notifications/admin/messages"), "gateway_admin", "ADMIN")
+                .header("X-Beiming-Actor-Permissions", "NODE_READ,HIGH_RISK_APPROVE")
+                .header("X-Request-Id", "req-hard-audit-create")
+                .header("X-Forwarded-For", "203.0.113.7, 10.0.0.2"), mapOf(
+                "recipientUserIds", List.of("user"),
+                "title", "Audit Harden",
+                "body", "Notification body with Bearer secret-token",
+                "type", "SYSTEM",
+                "channels", List.of("IN_APP"),
+                "sourceModule", "notification",
+                "sourceId", "hard-1",
+                "riskLevel", "HIGH",
+                "idempotencyKey", "audit-hard-idem",
+                "reason", "audit hardening"
+        ), 201);
+
+        JsonNode audits = performJson(gateway(get("/api/v1/notifications/admin/messages/" + created.at("/data/notificationId").asText() + "/audit-logs"), "gateway_owner", "OWNER"), 200);
+        JsonNode createAudit = audits.at("/data/items/0");
+        assertThat(createAudit.at("/requestId").asText()).isEqualTo("req-hard-audit-create");
+        assertThat(createAudit.at("/actorUserId").asText()).isEqualTo("gateway_admin");
+        assertThat(createAudit.at("/actorRole").asText()).contains("ADMIN");
+        assertThat(valuesAt(createAudit, "/actorPermissions", null)).contains("NODE_READ", "HIGH_RISK_APPROVE");
+        assertThat(createAudit.at("/sourceIp").asText()).isEqualTo("203.0.113.7");
+        assertThat(createAudit.at("/targetType").asText()).isEqualTo("NOTIFICATION");
+        assertThat(createAudit.at("/targetId").asText()).isEqualTo(created.at("/data/notificationId").asText());
+        assertThat(createAudit.at("/action").asText()).isEqualTo("NOTIFICATION_MESSAGE_CREATED");
+        assertThat(createAudit.at("/riskLevel").asText()).isEqualTo("HIGH");
+        assertThat(createAudit.at("/paramsSummary/recipientTotal").asInt()).isEqualTo(1);
+        assertThat(createAudit.at("/paramsSummary/sourceModule").asText()).isEqualTo("notification");
+        assertThat(createAudit.at("/paramsSummary/idempotencyKeyPresent").asBoolean()).isTrue();
+        assertThat(createAudit.at("/beforeState/status").asText()).isEqualTo("NONE");
+        assertThat(createAudit.at("/afterState/status").asText()).isEqualTo("CREATED");
+        assertThat(createAudit.toString()).doesNotContain("secret-token", "Notification body with", "Authorization", "Bearer");
+
+        JsonNode archived = performJson(patch("/api/v1/notifications/me/" + created.at("/data/notificationId").asText() + "/archive")
+                .header("Authorization", bearer("user-token"))
+                .header("X-Request-Id", "req-hard-archive")
+                .header("X-Forwarded-For", "198.51.100.4"), Map.of("reason", "hide"), 200);
+        assertThat(archived.at("/data/status").asText()).isEqualTo("ARCHIVED");
+        JsonNode archiveAudits = performJson(get("/api/v1/notifications/admin/messages/" + created.at("/data/notificationId").asText() + "/audit-logs")
+                .header("Authorization", bearer("owner-token")), 200);
+        JsonNode archiveAudit = archiveAudits.at("/data/items/0");
+        assertThat(archiveAudit.at("/requestId").asText()).isEqualTo("req-hard-archive");
+        assertThat(archiveAudit.at("/actorUserId").asText()).isEqualTo("user");
+        assertThat(archiveAudit.at("/sourceIp").asText()).isEqualTo("198.51.100.4");
+        assertThat(archiveAudit.at("/riskLevel").asText()).isEqualTo("LOW");
+        assertThat(archiveAudit.at("/beforeState/status").asText()).isEqualTo("UNREAD");
+        assertThat(archiveAudit.at("/afterState/status").asText()).isEqualTo("ARCHIVED");
+    }
+
+    @Test
+    @DisplayName("NOTIF-HARDEN idempotency records expire and ops summary stays sanitized")
+    void productionHardeningIdempotencyTtlContract() throws Exception {
+        JsonNode before = performJson(get("/api/v1/notifications/admin/ops/summary")
+                .header("Authorization", bearer("admin-token")), 200);
+        int beforeIdempotency = before.at("/data/idempotencyRecordsTotal").asInt();
+
+        Map<String, Object> firstBody = messageBody(List.of("user"), "TTL First");
+        firstBody.put("idempotencyKey", "ttl-message-key");
+        JsonNode first = performJson(post("/api/v1/notifications/admin/messages")
+                .header("Authorization", bearer("admin-token")), firstBody, 201);
+
+        Map<String, Object> template = templateBody("TTL_TEMPLATE");
+        template.put("idempotencyKey", "ttl-template-key");
+        performJson(post("/api/v1/notifications/admin/templates")
+                .header("Authorization", bearer("admin-token")), template, 201);
+
+        JsonNode withRecords = performJson(get("/api/v1/notifications/admin/ops/summary")
+                .header("Authorization", bearer("admin-token")), 200);
+        assertThat(withRecords.at("/data/idempotencyRecordsTotal").asInt()).isGreaterThanOrEqualTo(beforeIdempotency + 2);
+        assertThat(withRecords.at("/data/idempotencyRetentionHours").asInt()).isEqualTo(24);
+        assertThat(withRecords.at("/data/auditCompletenessMode").asText()).isEqualTo("SAFE_SUMMARY");
+        assertThat(withRecords.toString()).doesNotContain("ttl-message-key", "ttl-template-key", "TTL First", "Notification body");
+
+        Map<String, Object> changedWithinWindow = messageBody(List.of("another_user"), "TTL Changed");
+        changedWithinWindow.put("idempotencyKey", "ttl-message-key");
+        performJson(post("/api/v1/notifications/admin/messages")
+                .header("Authorization", bearer("admin-token")), changedWithinWindow, 409, 43002);
+
+        store.expireIdempotencyRecordsForTest();
+
+        JsonNode afterExpireSummary = performJson(get("/api/v1/notifications/admin/ops/summary")
+                .header("Authorization", bearer("admin-token")), 200);
+        assertThat(afterExpireSummary.at("/data/idempotencyRecordsTotal").asInt()).isZero();
+
+        JsonNode afterExpire = performJson(post("/api/v1/notifications/admin/messages")
+                .header("Authorization", bearer("admin-token")), changedWithinWindow, 201);
+        assertThat(afterExpire.at("/data/notificationId").asText()).isNotEqualTo(first.at("/data/notificationId").asText());
     }
 
     @Test
@@ -956,7 +1053,7 @@ class NotificationApiContractTest {
 
     private List<String> valuesAt(JsonNode root, String arrayPointer, String fieldName) {
         return java.util.stream.StreamSupport.stream(root.at(arrayPointer).spliterator(), false)
-                .map(item -> item.path(fieldName).asText())
+                .map(item -> fieldName == null ? item.asText() : item.path(fieldName).asText())
                 .toList();
     }
 }
