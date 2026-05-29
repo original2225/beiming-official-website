@@ -42,6 +42,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.Enumeration;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -50,6 +51,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
 import java.util.function.Predicate;
+import java.util.regex.Pattern;
 
 @RestController
 class GatewayController {
@@ -59,6 +61,11 @@ class GatewayController {
     private static final Set<String> HEALTH_STATUSES = Set.of("UNKNOWN", "UP", "DEGRADED", "DOWN", "TIMEOUT");
     private static final Set<String> LOG_RESULTS = Set.of("SUCCESS", "FAILED");
     private static final Set<String> ALLOWED_PROXY_METHODS = Set.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS");
+    private static final Set<String> ALLOWED_RESPONSE_HEADERS = Set.of("cache-control", "etag", "location", "content-disposition", "last-modified", "expires");
+    private static final int MAX_PROXY_BODY_BYTES = 1_048_576;
+    private static final String AUTH_VERIFY_PATH = "/api/v1/auth/session/verify";
+    private static final String BEARER_PREFIX = "Bearer ";
+    static final String AUTH_CONTEXT_ATTRIBUTE = GatewayController.class.getName() + ".authContext";
 
     private final GatewayState state;
     private final GatewayHttpClient client;
@@ -231,6 +238,11 @@ class GatewayController {
             return ResponseEntity.ok()
                     .body(envelope(0, "success", null));
         }
+        if (body != null && body.length > MAX_PROXY_BODY_BYTES) {
+            recordLog(started, method, path, route, null, HttpStatus.PAYLOAD_TOO_LARGE.value(), "FAILED", 46204, request);
+            throw new GatewayApiException(HttpStatus.PAYLOAD_TOO_LARGE, 46204, "gateway request body too large");
+        }
+        verifyBusinessAuthContext(request, route);
 
         GatewayHttpRequest upstreamRequest = new GatewayHttpRequest(
                 method,
@@ -247,6 +259,7 @@ class GatewayController {
             if (upstream.contentType() != null && !upstream.contentType().isBlank()) {
                 headers.set(HttpHeaders.CONTENT_TYPE, upstream.contentType());
             }
+            copyAllowedResponseHeaders(headers, upstream.headers());
             return new ResponseEntity<>(upstream.body(), headers, HttpStatusCode.valueOf(upstream.status()));
         } catch (GatewayUpstreamException ex) {
             int code = upstreamFailureCode(ex.type());
@@ -271,6 +284,19 @@ class GatewayController {
             headers.put(name, Collections.list(request.getHeaders(name)));
         }
         headers.put("X-Request-Id", List.of(RequestIdFilter.currentRequestId()));
+        GatewayAuthContext context = authContext(request);
+        if (context != null) {
+            headers.put("X-Beiming-Actor-User-Id", List.of(context.userId()));
+            headers.put("X-Beiming-Actor-Roles", List.of(String.join(",", context.roles())));
+            headers.put("X-Beiming-Actor-Permissions", List.of(String.join(",", context.permissions())));
+            if (context.minecraftId() != null && !context.minecraftId().isBlank()) {
+                headers.put("X-Beiming-Actor-Minecraft-Id", List.of(context.minecraftId()));
+            }
+            if (context.minecraftUuid() != null && !context.minecraftUuid().isBlank()) {
+                headers.put("X-Beiming-Actor-Minecraft-Uuid", List.of(context.minecraftUuid()));
+            }
+            headers.put("X-Gateway-Internal-Request-Id", List.of(RequestIdFilter.currentRequestId()));
+        }
         String remote = request.getRemoteAddr();
         if (remote != null && !remote.isBlank()) {
             headers.put("X-Forwarded-For", List.of(remote));
@@ -283,22 +309,149 @@ class GatewayController {
         if (header == null || header.isBlank()) {
             throw new GatewayApiException(HttpStatus.UNAUTHORIZED, 41000, "unauthenticated");
         }
-        if (!header.startsWith("Bearer ")) {
+        if (!header.startsWith(BEARER_PREFIX)) {
             throw new GatewayApiException(HttpStatus.UNAUTHORIZED, 41003, "invalid token format");
         }
-        Set<String> roles = switch (header.substring("Bearer ".length())) {
-            case "owner-token" -> Set.of("OWNER");
-            case "admin-token" -> Set.of("ADMIN");
-            case "helper-token" -> Set.of("HELPER");
-            case "user-token" -> Set.of("USER");
-            default -> throw new GatewayApiException(HttpStatus.UNAUTHORIZED, 41001, "invalid session");
-        };
+        Set<String> roles = localRoles(header).orElse(null);
+        if (roles == null) {
+            GatewayAuthContext context = requireRemoteAuthContext(header);
+            request.setAttribute(AUTH_CONTEXT_ATTRIBUTE, context);
+            roles = context.roles();
+        }
         if (roles.stream().noneMatch(allowed::contains)) {
             throw new GatewayApiException(HttpStatus.FORBIDDEN, 42001, "role insufficient");
         }
     }
 
+    private Optional<Set<String>> localRoles(String authorization) {
+        if (authorization == null || !authorization.startsWith(BEARER_PREFIX)) {
+            return Optional.empty();
+        }
+        return switch (authorization.substring(BEARER_PREFIX.length())) {
+            case "owner-token" -> Optional.of(Set.of("OWNER"));
+            case "admin-token" -> Optional.of(Set.of("ADMIN"));
+            case "helper-token" -> Optional.of(Set.of("HELPER"));
+            case "user-token" -> Optional.of(Set.of("USER"));
+            default -> Optional.empty();
+        };
+    }
+
+    private void verifyBusinessAuthContext(HttpServletRequest request, GatewayRoute route) {
+        if ("AUTH".equals(route.serviceKey())) {
+            return;
+        }
+        String header = request.getHeader(HttpHeaders.AUTHORIZATION);
+        if (header == null || !header.startsWith(BEARER_PREFIX) || localRoles(header).isPresent()) {
+            return;
+        }
+        try {
+            verifyRemoteAuthContext(header).ifPresent(context -> request.setAttribute(AUTH_CONTEXT_ATTRIBUTE, context));
+        } catch (GatewayUpstreamException ignored) {
+            request.removeAttribute(AUTH_CONTEXT_ATTRIBUTE);
+        }
+    }
+
+    private GatewayAuthContext requireRemoteAuthContext(String authorization) {
+        GatewayHttpResponse response;
+        try {
+            response = callAuthVerify(authorization);
+        } catch (GatewayUpstreamException ex) {
+            if (ex.type() == GatewayFailureType.TIMEOUT) {
+                throw new GatewayApiException(HttpStatus.GATEWAY_TIMEOUT, 46001, "auth verification timeout");
+            }
+            throw new GatewayApiException(HttpStatus.BAD_GATEWAY, 46000, "auth verification unavailable");
+        }
+        if (response.status() >= 200 && response.status() < 300) {
+            return parseAuthContext(response.body())
+                    .orElseThrow(() -> new GatewayApiException(HttpStatus.UNAUTHORIZED, 41001, "invalid session"));
+        }
+        if (response.status() >= 500) {
+            throw new GatewayApiException(HttpStatus.BAD_GATEWAY, 46000, "auth verification unavailable");
+        }
+        int code = extractErrorCode(response.body()).orElse(response.status() == 403 ? 42001 : 41001);
+        HttpStatus status = response.status() == 403 ? HttpStatus.FORBIDDEN : HttpStatus.UNAUTHORIZED;
+        throw new GatewayApiException(status, code, authFailureMessage(code));
+    }
+
+    private Optional<GatewayAuthContext> verifyRemoteAuthContext(String authorization) {
+        GatewayHttpResponse response = callAuthVerify(authorization);
+        if (response.status() < 200 || response.status() >= 300) {
+            return Optional.empty();
+        }
+        return parseAuthContext(response.body());
+    }
+
+    private GatewayHttpResponse callAuthVerify(String authorization) {
+        GatewayRoute authRoute = state.routeByServiceKey("AUTH")
+                .orElseThrow(() -> GatewayUpstreamException.invalidUpstream("auth route not configured"));
+        Map<String, List<String>> headers = new LinkedHashMap<>();
+        headers.put(HttpHeaders.AUTHORIZATION, List.of(authorization));
+        headers.put("X-Request-Id", List.of(RequestIdFilter.currentRequestId()));
+        GatewayHttpRequest verify = new GatewayHttpRequest("GET", AUTH_VERIFY_PATH, null, headers, "");
+        return client.exchange(authRoute, verify);
+    }
+
+    private Optional<GatewayAuthContext> parseAuthContext(byte[] body) {
+        try {
+            JsonNode data = objectMapper.readTree(body).path("data");
+            if (!data.path("valid").asBoolean(false)) {
+                return Optional.empty();
+            }
+            JsonNode user = data.path("user");
+            String userId = text(user.path("id"));
+            if (userId == null) {
+                return Optional.empty();
+            }
+            Set<String> roles = textSet(user.path("roles"));
+            if (roles.isEmpty()) {
+                return Optional.empty();
+            }
+            JsonNode binding = user.path("minecraftBinding");
+            return Optional.of(new GatewayAuthContext(
+                    userId,
+                    roles,
+                    textSet(user.path("permissions")),
+                    text(binding.path("minecraftId")),
+                    text(binding.path("minecraftUuid"))
+            ));
+        } catch (Exception ex) {
+            return Optional.empty();
+        }
+    }
+
+    private Set<String> textSet(JsonNode node) {
+        if (node == null || !node.isArray()) {
+            return Set.of();
+        }
+        Set<String> values = new LinkedHashSet<>();
+        node.forEach(item -> {
+            String value = text(item);
+            if (value != null) {
+                values.add(value);
+            }
+        });
+        return values;
+    }
+
+    private String text(JsonNode node) {
+        if (node == null || node.isMissingNode() || node.isNull()) {
+            return null;
+        }
+        String value = node.asText();
+        return value == null || value.isBlank() ? null : value;
+    }
+
+    private String authFailureMessage(int code) {
+        return code == 42001 ? "role insufficient" : "invalid session";
+    }
+
+    private GatewayAuthContext authContext(HttpServletRequest request) {
+        Object value = request.getAttribute(AUTH_CONTEXT_ATTRIBUTE);
+        return value instanceof GatewayAuthContext context ? context : null;
+    }
+
     private void recordLog(Instant started, String method, String path, GatewayRoute route, Integer upstreamStatus, int gatewayStatus, String result, Integer errorCode, HttpServletRequest request) {
+        GatewayAuthContext context = authContext(request);
         state.record(new GatewayRequestLog(
                 RequestIdFilter.currentRequestId(),
                 method,
@@ -311,9 +464,33 @@ class GatewayController {
                 errorCode == null || errorCode == 0 ? null : errorCode,
                 duration(started),
                 clientIp(request),
-                null,
+                context == null ? null : context.userId(),
                 Instant.now()
         ));
+    }
+
+    private void copyAllowedResponseHeaders(HttpHeaders target, Map<String, List<String>> source) {
+        source.forEach((name, values) -> {
+            String lower = name.toLowerCase(Locale.ROOT);
+            if (!ALLOWED_RESPONSE_HEADERS.contains(lower) || values == null) {
+                return;
+            }
+            values.stream()
+                    .filter(value -> value != null && !value.isBlank())
+                    .forEach(value -> target.add(canonicalResponseHeader(lower), value));
+        });
+    }
+
+    private String canonicalResponseHeader(String lower) {
+        return switch (lower) {
+            case "cache-control" -> HttpHeaders.CACHE_CONTROL;
+            case "etag" -> HttpHeaders.ETAG;
+            case "location" -> HttpHeaders.LOCATION;
+            case "content-disposition" -> HttpHeaders.CONTENT_DISPOSITION;
+            case "last-modified" -> HttpHeaders.LAST_MODIFIED;
+            case "expires" -> HttpHeaders.EXPIRES;
+            default -> lower;
+        };
     }
 
     private int duration(Instant started) {
@@ -427,7 +604,7 @@ class GatewayController {
                 "SERVICE_DISCOVERY_NOT_CONNECTED",
                 "CENTRAL_CONFIG_NOT_CONNECTED",
                 "DISTRIBUTED_RATE_LIMIT_NOT_CONNECTED",
-                "REAL_AUTH_CONTEXT_NOT_INJECTED",
+                "AUTH_CONTEXT_SIGNATURE_AND_CACHE_NOT_CONNECTED",
                 "PERSISTENT_AUDIT_NOT_CONNECTED",
                 "WEBSOCKET_PROXY_NOT_ENABLED",
                 "LARGE_STREAM_PROXY_NOT_ENABLED"
@@ -571,12 +748,17 @@ class GatewayState {
 
 @Component
 class JavaGatewayHttpClient implements GatewayHttpClient {
+    private final java.net.http.HttpClient httpClient;
+
+    JavaGatewayHttpClient() {
+        this.httpClient = java.net.http.HttpClient.newBuilder()
+                .connectTimeout(Duration.ofMillis(1500))
+                .build();
+    }
+
     @Override
     public GatewayHttpResponse exchange(GatewayRoute route, GatewayHttpRequest request) {
         try {
-            java.net.http.HttpClient httpClient = java.net.http.HttpClient.newBuilder()
-                    .connectTimeout(Duration.ofMillis(route.timeoutMs()))
-                    .build();
             String url = route.upstreamBaseUrl() + request.path() + (request.query() == null || request.query().isBlank() ? "" : "?" + request.query());
             java.net.http.HttpRequest.Builder builder = java.net.http.HttpRequest.newBuilder(URI.create(url))
                     .timeout(Duration.ofMillis(route.timeoutMs()));
@@ -703,6 +885,9 @@ record GatewayHttpRequest(String method, String path, String query, Map<String, 
 record GatewayHttpResponse(int status, String contentType, byte[] body, Map<String, List<String>> headers) {
 }
 
+record GatewayAuthContext(String userId, Set<String> roles, Set<String> permissions, String minecraftId, String minecraftUuid) {
+}
+
 enum GatewayFailureType {
     CONNECTION,
     TIMEOUT,
@@ -820,11 +1005,16 @@ class GatewayAdminRequestLogFilter extends OncePerRequestFilter {
                         null,
                         Math.max(0, (int) Duration.between(started, Instant.now()).toMillis()),
                         request.getRemoteAddr() == null || request.getRemoteAddr().isBlank() ? null : request.getRemoteAddr(),
-                        null,
+                        actorUserId(request),
                         Instant.now()
                 ));
             }
         }
+    }
+
+    private String actorUserId(HttpServletRequest request) {
+        Object value = request.getAttribute(GatewayController.AUTH_CONTEXT_ATTRIBUTE);
+        return value instanceof GatewayAuthContext context ? context.userId() : null;
     }
 }
 
@@ -832,6 +1022,7 @@ class GatewayAdminRequestLogFilter extends OncePerRequestFilter {
 @Order(0)
 class RequestIdFilter extends OncePerRequestFilter {
     private static final ThreadLocal<String> REQUEST_ID = new ThreadLocal<>();
+    private static final Pattern REQUEST_ID_PATTERN = Pattern.compile("[A-Za-z0-9_.:-]{1,128}");
 
     static String currentRequestId() {
         String id = REQUEST_ID.get();
@@ -843,6 +1034,16 @@ class RequestIdFilter extends OncePerRequestFilter {
         String requestId = request.getHeader("X-Request-Id");
         if (requestId == null || requestId.isBlank()) {
             requestId = "req_" + UUID.randomUUID();
+        } else if (!REQUEST_ID_PATTERN.matcher(requestId).matches()) {
+            String fallback = "req_invalid";
+            REQUEST_ID.set(fallback);
+            response.setStatus(HttpStatus.BAD_REQUEST.value());
+            response.setHeader("X-Request-Id", fallback);
+            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+            response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+            response.getWriter().write("{\"code\":46205,\"message\":\"invalid request id\",\"data\":null,\"requestId\":\"" + fallback + "\"}");
+            REQUEST_ID.remove();
+            return;
         }
         REQUEST_ID.set(requestId);
         response.setHeader("X-Request-Id", requestId);

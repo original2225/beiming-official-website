@@ -42,7 +42,7 @@
 
 公开健康检查无需认证。网关自有后台接口需要 `Authorization: Bearer <token>`。P0 本地实现允许 `owner-token`、`admin-token` 和 `helper-token` 访问只读后台自检、路由和健康接口；请求日志接口只允许 `owner-token` 和 `admin-token` 访问，`helper-token` 与 `user-token` 均返回 `42001`；缺失或格式错误返回公共认证错误码。
 
-除本地固定 token 外，网关自有后台接口也可以通过 `auth` 的 `GET /api/v1/auth/session/verify` 校验真实会话。校验成功后，`user.roles` 中包含 `HELPER`、`ADMIN` 或 `OWNER` 可访问只读后台接口，包含 `ADMIN` 或 `OWNER` 可访问请求日志接口。校验返回认证或权限错误时，网关返回对应错误；`auth` 不可连接或超时时，网关返回 `46000` 或 `46001`，不得把无法校验的 token 当作已登录用户。
+除本地固定 token 外，网关自有后台接口也可以通过 `auth` 的 `GET /api/v1/auth/session/verify` 校验真实会话。校验成功后，`user.roles` 中包含 `HELPER`、`ADMIN` 或 `OWNER` 可访问只读后台接口，包含 `ADMIN` 或 `OWNER` 可访问请求日志接口。校验返回认证或权限错误时，网关返回对应错误；`auth` 不可连接、超时或返回 `5xx` 时，网关返回 `46000` 或 `46001`，不得把无法校验的 token 当作已登录用户。
 
 业务转发接口不在网关层做强制角色判断。公开业务接口可以无 `Authorization` 透传；需要登录或后台权限的业务接口由上游服务按自身契约返回 `41000`、`41001`、`42001` 或其他业务错误码。业务转发请求如果携带 `Authorization: Bearer <token>` 且目标路由不是 `auth`，网关会向 `auth` 会话校验接口做一次短路径校验。校验成功时，网关向上游注入可信身份头；校验失败、超时或 `auth` 不可用时，网关不注入可信身份头，但仍透传原始 `Authorization` 给目标上游，由目标上游按自身契约判定请求是否可继续。
 

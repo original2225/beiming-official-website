@@ -56,6 +56,13 @@ class GatewayProductionHardeningTest {
         assertThat(summary.toString()).doesNotContain("rawToken", "secretKey", "Authorization", "Cookie", "stackTrace");
     }
 
+    @Test
+    void javaHttpClientIsReusedOutsidePerRequestExchange() throws IOException {
+        String source = Files.readString(Path.of("src/main/java/cn/beiming/apigateway/GatewayModule.java"));
+        Pattern perExchangeClientCreation = Pattern.compile("GatewayHttpResponse exchange\\(GatewayRoute route, GatewayHttpRequest request\\) \\{[\\s\\S]*?HttpClient\\.newBuilder");
+        assertThat(perExchangeClientCreation.matcher(source).find()).isFalse();
+    }
+
     private JsonNode performJson(org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder builder, int status) throws Exception {
         MvcResult result = mvc.perform(builder)
                 .andExpect(status().is(status))

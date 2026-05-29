@@ -67,18 +67,18 @@ class GatewayApiContractTest {
     void everyDocumentedCaseHasCoverageMapping() {
         Set<String> mapped = new TreeSet<>();
         addRange(mapped, "GATE-COM", 1, 12);
-        addRange(mapped, "GATE-AUTH", 1, 12);
+        addRange(mapped, "GATE-AUTH", 1, 14);
         addRange(mapped, "GATE-HEALTH", 1, 6);
         addRange(mapped, "GATE-ROUTE", 1, 16);
         addRange(mapped, "GATE-PFX", 1, 24);
         addRange(mapped, "GATE-UP", 1, 20);
         addRange(mapped, "GATE-LOG", 1, 20);
-        addRange(mapped, "GATE-PROXY", 1, 41);
+        addRange(mapped, "GATE-PROXY", 1, 49);
         addRange(mapped, "GATE-CORS", 1, 10);
-        addRange(mapped, "GATE-SEC", 1, 10);
+        addRange(mapped, "GATE-SEC", 1, 11);
 
-        assertThat(mapped).hasSize(171);
-        assertThat(mapped).contains("GATE-COM-001", "GATE-PFX-024", "GATE-UP-020", "GATE-PROXY-041", "GATE-SEC-010");
+        assertThat(mapped).hasSize(182);
+        assertThat(mapped).contains("GATE-COM-001", "GATE-PFX-024", "GATE-UP-020", "GATE-PROXY-049", "GATE-SEC-011");
     }
 
     @Test
@@ -114,6 +114,18 @@ class GatewayApiContractTest {
         performJson(get("/api/v1/gateway/admin/request-logs").header("Authorization", bearer("helper-token")), 403, 42001);
         performJson(get("/api/v1/gateway/admin/request-logs").header("Authorization", bearer("admin-token")), 200);
         performJson(get("/api/v1/gateway/admin/request-logs").header("Authorization", bearer("owner-token")), 200);
+
+        fakeClient.authContext("ses-admin-real", "auth-user-admin", List.of("ADMIN"), List.of("NODE_READ"), null);
+        performJson(get("/api/v1/gateway/admin/routes").header("Authorization", bearer("ses-admin-real")), 200);
+
+        fakeClient.authContext("ses-real-user", "auth-user-basic", List.of("USER"), List.of(), null);
+        performJson(get("/api/v1/gateway/admin/routes").header("Authorization", bearer("ses-real-user")), 403, 42001);
+
+        fakeClient.authFailure("ses-auth-down", GatewayFailureType.CONNECTION);
+        performJson(get("/api/v1/gateway/admin/routes").header("Authorization", bearer("ses-auth-down")), 502, 46000);
+
+        fakeClient.authStatus("ses-auth-error", 500, body(51100, "auth internal error", null));
+        performJson(get("/api/v1/gateway/admin/routes").header("Authorization", bearer("ses-auth-error")), 502, 46000);
 
         performJson(get("/api/v1/gateway/admin/routes")
                 .header("Authorization", bearer("helper-token"))
@@ -252,6 +264,7 @@ class GatewayApiContractTest {
         assertThat(outbound.headers().get("Authorization")).containsExactly(bearer("secret-upstream-token"));
         assertThat(outbound.headers()).doesNotContainKey("Connection");
         assertThat(outbound.headers()).doesNotContainKey("X-Beiming-Actor-User-Id");
+        assertThat(outbound.headers()).doesNotContainKey("X-Gateway-Internal-Request-Id");
 
         for (HttpMethod method : List.of(HttpMethod.GET, HttpMethod.PUT, HttpMethod.PATCH, HttpMethod.DELETE)) {
             fakeClient.respond("AUTH", 200, Map.of("code", 0, "message", "success", "data", Map.of("method", method.name())));
@@ -273,6 +286,26 @@ class GatewayApiContractTest {
         assertThat(text.getResponse().getContentAsString()).isEqualTo("plain-upstream");
         assertThat(text.getResponse().getContentType()).contains("text/plain");
 
+        fakeClient.respondWithHeaders("AUTH", 201, "application/json", body(0, "success", null), Map.of(
+                "Cache-Control", List.of("no-store"),
+                "ETag", List.of("\"abc\""),
+                "Location", List.of("/api/v1/auth/sessions/1"),
+                "Content-Disposition", List.of("attachment; filename=\"a.txt\""),
+                "Last-Modified", List.of("Fri, 29 May 2026 00:00:00 GMT"),
+                "Expires", List.of("Fri, 29 May 2026 01:00:00 GMT"),
+                "X-Internal-Upstream", List.of("hidden")
+        ));
+        MvcResult headers = mvc.perform(post("/api/v1/auth/header-check"))
+                .andExpect(status().isCreated())
+                .andReturn();
+        assertThat(headers.getResponse().getHeader("Cache-Control")).isEqualTo("no-store");
+        assertThat(headers.getResponse().getHeader("ETag")).isEqualTo("\"abc\"");
+        assertThat(headers.getResponse().getHeader("Location")).isEqualTo("/api/v1/auth/sessions/1");
+        assertThat(headers.getResponse().getHeader("Content-Disposition")).contains("a.txt");
+        assertThat(headers.getResponse().getHeader("Last-Modified")).contains("29 May 2026");
+        assertThat(headers.getResponse().getHeader("Expires")).contains("29 May 2026");
+        assertThat(headers.getResponse().getHeader("X-Internal-Upstream")).isNull();
+
         fakeClient.failConnection("AUTH");
         performJson(get("/api/v1/auth/down"), 502, 46210);
         fakeClient.failTimeout("AUTH");
@@ -285,6 +318,11 @@ class GatewayApiContractTest {
         performJson(get("/api/v1/unknown/path"), 404, 46200);
         performJson(request(HttpMethod.TRACE, "/api/v1/auth/trace"), 405, 46201);
         performJson(get("/api/v1/resourceful"), 404, 46200);
+        performJson(get("/api/v1/auth/bad-request-id").header("X-Request-Id", "bad id"), 400, 46205);
+        performJson(get("/api/v1/auth/long-request-id").header("X-Request-Id", "r".repeat(129)), 400, 46205);
+        performJson(post("/api/v1/auth/too-large")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("x".repeat(1_048_577)), 413, 46204);
 
         mvc.perform(options("/api/v1/auth/login")
                         .header("Origin", "http://127.0.0.1:5173")
@@ -313,6 +351,49 @@ class GatewayApiContractTest {
         performJson(get("/api/v1/gateway/admin/request-logs").header("Authorization", bearer("admin-token"))
                 .param("from", "2026-05-30T00:00:00Z").param("to", "2026-05-29T00:00:00Z"), 400, 46203);
         performJson(get("/api/v1/gateway/admin/request-logs").header("Authorization", bearer("admin-token")).param("sort", "bad"), 400, 46203);
+    }
+
+    @Test
+    @DisplayName("GATE-AUTH-013/014 and GATE-PROXY-047/048/049 cover auth verified trusted context")
+    void authVerifiedContextIsInjectedOnlyAfterAuthVerification() throws Exception {
+        fakeClient.authContext("ses-profile-user", "auth-user-123", List.of("USER"), List.of("NODE_READ"), Map.of(
+                "minecraftId", "Steve",
+                "minecraftUuid", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        ));
+        fakeClient.respond("PROFILE", 200, Map.of("code", 0, "message", "success", "data", Map.of("profile", true)));
+
+        performJson(get("/api/v1/profile/me")
+                .header("Authorization", bearer("ses-profile-user"))
+                .header("X-Request-Id", "req-auth-context")
+                .header("X-Beiming-Actor-User-Id", "forged-user")
+                .header("X-Gateway-Internal-Request-Id", "forged-request"), 200);
+
+        GatewayHttpRequest profile = fakeClient.lastRequestFor("PROFILE");
+        assertThat(profile.headers().get("Authorization")).containsExactly(bearer("ses-profile-user"));
+        assertThat(profile.headers().get("X-Beiming-Actor-User-Id")).containsExactly("auth-user-123");
+        assertThat(profile.headers().get("X-Beiming-Actor-Roles")).containsExactly("USER");
+        assertThat(profile.headers().get("X-Beiming-Actor-Permissions")).containsExactly("NODE_READ");
+        assertThat(profile.headers().get("X-Beiming-Actor-Minecraft-Id")).containsExactly("Steve");
+        assertThat(profile.headers().get("X-Beiming-Actor-Minecraft-Uuid")).containsExactly("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+        assertThat(profile.headers().get("X-Gateway-Internal-Request-Id")).containsExactly("req-auth-context");
+
+        JsonNode logs = performJson(get("/api/v1/gateway/admin/request-logs")
+                .header("Authorization", bearer("admin-token"))
+                .param("pageSize", "100")
+                .param("routeId", "profile"), 200);
+        assertThat(logs.at("/data/items").toString()).contains("\"actorUserId\":\"auth-user-123\"");
+
+        fakeClient.authStatus("ses-invalid-user", 401, body(41001, "invalid session", null));
+        fakeClient.respond("CONTENT", 200, Map.of("code", 0, "message", "success", "data", Map.of("content", true)));
+        performJson(get("/api/v1/content/homepage")
+                .header("Authorization", bearer("ses-invalid-user"))
+                .header("X-Beiming-Actor-Roles", "OWNER"), 200);
+
+        GatewayHttpRequest content = fakeClient.lastRequestFor("CONTENT");
+        assertThat(content.headers().get("Authorization")).containsExactly(bearer("ses-invalid-user"));
+        assertThat(content.headers()).doesNotContainKey("X-Beiming-Actor-User-Id");
+        assertThat(content.headers()).doesNotContainKey("X-Beiming-Actor-Roles");
+        assertThat(content.headers()).doesNotContainKey("X-Gateway-Internal-Request-Id");
     }
 
     @Test
@@ -355,7 +436,8 @@ class GatewayApiContractTest {
     static final class FakeGatewayHttpClient implements GatewayHttpClient {
         private final ObjectMapper objectMapper;
         private final Map<String, FakeResponse> responses = new LinkedHashMap<>();
-        private final List<GatewayHttpRequest> requests = new ArrayList<>();
+        private final Map<String, FakeResponse> authVerifyResponses = new LinkedHashMap<>();
+        private final List<FakeExchange> exchanges = new ArrayList<>();
 
         FakeGatewayHttpClient(ObjectMapper objectMapper) {
             this.objectMapper = objectMapper;
@@ -363,42 +445,85 @@ class GatewayApiContractTest {
 
         void reset() {
             responses.clear();
-            requests.clear();
+            authVerifyResponses.clear();
+            exchanges.clear();
         }
 
         void respond(String serviceKey, int status, Object body) throws Exception {
-            responses.put(serviceKey, new FakeResponse(status, "application/json", objectMapper.writeValueAsBytes(body), null));
+            respondWithHeaders(serviceKey, status, "application/json", body, Map.of());
         }
 
         void respondText(String serviceKey, int status, String contentType, String body) {
-            responses.put(serviceKey, new FakeResponse(status, contentType, body.getBytes(StandardCharsets.UTF_8), null));
+            responses.put(serviceKey, new FakeResponse(status, contentType, body.getBytes(StandardCharsets.UTF_8), Map.of(), null));
+        }
+
+        void respondWithHeaders(String serviceKey, int status, String contentType, Object body, Map<String, List<String>> headers) throws Exception {
+            responses.put(serviceKey, new FakeResponse(status, contentType, objectMapper.writeValueAsBytes(body), headers, null));
+        }
+
+        void authContext(String token, String userId, List<String> roles, List<String> permissions, Map<String, Object> minecraftBinding) throws Exception {
+            Map<String, Object> user = new LinkedHashMap<>();
+            user.put("id", userId);
+            user.put("roles", roles);
+            user.put("permissions", permissions);
+            user.put("minecraftBinding", minecraftBinding);
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("valid", true);
+            data.put("expiresAt", "2026-05-29T12:00:00Z");
+            data.put("user", user);
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("code", 0);
+            payload.put("message", "success");
+            payload.put("data", data);
+            authStatus(token, 200, payload);
+        }
+
+        void authStatus(String token, int status, Object body) throws Exception {
+            authVerifyResponses.put(bearerValue(token), new FakeResponse(status, "application/json", objectMapper.writeValueAsBytes(body), Map.of(), null));
+        }
+
+        void authFailure(String token, GatewayFailureType failureType) {
+            authVerifyResponses.put(bearerValue(token), new FakeResponse(0, null, new byte[0], Map.of(), failureType));
         }
 
         void failConnection(String serviceKey) {
-            responses.put(serviceKey, new FakeResponse(0, null, new byte[0], GatewayFailureType.CONNECTION));
+            responses.put(serviceKey, new FakeResponse(0, null, new byte[0], Map.of(), GatewayFailureType.CONNECTION));
         }
 
         void failTimeout(String serviceKey) {
-            responses.put(serviceKey, new FakeResponse(0, null, new byte[0], GatewayFailureType.TIMEOUT));
+            responses.put(serviceKey, new FakeResponse(0, null, new byte[0], Map.of(), GatewayFailureType.TIMEOUT));
         }
 
         void failInvalidResponse(String serviceKey) {
-            responses.put(serviceKey, new FakeResponse(0, null, new byte[0], GatewayFailureType.INVALID_RESPONSE));
+            responses.put(serviceKey, new FakeResponse(0, null, new byte[0], Map.of(), GatewayFailureType.INVALID_RESPONSE));
         }
 
         void failInvalidUpstream(String serviceKey) {
-            responses.put(serviceKey, new FakeResponse(0, null, new byte[0], GatewayFailureType.INVALID_UPSTREAM));
+            responses.put(serviceKey, new FakeResponse(0, null, new byte[0], Map.of(), GatewayFailureType.INVALID_UPSTREAM));
         }
 
         GatewayHttpRequest lastRequest() {
-            return requests.get(requests.size() - 1);
+            return exchanges.get(exchanges.size() - 1).request();
+        }
+
+        GatewayHttpRequest lastRequestFor(String serviceKey) {
+            for (int i = exchanges.size() - 1; i >= 0; i--) {
+                FakeExchange exchange = exchanges.get(i);
+                if (serviceKey.equals(exchange.serviceKey())) {
+                    return exchange.request();
+                }
+            }
+            throw new AssertionError("missing request for " + serviceKey);
         }
 
         @Override
         public GatewayHttpResponse exchange(GatewayRoute route, GatewayHttpRequest request) {
-            requests.add(request);
-            FakeResponse response = responses.getOrDefault(route.serviceKey(), new FakeResponse(200, "application/json",
-                    "{\"code\":0,\"message\":\"success\",\"data\":{\"default\":true}}".getBytes(StandardCharsets.UTF_8), null));
+            exchanges.add(new FakeExchange(route.serviceKey(), request));
+            FakeResponse response = authVerifyResponse(route, request);
+            if (response == null) {
+                response = responses.getOrDefault(route.serviceKey(), new FakeResponse(200, "application/json",
+                        "{\"code\":0,\"message\":\"success\",\"data\":{\"default\":true}}".getBytes(StandardCharsets.UTF_8), Map.of(), null));
+            }
             if (response.failureType == GatewayFailureType.CONNECTION) {
                 throw GatewayUpstreamException.connection("connection failed");
             }
@@ -411,10 +536,25 @@ class GatewayApiContractTest {
             if (response.failureType == GatewayFailureType.INVALID_UPSTREAM) {
                 throw GatewayUpstreamException.invalidUpstream("upstream address invalid");
             }
-            return new GatewayHttpResponse(response.status, response.contentType, response.body, Map.of());
+            return new GatewayHttpResponse(response.status, response.contentType, response.body, response.headers);
         }
 
-        private record FakeResponse(int status, String contentType, byte[] body, GatewayFailureType failureType) {
+        private FakeResponse authVerifyResponse(GatewayRoute route, GatewayHttpRequest request) {
+            if (!"AUTH".equals(route.serviceKey()) || !"/api/v1/auth/session/verify".equals(request.path())) {
+                return null;
+            }
+            List<String> auth = request.headers().get("Authorization");
+            return auth == null || auth.isEmpty() ? null : authVerifyResponses.get(auth.get(0));
+        }
+
+        private String bearerValue(String token) {
+            return "Bearer " + token;
+        }
+
+        private record FakeExchange(String serviceKey, GatewayHttpRequest request) {
+        }
+
+        private record FakeResponse(int status, String contentType, byte[] body, Map<String, List<String>> headers, GatewayFailureType failureType) {
         }
     }
 
