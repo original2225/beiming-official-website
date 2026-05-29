@@ -17,7 +17,6 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -44,15 +43,15 @@ import java.util.regex.Pattern;
 @RequestMapping("/api/v1/notifications")
 class NotificationController {
     private final NotificationStore store;
-    private final TestAuthContextProvider auth;
+    private final NotificationAuthContextProvider auth;
 
-    NotificationController(NotificationStore store, TestAuthContextProvider auth) {
+    NotificationController(NotificationStore store, NotificationAuthContextProvider auth) {
         this.store = store;
         this.auth = auth;
     }
 
     @GetMapping("/me")
-    ResponseEntity<Map<String, Object>> currentUserMessages(@RequestHeader(value = "Authorization", required = false) String authorization,
+    ResponseEntity<Map<String, Object>> currentUserMessages(HttpServletRequest request,
                                                             @RequestParam(defaultValue = "1") int page,
                                                             @RequestParam(defaultValue = "20") int pageSize,
                                                             @RequestParam(required = false) String status,
@@ -60,44 +59,44 @@ class NotificationController {
                                                             @RequestParam(required = false) String sourceModule,
                                                             @RequestParam(defaultValue = "false") boolean includeExpired,
                                                             @RequestParam(required = false) String sort) {
-        AuthUser current = auth.requireCurrent(authorization);
+        AuthUser current = auth.requireCurrent(request);
         return ok(store.currentUserMessages(current.userId, page, pageSize, status, type, sourceModule, includeExpired, sort));
     }
 
     @GetMapping("/me/unread-count")
-    ResponseEntity<Map<String, Object>> unreadCount(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        AuthUser current = auth.requireCurrent(authorization);
+    ResponseEntity<Map<String, Object>> unreadCount(HttpServletRequest request) {
+        AuthUser current = auth.requireCurrent(request);
         return ok(mapOf("unreadCount", store.unreadCount(current.userId)));
     }
 
     @GetMapping("/me/{notificationId}")
-    ResponseEntity<Map<String, Object>> currentUserMessage(@RequestHeader(value = "Authorization", required = false) String authorization,
+    ResponseEntity<Map<String, Object>> currentUserMessage(HttpServletRequest request,
                                                            @PathVariable String notificationId) {
-        AuthUser current = auth.requireCurrent(authorization);
+        AuthUser current = auth.requireCurrent(request);
         return ok(store.currentUserMessage(current.userId, notificationId));
     }
 
     @PatchMapping("/me/{notificationId}/read")
-    ResponseEntity<Map<String, Object>> markRead(@RequestHeader(value = "Authorization", required = false) String authorization,
+    ResponseEntity<Map<String, Object>> markRead(HttpServletRequest request,
                                                  @PathVariable String notificationId,
                                                  @RequestBody(required = false) Map<String, Object> body) {
-        AuthUser current = auth.requireCurrent(authorization);
+        AuthUser current = auth.requireCurrent(request);
         return ok(store.markRead(current.userId, notificationId));
     }
 
     @PatchMapping("/me/read-all")
-    ResponseEntity<Map<String, Object>> markAllRead(@RequestHeader(value = "Authorization", required = false) String authorization,
+    ResponseEntity<Map<String, Object>> markAllRead(HttpServletRequest request,
                                                     @RequestBody(required = false) Map<String, Object> body) {
-        AuthUser current = auth.requireCurrent(authorization);
+        AuthUser current = auth.requireCurrent(request);
         body = bodyOrEmpty(body);
         return ok(mapOf("updatedCount", store.markAllRead(current.userId, optionalString(body, "type"), optionalString(body, "sourceModule"))));
     }
 
     @PatchMapping("/me/{notificationId}/archive")
-    ResponseEntity<Map<String, Object>> archive(@RequestHeader(value = "Authorization", required = false) String authorization,
+    ResponseEntity<Map<String, Object>> archive(HttpServletRequest request,
                                                 @PathVariable String notificationId,
                                                 @RequestBody(required = false) Map<String, Object> body) {
-        AuthUser current = auth.requireCurrent(authorization);
+        AuthUser current = auth.requireCurrent(request);
         body = bodyOrEmpty(body);
         String reason = optionalString(body, "reason");
         if (reason != null && reason.length() > 200) {
@@ -107,7 +106,7 @@ class NotificationController {
     }
 
     @GetMapping("/admin/messages")
-    ResponseEntity<Map<String, Object>> adminMessages(@RequestHeader(value = "Authorization", required = false) String authorization,
+    ResponseEntity<Map<String, Object>> adminMessages(HttpServletRequest request,
                                                       @RequestParam(defaultValue = "1") int page,
                                                       @RequestParam(defaultValue = "20") int pageSize,
                                                       @RequestParam(required = false) String keyword,
@@ -117,112 +116,112 @@ class NotificationController {
                                                       @RequestParam(required = false) String deliveryStatus,
                                                       @RequestParam(required = false) String createdBy,
                                                       @RequestParam(required = false) String sort) {
-        AuthUser current = auth.requireCurrent(authorization);
+        AuthUser current = auth.requireCurrent(request);
         requireReader(current);
         return ok(store.adminMessages(page, pageSize, keyword, type, sourceModule, recipientUserId, deliveryStatus, createdBy, sort));
     }
 
     @GetMapping("/admin/messages/{notificationId}")
-    ResponseEntity<Map<String, Object>> adminMessage(@RequestHeader(value = "Authorization", required = false) String authorization,
+    ResponseEntity<Map<String, Object>> adminMessage(HttpServletRequest request,
                                                      @PathVariable String notificationId) {
-        AuthUser current = auth.requireCurrent(authorization);
+        AuthUser current = auth.requireCurrent(request);
         requireReader(current);
         return ok(store.adminMessage(notificationId));
     }
 
     @PostMapping("/admin/messages")
-    ResponseEntity<Map<String, Object>> createMessage(@RequestHeader(value = "Authorization", required = false) String authorization,
+    ResponseEntity<Map<String, Object>> createMessage(HttpServletRequest request,
                                                       @RequestBody(required = false) Map<String, Object> body) {
-        AuthUser current = auth.requireCurrent(authorization);
+        AuthUser current = auth.requireCurrent(request);
         requireWriter(current);
         return created(store.createMessage(current, auth, bodyOrEmpty(body), false));
     }
 
     @PostMapping("/admin/messages/from-template")
-    ResponseEntity<Map<String, Object>> createFromTemplate(@RequestHeader(value = "Authorization", required = false) String authorization,
+    ResponseEntity<Map<String, Object>> createFromTemplate(HttpServletRequest request,
                                                            @RequestBody(required = false) Map<String, Object> body) {
-        AuthUser current = auth.requireCurrent(authorization);
+        AuthUser current = auth.requireCurrent(request);
         requireWriter(current);
         return created(store.createFromTemplate(current, auth, bodyOrEmpty(body)));
     }
 
     @GetMapping("/admin/templates")
-    ResponseEntity<Map<String, Object>> templates(@RequestHeader(value = "Authorization", required = false) String authorization,
+    ResponseEntity<Map<String, Object>> templates(HttpServletRequest request,
                                                   @RequestParam(defaultValue = "1") int page,
                                                   @RequestParam(defaultValue = "20") int pageSize,
                                                   @RequestParam(required = false) String keyword,
                                                   @RequestParam(required = false) String status,
                                                   @RequestParam(required = false) String type,
                                                   @RequestParam(required = false) String sort) {
-        AuthUser current = auth.requireCurrent(authorization);
+        AuthUser current = auth.requireCurrent(request);
         requireReader(current);
         return ok(store.templates(page, pageSize, keyword, status, type, sort));
     }
 
     @GetMapping("/admin/templates/{templateId}")
-    ResponseEntity<Map<String, Object>> template(@RequestHeader(value = "Authorization", required = false) String authorization,
+    ResponseEntity<Map<String, Object>> template(HttpServletRequest request,
                                                  @PathVariable String templateId) {
-        AuthUser current = auth.requireCurrent(authorization);
+        AuthUser current = auth.requireCurrent(request);
         requireReader(current);
         return ok(store.templateMap(templateId));
     }
 
     @PostMapping("/admin/templates/preview")
-    ResponseEntity<Map<String, Object>> previewTemplate(@RequestHeader(value = "Authorization", required = false) String authorization,
+    ResponseEntity<Map<String, Object>> previewTemplate(HttpServletRequest request,
                                                         @RequestBody(required = false) Map<String, Object> body) {
-        AuthUser current = auth.requireCurrent(authorization);
+        AuthUser current = auth.requireCurrent(request);
         requireReader(current);
         return ok(store.previewTemplate(bodyOrEmpty(body)));
     }
 
     @PostMapping("/admin/templates")
-    ResponseEntity<Map<String, Object>> createTemplate(@RequestHeader(value = "Authorization", required = false) String authorization,
+    ResponseEntity<Map<String, Object>> createTemplate(HttpServletRequest request,
                                                        @RequestBody(required = false) Map<String, Object> body) {
-        AuthUser current = auth.requireCurrent(authorization);
+        AuthUser current = auth.requireCurrent(request);
         requireWriter(current);
         return created(store.createTemplate(current, bodyOrEmpty(body)));
     }
 
     @PatchMapping("/admin/templates/{templateId}")
-    ResponseEntity<Map<String, Object>> patchTemplate(@RequestHeader(value = "Authorization", required = false) String authorization,
+    ResponseEntity<Map<String, Object>> patchTemplate(HttpServletRequest request,
                                                       @PathVariable String templateId,
                                                       @RequestBody(required = false) Map<String, Object> body) {
-        AuthUser current = auth.requireCurrent(authorization);
+        AuthUser current = auth.requireCurrent(request);
         requireWriter(current);
         return ok(store.patchTemplate(current, templateId, bodyOrEmpty(body)));
     }
 
     @PatchMapping("/admin/templates/{templateId}/disable")
-    ResponseEntity<Map<String, Object>> disableTemplate(@RequestHeader(value = "Authorization", required = false) String authorization,
+    ResponseEntity<Map<String, Object>> disableTemplate(HttpServletRequest request,
                                                         @PathVariable String templateId,
                                                         @RequestBody(required = false) Map<String, Object> body) {
-        AuthUser current = auth.requireCurrent(authorization);
+        AuthUser current = auth.requireCurrent(request);
         requireWriter(current);
         return ok(store.disableTemplate(current, templateId, requiredString(bodyOrEmpty(body), "reason")));
     }
 
     @PatchMapping("/admin/templates/{templateId}/enable")
-    ResponseEntity<Map<String, Object>> enableTemplate(@RequestHeader(value = "Authorization", required = false) String authorization,
+    ResponseEntity<Map<String, Object>> enableTemplate(HttpServletRequest request,
                                                        @PathVariable String templateId,
                                                        @RequestBody(required = false) Map<String, Object> body) {
-        AuthUser current = auth.requireCurrent(authorization);
+        AuthUser current = auth.requireCurrent(request);
         requireWriter(current);
         return ok(store.enableTemplate(current, templateId, requiredString(bodyOrEmpty(body), "reason")));
     }
 
     @GetMapping("/admin/messages/{notificationId}/audit-logs")
-    ResponseEntity<Map<String, Object>> auditLogs(@RequestHeader(value = "Authorization", required = false) String authorization,
+    ResponseEntity<Map<String, Object>> auditLogs(HttpServletRequest request,
                                                   @PathVariable String notificationId,
                                                   @RequestParam(defaultValue = "1") int page,
                                                   @RequestParam(defaultValue = "20") int pageSize) {
-        AuthUser current = auth.requireCurrent(authorization);
+        AuthUser current = auth.requireCurrent(request);
         requireAdminOrOwner(current);
         return ok(store.auditLogs(notificationId, page, pageSize));
     }
 
     @GetMapping("/admin/ops/summary")
-    ResponseEntity<Map<String, Object>> opsSummary(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        AuthUser current = auth.requireCurrent(authorization);
+    ResponseEntity<Map<String, Object>> opsSummary(HttpServletRequest request) {
+        AuthUser current = auth.requireCurrent(request);
         requireAdminOrOwner(current);
         return ok(store.opsSummary());
     }
@@ -290,7 +289,11 @@ class NotificationController {
 }
 
 @Service
-class TestAuthContextProvider {
+class NotificationAuthContextProvider {
+    private static final Pattern REQUEST_ID_PATTERN = Pattern.compile("[A-Za-z0-9_.:-]{1,128}");
+    private static final Pattern MINECRAFT_UUID_PATTERN = Pattern.compile("[a-f0-9]{32}");
+    private static final Set<String> VALID_ROLES = Set.of("OWNER", "ADMIN", "HELPER", "USER");
+    private static final Set<String> VALID_PERMISSIONS = Set.of("NODE_READ", "NODE_WRITE", "CONTAINER_OPERATE", "VM_OPERATE", "FILE_MANAGE", "TERMINAL_ACCESS", "HIGH_RISK_APPROVE");
     private final Map<String, AuthUser> usersByToken = new ConcurrentHashMap<>();
     private final Map<String, AuthUser> targetsByUserId = new ConcurrentHashMap<>();
     private boolean failCurrentUnavailable;
@@ -335,6 +338,14 @@ class TestAuthContextProvider {
         targetsByUserId.put(userId, new AuthUser(userId, displayName, new LinkedHashSet<>(roles), new LinkedHashSet<>(), status));
     }
 
+    AuthUser requireCurrent(HttpServletRequest request) {
+        String gatewayRequestId = request.getHeader("X-Gateway-Internal-Request-Id");
+        if (gatewayRequestId != null) {
+            return requireGatewayContext(request, gatewayRequestId);
+        }
+        return requireCurrent(request.getHeader("Authorization"));
+    }
+
     AuthUser requireCurrent(String authorization) {
         if (authorization == null || authorization.isBlank()) {
             throw new ApiException(41000, HttpStatus.UNAUTHORIZED, "unauthenticated");
@@ -362,6 +373,53 @@ class TestAuthContextProvider {
             throw new ApiException(46302, HttpStatus.BAD_GATEWAY, "auth incompatible");
         }
         return user.copy();
+    }
+
+    private AuthUser requireGatewayContext(HttpServletRequest request, String gatewayRequestId) {
+        if (!REQUEST_ID_PATTERN.matcher(gatewayRequestId).matches()) {
+            throw incompatibleGatewayContext();
+        }
+        String userId = request.getHeader("X-Beiming-Actor-User-Id");
+        if (userId == null || userId.isBlank()) {
+            throw incompatibleGatewayContext();
+        }
+        LinkedHashSet<String> roles = parseCsvHeader(request.getHeader("X-Beiming-Actor-Roles"), VALID_ROLES);
+        LinkedHashSet<String> permissions = parseCsvHeader(request.getHeader("X-Beiming-Actor-Permissions"), VALID_PERMISSIONS);
+        String minecraftId = blankToNull(request.getHeader("X-Beiming-Actor-Minecraft-Id"));
+        String minecraftUuid = blankToNull(request.getHeader("X-Beiming-Actor-Minecraft-Uuid"));
+        if (minecraftId != null || minecraftUuid != null) {
+            if (minecraftId == null || minecraftUuid == null || !MINECRAFT_UUID_PATTERN.matcher(minecraftUuid).matches()) {
+                throw incompatibleGatewayContext();
+            }
+        }
+        String trimmedUserId = userId.trim();
+        return new AuthUser(trimmedUserId, trimmedUserId, roles, permissions, "ACTIVE");
+    }
+
+    private LinkedHashSet<String> parseCsvHeader(String value, Set<String> allowed) {
+        LinkedHashSet<String> parsed = new LinkedHashSet<>();
+        if (value == null || value.isBlank()) {
+            return parsed;
+        }
+        for (String part : value.split(",")) {
+            String item = part.trim();
+            if (item.isEmpty()) {
+                continue;
+            }
+            if (!allowed.contains(item)) {
+                throw incompatibleGatewayContext();
+            }
+            parsed.add(item);
+        }
+        return parsed;
+    }
+
+    private String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private ApiException incompatibleGatewayContext() {
+        return new ApiException(46302, HttpStatus.BAD_GATEWAY, "auth incompatible");
     }
 
     AuthUser targetUser(String userId) {
@@ -450,7 +508,7 @@ class NotificationStore {
         whitelistStatusChanged = false;
     }
 
-    synchronized void seedTestData(TestAuthContextProvider auth) {
+    synchronized void seedTestData(NotificationAuthContextProvider auth) {
         seedMessage("unread-user", "Exam Result", "Exam passed", "EXAM", "exam", "exam-1", "admin", null, List.of(recipient("user", "User", "UNREAD")));
         seedMessage("read-user", "Read Notice", "Already read", "SYSTEM", "notification", "notice-1", "admin", null, List.of(recipient("user", "User", "READ")));
         seedMessage("archived-user", "Archived Notice", "Archived", "SYSTEM", "notification", "notice-2", "admin", null, List.of(recipient("user", "User", "ARCHIVED")));
@@ -604,7 +662,7 @@ class NotificationStore {
         return adminMessageMap(message(notificationId));
     }
 
-    synchronized Map<String, Object> createMessage(AuthUser actor, TestAuthContextProvider auth, Map<String, Object> body, boolean fromTemplate) {
+    synchronized Map<String, Object> createMessage(AuthUser actor, NotificationAuthContextProvider auth, Map<String, Object> body, boolean fromTemplate) {
         String idempotencyKey = optionalString(body, "idempotencyKey");
         String idempotencyScope = actor.userId + ":" + (fromTemplate ? "template:" : "direct:") + idempotencyKey;
         String signature = signature(body);
@@ -646,12 +704,12 @@ class NotificationStore {
             AuthUser target = auth.targetUser(userId);
             recipients.add(new NotificationRecipient(target.userId, target.displayName, "UNREAD", "DELIVERED", null, now()));
         }
-        audit("NOTIFICATION_MESSAGE_CREATED", actor, null, reason, riskLevel);
         if (failNextDeliveryWrite) {
             failNextDeliveryWrite = false;
             throw new ApiException(51302, HttpStatus.INTERNAL_SERVER_ERROR, "delivery write failed");
         }
         NotificationMessage message = new NotificationMessage("msg_" + UUID.randomUUID(), title, text, type, channels, sourceModule, sourceId, riskLevel, actionUrl, templateId, templateCode, templateVersion, variables, actor.userId, now(), expiresAt);
+        audit("NOTIFICATION_MESSAGE_CREATED", actor, message.notificationId, reason, riskLevel);
         recipients.forEach(recipient -> message.recipients.put(recipient.recipientUserId, recipient));
         messages.put(message.notificationId, message);
         Map<String, Object> payload = adminMessageMap(message);
@@ -661,7 +719,7 @@ class NotificationStore {
         return payload;
     }
 
-    synchronized Map<String, Object> createFromTemplate(AuthUser actor, TestAuthContextProvider auth, Map<String, Object> body) {
+    synchronized Map<String, Object> createFromTemplate(AuthUser actor, NotificationAuthContextProvider auth, Map<String, Object> body) {
         String templateCode = requiredString(body, "templateCode");
         NotificationTemplateRecord template = templateByCode(templateCode);
         if ("DISABLED".equals(template.status)) {
