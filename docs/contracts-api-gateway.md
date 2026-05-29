@@ -1,16 +1,16 @@
 # 北冥官网 api-gateway API 契约
 
-版本：0.1
+版本：0.2
 
 ## 文档定位
 
-本文档是 `api-gateway` 微服务的正式 API 契约。`api-gateway` 是北冥官网后端统一入口，只负责统一路由、请求编号、认证头透传、基础 CORS、上游超时、错误降级、路由表、自检摘要、上游健康摘要和网关级请求日志摘要。
+本文档是 `api-gateway` 微服务的正式 API 契约。`api-gateway` 是北冥官网后端统一入口，只负责统一路由、请求编号、认证头透传、认证上下文注入、基础 CORS、上游超时、请求边界保护、响应头白名单透传、错误降级、路由表、自检摘要、上游健康摘要和网关级请求日志摘要。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、时间格式、基础角色、运维能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `api-gateway` 的路径、路由表、字段、错误码、降级、审计和验收口径。
 
-第一版设计参考了成熟网关生态中的稳定做法。Spring Cloud Gateway 使用请求属性谓词匹配路由，并通过过滤器处理跨路由逻辑；Kong Gateway 把相关能力拆成可组合插件，例如 Correlation ID 和 Rate Limiting；Nginx 反向代理强调 `proxy_pass`、请求头和请求体透传；Envoy 将上游服务作为 cluster 处理，并把健康检查结果纳入路由判断。`api-gateway` 本轮只吸收这些边界思路，不引入动态服务发现、插件市场、真实 WAF、分布式限流、OAuth/OIDC 或 WebSocket 长连接代理。
+第一版设计参考了成熟网关生态中的稳定做法。Spring Cloud Gateway 使用请求属性谓词匹配路由，并通过过滤器处理跨路由逻辑；Kong Gateway 把相关能力拆成可组合插件，例如 Correlation ID 和 Rate Limiting；Nginx 反向代理强调 `proxy_pass`、请求头和请求体透传；Envoy 将上游服务作为 cluster 处理，并把健康检查结果纳入路由判断。第二版继续参考 AWS API Gateway 对请求体大小上限的明确约束、Cloudflare Rules 对边界策略前置的做法，以及 Nginx 对响应头和上游头的显式控制。`api-gateway` 本轮只吸收这些边界思路，不引入动态服务发现、插件市场、真实 WAF、分布式限流、OAuth/OIDC 或 WebSocket 长连接代理。
 
-参考来源为官方文档：Spring Cloud Gateway Request Predicates 与 Gateway Filters、Kong Gateway Correlation ID 与 Rate Limiting 插件、Nginx `ngx_http_proxy_module`、Envoy upstream health checking。
+参考来源为官方文档：Spring Cloud Gateway Request Predicates 与 Gateway Filters、Kong Gateway Correlation ID 与 Rate Limiting 插件、Nginx `ngx_http_proxy_module`、Envoy upstream health checking、AWS API Gateway quotas、Cloudflare Rules。
 
 ## 职责边界
 
@@ -20,9 +20,10 @@
 | --- | --- |
 | 路由匹配 | 根据固定路径前缀把请求转发到已有微服务端口。 |
 | 请求编号 | 接收或生成 `X-Request-Id`，向上游和下游保持一致。 |
-| 认证透传 | 原样透传 `Authorization: Bearer <token>`，不自行判定业务权限。 |
+| 认证透传与上下文注入 | 原样透传 `Authorization: Bearer <token>`；携带可验证会话时，通过 `auth` 会话校验生成可信身份头。 |
 | 请求透传 | 保持 HTTP 方法、路径、查询参数、JSON 请求体和必要请求头。 |
-| 响应透传 | 上游响应状态码、统一响应体和内容类型默认原样返回。 |
+| 请求边界保护 | 校验 `X-Request-Id` 格式，限制 P0 JSON 请求体大小，拒绝明显异常入口请求。 |
+| 响应透传 | 上游响应状态码、统一响应体、内容类型和响应头白名单默认原样返回。 |
 | CORS | 对 `/api/v1/**` 提供本地前端允许的预检响应。 |
 | 超时与降级 | 上游不可连接返回网关错误，上游超时返回网关超时错误，不伪造业务成功。 |
 | 路由表 | 暴露只读路由注册表，便于前端和运维控制台确认入口可用性。 |
@@ -39,9 +40,22 @@
 
 网关自有接口使用 `/api/v1/gateway` 前缀。业务转发接口保持上游原路径，例如 `/api/v1/auth/login` 经网关访问时仍是 `/api/v1/auth/login`，不会改写为 `/api/v1/gateway/auth/login`。
 
-公开健康检查无需认证。网关自有后台接口需要 `Authorization: Bearer <token>`。P0 本地实现允许 `owner-token`、`admin-token` 和 `helper-token` 访问只读后台自检、路由和健康接口；请求日志接口只允许 `owner-token` 和 `admin-token` 访问，`helper-token` 与 `user-token` 均返回 `42001`；缺失或格式错误返回公共认证错误码。未来接入真实认证上下文时，必须先更新本文档和自动化测试。
+公开健康检查无需认证。网关自有后台接口需要 `Authorization: Bearer <token>`。P0 本地实现允许 `owner-token`、`admin-token` 和 `helper-token` 访问只读后台自检、路由和健康接口；请求日志接口只允许 `owner-token` 和 `admin-token` 访问，`helper-token` 与 `user-token` 均返回 `42001`；缺失或格式错误返回公共认证错误码。
 
-业务转发接口不在网关层做角色判断。公开业务接口可以无 `Authorization` 透传；需要登录或后台权限的业务接口由上游服务按自身契约返回 `41000`、`41001`、`42001` 或其他业务错误码。
+除本地固定 token 外，网关自有后台接口也可以通过 `auth` 的 `GET /api/v1/auth/session/verify` 校验真实会话。校验成功后，`user.roles` 中包含 `HELPER`、`ADMIN` 或 `OWNER` 可访问只读后台接口，包含 `ADMIN` 或 `OWNER` 可访问请求日志接口。校验返回认证或权限错误时，网关返回对应错误；`auth` 不可连接或超时时，网关返回 `46000` 或 `46001`，不得把无法校验的 token 当作已登录用户。
+
+业务转发接口不在网关层做强制角色判断。公开业务接口可以无 `Authorization` 透传；需要登录或后台权限的业务接口由上游服务按自身契约返回 `41000`、`41001`、`42001` 或其他业务错误码。业务转发请求如果携带 `Authorization: Bearer <token>` 且目标路由不是 `auth`，网关会向 `auth` 会话校验接口做一次短路径校验。校验成功时，网关向上游注入可信身份头；校验失败、超时或 `auth` 不可用时，网关不注入可信身份头，但仍透传原始 `Authorization` 给目标上游，由目标上游按自身契约判定请求是否可继续。
+
+网关注入的可信身份头只允许由网关生成，客户端传入同名头必须在转发前剥离。P0 可信身份头如下。
+
+| 请求头 | 来源 | 说明 |
+| --- | --- | --- |
+| `X-Beiming-Actor-User-Id` | `auth.data.user.id` | 当前用户 ID。 |
+| `X-Beiming-Actor-Roles` | `auth.data.user.roles` | 逗号分隔角色。 |
+| `X-Beiming-Actor-Permissions` | `auth.data.user.permissions` | 逗号分隔能力点，可为空字符串。 |
+| `X-Beiming-Actor-Minecraft-Id` | `auth.data.user.minecraftBinding.minecraftId` | 已绑定时注入。 |
+| `X-Beiming-Actor-Minecraft-Uuid` | `auth.data.user.minecraftBinding.minecraftUuid` | 已绑定时注入。 |
+| `X-Gateway-Internal-Request-Id` | 网关请求编号 | 标记该可信上下文来自当前网关请求。 |
 
 ## 路由注册表
 
@@ -127,7 +141,7 @@
 | `errorCode` | integer 或 null | 是 | 网关级错误码或上游响应体中的业务错误码。 |
 | `durationMs` | integer | 是 | 网关处理耗时。 |
 | `clientIp` | string 或 null | 是 | 客户端 IP 摘要。 |
-| `actorUserId` | string 或 null | 是 | P0 不解析业务 token，固定为 `null`。 |
+| `actorUserId` | string 或 null | 是 | 已通过 `auth` 会话校验时记录当前用户 ID，否则为 `null`。 |
 | `createdAt` | string | 是 | 记录时间。 |
 
 请求日志不得保存请求体、完整 query、完整 token、Cookie、Authorization 原文、外部 webhook、registry 凭据、节点密钥、文件内容、日志正文或异常堆栈。
@@ -140,6 +154,8 @@
 | `46201` | 405 | 网关路由不支持该方法。 |
 | `46202` | 400 | 网关请求格式错误。 |
 | `46203` | 400 | 网关分页、排序或筛选参数错误。 |
+| `46204` | 413 | 网关请求体超过 P0 限制。 |
+| `46205` | 400 | 网关请求编号格式非法。 |
 | `46210` | 502 | 上游服务不可连接。 |
 | `46211` | 504 | 上游服务调用超时。 |
 | `46212` | 502 | 上游返回空响应或非 HTTP 响应。 |
@@ -297,17 +313,20 @@
 | Query | 原样保留 query string。 |
 | 方法 | 保持原 HTTP 方法。 |
 | 请求体 | 对 `POST`、`PUT` 和 `PATCH` 原样透传 body。 |
+| 请求体大小 | P0 JSON 请求体最大 `1048576` 字节，超过返回 HTTP `413` 和错误码 `46204`。 |
 | Content-Type | 原样透传。 |
 | Accept | 原样透传。 |
 | Authorization | 原样透传，不写入日志。 |
-| X-Request-Id | 缺失时生成，转发给上游，并回传给客户端。 |
-| X-Forwarded-For | 可以追加客户端 IP 摘要，但不得信任浏览器传入的身份头。 |
+| X-Request-Id | 缺失时生成，转发给上游，并回传给客户端。只允许 1 到 128 位的字母、数字、下划线、短横线、点和冒号，非法返回 HTTP `400` 和错误码 `46205`。 |
+| X-Forwarded-For | 默认使用当前连接远端地址；后续接入可信反向代理后再启用代理链追加。 |
 | Hop-by-hop header | 不透传 `Connection`、`Transfer-Encoding`、`Upgrade`、`Keep-Alive`、`TE`、`Trailer` 和 `Proxy-Authorization`。 |
 | 可信身份头 | 浏览器传入的 `X-Beiming-Actor-*`、`X-Gateway-Internal-*` 等可信身份头必须丢弃。 |
-| 响应 | 上游 HTTP 状态、响应体和 Content-Type 默认原样返回。 |
+| 可信身份注入 | `auth` 会话校验成功时，网关注入 `X-Beiming-Actor-*` 和 `X-Gateway-Internal-Request-Id`；校验失败时不注入。 |
+| 响应 | 上游 HTTP 状态、响应体、Content-Type 以及响应头白名单默认原样返回。 |
+| 响应头白名单 | 允许透传 `Content-Type`、`Cache-Control`、`ETag`、`Location`、`Content-Disposition`、`Last-Modified` 和 `Expires`；其他响应头默认丢弃，避免泄露内部实现或不安全代理头。 |
 | 日志 | 只记录脱敏摘要。 |
 
-上游返回 2xx、4xx、5xx 或非标准 HTTP 状态码时，网关默认透传。上游不可连接返回 HTTP `502` 和错误码 `46210`。上游超时返回 HTTP `504` 和错误码 `46211`。上游返回空响应或非 HTTP 响应返回 HTTP `502` 和错误码 `46212`。上游地址配置无效返回 HTTP `502` 和错误码 `46213`。未知路径返回 HTTP `404` 和错误码 `46200`。不支持的方法返回 HTTP `405` 和错误码 `46201`。
+上游返回 2xx、4xx、5xx 或非标准 HTTP 状态码时，网关默认透传。上游不可连接返回 HTTP `502` 和错误码 `46210`。上游超时返回 HTTP `504` 和错误码 `46211`。上游返回空响应或非 HTTP 响应返回 HTTP `502` 和错误码 `46212`。上游地址配置无效返回 HTTP `502` 和错误码 `46213`。未知路径返回 HTTP `404` 和错误码 `46200`。不支持的方法返回 HTTP `405` 和错误码 `46201`。请求体超过网关 P0 上限返回 HTTP `413` 和错误码 `46204`。请求编号非法返回 HTTP `400` 和错误码 `46205`。
 
 ## CORS 规则
 
@@ -338,7 +357,7 @@
 
 请求日志必须脱敏。以下内容不得存储或返回：请求体、完整 query、完整 `Authorization`、Cookie、密码、邀请码原始码、密码重置令牌、节点密钥、registry 凭据、Cloudreve token、外部 webhook、文件内容、终端命令正文、日志正文、异常堆栈。
 
-网关不得接受浏览器传入的可信身份头作为真实身份。`X-Beiming-Actor-User-Id`、`X-Beiming-Actor-Roles`、`X-Gateway-Internal-Token` 等头如果来自客户端请求，必须在转发前移除。未来若需要网关向上游注入可信身份，必须由网关自己从 auth 会话校验结果生成，并更新受影响服务契约。
+网关不得接受浏览器传入的可信身份头作为真实身份。`X-Beiming-Actor-User-Id`、`X-Beiming-Actor-Roles`、`X-Gateway-Internal-Token` 等头如果来自客户端请求，必须在转发前移除。网关向上游注入可信身份时，只能来自 `auth` 会话校验结果。`auth` 校验失败时不得沿用客户端伪造头，不得根据 token 字符串自行推断用户身份。
 
 ## 失败降级
 
@@ -350,14 +369,14 @@
 
 ## 生产化差距
 
-P0 `api-gateway` 是本地契约实现，必须在自检摘要中明确以下生产化差距：尚未接入真实服务发现，尚未接入集中配置，尚未接入分布式限流，尚未接入真实认证上下文注入，尚未接入持久化审计，尚未代理 WebSocket 和大文件流。
+P0 `api-gateway` 是本地契约实现，必须在自检摘要中明确以下生产化差距：尚未接入真实服务发现，尚未接入集中配置，尚未接入分布式限流，认证上下文已支持通过 `auth` 会话校验注入但尚未接入内部签名和缓存，尚未接入持久化审计，尚未代理 WebSocket 和大文件流。
 
-这些差距不得影响 P0 的路径转发、请求编号、认证透传、错误降级、路由表和测试闭环。
+这些差距不得影响 P0 的路径转发、请求编号、认证透传、可信身份头剥离、可验证认证上下文注入、错误降级、路由表和测试闭环。
 
 ## 验收口径
 
 `api-gateway` API 文档按 `docs/contracts-api-gateway.md` 独立存在，并由 `.local-docs/tests-api-gateway.md` 记录本地测试闭环。
 
-本文档列出的每个网关自有接口都有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、分页排序、状态刷新、失败降级、日志脱敏和验收口径。业务转发测试必须覆盖 24 个已有微服务的路径前缀，确认路由表端口准确、请求编号透传、认证头透传、查询参数透传、JSON body 透传、上游 2xx 透传、上游 4xx 透传、上游 5xx 透传、未知路径、非法方法、CORS 预检、上游不可用、上游超时和敏感字段不落日志。
+本文档列出的每个网关自有接口都有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、分页排序、状态刷新、失败降级、日志脱敏和验收口径。业务转发测试必须覆盖 24 个已有微服务的路径前缀，确认路由表端口准确、请求编号透传、请求编号非法拒绝、认证头透传、可信身份头剥离、`auth` 会话校验成功后的可信身份注入、`auth` 校验失败后的不注入降级、查询参数透传、JSON body 透传、请求体大小限制、响应头白名单、上游 2xx 透传、上游 4xx 透传、上游 5xx 透传、未知路径、非法方法、CORS 预检、上游不可用、上游超时和敏感字段不落日志。
 
 开发完成后必须执行 `mvn -f backend/api-gateway-service/pom.xml test`，并执行已有 24 个后端微服务回归测试，确认网关新增没有修改前序服务结构、接口、端口、响应格式、认证方式、错误码、状态机、测试或构建脚本。测试过程必须写入 `.local-docs/tests-api-gateway.md`。
