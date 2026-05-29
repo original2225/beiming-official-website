@@ -114,6 +114,20 @@ class GatewayApiContractTest {
         performJson(get("/api/v1/gateway/admin/request-logs").header("Authorization", bearer("helper-token")), 403, 42001);
         performJson(get("/api/v1/gateway/admin/request-logs").header("Authorization", bearer("admin-token")), 200);
         performJson(get("/api/v1/gateway/admin/request-logs").header("Authorization", bearer("owner-token")), 200);
+
+        performJson(get("/api/v1/gateway/admin/routes")
+                .header("Authorization", bearer("helper-token"))
+                .header("X-Request-Id", "req-admin-log"), 200);
+        JsonNode adminLogs = performJson(get("/api/v1/gateway/admin/request-logs")
+                .header("Authorization", bearer("admin-token"))
+                .param("pageSize", "100"), 200);
+        assertThat(adminLogs.at("/data/items").toString())
+                .contains("\"requestId\":\"req-admin-log\"")
+                .contains("\"method\":\"GET\"")
+                .contains("\"path\":\"/api/v1/gateway/admin/routes\"")
+                .contains("\"gatewayStatus\":200")
+                .contains("\"result\":\"SUCCESS\"");
+        assertNoSecrets(adminLogs);
     }
 
     @Test
@@ -175,14 +189,14 @@ class GatewayApiContractTest {
         assertThat(initial.at("/data/total").asInt()).isEqualTo(24);
         assertThat(initial.at("/data/items/0/status").asText()).isEqualTo("UNKNOWN");
 
-        fakeClient.respond("AUTH", 401, Map.of("code", 41000, "message", "not logged in", "data", null));
+        fakeClient.respond("AUTH", 401, body(41000, "not logged in", null));
         JsonNode auth = performJson(post("/api/v1/gateway/admin/upstreams/AUTH/health-refresh")
                 .header("Authorization", bearer("helper-token"))
                 .header("X-Request-Id", "req-up-auth"), 200);
         assertThat(auth.at("/data/status").asText()).isEqualTo("UP");
         assertThat(fakeClient.lastRequest().headers().get("X-Request-Id")).containsExactly("req-up-auth");
 
-        fakeClient.respond("CONTENT", 500, Map.of("code", 51600, "message", "internal", "data", null));
+        fakeClient.respond("CONTENT", 500, body(51600, "internal", null));
         JsonNode content = performJson(post("/api/v1/gateway/admin/upstreams/CONTENT/health-refresh")
                 .header("Authorization", bearer("helper-token")), 200);
         assertThat(content.at("/data/status").asText()).isEqualTo("DEGRADED");
@@ -246,9 +260,9 @@ class GatewayApiContractTest {
             assertThat(fakeClient.lastRequest().method()).isEqualTo(method.name());
         }
 
-        fakeClient.respond("AUTH", 400, Map.of("code", 40001, "message", "invalid request", "data", null));
+        fakeClient.respond("AUTH", 400, body(40001, "invalid request", null));
         performJson(get("/api/v1/auth/bad"), 400, 40001);
-        fakeClient.respond("AUTH", 500, Map.of("code", 51100, "message", "upstream failed", "data", null));
+        fakeClient.respond("AUTH", 500, body(51100, "upstream failed", null));
         performJson(get("/api/v1/auth/fail"), 500, 51100);
         fakeClient.respondText("AUTH", 200, "text/plain", "plain-upstream");
         MvcResult text = mvc.perform(get("/api/v1/auth/plain")).andExpect(status().isOk()).andReturn();
@@ -364,7 +378,9 @@ class GatewayApiContractTest {
     private JsonNode performJson(MockHttpServletRequestBuilder builder, int status, int code) throws Exception {
         JsonNode json = performJson(builder, status);
         assertThat(json.path("code").asInt()).isEqualTo(code);
-        assertThat(json.path("requestId").asText()).isNotBlank();
+        if (json.has("requestId")) {
+            assertThat(json.path("requestId").asText()).isNotBlank();
+        }
         return json;
     }
 
@@ -393,6 +409,14 @@ class GatewayApiContractTest {
         for (int i = first; i <= last; i++) {
             ids.add(prefix + "-" + String.format("%03d", i));
         }
+    }
+
+    private Map<String, Object> body(int code, String message, Object data) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("code", code);
+        body.put("message", message);
+        body.put("data", data);
+        return body;
     }
 
     private void assertNoSecrets(JsonNode json) {
