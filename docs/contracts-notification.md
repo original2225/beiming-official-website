@@ -1,6 +1,6 @@
 # 北冥官网 notification API 契约
 
-版本：0.2
+版本：0.3
 
 ## 文档定位
 
@@ -10,7 +10,7 @@
 
 `notification` 适配 `auth`，不要求 `auth` 反向适配 `notification`。它通过后端入口传入的认证上下文、`/api/v1/auth/me`、`/api/v1/auth/session/verify` 或测试环境 auth stub 读取当前用户、角色、能力点和目标用户快照。它不能直接读取 auth 数据表，不能修改 auth 用户状态，不能自行实现登录、会话或权限判断。
 
-本轮补强参考成熟通知和网关生态的稳定做法。Firebase Cloud Messaging HTTP v1 把服务端发送请求限定在可信服务端凭据和短期访问令牌链路中；OneSignal 和 Courier 都强调通知创建重试必须使用幂等键，避免网络超时后重复发送；Novu 把工作流触发、订阅者和载荷分开处理，并支持用事务编号去重；OneSignal 的消息 API 还把目标受众、消息内容、调度和响应处理拆成清晰边界。notification 只吸收这些边界思路：服务端认证上下文来自入口层，创建类请求保持幂等，目标收件人先解析再投递，批量投递保持全有或全无，投递结果和用户读取状态分开维护。P0 不引入外部推送服务、真实渠道发送、动态受众规则或跨平台工作流引擎。
+本轮补强参考成熟通知和网关生态的稳定做法。Firebase Cloud Messaging HTTP v1 把服务端发送请求限定在可信服务端凭据和短期访问令牌链路中；OneSignal 和 Courier 都强调通知创建重试必须使用幂等键，避免网络超时后重复发送；Novu 把工作流触发、订阅者和载荷分开处理，并支持用事务编号去重；OneSignal 的消息 API 还把目标受众、消息内容、调度和响应处理拆成清晰边界。notification 只吸收这些边界思路：服务端认证上下文来自入口层，创建类请求保持幂等，目标收件人先解析再投递，批量投递保持全有或全无，投递结果和用户读取状态分开维护，审计只保存安全摘要，幂等记录只在有限窗口内有效。P0 不引入外部推送服务、真实渠道发送、动态受众规则或跨平台工作流引擎。
 
 ## 职责边界
 
@@ -175,7 +175,11 @@ notification 需要消费的网关上下文字段如下。
 
 ### NotificationAuditLog
 
-审计字段继承公共契约，允许补充 `notificationId`、`templateId`、`recipientUserIds`、`deliveryStatus`、`templateVersion`、`idempotencyKey` 和 `sourceModule`。通知审计日志不得通过 notification API 删除。
+审计字段继承公共契约，至少返回 `id`、`requestId`、`actorUserId`、`actorRole`、`actorPermissions`、`sourceIp`、`targetType`、`targetId`、`action`、`riskLevel`、`reason`、`paramsSummary`、`beforeState`、`afterState`、`result`、`failureReason` 和 `createdAt`。允许补充 `notificationId`、`templateId`、`recipientUserIds`、`deliveryStatus`、`templateVersion`、`idempotencyKey` 和 `sourceModule`。通知审计日志不得通过 notification API 删除。
+
+`actorPermissions` 必须来自已解析认证上下文，不能从浏览器请求体读取。`sourceIp` 来自请求上下文，优先使用网关传入的安全来源摘要，缺失时使用服务端看到的远端地址或 `unknown`。`riskLevel` 必须使用实际操作风险等级，不能在审计响应中固定为 `MEDIUM`。
+
+`paramsSummary`、`beforeState` 和 `afterState` 只能保存安全摘要。创建通知可以记录 `sourceModule`、`sourceId`、`recipientTotal`、`channels`、`riskLevel`、`idempotencyKeyPresent` 和 `templateCode` 等字段；模板修改可以记录模板 ID、编码、版本和状态变化。审计摘要不得包含完整通知正文、完整模板正文、完整模板变量值、完整请求头、Authorization、token、外部渠道凭据、内部 URL、异常堆栈或前序服务私有字段。
 
 ## notification 错误码
 
@@ -582,6 +586,9 @@ notification 需要消费的网关上下文字段如下。
     "deliveredTotal": 18,
     "failedTotal": 0,
     "pendingExternalDeliveries": 0,
+    "idempotencyRecordsTotal": 3,
+    "idempotencyRetentionHours": 24,
+    "auditCompletenessMode": "SAFE_SUMMARY",
     "lastAuditAt": "2026-05-22T00:00:00Z",
     "warnings": [
       "P0_IN_MEMORY_STORAGE",
@@ -591,7 +598,7 @@ notification 需要消费的网关上下文字段如下。
 }
 ```
 
-业务规则：自检摘要用于后台确认 notification 当前运行模式、数据规模、投递状态和生产化缺口。P0 `storageMode` 固定为 `IN_MEMORY`，`authMode` 固定为 `TEST_STUB`，`pendingExternalDeliveries` 固定为 `0`。摘要不得返回 token、请求头、用户敏感字段、通知正文、模板正文或审计原因。数据读取失败返回 `51300`，不得伪造健康。
+业务规则：自检摘要用于后台确认 notification 当前运行模式、数据规模、投递状态、审计摘要模式、幂等记录数量和生产化缺口。P0 `storageMode` 固定为 `IN_MEMORY`，`authMode` 固定为 `TEST_STUB`，`pendingExternalDeliveries` 固定为 `0`，`idempotencyRetentionHours` 固定为 `24`，`auditCompletenessMode` 固定为 `SAFE_SUMMARY`。摘要读取前必须先清理已过期幂等记录，`idempotencyRecordsTotal` 只统计仍在有效期内的记录。摘要不得返回 token、请求头、用户敏感字段、通知正文、模板正文、模板变量、幂等响应快照或审计原因。数据读取失败返回 `51300`，不得伪造健康。
 
 权限规则：只有 `ADMIN` 和 `OWNER` 可访问。`HELPER`、`USER` 返回 `42001`。未登录返回 `41000`。
 
@@ -601,7 +608,9 @@ notification 需要消费的网关上下文字段如下。
 
 投递状态 P0 成功写入收件人记录即为 `DELIVERED`。`PENDING`、`FAILED` 和 `CANCELED` 保留给后续异步渠道和失败补偿。P0 任何创建接口必须全有或全无，不允许返回部分成功的 `FAILED` 收件人记录。
 
-创建通知、按模板创建通知和创建模板支持 `idempotencyKey`。同一操作者、同一幂等键、同一请求体重复提交时返回同一个结果。相同幂等键搭配不同请求体返回 `43002`。
+创建通知、按模板创建通知和创建模板支持 `idempotencyKey`。同一操作者、同一接口语义、同一幂等键、同一请求体重复提交时返回同一个结果。相同幂等键搭配不同请求体返回 `43002`。请求体指纹必须基于结构化 JSON 规范化结果，嵌套对象按字段名递归排序，数组保留顺序，不能依赖浏览器字段顺序或 Java `Map.toString()`。
+
+幂等键有效期为 24 小时。有效期内必须保存请求指纹、响应快照、创建时间和过期时间。过期记录必须被忽略，并在后续创建请求或自检摘要读取时被机会式清理；同一操作者在旧记录过期后复用同一幂等键时，按新请求处理。后续持久化实现必须用数据库唯一约束、事务和 TTL 清理或等效机制保持同一口径。
 
 并发创建同一幂等键时只能创建一条通知或模板。并发标记已读、全部已读和归档时必须以服务端当前状态为准，不得重复增加未读数、不得把归档通知重新变为已读。
 
@@ -609,7 +618,9 @@ notification 需要消费的网关上下文字段如下。
 
 必须审计的动作包括后台创建站内通知、后台按模板创建通知、创建模板、修改模板、禁用模板、启用模板、当前用户归档通知、批量标记已读、投递失败回滚和审计写入失败补偿记录。
 
-后台写操作必须记录 `reason`。审计字段继承公共契约。审计写入失败时，后台写操作和模板写操作不得假装成功，必须返回 `51301` 或 `51300`，并保持业务数据不变。当前用户已读操作不强制写审计，归档操作建议写低风险审计或用户行为日志。
+后台写操作必须记录 `reason`。审计字段继承公共契约，必须记录 actor、actor 权限摘要、来源 IP、目标、动作、风险等级、请求编号、参数安全摘要、操作前安全摘要、操作后安全摘要、结果和失败原因。审计写入失败时，后台写操作和模板写操作不得假装成功，必须返回 `51301` 或 `51300`，并保持业务数据不变。当前用户已读操作不强制写审计，归档操作建议写低风险审计或用户行为日志。
+
+生产化硬化验收还必须满足：审计响应不再返回空的 `actorPermissions`、`sourceIp` 和 `paramsSummary`；风险等级按真实操作写入；幂等记录 24 小时过期并可清理；自检摘要暴露幂等记录数量和审计摘要模式但不泄露响应快照；测试控制、测试桩和边界扫描不得引入真实外部渠道发送、节点运维、文件管理、批量删除或前序服务内部实现依赖。
 
 ## 失败降级
 
@@ -623,4 +634,4 @@ notification 需要消费的网关上下文字段如下。
 
 `notification` API 文档按 `docs/contracts-notification.md` 独立存在，并由 `.local-docs/tests-notification.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级和审计要求。
 
-`notification` 完成时必须满足以下条件：全部接口按本文档实现；当前用户接口只能访问当前用户自己的通知；未读数准确且失败时不伪造 0；后台接口按角色限制；创建通知和模板写操作全有或全无；模板变量校验、模板预览和渲染失败可测试；自检摘要能暴露当前运行模式但不泄露敏感数据；auth 适配不直接读取 auth 实现；受保护接口同时支持网关可信认证上下文和旧 Bearer 兼容路径；审计 actor、权限判断、当前用户隔离、未读数和目标收件人快照均以解析后的当前 actor 或目标用户快照为准；`.local-docs/tests-notification.md` 中全部测试用例都有对应自动化验证；未实现时自动化测试必须先失败；实现后 notification 全部测试通过；api-gateway、auth 和 profile 前序服务回归测试通过；没有修改前序服务稳定接口。
+`notification` 完成时必须满足以下条件：全部接口按本文档实现；当前用户接口只能访问当前用户自己的通知；未读数准确且失败时不伪造 0；后台接口按角色限制；创建通知和模板写操作全有或全无；模板变量校验、模板预览和渲染失败可测试；自检摘要能暴露当前运行模式、审计摘要模式和幂等记录数量但不泄露敏感数据；auth 适配不直接读取 auth 实现；受保护接口同时支持网关可信认证上下文和旧 Bearer 兼容路径；审计 actor、权限判断、当前用户隔离、未读数、目标收件人快照、actor 权限摘要、来源 IP、安全参数摘要和幂等过期语义均以服务端解析结果为准；`.local-docs/tests-notification.md` 中全部测试用例都有对应自动化验证；未实现时自动化测试必须先失败；实现后 notification 全部测试通过；api-gateway、auth 和 profile 前序服务回归测试通过；没有修改前序服务稳定接口。
