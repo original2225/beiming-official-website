@@ -1,6 +1,6 @@
 # 北冥官网 notification API 契约
 
-版本：0.1
+版本：0.2
 
 ## 文档定位
 
@@ -9,6 +9,8 @@
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、时间格式、基础角色、能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `notification` 的职责边界、数据归属、路径、字段、状态、权限、错误码、幂等、降级、审计和验收口径。
 
 `notification` 适配 `auth`，不要求 `auth` 反向适配 `notification`。它通过后端入口传入的认证上下文、`/api/v1/auth/me`、`/api/v1/auth/session/verify` 或测试环境 auth stub 读取当前用户、角色、能力点和目标用户快照。它不能直接读取 auth 数据表，不能修改 auth 用户状态，不能自行实现登录、会话或权限判断。
+
+本轮补强参考成熟通知和网关生态的稳定做法。Firebase Cloud Messaging HTTP v1 把服务端发送请求限定在可信服务端凭据和短期访问令牌链路中；OneSignal 和 Courier 都强调通知创建重试必须使用幂等键，避免网络超时后重复发送；Novu 把工作流触发、订阅者和载荷分开处理，并支持用事务编号去重；OneSignal 的消息 API 还把目标受众、消息内容、调度和响应处理拆成清晰边界。notification 只吸收这些边界思路：服务端认证上下文来自入口层，创建类请求保持幂等，目标收件人先解析再投递，批量投递保持全有或全无，投递结果和用户读取状态分开维护。P0 不引入外部推送服务、真实渠道发送、动态受众规则或跨平台工作流引擎。
 
 ## 职责边界
 
@@ -43,6 +45,29 @@ P0 只实现站内通知。邮件、短信、QQ、Oopz 和游戏内消息只保�
 批量投递采用全有或全无语义。只要任一收件人不存在、状态不可投递、auth 不可用、模板渲染失败、审计写入失败或存储写入失败，本次请求不得创建半成品通知、不得更新未读数、不得写入部分收件人成功状态。
 
 浏览器请求体不得覆盖当前登录用户、当前用户角色、当前用户能力点、收件人读取状态、收件人归档状态、可信展示名快照或投递状态。
+
+## 网关可信认证上下文
+
+notification 对网关可信认证上下文的消费只补充认证来源，不新增业务 API，不改变现有路径、响应结构、角色规则、端口或 Bearer stub 兼容行为。
+
+认证来源优先级固定为：后端入口注入的可信认证上下文优先；缺少完整网关上下文时，继续保留 `Authorization: Bearer <token>` 本地兼容路径。只有 `X-Gateway-Internal-Request-Id` 存在时，notification 才进入网关上下文解析。若该头缺失，即使请求带有 `X-Beiming-Actor-*`，notification 也必须忽略这些头并回退 Bearer 兼容路径。
+
+notification 需要消费的网关上下文字段如下。
+
+| 请求头 | 必填 | 说明 |
+| --- | --- | --- |
+| `X-Gateway-Internal-Request-Id` | 是 | 网关注入的内部请求编号，格式必须与公共请求编号规则一致。 |
+| `X-Beiming-Actor-User-Id` | 是 | 当前认证用户 ID。 |
+| `X-Beiming-Actor-Roles` | 否 | 逗号分隔基础角色。可为空；为空时后台接口按角色不足返回 `42001`。非空项必须是 `OWNER`、`ADMIN`、`HELPER` 或 `USER`。 |
+| `X-Beiming-Actor-Permissions` | 否 | 逗号分隔能力点。可为空；非空项必须兼容公共契约中的能力点。 |
+| `X-Beiming-Actor-Minecraft-Id` | 否 | 当前认证用户账号级 Minecraft 展示 ID，只能作为当前 actor 快照。 |
+| `X-Beiming-Actor-Minecraft-Uuid` | 否 | 当前认证用户账号级 Minecraft UUID，只能作为当前 actor 快照。 |
+
+逗号分隔字段必须先 trim，再丢弃空白项。角色头为空不代表后台权限通过，只能形成没有后台角色的当前用户上下文。`X-Beiming-Actor-Minecraft-Id` 和 `X-Beiming-Actor-Minecraft-Uuid` 只属于当前 actor，不得用于覆盖通知目标收件人的展示名、状态、已读状态、归档状态、投递状态或任何收件人快照。后台创建通知仍必须通过 notification 自己的 auth 适配层解析 `recipientUserIds` 的目标用户快照，不能把当前 actor 的网关头当作目标用户资料。
+
+当 `X-Gateway-Internal-Request-Id` 存在但缺少 `X-Beiming-Actor-User-Id`、内部请求编号格式非法、角色或能力点枚举不兼容、Minecraft UUID 格式非法，或任一必需字段无法解析时，notification 返回 HTTP `502`、错误码 `46302`。当网关上下文不存在且 Bearer 缺失或 Bearer 格式非法时，仍按公共认证错误返回 `41000` 或 `41003`。
+
+安全边界固定为：浏览器伪造可信头的剥离责任归 `api-gateway`；notification 的责任是只消费格式完整的服务端上下文，并在上下文缺失时继续走 Bearer 兼容路径。当前 P0 没有内部签名，不能把本轮适配宣称为生产级内部认证。生产部署必须要求 notification 只暴露给网关或可信内网。后续若增加网关到上游共享密钥或内部签名，需要先更新 `api-gateway`、`notification` 契约和对应测试闭环。
 
 ## 枚举
 
@@ -598,4 +623,4 @@ P0 只实现站内通知。邮件、短信、QQ、Oopz 和游戏内消息只保�
 
 `notification` API 文档按 `docs/contracts-notification.md` 独立存在，并由 `.local-docs/tests-notification.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级和审计要求。
 
-`notification` 完成时必须满足以下条件：全部接口按本文档实现；当前用户接口只能访问当前用户自己的通知；未读数准确且失败时不伪造 0；后台接口按角色限制；创建通知和模板写操作全有或全无；模板变量校验、模板预览和渲染失败可测试；自检摘要能暴露当前运行模式但不泄露敏感数据；auth 适配不直接读取 auth 实现；`.local-docs/tests-notification.md` 中全部测试用例都有对应自动化验证；未实现时自动化测试必须先失败；实现后 notification 全部测试通过；auth 和 profile 前序服务回归测试通过；没有修改前序服务稳定接口。
+`notification` 完成时必须满足以下条件：全部接口按本文档实现；当前用户接口只能访问当前用户自己的通知；未读数准确且失败时不伪造 0；后台接口按角色限制；创建通知和模板写操作全有或全无；模板变量校验、模板预览和渲染失败可测试；自检摘要能暴露当前运行模式但不泄露敏感数据；auth 适配不直接读取 auth 实现；受保护接口同时支持网关可信认证上下文和旧 Bearer 兼容路径；审计 actor、权限判断、当前用户隔离、未读数和目标收件人快照均以解析后的当前 actor 或目标用户快照为准；`.local-docs/tests-notification.md` 中全部测试用例都有对应自动化验证；未实现时自动化测试必须先失败；实现后 notification 全部测试通过；api-gateway、auth 和 profile 前序服务回归测试通过；没有修改前序服务稳定接口。
