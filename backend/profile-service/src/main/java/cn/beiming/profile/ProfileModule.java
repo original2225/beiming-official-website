@@ -462,6 +462,8 @@ class ProfileAuthContextProvider {
 class ProfileStore {
     private static final Set<String> PUBLIC_STATUSES = Set.of("ACTIVE", "INACTIVE", "SUSPENDED");
     private static final Set<String> ALL_STATUSES = Set.of("PENDING_ACTIVATION", "ACTIVE", "INACTIVE", "SUSPENDED", "REMOVED", "ARCHIVED");
+    private static final Set<String> PUBLIC_SORTS = Set.of("joinedAt_desc", "joinedAt_asc", "updatedAt_desc", "displayName_asc");
+    private static final Set<String> ADMIN_SORTS = Set.of("createdAt_desc", "updatedAt_desc", "joinedAt_desc", "displayName_asc");
     private static final Set<String> MILESTONE_TYPES = Set.of("JOINED", "PROJECT", "EVENT", "AWARD", "MANAGEMENT", "OTHER");
     private static final Set<String> WORK_TYPES = Set.of("BUILD", "REDSTONE", "FARM", "ARTICLE", "IMAGE", "VIDEO", "OTHER");
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -522,6 +524,8 @@ class ProfileStore {
         if (status != null && !PUBLIC_STATUSES.contains(status)) {
             throw ApiException.badRequest("status");
         }
+        validateKeyword(keyword);
+        validateSort(sort, PUBLIC_SORTS);
         List<MemberProfile> rows = profilesById.values().stream()
                 .filter(profile -> "PUBLIC".equals(profile.visibility))
                 .filter(profile -> PUBLIC_STATUSES.contains(profile.status))
@@ -585,6 +589,8 @@ class ProfileStore {
         if (visibility != null && !Set.of("PUBLIC", "PRIVATE").contains(visibility)) {
             throw ApiException.badRequest("visibility");
         }
+        validateKeyword(keyword);
+        validateSort(sort, ADMIN_SORTS);
         List<MemberProfile> rows = profilesById.values().stream()
                 .filter(profile -> status == null || status.equals(profile.status))
                 .filter(profile -> visibility == null || visibility.equals(profile.visibility))
@@ -1079,6 +1085,18 @@ class ProfileStore {
     private void validatePage(int page, int pageSize) {
         if (page < 1 || pageSize < 1 || pageSize > 100) {
             throw new ApiException(40002, HttpStatus.BAD_REQUEST, "invalid page");
+        }
+    }
+
+    private void validateKeyword(String keyword) {
+        if (keyword != null && keyword.length() > 50) {
+            throw ApiException.badRequest("keyword");
+        }
+    }
+
+    private void validateSort(String sort, Set<String> allowed) {
+        if (sort != null && !allowed.contains(sort)) {
+            throw ApiException.badRequest("sort");
         }
     }
 

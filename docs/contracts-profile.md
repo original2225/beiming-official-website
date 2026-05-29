@@ -36,6 +36,8 @@ profile 必须接收或生成 `X-Request-Id`。客户端或网关传入的请求
 
 所有请求体中的时间字段必须是 ISO 8601 字符串。当前契约涉及 `joinedAt` 和 `happenedAt`。时间字段缺失时按各接口默认规则处理；时间字段存在但格式非法时必须返回 HTTP `400`、错误码 `40001`，不得落入 `51200` 内部错误。
 
+所有列表接口的枚举筛选、排序参数和长度受限查询参数必须严格校验。`keyword` 超过 50 位、`sort` 不在接口列出的允许值内、`status` 或 `visibility` 不在允许枚举内时，profile 必须返回 HTTP `400`、错误码 `40001` 或分页类公共错误码，不得静默回退默认排序或忽略非法筛选。
+
 ## auth 兼容契约
 
 profile 必须通过 `ProfileAuthContextProvider`、`AuthContextProvider` 或等价适配层读取 auth 信息。生产环境优先消费后端入口传入的已校验认证上下文，也可以调用 auth 正式 API。测试环境使用 auth stub。任何实现都不能导入 auth 的内存存储类、数据表实体、Repository 或测试种子实现。

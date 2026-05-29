@@ -36,6 +36,7 @@ class ProfileApiContractTest {
     private static final String TEST_DOCUMENT_COVERAGE = """
             PROF-COM-001 PROF-COM-002 PROF-COM-003 PROF-COM-004 PROF-COM-005 PROF-COM-006 PROF-COM-007 PROF-COM-008 PROF-COM-009 PROF-COM-010
             PROF-COM-011 PROF-COM-012 PROF-COM-013 PROF-COM-014 PROF-COM-015
+            PROF-COM-016 PROF-COM-017
             PROF-AUTH-001 PROF-AUTH-002 PROF-AUTH-003 PROF-AUTH-004 PROF-AUTH-005 PROF-AUTH-006 PROF-AUTH-007 PROF-AUTH-008 PROF-AUTH-009 PROF-AUTH-010 PROF-AUTH-011 PROF-AUTH-012 PROF-AUTH-013 PROF-AUTH-014 PROF-AUTH-015 PROF-AUTH-016
             PROF-GW-AUTH-001 PROF-GW-AUTH-002 PROF-GW-AUTH-003 PROF-GW-AUTH-004 PROF-GW-AUTH-005 PROF-GW-AUTH-006 PROF-GW-AUTH-007 PROF-GW-AUTH-008 PROF-GW-AUTH-009 PROF-GW-AUTH-010 PROF-GW-AUTH-011 PROF-GW-AUTH-012
             PROF-PUB-LIST-001 PROF-PUB-LIST-002 PROF-PUB-LIST-003 PROF-PUB-LIST-004 PROF-PUB-LIST-005 PROF-PUB-LIST-006 PROF-PUB-LIST-007 PROF-PUB-LIST-008 PROF-PUB-LIST-009 PROF-PUB-LIST-010
@@ -83,7 +84,7 @@ class ProfileApiContractTest {
         Set<String> mapped = pattern.matcher(TEST_DOCUMENT_COVERAGE).results()
                 .map(java.util.regex.MatchResult::group)
                 .collect(java.util.stream.Collectors.toCollection(java.util.TreeSet::new));
-        assertThat(mapped).hasSize(171);
+        assertThat(mapped).hasSize(173);
         assertThat(TEST_DOCUMENT_COVERAGE).contains("PROF-COM-001", "PROF-COM-015", "PROF-AUTH-016", "PROF-GW-AUTH-012", "PROF-ACTIVATE-018", "PROF-SEC-008");
     }
 
@@ -189,6 +190,8 @@ class ProfileApiContractTest {
                 .andExpect(jsonPath("$.data.items[0].displayName").value("Active Member"));
 
         performJson(get("/api/v1/profile/members").param("status", "REMOVED"), 400, 40001);
+        performJson(get("/api/v1/profile/members").param("sort", "createdAt_desc"), 400, 40001);
+        performJson(get("/api/v1/profile/members").param("keyword", "x".repeat(51)), 400, 40001);
 
         store.failNextPublicRead();
         performJson(get("/api/v1/profile/members"), 500, 51200);
@@ -344,6 +347,13 @@ class ProfileApiContractTest {
                         .param("status", "ARCHIVED"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.items[0].status").value("ARCHIVED"));
+
+        performJson(get("/api/v1/profile/admin/members")
+                .header("Authorization", bearer("admin-token"))
+                .param("sort", "joinedAt_asc"), 400, 40001);
+        performJson(get("/api/v1/profile/admin/members")
+                .header("Authorization", bearer("admin-token"))
+                .param("keyword", "x".repeat(51)), 400, 40001);
 
         mvc.perform(get("/api/v1/profile/admin/members/" + store.memberIdByUserId("active_member"))
                         .header("Authorization", bearer("helper-token")))
