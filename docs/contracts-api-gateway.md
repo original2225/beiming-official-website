@@ -88,6 +88,7 @@
 | `cross-platform-notification` | `CROSS_PLATFORM_NOTIFICATION` | `/api/v1/cross-platform-notification` | `8123` | `/api/v1/cross-platform-notification/health` |
 | `ops-image-market` | `OPS_IMAGE_MARKET` | `/api/v1/ops-image-market` | `8124` | `/api/v1/ops-image-market/health` |
 | `material` | `MATERIAL` | `/api/v1/materials` | `8126` | `/api/v1/materials/featured` |
+| `guide` | `GUIDE` | `/api/v1/guides` | `8127` | `/api/v1/guides/categories` |
 
 路径匹配规则为最长前缀优先。`/api/v1/resources` 和 `/api/v1/resources/**` 都必须命中 `resource`。未知路径返回网关错误，不转发到任何上游。
 
@@ -192,7 +193,7 @@
     "service": "api-gateway",
     "status": "UP",
     "port": 8125,
-    "routesTotal": 25,
+    "routesTotal": 26,
     "generatedAt": "2026-05-29T00:00:00Z"
   },
   "requestId": "req_example"
@@ -213,7 +214,7 @@
 | --- | --- | --- | --- |
 | `service` | string | 是 | 固定为 `api-gateway`。 |
 | `port` | integer | 是 | 固定为 `8125`。 |
-| `routesTotal` | integer | 是 | 路由总数，P0 为 `25`。 |
+| `routesTotal` | integer | 是 | 路由总数，P0 为 `26`。 |
 | `enabledRoutesTotal` | integer | 是 | 启用路由总数。 |
 | `upstreamsUp` | integer | 是 | 最近健康状态为 `UP` 的上游数量。 |
 | `upstreamsDegraded` | integer | 是 | 最近健康状态为 `DEGRADED` 的上游数量。 |
@@ -378,6 +379,6 @@ P0 `api-gateway` 是本地契约实现，必须在自检摘要中明确以下生
 
 `api-gateway` API 文档按 `docs/contracts-api-gateway.md` 独立存在，并由 `.local-docs/tests-api-gateway.md` 记录本地测试闭环。
 
-本文档列出的每个网关自有接口都有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、分页排序、状态刷新、失败降级、日志脱敏和验收口径。业务转发测试必须覆盖 25 个已有微服务的路径前缀，确认路由表端口准确、请求编号透传、请求编号非法拒绝、认证头透传、可信身份头剥离、`auth` 会话校验成功后的可信身份注入、`auth` 校验失败后的不注入降级、查询参数透传、JSON body 透传、请求体大小限制、响应头白名单、上游 2xx 透传、上游 4xx 透传、上游 5xx 透传、未知路径、非法方法、CORS 预检、上游不可用、上游超时和敏感字段不落日志。
+本文档列出的每个网关自有接口都有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、分页排序、状态刷新、失败降级、日志脱敏和验收口径。业务转发测试必须覆盖 26 个已接入微服务的路径前缀，确认路由表端口准确、请求编号透传、请求编号非法拒绝、认证头透传、可信身份头剥离、`auth` 会话校验成功后的可信身份注入、`auth` 校验失败后的不注入降级、查询参数透传、JSON body 透传、请求体大小限制、响应头白名单、上游 2xx 透传、上游 4xx 透传、上游 5xx 透传、未知路径、非法方法、CORS 预检、上游不可用、上游超时和敏感字段不落日志。
 
-开发完成后必须执行 `mvn -f backend/api-gateway-service/pom.xml test`，并执行已有 24 个稳定后端微服务和 `material` 的相关回归测试，确认网关新增没有修改前序服务结构、接口、端口、响应格式、认证方式、错误码、状态机、测试或构建脚本。测试过程必须写入 `.local-docs/tests-api-gateway.md`。
+开发完成后必须执行 `mvn -f backend/api-gateway-service/pom.xml test`，并执行已有 25 个后端微服务和 `guide` 的相关回归测试，确认网关新增没有修改前序服务结构、接口、端口、响应格式、认证方式、错误码、状态机、测试或构建脚本。测试过程必须写入 `.local-docs/tests-api-gateway.md`。

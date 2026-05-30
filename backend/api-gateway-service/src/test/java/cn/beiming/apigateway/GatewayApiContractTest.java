@@ -70,15 +70,15 @@ class GatewayApiContractTest {
         addRange(mapped, "GATE-AUTH", 1, 14);
         addRange(mapped, "GATE-HEALTH", 1, 6);
         addRange(mapped, "GATE-ROUTE", 1, 16);
-        addRange(mapped, "GATE-PFX", 1, 25);
+        addRange(mapped, "GATE-PFX", 1, 26);
         addRange(mapped, "GATE-UP", 1, 20);
         addRange(mapped, "GATE-LOG", 1, 20);
         addRange(mapped, "GATE-PROXY", 1, 49);
         addRange(mapped, "GATE-CORS", 1, 10);
         addRange(mapped, "GATE-SEC", 1, 11);
 
-        assertThat(mapped).hasSize(183);
-        assertThat(mapped).contains("GATE-COM-001", "GATE-PFX-025", "GATE-UP-020", "GATE-PROXY-049", "GATE-SEC-011");
+        assertThat(mapped).hasSize(184);
+        assertThat(mapped).contains("GATE-COM-001", "GATE-PFX-026", "GATE-UP-020", "GATE-PROXY-049", "GATE-SEC-011");
     }
 
     @Test
@@ -92,7 +92,7 @@ class GatewayApiContractTest {
                 .andExpect(jsonPath("$.data.service").value("api-gateway"))
                 .andExpect(jsonPath("$.data.status").value("UP"))
                 .andExpect(jsonPath("$.data.port").value(8125))
-                .andExpect(jsonPath("$.data.routesTotal").value(25))
+                .andExpect(jsonPath("$.data.routesTotal").value(26))
                 .andExpect(jsonPath("$.requestId").value("req-gateway-health"));
 
         JsonNode generated = performJson(get("/api/v1/gateway/health"), 200);
@@ -106,7 +106,7 @@ class GatewayApiContractTest {
             JsonNode summary = performJson(get("/api/v1/gateway/admin/ops/summary").header("Authorization", bearer(token)), 200);
             assertThat(summary.at("/data/service").asText()).isEqualTo("api-gateway");
             assertThat(summary.at("/data/port").asInt()).isEqualTo(8125);
-            assertThat(summary.at("/data/routesTotal").asInt()).isEqualTo(25);
+            assertThat(summary.at("/data/routesTotal").asInt()).isEqualTo(26);
             assertThat(summary.at("/data/productionGaps").toString()).contains("SERVICE_DISCOVERY_NOT_CONNECTED", "WEBSOCKET_PROXY_NOT_ENABLED");
             assertNoSecrets(summary);
         }
@@ -149,7 +149,7 @@ class GatewayApiContractTest {
                 .header("Authorization", bearer("helper-token"))
                 .param("pageSize", "100")
                 .param("sort", "upstreamPort_asc"), 200);
-        assertThat(routes.at("/data/total").asInt()).isEqualTo(25);
+        assertThat(routes.at("/data/total").asInt()).isEqualTo(26);
         assertRoute(routes, "auth", "AUTH", "/api/v1/auth", 8101);
         assertRoute(routes, "profile", "PROFILE", "/api/v1/profile", 8102);
         assertRoute(routes, "notification", "NOTIFICATION", "/api/v1/notifications", 8103);
@@ -175,6 +175,7 @@ class GatewayApiContractTest {
         assertRoute(routes, "cross-platform-notification", "CROSS_PLATFORM_NOTIFICATION", "/api/v1/cross-platform-notification", 8123);
         assertRoute(routes, "ops-image-market", "OPS_IMAGE_MARKET", "/api/v1/ops-image-market", 8124);
         assertRoute(routes, "material", "MATERIAL", "/api/v1/materials", 8126);
+        assertRoute(routes, "guide", "GUIDE", "/api/v1/guides", 8127);
 
         JsonNode filtered = performJson(get("/api/v1/gateway/admin/routes")
                 .header("Authorization", bearer("helper-token"))
@@ -199,7 +200,7 @@ class GatewayApiContractTest {
         JsonNode initial = performJson(get("/api/v1/gateway/admin/upstreams")
                 .header("Authorization", bearer("helper-token"))
                 .param("pageSize", "100"), 200);
-        assertThat(initial.at("/data/total").asInt()).isEqualTo(25);
+        assertThat(initial.at("/data/total").asInt()).isEqualTo(26);
         assertThat(initial.at("/data/items/0/status").asText()).isEqualTo("UNKNOWN");
 
         fakeClient.respond("AUTH", 401, body(41000, "not logged in", null));
@@ -225,6 +226,15 @@ class GatewayApiContractTest {
                 .header("Authorization", bearer("helper-token")), 200);
         assertThat(timeout.at("/data/status").asText()).isEqualTo("TIMEOUT");
         assertThat(timeout.at("/data/lastErrorCode").asInt()).isEqualTo(46211);
+
+        fakeClient.respond("GUIDE", 200, body(0, "success", Map.of("items", List.of())));
+        JsonNode guide = performJson(post("/api/v1/gateway/admin/upstreams/GUIDE/health-refresh")
+                .header("Authorization", bearer("helper-token"))
+                .header("X-Request-Id", "req-up-guide"), 200);
+        assertThat(guide.at("/data/status").asText()).isEqualTo("UP");
+        GatewayHttpRequest guideHealth = fakeClient.lastRequestFor("GUIDE");
+        assertThat(guideHealth.path()).isEqualTo("/api/v1/guides/categories");
+        assertThat(guideHealth.headers().get("X-Request-Id")).containsExactly("req-up-guide");
 
         JsonNode filtered = performJson(get("/api/v1/gateway/admin/upstreams")
                 .header("Authorization", bearer("helper-token"))
@@ -320,6 +330,7 @@ class GatewayApiContractTest {
         performJson(request(HttpMethod.TRACE, "/api/v1/auth/trace"), 405, 46201);
         performJson(get("/api/v1/resourceful"), 404, 46200);
         performJson(get("/api/v1/materials-extra"), 404, 46200);
+        performJson(get("/api/v1/guides-extra"), 404, 46200);
         performJson(get("/api/v1/auth/bad-request-id").header("X-Request-Id", "bad id"), 400, 46205);
         performJson(get("/api/v1/auth/long-request-id").header("X-Request-Id", "r".repeat(129)), 400, 46205);
         performJson(post("/api/v1/auth/too-large")
@@ -410,6 +421,22 @@ class GatewayApiContractTest {
         assertThat(material.headers().get("X-Request-Id")).containsExactly("req-material");
         assertThat(material.headers().get("X-Beiming-Actor-User-Id")).containsExactly("auth-user-material");
         assertThat(material.headers()).doesNotContainKey("forged-material");
+
+        fakeClient.authContext("ses-guide-user", "auth-user-guide", List.of("USER"), List.of("GUIDE_FEEDBACK"), null);
+        fakeClient.respond("GUIDE", 200, Map.of("code", 0, "message", "success", "data", Map.of("items", List.of())));
+        performJson(get("/api/v1/guides/categories")
+                .header("Authorization", bearer("ses-guide-user"))
+                .header("X-Request-Id", "req-guide")
+                .header("X-Beiming-Actor-User-Id", "forged-guide"), 200);
+
+        GatewayHttpRequest guide = fakeClient.lastRequestFor("GUIDE");
+        assertThat(guide.path()).isEqualTo("/api/v1/guides/categories");
+        assertThat(guide.headers().get("Authorization")).containsExactly(bearer("ses-guide-user"));
+        assertThat(guide.headers().get("X-Request-Id")).containsExactly("req-guide");
+        assertThat(guide.headers().get("X-Beiming-Actor-User-Id")).containsExactly("auth-user-guide");
+        assertThat(guide.headers().get("X-Beiming-Actor-Permissions")).containsExactly("GUIDE_FEEDBACK");
+        assertThat(guide.headers().get("X-Gateway-Internal-Request-Id")).containsExactly("req-guide");
+        assertThat(guide.headers()).doesNotContainKey("forged-guide");
     }
 
     @Test
