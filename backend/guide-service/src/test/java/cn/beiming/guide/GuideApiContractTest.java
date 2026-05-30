@@ -343,6 +343,11 @@ class GuideApiContractTest {
         performJson(post("/api/v1/guides/admin/articles").header("Authorization", bearer("admin-token")), validGuide("admin-flow", "slug-conflict"), 409, 43911);
         performJson(post("/api/v1/guides/admin/articles").header("Authorization", bearer("admin-token")), with(validGuide("bad-category", "bad-category"), "categoryId", "missing"), 404, 43901);
         performJson(post("/api/v1/guides/admin/articles").header("Authorization", bearer("admin-token")), with(validGuide("bad-rule", "bad-rule"), "type", "SERVER_RULE"), 400, 40001);
+        Map<String, Object> duplicateRule = with(with(validGuide("duplicate-rule", "duplicate-rule"), "type", "SERVER_RULE"), "ruleVersion", "rules-2026-v2");
+        performJson(post("/api/v1/guides/admin/articles").header("Authorization", bearer("admin-token")), duplicateRule, 409, 43913);
+        Map<String, Object> uniqueRule = with(with(validGuide("unique-rule", "unique-rule"), "type", "SERVER_RULE"), "ruleVersion", "rules-test-unique");
+        JsonNode uniqueRuleArticle = performJson(post("/api/v1/guides/admin/articles").header("Authorization", bearer("admin-token")), uniqueRule, 201);
+        performJson(patch("/api/v1/guides/admin/articles/" + uniqueRuleArticle.at("/data/guideId").asText()).header("Authorization", bearer("admin-token")), Map.of("ruleVersion", "rules-2026-v2", "reason", "rule conflict", "idempotencyKey", "rule-conflict"), 409, 43913);
         performJson(post("/api/v1/guides/admin/articles").header("Authorization", bearer("admin-token")), with(validGuide("bad-time", "bad-time"), "visibleUntil", "2026-01-01T00:00:00Z"), 400, 40001);
         performJson(post("/api/v1/guides/admin/articles").header("Authorization", bearer("admin-token")), with(validGuide("bad-visible-from", "bad-visible-from"), "visibleFrom", "bad-time"), 400, 40001);
         performJson(post("/api/v1/guides/admin/articles").header("Authorization", bearer("admin-token")), with(validGuide("bad-visible-until", "bad-visible-until"), "visibleUntil", "bad-time"), 400, 40001);

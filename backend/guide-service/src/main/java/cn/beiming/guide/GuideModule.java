@@ -978,7 +978,10 @@ class GuideStore {
         if (body.containsKey("toc")) guide.toc = list(body.get("toc"));
         if (body.containsKey("commandEntries")) guide.commandEntries = list(body.get("commandEntries"));
         if (body.containsKey("externalChannelIds")) guide.externalChannelIds = strings(body.get("externalChannelIds"));
-        if (body.containsKey("ruleVersion")) guide.ruleVersion = optionalString(body, "ruleVersion", null);
+        if (body.containsKey("ruleVersion")) {
+            if (body.get("ruleVersion") != null) checkRuleVersionAvailable(guide.guideId, text(body.get("ruleVersion")));
+            guide.ruleVersion = optionalString(body, "ruleVersion", null);
+        }
     }
 
     private Map<String, Object> publicSummary(GuideArticle guide, HttpServletRequest request) {
@@ -1090,8 +1093,9 @@ class GuideStore {
         requireCategory(requiredString(body, "categoryId"));
         enumValue(optionalString(body, "visibility", "PUBLIC"), VISIBILITIES);
         for (String audience : strings(body.get("audience"))) enumValue(audience, AUDIENCES);
-        if ("SERVER_RULE".equals(body.get("type")) && optionalString(body, "ruleVersion", null) == null) throw new GuideException(400, 40001, "validation failed");
-        if (!"SERVER_RULE".equals(body.get("type")) && optionalString(body, "ruleVersion", null) != null && guides.values().stream().anyMatch(g -> Objects.equals(g.ruleVersion, body.get("ruleVersion")))) throw new GuideException(409, 43913, "rule version conflict");
+        String ruleVersion = optionalString(body, "ruleVersion", null);
+        if ("SERVER_RULE".equals(body.get("type")) && ruleVersion == null) throw new GuideException(400, 40001, "validation failed");
+        if (ruleVersion != null) checkRuleVersionAvailable(null, ruleVersion);
         Instant visibleFrom = instantBody(body, "visibleFrom");
         Instant visibleUntil = instantBody(body, "visibleUntil");
         instantBody(body, "verifiedAt");
@@ -1117,6 +1121,12 @@ class GuideStore {
         enumValue(optionalString(body, "visibility", "PUBLIC"), VISIBILITIES);
         if (body.containsKey("sortOrder")) intValue(body.get("sortOrder"));
         requireReason(body);
+    }
+
+    private void checkRuleVersionAvailable(String currentGuideId, String ruleVersion) {
+        if (guides.values().stream().anyMatch(g -> !g.guideId.equals(currentGuideId) && Objects.equals(g.ruleVersion, ruleVersion))) {
+            throw new GuideException(409, 43913, "rule version conflict");
+        }
     }
 
     private void checkProfile(HttpServletRequest request) {
