@@ -6,6 +6,8 @@
 
 本文档是北冥官网后端 API 的整体索引和汇总说明，用于让维护者快速查看服务边界、端口、契约文件、测试入口和 API 覆盖规模。它不替代任何模块独立契约。正式开发、验收和变更仍以 `docs/contracts-<module>.md` 为准，公共响应、错误码、分页、认证和审计规则仍以 `docs/contracts-common.md` 为准。
 
+面向前端开发的一体化 API 全文查阅文档见 `docs/api-reference.md`。该文档由公共契约和全部模块契约合并生成，方便前端统一检索路径、字段和响应格式。
+
 本汇总覆盖当前仓库 `docs/contracts-*.md` 中除 `contracts-common.md` 之外的 27 个后端或平台模块。当前唯一 `METHOD path` 总数为 746。
 
 ## 全局接口规则
