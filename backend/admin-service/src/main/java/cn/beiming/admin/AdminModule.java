@@ -4,6 +4,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
@@ -41,15 +42,15 @@ import java.util.concurrent.ConcurrentHashMap;
 @Configuration
 class AdminModule {
     @Bean
-    AdminStore adminStore() {
-        AdminStore store = new AdminStore();
+    AdminStore adminStore(@Value("${beiming.admin.test-mode:false}") boolean testMode) {
+        AdminStore store = new AdminStore(testMode);
         store.seed();
         return store;
     }
 
     @Bean
-    TestAdminAuthProvider adminAuthProvider() {
-        return new TestAdminAuthProvider();
+    TestAdminAuthProvider adminAuthProvider(@Value("${beiming.admin.test-mode:false}") boolean testMode) {
+        return new TestAdminAuthProvider(testMode);
     }
 }
 
@@ -66,80 +67,81 @@ class AdminController {
 
     @GetMapping("/overview")
     Map<String, Object> overview(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                 @RequestParam Map<String, String> query,
-                                 HttpServletRequest request) {
-        AuthUser actor = auth.requireAny(authorization, "HELPER", "ADMIN", "OWNER");
+                                  @RequestParam Map<String, String> query,
+                                  HttpServletRequest request) {
+        AuthUser actor = auth.requireAny(request, authorization, "HELPER", "ADMIN", "OWNER");
         return ok(store.overview(actor, query, request));
     }
 
     @GetMapping("/modules")
     Map<String, Object> modules(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                @RequestParam Map<String, String> query,
-                                HttpServletRequest request) {
-        AuthUser actor = auth.requireAny(authorization, "HELPER", "ADMIN", "OWNER");
+                                 @RequestParam Map<String, String> query,
+                                 HttpServletRequest request) {
+        AuthUser actor = auth.requireAny(request, authorization, "HELPER", "ADMIN", "OWNER");
         return ok(Map.of("items", store.modules(actor, query, request)));
     }
 
     @GetMapping("/modules/{moduleKey}")
     Map<String, Object> moduleDetail(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                     @PathVariable String moduleKey,
-                                     HttpServletRequest request) {
-        AuthUser actor = auth.requireAny(authorization, "HELPER", "ADMIN", "OWNER");
+                                      @PathVariable String moduleKey,
+                                      HttpServletRequest request) {
+        AuthUser actor = auth.requireAny(request, authorization, "HELPER", "ADMIN", "OWNER");
         return ok(store.moduleDetail(actor, moduleKey, request));
     }
 
     @GetMapping("/todos")
     Map<String, Object> todos(@RequestHeader(value = "Authorization", required = false) String authorization,
-                              @RequestParam Map<String, String> query,
-                              HttpServletRequest request) {
-        AuthUser actor = auth.requireAny(authorization, "HELPER", "ADMIN", "OWNER");
+                               @RequestParam Map<String, String> query,
+                               HttpServletRequest request) {
+        AuthUser actor = auth.requireAny(request, authorization, "HELPER", "ADMIN", "OWNER");
         return ok(store.todos(actor, query, request));
     }
 
     @GetMapping("/todos/{todoId}")
     Map<String, Object> todoDetail(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                   @PathVariable String todoId,
-                                   HttpServletRequest request) {
-        AuthUser actor = auth.requireAny(authorization, "HELPER", "ADMIN", "OWNER");
+                                    @PathVariable String todoId,
+                                    HttpServletRequest request) {
+        AuthUser actor = auth.requireAny(request, authorization, "HELPER", "ADMIN", "OWNER");
         return ok(store.todoDetail(actor, todoId, request));
     }
 
     @GetMapping("/metrics/summary")
     Map<String, Object> metrics(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                @RequestParam Map<String, String> query,
-                                HttpServletRequest request) {
-        AuthUser actor = auth.requireAny(authorization, "HELPER", "ADMIN", "OWNER");
+                                 @RequestParam Map<String, String> query,
+                                 HttpServletRequest request) {
+        AuthUser actor = auth.requireAny(request, authorization, "HELPER", "ADMIN", "OWNER");
         return ok(Map.of("items", store.metrics(actor, query, request)));
     }
 
     @GetMapping("/audit-logs")
     Map<String, Object> auditLogs(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                  @RequestParam Map<String, String> query,
-                                  HttpServletRequest request) {
-        auth.requireAny(authorization, "ADMIN", "OWNER");
+                                   @RequestParam Map<String, String> query,
+                                   HttpServletRequest request) {
+        auth.requireAny(request, authorization, "ADMIN", "OWNER");
         return ok(store.auditLogs(query, request));
     }
 
     @GetMapping("/settings")
     Map<String, Object> settings(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                 @RequestParam Map<String, String> query) {
-        AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
+                                  @RequestParam Map<String, String> query,
+                                  HttpServletRequest request) {
+        AuthUser actor = auth.requireAny(request, authorization, "ADMIN", "OWNER");
         return ok(store.settings(actor, query));
     }
 
     @PatchMapping("/settings")
     Map<String, Object> patchSettings(@RequestHeader(value = "Authorization", required = false) String authorization,
-                                      @RequestBody(required = false) Map<String, Object> body,
-                                      HttpServletRequest request) {
-        AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
+                                       @RequestBody(required = false) Map<String, Object> body,
+                                       HttpServletRequest request) {
+        AuthUser actor = auth.requireAny(request, authorization, "ADMIN", "OWNER");
         return ok(store.patchSettings(actor, body == null ? Map.of() : body, request));
     }
 
     @GetMapping("/ops/summary")
     Map<String, Object> ops(@RequestHeader(value = "Authorization", required = false) String authorization,
-                            HttpServletRequest request) {
-        auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ok(store.ops(request));
+                             HttpServletRequest request) {
+        AuthUser actor = auth.requireAny(request, authorization, "ADMIN", "OWNER");
+        return ok(store.ops(actor, request));
     }
 
     private Map<String, Object> ok(Object data) {
@@ -167,6 +169,11 @@ class AdminStore {
     private final Map<String, Object> layout = new ConcurrentHashMap<>();
     private final Map<String, Setting> settings = new ConcurrentHashMap<>();
     private final Map<String, IdempotencyRecord> idempotency = new ConcurrentHashMap<>();
+    private final boolean testMode;
+
+    AdminStore(boolean testMode) {
+        this.testMode = testMode;
+    }
 
     void seed() {
         int order = 10;
@@ -405,10 +412,10 @@ class AdminStore {
             replay.put("idempotency", Map.of("replayed", true));
             return replay;
         }
-        if ("true".equals(request.getHeader("X-Test-Fail-Audit"))) {
+        if (testMode && "true".equals(request.getHeader("X-Test-Fail-Audit"))) {
             throw new AdminException(500, 51701, "admin audit write failed");
         }
-        if ("true".equals(request.getHeader("X-Test-Fail-Settings"))) {
+        if (testMode && "true".equals(request.getHeader("X-Test-Fail-Settings"))) {
             throw new AdminException(500, 51702, "admin setting write failed");
         }
         boolean highImpact = highImpact(body);
@@ -422,15 +429,16 @@ class AdminStore {
         return response;
     }
 
-    Map<String, Object> ops(HttpServletRequest request) {
+    Map<String, Object> ops(AuthUser actor, HttpServletRequest request) {
         List<Map<String, Object>> health = MODULE_KEYS.stream().map(key -> health(key, request)).toList();
         long degraded = health.stream().filter(row -> "DEGRADED".equals(row.get("status")) || "UNAVAILABLE".equals(row.get("status"))).count();
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("service", "admin");
         data.put("port", 8107);
         data.put("storageMode", "IN_MEMORY");
-        data.put("authMode", "TEST_STUB");
+        data.put("authMode", actor.authMode());
         data.put("moduleAdapterMode", "TEST_STUB");
+        data.put("testMode", testMode);
         data.put("modulesTotal", MODULE_KEYS.size());
         data.put("availableModulesTotal", IMPLEMENTED.size());
         data.put("degradedModulesTotal", degraded);
@@ -510,7 +518,7 @@ class AdminStore {
         row.put("service", moduleKey.toLowerCase().replace('_', '-'));
         row.put("port", port(moduleKey));
         row.put("storageMode", IMPLEMENTED.contains(moduleKey) ? "IN_MEMORY" : null);
-        row.put("authMode", IMPLEMENTED.contains(moduleKey) ? "TEST_STUB" : null);
+        row.put("authMode", IMPLEMENTED.contains(moduleKey) ? (testMode ? "TEST_STUB" : "TRUSTED_GATEWAY_CONTEXT") : null);
         row.put("lastCheckedAt", NOW);
         row.put("latencyMs", "UNAVAILABLE".equals(status) ? null : 3);
         row.put("degraded", "DEGRADED".equals(status) || "UNAVAILABLE".equals(status));
@@ -1063,7 +1071,7 @@ class AdminStore {
     }
 
     private Map<String, String> moduleModes(HttpServletRequest request) {
-        if (request == null || request.getHeader("X-Test-Module-Mode") == null) {
+        if (!testMode || request == null || request.getHeader("X-Test-Module-Mode") == null) {
             return Map.of();
         }
         Map<String, String> modes = new LinkedHashMap<>();
@@ -1077,7 +1085,7 @@ class AdminStore {
     }
 
     private Map<String, String> platformModes(HttpServletRequest request) {
-        if (request == null || request.getHeader("X-Test-Platform-Mode") == null) {
+        if (!testMode || request == null || request.getHeader("X-Test-Platform-Mode") == null) {
             return Map.of();
         }
         Map<String, String> modes = new LinkedHashMap<>();
@@ -1233,7 +1241,24 @@ class AdminStore {
 }
 
 class TestAdminAuthProvider {
-    AuthUser requireAny(String authorization, String... roles) {
+    private static final Set<String> VALID_ROLES = Set.of("OWNER", "ADMIN", "HELPER", "USER");
+    private final boolean testMode;
+
+    TestAdminAuthProvider(boolean testMode) {
+        this.testMode = testMode;
+    }
+
+    AuthUser requireAny(HttpServletRequest request, String authorization, String... roles) {
+        AuthUser trusted = trustedActor(request);
+        if (trusted != null) {
+            if (!trusted.hasAny(roles)) {
+                throw new AdminException(403, 42001, "role permission denied");
+            }
+            return trusted;
+        }
+        if (!testMode) {
+            throw new AdminException(401, 41000, "unauthorized");
+        }
         if (authorization == null || !authorization.startsWith("Bearer ")) {
             throw new AdminException(401, 41000, "unauthorized");
         }
@@ -1245,11 +1270,11 @@ class TestAdminAuthProvider {
             throw new AdminException(504, 46704, "auth context timeout");
         }
         AuthUser user = switch (token) {
-            case "owner-token" -> new AuthUser("owner", Set.of("OWNER"), Set.of("NODE_READ"));
-            case "admin-token" -> new AuthUser("admin", Set.of("ADMIN"), Set.of("NODE_READ"));
-            case "admin-no-node-token" -> new AuthUser("admin-no-node", Set.of("ADMIN"), Set.of());
-            case "helper-token" -> new AuthUser("helper", Set.of("HELPER"), Set.of());
-            case "user-token" -> new AuthUser("user", Set.of("USER"), Set.of());
+            case "owner-token" -> new AuthUser("owner", Set.of("OWNER"), Set.of("NODE_READ"), "TEST_STUB");
+            case "admin-token" -> new AuthUser("admin", Set.of("ADMIN"), Set.of("NODE_READ"), "TEST_STUB");
+            case "admin-no-node-token" -> new AuthUser("admin-no-node", Set.of("ADMIN"), Set.of(), "TEST_STUB");
+            case "helper-token" -> new AuthUser("helper", Set.of("HELPER"), Set.of(), "TEST_STUB");
+            case "user-token" -> new AuthUser("user", Set.of("USER"), Set.of(), "TEST_STUB");
             default -> throw new AdminException(401, 41001, "invalid session");
         };
         if (!user.hasAny(roles)) {
@@ -1257,9 +1282,48 @@ class TestAdminAuthProvider {
         }
         return user;
     }
+
+    private AuthUser trustedActor(HttpServletRequest request) {
+        if (request == null || !hasTrustedActorHeader(request)) {
+            return null;
+        }
+        String userId = request.getHeader("X-Beiming-Actor-User-Id");
+        String roleHeader = request.getHeader("X-Beiming-Actor-Roles");
+        if (userId == null || userId.isBlank()) {
+            throw new AdminException(502, 46703, "auth context unavailable");
+        }
+        Set<String> roles = csv(roleHeader);
+        if (roles.isEmpty()) {
+            throw new AdminException(502, 46703, "auth context unavailable");
+        }
+        if (!VALID_ROLES.containsAll(roles)) {
+            throw new AdminException(502, 46702, "auth context incompatible");
+        }
+        return new AuthUser(userId.trim(), roles, csv(request.getHeader("X-Beiming-Actor-Permissions")), "TRUSTED_GATEWAY_CONTEXT");
+    }
+
+    private boolean hasTrustedActorHeader(HttpServletRequest request) {
+        return request.getHeader("X-Beiming-Actor-User-Id") != null
+                || request.getHeader("X-Beiming-Actor-Roles") != null
+                || request.getHeader("X-Beiming-Actor-Permissions") != null;
+    }
+
+    private Set<String> csv(String value) {
+        if (value == null || value.isBlank()) {
+            return Set.of();
+        }
+        Set<String> values = new LinkedHashSet<>();
+        for (String item : value.split(",")) {
+            String trimmed = item.trim();
+            if (!trimmed.isBlank()) {
+                values.add(trimmed);
+            }
+        }
+        return values;
+    }
 }
 
-record AuthUser(String userId, Set<String> roles, Set<String> permissions) {
+record AuthUser(String userId, Set<String> roles, Set<String> permissions, String authMode) {
     boolean hasRole(String role) {
         return roles.contains(role);
     }

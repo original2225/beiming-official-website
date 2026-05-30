@@ -29,7 +29,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest
+@SpringBootTest(properties = "beiming.admin.test-mode=true")
 @AutoConfigureMockMvc
 @DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_EACH_TEST_METHOD)
 class AdminApiContractTest {
@@ -60,9 +60,10 @@ class AdminApiContractTest {
         addRange(mapped, "ADM-GUIDE", 1, 14);
         addRange(mapped, "ADM-P3", 1, 22);
         addRange(mapped, "ADM-GATEWAY", 1, 14);
+        addRange(mapped, "ADM-PROD", 1, 20);
         addRange(mapped, "ADM-CYCLE", 1, 18);
-        assertThat(mapped).contains("ADM-COM-001", "ADM-OVERVIEW-030", "ADM-SETTINGS-WRITE-034", "ADM-MODULE-REFRESH-034", "ADM-GATEWAY-014", "ADM-CYCLE-018");
-        assertThat(mapped).hasSize(414);
+        assertThat(mapped).contains("ADM-COM-001", "ADM-OVERVIEW-030", "ADM-SETTINGS-WRITE-034", "ADM-MODULE-REFRESH-034", "ADM-GATEWAY-014", "ADM-PROD-020", "ADM-CYCLE-018");
+        assertThat(mapped).hasSize(434);
     }
 
     @Test
