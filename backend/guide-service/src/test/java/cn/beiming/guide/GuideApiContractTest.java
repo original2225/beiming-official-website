@@ -163,7 +163,7 @@ class GuideApiContractTest {
         JsonNode categories = performJson(get("/api/v1/guides/categories")
                 .param("type", "JOIN_GUIDE")
                 .param("audience", "VISITOR")
-                .param("keyword", "入服"), 200);
+                .param("keyword", "join"), 200);
         assertThat(categories.toString()).contains("cat-join").doesNotContain("cat-disabled", "cat-archived");
         performJson(get("/api/v1/guides/categories").param("type", "BAD"), 400, 40001);
         performJson(get("/api/v1/guides/categories").param("audience", "BAD"), 400, 40001);
@@ -179,7 +179,7 @@ class GuideApiContractTest {
                 .param("categoryId", "cat-client")
                 .param("tag", "client")
                 .param("audience", "VISITOR")
-                .param("keyword", "客户端")
+                .param("keyword", "client")
                 .param("pinned", "true")
                 .param("sort", "pinned_desc"), 200);
         assertThat(filtered.toString()).contains("guide-client").doesNotContain("guide-rules");
@@ -193,7 +193,7 @@ class GuideApiContractTest {
         assertThat(listText).doesNotContain("guide-draft", "guide-pending", "guide-approved", "guide-rejected", "guide-needs", "guide-offline", "guide-archived", "guide-deleted", "guide-member", "guide-admin", "guide-future", "guide-expired-hidden", "adminNote", "reviewOpinion");
 
         JsonNode detail = performJson(get("/api/v1/guides/articles/guide-rules"), 200);
-        assertThat(detail.at("/data/body").asText()).contains("规则");
+        assertThat(detail.at("/data/body").asText()).contains("rules");
         assertThat(detail.at("/data/toc").isArray()).isTrue();
         assertThat(detail.toString()).doesNotContain("adminNote", "reviewOpinion", "notificationStatus", "downloadUrl", "Cloudreve");
         JsonNode slugDetail = performJson(get("/api/v1/guides/articles/by-slug/server-rules"), 200);
@@ -209,7 +209,7 @@ class GuideApiContractTest {
     @DisplayName("GUIDE-SEARCH GUIDE-CMD GUIDE-CHANNEL GUIDE-RULE covers search facets, command index, external channels, and rules")
     void searchCommandChannelRuleContract() throws Exception {
         JsonNode search = performJson(get("/api/v1/guides/search")
-                .param("q", "规则")
+                .param("q", "rules")
                 .param("type", "SERVER_RULE")
                 .param("categoryId", "cat-rules")
                 .param("tag", "rules")
@@ -238,7 +238,7 @@ class GuideApiContractTest {
         JsonNode channels = performJson(get("/api/v1/guides/external-channels")
                 .param("type", "QQ_GROUP")
                 .param("audience", "VISITOR")
-                .param("keyword", "群"), 200);
+                .param("keyword", "group"), 200);
         assertThat(channels.toString()).contains("channel-qq").doesNotContain("adminNote", "botToken", "chatMessages", "channel-disabled", "channel-archived");
         performJson(get("/api/v1/guides/external-channels").param("type", "BAD"), 400, 40001);
 
@@ -254,13 +254,13 @@ class GuideApiContractTest {
     @DisplayName("GUIDE-FEEDBACK and GUIDE-FEEDBACK-ADMIN cover current user feedback, idempotency, isolation, and processing")
     void feedbackContract() throws Exception {
         JsonNode feedback = performJson(post("/api/v1/guides/articles/guide-rules/feedback")
-                .header("Authorization", bearer("user-token")), feedback("OUTDATED", "规则需要复核", "feedback-1"), 201);
+                .header("Authorization", bearer("user-token")), feedback("OUTDATED", "rules need review", "feedback-1"), 201);
         String feedbackId = feedback.at("/data/feedbackId").asText();
         assertThat(feedback.at("/data/guideVersion").asInt()).isGreaterThan(0);
         assertThat(feedback.at("/data/actorUserId").asText()).isEqualTo("user");
 
         JsonNode replay = performJson(post("/api/v1/guides/articles/guide-rules/feedback")
-                .header("Authorization", bearer("user-token")), feedback("OUTDATED", "规则需要复核", "feedback-1"), 201);
+                .header("Authorization", bearer("user-token")), feedback("OUTDATED", "rules need review", "feedback-1"), 201);
         assertThat(replay.at("/data/feedbackId").asText()).isEqualTo(feedbackId);
         performJson(post("/api/v1/guides/articles/guide-rules/feedback")
                 .header("Authorization", bearer("user-token")), feedback("BROKEN_LINK", "changed", "feedback-1"), 409, 43914);
@@ -491,11 +491,11 @@ class GuideApiContractTest {
         body.put("type", "QQ_GROUP");
         body.put("name", "QQ " + slug);
         body.put("slug", slug);
-        body.put("purpose", "玩家交流");
-        body.put("joinCondition", "遵守规则");
-        body.put("rules", java.util.List.of("友好交流"));
+        body.put("purpose", "player chat");
+        body.put("joinCondition", "follow rules");
+        body.put("rules", java.util.List.of("friendly chat"));
         body.put("entryUrl", "https://example.com/join/" + slug);
-        body.put("entryHint", "群号脱敏");
+        body.put("entryHint", "masked group id");
         body.put("visibility", "PUBLIC");
         body.put("sortOrder", 20);
         body.put("adminNote", "internal note");
