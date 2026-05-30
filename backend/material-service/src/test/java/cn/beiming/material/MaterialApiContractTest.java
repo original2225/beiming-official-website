@@ -162,7 +162,8 @@ class MaterialApiContractTest {
         JsonNode assets = performJson(get("/api/v1/materials/mat-featured/assets"), 200);
         assertThat(assets.at("/data/items").toString()).contains("asset-featured-cover").doesNotContain("securityRejectReason", "uploadTicket", "internalPath");
 
-        JsonNode future = createUserSubmission("future-window", "future-window");
+        JsonNode future = performJson(post("/api/v1/materials/me/submissions").header("Authorization", bearer("member-token")),
+                with(validSubmission("future-window", "future-window"), "visibleFrom", "2026-06-01T00:00:00Z"), 201);
         performJson(patch("/api/v1/materials/me/submissions/" + future.at("/data/materialId").asText() + "/submit-review")
                 .header("Authorization", bearer("member-token")), reason("submit"), 200);
         performJson(patch("/api/v1/materials/admin/items/" + future.at("/data/materialId").asText() + "/approve")
