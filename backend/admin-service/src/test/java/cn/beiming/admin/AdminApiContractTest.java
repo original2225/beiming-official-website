@@ -55,9 +55,14 @@ class AdminApiContractTest {
         addRange(mapped, "ADM-SETTINGS-WRITE", 1, 34);
         addRange(mapped, "ADM-OPS", 1, 16);
         addRange(mapped, "ADM-COMPAT", 1, 30);
+        addRange(mapped, "ADM-MODULE-REFRESH", 1, 34);
+        addRange(mapped, "ADM-MATERIAL", 1, 14);
+        addRange(mapped, "ADM-GUIDE", 1, 14);
+        addRange(mapped, "ADM-P3", 1, 22);
+        addRange(mapped, "ADM-GATEWAY", 1, 14);
         addRange(mapped, "ADM-CYCLE", 1, 18);
-        assertThat(mapped).contains("ADM-COM-001", "ADM-OVERVIEW-030", "ADM-SETTINGS-WRITE-034", "ADM-CYCLE-018");
-        assertThat(mapped).hasSize(316);
+        assertThat(mapped).contains("ADM-COM-001", "ADM-OVERVIEW-030", "ADM-SETTINGS-WRITE-034", "ADM-MODULE-REFRESH-034", "ADM-GATEWAY-014", "ADM-CYCLE-018");
+        assertThat(mapped).hasSize(414);
     }
 
     @Test
@@ -94,7 +99,7 @@ class AdminApiContractTest {
     @DisplayName("ADM-OVERVIEW dashboard aggregation, role trimming, module status, degradation, and placeholders")
     void overviewContract() throws Exception {
         JsonNode helper = performJson(get("/api/v1/admin/overview").header("Authorization", bearer("helper-token")), 200);
-        assertThat(helper.toString()).contains("CONTENT", "RESOURCE", "SERVER_STATUS").doesNotContain("settings", "audit-logs");
+        assertThat(helper.toString()).contains("CONTENT", "RESOURCE", "SERVER_STATUS", "MATERIAL", "GUIDE").doesNotContain("settings", "audit-logs");
 
         JsonNode owner = performJson(get("/api/v1/admin/overview")
                 .header("Authorization", bearer("owner-token"))
@@ -102,9 +107,10 @@ class AdminApiContractTest {
                 .param("moduleLimit", "50")
                 .param("todoLimit", "3")
                 .param("auditLimit", "2"), 200);
-        assertThat(valuesAt(owner, "/data/modules", "moduleKey"))
-                .contains("AUTH", "PROFILE", "NOTIFICATION", "CONTENT", "SERVER_STATUS", "RESOURCE", "ADMIN", "OPS_CONTROL", "NODE_DAEMON");
-        assertThat(owner.at("/data/notImplementedModules").toString()).contains("ONBOARDING", "OPS_CONTROL", "NODE_DAEMON");
+        assertThat(valuesAt(owner, "/data/modules", "moduleKey")).containsAll(expectedImplementedModules()).doesNotContain("API_GATEWAY");
+        assertThat(valuesAt(owner, "/data/modules", "moduleKey")).hasSize(26);
+        assertThat(owner.at("/data/notImplementedModules").toString()).doesNotContain("ONBOARDING", "OPS_CONTROL", "NODE_DAEMON", "MATERIAL", "GUIDE");
+        assertThat(owner.at("/data/platformDependencies").toString()).contains("API_GATEWAY", "/api/v1/gateway/admin", "\"port\":8125");
         assertThat(owner.at("/data/recentAudits").size()).isLessThanOrEqualTo(2);
         assertNoSecrets(owner);
 
@@ -129,23 +135,36 @@ class AdminApiContractTest {
                 .header("Authorization", bearer("admin-token"))
                 .param("includeNotImplemented", "true")
                 .param("sort", "moduleKey_asc"), 200);
-        assertThat(valuesAt(modules, "/data/items", "moduleKey")).contains("ADMIN", "AUTH", "CONTENT", "RESOURCE", "OPS_CONTROL");
-        assertThat(modules.toString()).contains("\"targetApiBase\":\"/api/v1/content\"").contains("\"targetApiBase\":null");
+        assertThat(valuesAt(modules, "/data/items", "moduleKey")).containsAll(expectedImplementedModules()).doesNotContain("API_GATEWAY");
+        assertThat(valuesAt(modules, "/data/items", "moduleKey")).hasSize(26);
+        assertThat(modules.toString()).contains("\"targetApiBase\":\"/api/v1/content/admin\"", "\"targetApiBase\":\"/api/v1/resources/admin\"", "\"targetApiBase\":\"/api/v1/materials/admin\"", "\"targetApiBase\":\"/api/v1/guides/admin\"");
+        assertThat(modules.toString()).doesNotContain("\"status\":\"NOT_IMPLEMENTED\"", "\"targetApiBase\":null");
         assertThat(modules.toString()).doesNotContain("/api/v1/admin/users", "/api/v1/admin/resources");
         assertNoSecrets(modules);
 
         JsonNode implementedOnly = performJson(get("/api/v1/admin/modules")
                 .header("Authorization", bearer("admin-token"))
                 .param("includeNotImplemented", "false"), 200);
-        assertThat(valuesAt(implementedOnly, "/data/items", "moduleKey")).doesNotContain("OPS_CONTROL", "NODE_DAEMON");
+        assertThat(valuesAt(implementedOnly, "/data/items", "moduleKey")).containsAll(expectedImplementedModules()).doesNotContain("API_GATEWAY");
 
         JsonNode content = performJson(get("/api/v1/admin/modules/CONTENT").header("Authorization", bearer("helper-token")), 200);
         assertThat(content.at("/data/moduleKey").asText()).isEqualTo("CONTENT");
         assertThat(content.at("/data/capabilities").toString()).contains("READ").doesNotContain("TERMINAL_ACCESS");
+        assertThat(content.at("/data/targetApiBase").asText()).isEqualTo("/api/v1/content/admin");
 
         JsonNode ops = performJson(get("/api/v1/admin/modules/OPS_CONTROL").header("Authorization", bearer("owner-token")), 200);
-        assertThat(ops.at("/data/status").asText()).isEqualTo("NOT_IMPLEMENTED");
+        assertThat(ops.at("/data/status").asText()).isEqualTo("AVAILABLE");
+        assertThat(ops.at("/data/targetApiBase").asText()).isEqualTo("/api/v1/ops-control");
+        assertThat(ops.at("/data/requiredPermissions").toString()).contains("NODE_READ");
         assertThat(ops.toString()).doesNotContain("terminal", "container-start", "file-delete", "node-register");
+
+        assertModuleEntry("MATERIAL", "/api/v1/materials/admin", 8126, "/admin/materials");
+        assertModuleEntry("GUIDE", "/api/v1/guides/admin", 8127, "/admin/guides");
+        assertModuleEntry("CLOUDREVE_SYNC", "/api/v1/cloudreve-sync", 8118, "/admin/cloudreve-sync");
+        assertModuleEntry("ONLINE_MAP", "/api/v1/online-map/admin", 8121, "/admin/online-map");
+        assertModuleEntry("PLUGIN_INTEGRATION", "/api/v1/plugin-integration/admin", 8122, "/admin/plugin-integration");
+        assertModuleEntry("CROSS_PLATFORM_NOTIFICATION", "/api/v1/cross-platform-notification/admin", 8123, "/admin/cross-platform-notification");
+        assertModuleEntry("OPS_IMAGE_MARKET", "/api/v1/ops-image-market/admin", 8124, "/admin/ops-image-market");
 
         performJson(get("/api/v1/admin/modules/BAD").header("Authorization", bearer("admin-token")), 400, 40001);
         performJson(get("/api/v1/admin/modules").header("Authorization", bearer("admin-token")).param("status", "BAD"), 400, 40001);
@@ -162,9 +181,9 @@ class AdminApiContractTest {
                 .param("pageSize", "100")
                 .param("sort", "severity_desc"), 200);
         assertThat(valuesAt(list, "/data/items", "sourceModule"))
-                .contains("AUTH", "PROFILE", "NOTIFICATION", "CONTENT", "SERVER_STATUS", "RESOURCE")
-                .doesNotContain("WHITELIST", "OPS_CONTROL");
-        assertThat(list.toString()).contains("\"readOnly\":true", "CONTENT_REVIEW", "RESOURCE_REVIEW");
+                .contains("AUTH", "PROFILE", "NOTIFICATION", "CONTENT", "SERVER_STATUS", "RESOURCE", "ONBOARDING", "EXAM", "WHITELIST", "ATTENDANCE", "COMMUNITY", "ACTIVITY", "CALENDAR", "CHANGELOG", "MATERIAL", "GUIDE")
+                .doesNotContain("API_GATEWAY");
+        assertThat(list.toString()).contains("\"readOnly\":true", "CONTENT_REVIEW", "RESOURCE_REVIEW", "MATERIAL_REVIEW", "GUIDE_REVIEW");
         assertNoSecrets(list);
 
         JsonNode filtered = performJson(get("/api/v1/admin/todos")
@@ -202,8 +221,8 @@ class AdminApiContractTest {
     @DisplayName("ADM-METRICS summary keeps unknown degraded values distinct from real zero")
     void metricContract() throws Exception {
         JsonNode metrics = performJson(get("/api/v1/admin/metrics/summary").header("Authorization", bearer("helper-token")), 200);
-        assertThat(valuesAt(metrics, "/data/items", "sourceModule")).contains("AUTH", "PROFILE", "NOTIFICATION", "CONTENT", "SERVER_STATUS", "RESOURCE", "ADMIN");
-        assertThat(metrics.toString()).contains("content.pendingReview", "resource.pendingReview", "\"degraded\":false");
+        assertThat(valuesAt(metrics, "/data/items", "sourceModule")).containsAll(expectedImplementedModules()).doesNotContain("API_GATEWAY");
+        assertThat(metrics.toString()).contains("content.pendingReview", "resource.pendingReview", "material.pendingReview", "guide.pendingReview", "\"degraded\":false");
         assertNoSecrets(metrics);
 
         JsonNode contentMetrics = performJson(get("/api/v1/admin/metrics/summary")
@@ -234,7 +253,7 @@ class AdminApiContractTest {
                 .param("page", "1")
                 .param("pageSize", "100")
                 .param("sort", "createdAt_desc"), 200);
-        assertThat(valuesAt(audit, "/data/items", "sourceModule")).contains("ADMIN", "AUTH", "PROFILE", "NOTIFICATION", "CONTENT", "SERVER_STATUS", "RESOURCE");
+        assertThat(valuesAt(audit, "/data/items", "sourceModule")).containsAll(expectedAuditSources());
         assertThat(audit.toString()).contains("ADMIN_SETTINGS_UPDATED").doesNotContain("paramsSummary", "secret-token", "secret-code");
         assertNoSecrets(audit);
 
@@ -340,6 +359,10 @@ class AdminApiContractTest {
         JsonNode ops = performJson(get("/api/v1/admin/ops/summary").header("Authorization", bearer("admin-token")), 200);
         assertThat(ops.at("/data/service").asText()).isEqualTo("admin");
         assertThat(ops.at("/data/port").asInt()).isEqualTo(8107);
+        assertThat(ops.at("/data/modulesTotal").asInt()).isEqualTo(26);
+        assertThat(ops.at("/data/availableModulesTotal").asInt()).isEqualTo(26);
+        assertThat(ops.at("/data/notImplementedModulesTotal").asInt()).isZero();
+        assertThat(ops.at("/data/platformDependencies").toString()).contains("API_GATEWAY", "/api/v1/gateway/admin", "\"port\":8125");
         assertThat(ops.toString()).contains("IN_MEMORY", "TEST_STUB", "productionGaps", "moduleHealth");
         assertNoSecrets(ops);
 
@@ -374,7 +397,43 @@ class AdminApiContractTest {
                 "nodeRegister", "backupRestore", "cloudreveToken");
 
         JsonNode modules = performJson(get("/api/v1/admin/modules").header("Authorization", bearer("owner-token")), 200);
+        assertThat(valuesAt(modules, "/data/items", "moduleKey")).doesNotContain("API_GATEWAY");
         assertThat(modules.toString()).doesNotContain("/api/v1/admin/users", "/api/v1/admin/items", "/api/v1/admin/files", "/api/v1/admin/terminal", "/api/v1/admin/containers");
+    }
+
+    @Test
+    @DisplayName("ADM-MODULE-REFRESH, ADM-MATERIAL, ADM-GUIDE, ADM-P3, and ADM-GATEWAY refresh current ecosystem compatibility")
+    void compatibilityRefreshContract() throws Exception {
+        JsonNode modules = performJson(get("/api/v1/admin/modules")
+                .header("Authorization", bearer("owner-token"))
+                .param("sort", "moduleKey_asc"), 200);
+        List<String> keys = valuesAt(modules, "/data/items", "moduleKey");
+        assertThat(keys).containsAll(expectedImplementedModules()).hasSize(26);
+        assertThat(modules.toString()).doesNotContain("NOT_IMPLEMENTED", "API_GATEWAY", "\"targetApiBase\":null", "rawInvitationCode", "cloudrevePassword", "registryToken");
+
+        JsonNode overview = performJson(get("/api/v1/admin/overview")
+                .header("Authorization", bearer("owner-token"))
+                .param("moduleLimit", "50"), 200);
+        assertThat(valuesAt(overview, "/data/modules", "moduleKey")).containsAll(expectedImplementedModules()).doesNotContain("API_GATEWAY");
+        assertThat(overview.at("/data/notImplementedModules").toString()).doesNotContain("AUTH", "ONBOARDING", "OPS_CONTROL", "MATERIAL", "GUIDE");
+        assertThat(overview.at("/data/platformDependencies").toString()).contains("API_GATEWAY", "\"routeCount\":26");
+
+        JsonNode gatewayDegraded = performJson(get("/api/v1/admin/overview")
+                .header("Authorization", bearer("owner-token"))
+                .header("X-Test-Platform-Mode", "API_GATEWAY:UNAVAILABLE"), 200);
+        assertThat(gatewayDegraded.at("/data/platformDependencies").toString()).contains("API_GATEWAY", "UNAVAILABLE");
+        assertThat(valuesAt(gatewayDegraded, "/data/modules", "moduleKey")).contains("ADMIN", "GUIDE", "MATERIAL");
+
+        JsonNode guideDegraded = performJson(get("/api/v1/admin/modules/GUIDE")
+                .header("Authorization", bearer("owner-token"))
+                .header("X-Test-Module-Mode", "GUIDE:TIMEOUT"), 200);
+        assertThat(guideDegraded.at("/data/status").asText()).isEqualTo("UNAVAILABLE");
+        assertThat(guideDegraded.at("/data/health/degraded").asBoolean()).isTrue();
+
+        JsonNode p3Audit = performJson(get("/api/v1/admin/audit-logs")
+                .header("Authorization", bearer("admin-token"))
+                .param("sourceModule", "OPS_IMAGE_MARKET"), 200);
+        assertThat(valuesAt(p3Audit, "/data/items", "sourceModule")).containsOnly("OPS_IMAGE_MARKET");
     }
 
     private JsonNode performJson(MockHttpServletRequestBuilder request, int status) throws Exception {
@@ -414,6 +473,31 @@ class AdminApiContractTest {
         for (int i = start; i <= end; i++) {
             ids.add("%s-%03d".formatted(prefix, i));
         }
+    }
+
+    private List<String> expectedImplementedModules() {
+        return List.of("AUTH", "PROFILE", "NOTIFICATION", "CONTENT", "SERVER_STATUS", "RESOURCE", "ADMIN",
+                "ONBOARDING", "EXAM", "WHITELIST", "ATTENDANCE", "COMMUNITY", "ACTIVITY", "CALENDAR",
+                "CHANGELOG", "OPS_CONTROL", "NODE_DAEMON", "CLOUDREVE_SYNC", "BACKUP_RECOVERY", "ALERTING",
+                "ONLINE_MAP", "PLUGIN_INTEGRATION", "CROSS_PLATFORM_NOTIFICATION", "OPS_IMAGE_MARKET",
+                "MATERIAL", "GUIDE");
+    }
+
+    private List<String> expectedAuditSources() {
+        List<String> sources = new ArrayList<>(expectedImplementedModules());
+        sources.add("API_GATEWAY");
+        return sources;
+    }
+
+    private void assertModuleEntry(String moduleKey, String targetApiBase, int port, String frontendRoute) throws Exception {
+        JsonNode detail = performJson(get("/api/v1/admin/modules/" + moduleKey).header("Authorization", bearer("owner-token")), 200);
+        assertThat(detail.at("/data/moduleKey").asText()).isEqualTo(moduleKey);
+        assertThat(detail.at("/data/status").asText()).isEqualTo("AVAILABLE");
+        assertThat(detail.at("/data/implemented").asBoolean()).isTrue();
+        assertThat(detail.at("/data/targetApiBase").asText()).isEqualTo(targetApiBase);
+        assertThat(detail.at("/data/health/port").asInt()).isEqualTo(port);
+        assertThat(detail.at("/data/frontendRoute").asText()).isEqualTo(frontendRoute);
+        assertNoSecrets(detail);
     }
 
     private List<String> valuesAt(JsonNode root, String pointer, String field) {

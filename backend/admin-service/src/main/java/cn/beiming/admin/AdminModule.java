@@ -149,12 +149,18 @@ class AdminController {
 
 class AdminStore {
     private static final String NOW = "2026-05-22T12:00:00Z";
-    private static final Set<String> MODULE_KEYS = Set.of(
+    private static final List<String> MODULE_KEYS = List.of(
             "AUTH", "PROFILE", "NOTIFICATION", "CONTENT", "SERVER_STATUS", "RESOURCE", "ADMIN",
             "ONBOARDING", "EXAM", "WHITELIST", "ATTENDANCE", "COMMUNITY", "ACTIVITY", "CALENDAR",
-            "CHANGELOG", "OPS_CONTROL", "NODE_DAEMON");
-    private static final Set<String> IMPLEMENTED = Set.of("AUTH", "PROFILE", "NOTIFICATION", "CONTENT", "SERVER_STATUS", "RESOURCE", "ADMIN");
-    private static final Set<String> NOT_IMPLEMENTED = Set.of("ONBOARDING", "EXAM", "WHITELIST", "ATTENDANCE", "COMMUNITY", "ACTIVITY", "CALENDAR", "CHANGELOG", "OPS_CONTROL", "NODE_DAEMON");
+            "CHANGELOG", "OPS_CONTROL", "NODE_DAEMON", "CLOUDREVE_SYNC", "BACKUP_RECOVERY", "ALERTING",
+            "ONLINE_MAP", "PLUGIN_INTEGRATION", "CROSS_PLATFORM_NOTIFICATION", "OPS_IMAGE_MARKET",
+            "MATERIAL", "GUIDE");
+    private static final Set<String> IMPLEMENTED = new LinkedHashSet<>(MODULE_KEYS);
+    private static final Set<String> NOT_IMPLEMENTED = Set.<String>of();
+    private static final Set<String> AUDIT_SOURCES = new LinkedHashSet<>(MODULE_KEYS);
+    static {
+        AUDIT_SOURCES.add("API_GATEWAY");
+    }
     private final Map<String, ModuleConfig> moduleConfigs = new ConcurrentHashMap<>();
     private final List<Map<String, Object>> todoSeeds = new ArrayList<>();
     private final List<Map<String, Object>> auditSeeds = new ArrayList<>();
@@ -164,12 +170,12 @@ class AdminStore {
 
     void seed() {
         int order = 10;
-        for (String key : List.of("AUTH", "PROFILE", "NOTIFICATION", "CONTENT", "SERVER_STATUS", "RESOURCE", "ADMIN", "ONBOARDING", "EXAM", "WHITELIST", "ATTENDANCE", "COMMUNITY", "ACTIVITY", "CALENDAR", "CHANGELOG", "OPS_CONTROL", "NODE_DAEMON")) {
+        for (String key : MODULE_KEYS) {
             moduleConfigs.put(key, new ModuleConfig(key, order, true));
             order += 10;
         }
         layout.put("dashboardCards", new ArrayList<>(List.of("todos", "metrics", "health")));
-        layout.put("navigationModuleOrder", new ArrayList<>(List.of("AUTH", "PROFILE", "NOTIFICATION", "CONTENT", "SERVER_STATUS", "RESOURCE", "ADMIN")));
+        layout.put("navigationModuleOrder", new ArrayList<>(MODULE_KEYS));
         layout.put("hiddenModules", new ArrayList<>());
         layout.put("quickActions", new ArrayList<>(List.of(Map.of("key", "content-review", "targetRoute", "/admin/content"))));
         settings.put("dashboard.refreshSeconds", new Setting("dashboard.refreshSeconds", "DASHBOARD", "INTEGER", 30, false, false, "Dashboard refresh interval."));
@@ -215,6 +221,7 @@ class AdminStore {
         data.put("recentAudits", recentAudits);
         data.put("degradedModules", degraded);
         data.put("notImplementedModules", new ArrayList<>(NOT_IMPLEMENTED));
+        data.put("platformDependencies", platformDependencies(request));
         data.put("generatedAt", NOW);
         return data;
     }
@@ -312,6 +319,25 @@ class AdminStore {
         addMetric(metrics, "serverStatus.openOutages", "Open outages", "SERVER_STATUS", 1, "/admin/server-status", request);
         addMetric(metrics, "resource.pendingReview", "Pending resources", "RESOURCE", 2, "/admin/resources", request);
         addMetric(metrics, "admin.settingsTotal", "Settings", "ADMIN", settings.size(), "/admin", request);
+        addMetric(metrics, "onboarding.activeApplications", "Onboarding applications", "ONBOARDING", 3, "/admin/onboarding", request);
+        addMetric(metrics, "exam.pendingManualReview", "Pending exams", "EXAM", 2, "/admin/exams", request);
+        addMetric(metrics, "whitelist.pendingReview", "Pending whitelist", "WHITELIST", 2, "/admin/whitelist", request);
+        addMetric(metrics, "attendance.removalCandidates", "Removal candidates", "ATTENDANCE", 1, "/admin/attendance", request);
+        addMetric(metrics, "community.openReports", "Open community reports", "COMMUNITY", 3, "/admin/community", request);
+        addMetric(metrics, "activity.pendingResults", "Pending activity results", "ACTIVITY", 1, "/admin/activity", request);
+        addMetric(metrics, "calendar.pendingEvents", "Pending calendar events", "CALENDAR", 1, "/admin/calendar", request);
+        addMetric(metrics, "changelog.pendingRelease", "Pending changelog", "CHANGELOG", 1, "/admin/changelog", request);
+        addMetric(metrics, "opsControl.pendingTasks", "Ops tasks", "OPS_CONTROL", 1, "/admin/ops-control", request);
+        addMetric(metrics, "nodeDaemon.connectedNodes", "Connected daemons", "NODE_DAEMON", 1, "/admin/node-daemon", request);
+        addMetric(metrics, "cloudreveSync.providers", "Cloudreve providers", "CLOUDREVE_SYNC", 1, "/admin/cloudreve-sync", request);
+        addMetric(metrics, "backupRecovery.activePolicies", "Backup policies", "BACKUP_RECOVERY", 2, "/admin/backup-recovery", request);
+        addMetric(metrics, "alerting.openAlerts", "Open alerts", "ALERTING", 1, "/admin/alerting", request);
+        addMetric(metrics, "onlineMap.providers", "Map providers", "ONLINE_MAP", 1, "/admin/online-map", request);
+        addMetric(metrics, "pluginIntegration.providers", "Plugin providers", "PLUGIN_INTEGRATION", 1, "/admin/plugin-integration", request);
+        addMetric(metrics, "crossPlatformNotification.pendingDeliveries", "Cross-platform deliveries", "CROSS_PLATFORM_NOTIFICATION", 1, "/admin/cross-platform-notification", request);
+        addMetric(metrics, "opsImageMarket.pendingReview", "Image market reviews", "OPS_IMAGE_MARKET", 1, "/admin/ops-image-market", request);
+        addMetric(metrics, "material.pendingReview", "Pending materials", "MATERIAL", 2, "/admin/materials", request);
+        addMetric(metrics, "guide.pendingReview", "Pending guides", "GUIDE", 2, "/admin/guides", request);
         return metrics.stream()
                 .filter(metric -> source == null || source.equals(metric.get("sourceModule")))
                 .filter(metric -> includeDegraded || !Boolean.TRUE.equals(metric.get("degraded")))
@@ -325,7 +351,7 @@ class AdminStore {
         if (!Set.of("createdAt_desc", "createdAt_asc", "riskLevel_desc").contains(sort)) {
             throw new AdminException(400, 40003, "invalid sort");
         }
-        if (query.containsKey("sourceModule") && !Set.of("ADMIN", "AUTH", "PROFILE", "NOTIFICATION", "CONTENT", "SERVER_STATUS", "RESOURCE").contains(query.get("sourceModule"))) {
+        if (query.containsKey("sourceModule") && !AUDIT_SOURCES.contains(query.get("sourceModule"))) {
             throw new AdminException(400, 40001, "invalid audit source");
         }
         if (query.containsKey("result") && !Set.of("SUCCESS", "FAILED").contains(query.get("result"))) {
@@ -409,6 +435,7 @@ class AdminStore {
         data.put("lastAggregatedAt", NOW);
         data.put("productionGaps", List.of("persistent storage not enabled", "real auth adapter not enabled", "real module HTTP adapters not enabled", "real audit index sync not enabled", "scheduled aggregation not enabled"));
         data.put("moduleHealth", health);
+        data.put("platformDependencies", platformDependencies(request));
         return data;
     }
 
@@ -425,7 +452,7 @@ class AdminStore {
         row.put("enabled", !disabled);
         row.put("requiredRoles", requiredRoles(moduleKey));
         row.put("requiredPermissions", requiredPermissions(moduleKey));
-        row.put("frontendRoute", "/admin/" + moduleKey.toLowerCase().replace('_', '-'));
+        row.put("frontendRoute", frontendRoute(moduleKey));
         row.put("targetApiBase", IMPLEMENTED.contains(moduleKey) ? targetApi(moduleKey) : null);
         row.put("sortOrder", config.sortOrder);
         row.put("badgeCount", badgeCount(moduleKey));
@@ -438,12 +465,12 @@ class AdminStore {
     private List<Map<String, Object>> capabilities(AuthUser actor, String moduleKey, Map<String, Object> health) {
         List<Map<String, Object>> rows = new ArrayList<>();
         boolean available = "AVAILABLE".equals(health.get("status"));
-        rows.add(capability(moduleKey.toLowerCase() + ".entry", NOT_IMPLEMENTED.contains(moduleKey) ? "OPS_PLACEHOLDER" : "ENTRY", "Entry", "/admin/" + moduleKey.toLowerCase().replace('_', '-'), targetApiOrNull(moduleKey), requiredRoles(moduleKey), requiredPermissions(moduleKey), "LOW", available, true));
+        rows.add(capability(moduleKey.toLowerCase() + ".entry", NOT_IMPLEMENTED.contains(moduleKey) ? "OPS_PLACEHOLDER" : "ENTRY", "Entry", frontendRoute(moduleKey), targetApiOrNull(moduleKey), requiredRoles(moduleKey), requiredPermissions(moduleKey), "LOW", available, true));
         if (IMPLEMENTED.contains(moduleKey)) {
-            rows.add(capability(moduleKey.toLowerCase() + ".read", "READ", "Read", "/admin/" + moduleKey.toLowerCase().replace('_', '-'), targetApi(moduleKey), List.of("HELPER", "ADMIN", "OWNER"), List.of(), "LOW", available, true));
+            rows.add(capability(moduleKey.toLowerCase() + ".read", "READ", "Read", frontendRoute(moduleKey), targetApi(moduleKey), List.of("HELPER", "ADMIN", "OWNER"), requiredPermissions(moduleKey), "LOW", available, true));
         }
         if (actor.hasAny("ADMIN", "OWNER") && IMPLEMENTED.contains(moduleKey) && !"ADMIN".equals(moduleKey)) {
-            rows.add(capability(moduleKey.toLowerCase() + ".source", "WRITE", "Source service", "/admin/" + moduleKey.toLowerCase().replace('_', '-'), targetApi(moduleKey), List.of("ADMIN", "OWNER"), List.of(), "MEDIUM", available, true));
+            rows.add(capability(moduleKey.toLowerCase() + ".source", "WRITE", "Source service", frontendRoute(moduleKey), targetApi(moduleKey), List.of("ADMIN", "OWNER"), requiredPermissions(moduleKey), "MEDIUM", available, true));
         }
         return rows;
     }
@@ -505,7 +532,7 @@ class AdminStore {
         String keyword = query.getOrDefault("keyword", "").toLowerCase();
         List<Map<String, Object>> rows = new ArrayList<>(todoSeeds);
         for (String degraded : degradedModules(request)) {
-            rows.add(todo("todo-" + degraded.toLowerCase() + "-unavailable", degraded, degraded + "_UNAVAILABLE", degraded.toLowerCase() + "-unavailable", "HEALTH", "HIGH", "SOURCE_UNAVAILABLE", moduleName(degraded) + " unavailable", moduleName(degraded) + " adapter degraded.", "/admin/" + degraded.toLowerCase().replace('_', '-'), targetApiOrNull(degraded)));
+            rows.add(todo("todo-" + degraded.toLowerCase() + "-unavailable", degraded, degraded + "_UNAVAILABLE", degraded.toLowerCase() + "-unavailable", "HEALTH", "HIGH", "SOURCE_UNAVAILABLE", moduleName(degraded) + " unavailable", moduleName(degraded) + " adapter degraded.", frontendRoute(degraded), targetApiOrNull(degraded)));
         }
         return rows.stream()
                 .filter(todo -> source == null || source.equals(todo.get("sourceModule")))
@@ -654,7 +681,20 @@ class AdminStore {
         return moduleKey != null
                 && IMPLEMENTED.contains(moduleKey)
                 && !hiddenModules().contains(moduleKey)
+                && !sensitiveQuickActionRoute(route)
                 && actor.hasAny(requiredRoles(moduleKey).toArray(String[]::new));
+    }
+
+    private boolean sensitiveQuickActionRoute(String route) {
+        return route.startsWith("/admin/ops-control/terminal")
+                || route.startsWith("/admin/ops-control/files")
+                || route.startsWith("/admin/ops-control/containers")
+                || route.startsWith("/admin/ops-control/nodes")
+                || route.startsWith("/admin/ops-control/tasks")
+                || route.startsWith("/admin/ops-control/approvals")
+                || route.startsWith("/admin/node-daemon/nodes")
+                || route.startsWith("/admin/node-daemon/keys")
+                || route.startsWith("/admin/node-daemon/tasks");
     }
 
     private String moduleKeyForRoute(String route) {
@@ -662,7 +702,7 @@ class AdminStore {
             return null;
         }
         for (String moduleKey : MODULE_KEYS) {
-            String moduleRoute = "/admin/" + moduleKey.toLowerCase().replace('_', '-');
+            String moduleRoute = frontendRoute(moduleKey);
             if (route.equals(moduleRoute) || route.startsWith(moduleRoute + "/")) {
                 return moduleKey;
             }
@@ -835,11 +875,42 @@ class AdminStore {
             case "AUTH" -> "/api/v1/auth/admin";
             case "PROFILE" -> "/api/v1/profile/admin";
             case "NOTIFICATION" -> "/api/v1/notifications/admin";
-            case "CONTENT" -> "/api/v1/content";
+            case "CONTENT" -> "/api/v1/content/admin";
             case "SERVER_STATUS" -> "/api/v1/server-status/admin";
-            case "RESOURCE" -> "/api/v1/resources";
+            case "RESOURCE" -> "/api/v1/resources/admin";
             case "ADMIN" -> "/api/v1/admin";
+            case "ONBOARDING" -> "/api/v1/onboarding/admin";
+            case "EXAM" -> "/api/v1/exams/admin";
+            case "WHITELIST" -> "/api/v1/whitelist/admin";
+            case "ATTENDANCE" -> "/api/v1/attendance/admin";
+            case "COMMUNITY" -> "/api/v1/community/admin";
+            case "ACTIVITY" -> "/api/v1/activity/admin";
+            case "CALENDAR" -> "/api/v1/calendar/admin";
+            case "CHANGELOG" -> "/api/v1/changelog/admin";
+            case "OPS_CONTROL" -> "/api/v1/ops-control";
+            case "NODE_DAEMON" -> "/api/v1/node-daemon";
+            case "CLOUDREVE_SYNC" -> "/api/v1/cloudreve-sync";
+            case "BACKUP_RECOVERY" -> "/api/v1/backup-recovery";
+            case "ALERTING" -> "/api/v1/alerting";
+            case "ONLINE_MAP" -> "/api/v1/online-map/admin";
+            case "PLUGIN_INTEGRATION" -> "/api/v1/plugin-integration/admin";
+            case "CROSS_PLATFORM_NOTIFICATION" -> "/api/v1/cross-platform-notification/admin";
+            case "OPS_IMAGE_MARKET" -> "/api/v1/ops-image-market/admin";
+            case "MATERIAL" -> "/api/v1/materials/admin";
+            case "GUIDE" -> "/api/v1/guides/admin";
             default -> null;
+        };
+    }
+
+    private String frontendRoute(String key) {
+        return switch (key) {
+            case "ADMIN" -> "/admin";
+            case "NOTIFICATION" -> "/admin/notifications";
+            case "RESOURCE" -> "/admin/resources";
+            case "EXAM" -> "/admin/exams";
+            case "MATERIAL" -> "/admin/materials";
+            case "GUIDE" -> "/admin/guides";
+            default -> "/admin/" + key.toLowerCase().replace('_', '-');
         };
     }
 
@@ -848,6 +919,12 @@ class AdminStore {
             case "SERVER_STATUS" -> "Server Status";
             case "NODE_DAEMON" -> "Node Daemon";
             case "OPS_CONTROL" -> "Ops Control";
+            case "CLOUDREVE_SYNC" -> "Cloudreve Sync";
+            case "BACKUP_RECOVERY" -> "Backup Recovery";
+            case "ONLINE_MAP" -> "Online Map";
+            case "PLUGIN_INTEGRATION" -> "Plugin Integration";
+            case "CROSS_PLATFORM_NOTIFICATION" -> "Cross-platform Notification";
+            case "OPS_IMAGE_MARKET" -> "Ops Image Market";
             default -> key.charAt(0) + key.substring(1).toLowerCase().replace('_', ' ');
         };
     }
@@ -861,6 +938,25 @@ class AdminStore {
             case "SERVER_STATUS" -> 8105;
             case "RESOURCE" -> 8106;
             case "ADMIN" -> 8107;
+            case "ONBOARDING" -> 8108;
+            case "EXAM" -> 8109;
+            case "WHITELIST" -> 8110;
+            case "ATTENDANCE" -> 8111;
+            case "COMMUNITY" -> 8112;
+            case "ACTIVITY" -> 8113;
+            case "CALENDAR" -> 8114;
+            case "CHANGELOG" -> 8115;
+            case "OPS_CONTROL" -> 8116;
+            case "NODE_DAEMON" -> 8117;
+            case "CLOUDREVE_SYNC" -> 8118;
+            case "BACKUP_RECOVERY" -> 8119;
+            case "ALERTING" -> 8120;
+            case "ONLINE_MAP" -> 8121;
+            case "PLUGIN_INTEGRATION" -> 8122;
+            case "CROSS_PLATFORM_NOTIFICATION" -> 8123;
+            case "OPS_IMAGE_MARKET" -> 8124;
+            case "MATERIAL" -> 8126;
+            case "GUIDE" -> 8127;
             default -> null;
         };
     }
@@ -877,7 +973,7 @@ class AdminStore {
     }
 
     private List<String> requiredPermissions(String key) {
-        if (Set.of("OPS_CONTROL", "NODE_DAEMON").contains(key)) {
+        if (Set.of("OPS_CONTROL", "NODE_DAEMON", "ONLINE_MAP", "PLUGIN_INTEGRATION", "OPS_IMAGE_MARKET").contains(key)) {
             return List.of("NODE_READ");
         }
         return List.of();
@@ -885,6 +981,31 @@ class AdminStore {
 
     private List<String> degradedModules(HttpServletRequest request) {
         return new ArrayList<>(moduleModes(request).keySet());
+    }
+
+    private List<Map<String, Object>> platformDependencies(HttpServletRequest request) {
+        String status = platformModes(request).getOrDefault("API_GATEWAY", "AVAILABLE");
+        if ("TIMEOUT".equals(status)) {
+            status = "UNAVAILABLE";
+        }
+        if (!Set.of("AVAILABLE", "DEGRADED", "UNAVAILABLE").contains(status)) {
+            status = "DEGRADED";
+        }
+        boolean degraded = !"AVAILABLE".equals(status);
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("key", "API_GATEWAY");
+        row.put("name", "API Gateway");
+        row.put("status", status);
+        row.put("service", "api-gateway");
+        row.put("port", 8125);
+        row.put("targetApiBase", "/api/v1/gateway/admin");
+        row.put("frontendRoute", "/admin/platform/api-gateway");
+        row.put("routeCount", degraded ? 0 : 26);
+        row.put("lastCheckedAt", NOW);
+        row.put("degraded", degraded);
+        row.put("degradeReason", degraded ? "api gateway adapter degraded" : null);
+        row.put("productionGaps", List.of("gateway internal signature not enabled", "real upstream health polling not enabled"));
+        return List.of(row);
     }
 
     private Set<String> hiddenModules() {
@@ -910,6 +1031,20 @@ class AdminStore {
         for (String pair : request.getHeader("X-Test-Module-Mode").split(",")) {
             String[] parts = pair.split(":");
             if (parts.length == 2 && MODULE_KEYS.contains(parts[0])) {
+                modes.put(parts[0], parts[1]);
+            }
+        }
+        return modes;
+    }
+
+    private Map<String, String> platformModes(HttpServletRequest request) {
+        if (request == null || request.getHeader("X-Test-Platform-Mode") == null) {
+            return Map.of();
+        }
+        Map<String, String> modes = new LinkedHashMap<>();
+        for (String pair : request.getHeader("X-Test-Platform-Mode").split(",")) {
+            String[] parts = pair.split(":");
+            if (parts.length == 2 && "API_GATEWAY".equals(parts[0])) {
                 modes.put(parts[0], parts[1]);
             }
         }
@@ -964,6 +1099,25 @@ class AdminStore {
         todoSeeds.add(todo("todo-status-outage-1", "SERVER_STATUS", "SERVER_OUTAGE", "outage-1", "HEALTH", "HIGH", "READ_ONLY", "Server outage pending confirmation", "Confirm outage in status service.", "/admin/server-status", "/api/v1/server-status/admin/outages/outage-1"));
         todoSeeds.add(todo("todo-profile-activation-1", "PROFILE", "PROFILE_ACTIVATION", "member-1", "FOLLOW_UP", "LOW", "READ_ONLY", "Profile pending activation", "Activate member in profile service.", "/admin/profile", "/api/v1/profile/admin/members/member-1"));
         todoSeeds.add(todo("todo-auth-security-1", "AUTH", "AUTH_INVITATION_RISK", "invitation-1", "SECURITY", "CRITICAL", "READ_ONLY", "Admin invitation risk", "Inspect invitation security summary.", "/admin/auth", "/api/v1/auth/admin/invitations"));
+        todoSeeds.add(todo("todo-onboarding-1", "ONBOARDING", "ONBOARDING_REVIEW", "onboarding-1", "FOLLOW_UP", "MEDIUM", "READ_ONLY", "Onboarding flow needs attention", "Inspect onboarding flow in source module.", "/admin/onboarding", "/api/v1/onboarding/admin/applications/onboarding-1"));
+        todoSeeds.add(todo("todo-exam-1", "EXAM", "EXAM_MANUAL_REVIEW", "exam-1", "REVIEW", "HIGH", "READ_ONLY", "Exam answer pending manual review", "Review exam session in source module.", "/admin/exams", "/api/v1/exams/admin/sessions/exam-1"));
+        todoSeeds.add(todo("todo-whitelist-1", "WHITELIST", "WHITELIST_REVIEW", "whitelist-1", "REVIEW", "HIGH", "READ_ONLY", "Whitelist application pending review", "Review whitelist application in source module.", "/admin/whitelist", "/api/v1/whitelist/admin/applications/whitelist-1"));
+        todoSeeds.add(todo("todo-attendance-1", "ATTENDANCE", "ATTENDANCE_REMOVAL_CANDIDATE", "candidate-1", "FOLLOW_UP", "MEDIUM", "READ_ONLY", "Attendance removal candidate", "Inspect removal candidate in source module.", "/admin/attendance", "/api/v1/attendance/admin/removal-candidates"));
+        todoSeeds.add(todo("todo-community-1", "COMMUNITY", "COMMUNITY_REPORT", "report-1", "REVIEW", "HIGH", "READ_ONLY", "Community report pending review", "Handle report in community module.", "/admin/community", "/api/v1/community/admin/reports/report-1"));
+        todoSeeds.add(todo("todo-activity-1", "ACTIVITY", "ACTIVITY_RESULT_PENDING", "activity-1", "FOLLOW_UP", "MEDIUM", "READ_ONLY", "Activity result pending publication", "Publish activity result in source module.", "/admin/activity", "/api/v1/activity/admin/events/activity-1/result"));
+        todoSeeds.add(todo("todo-calendar-1", "CALENDAR", "CALENDAR_EVENT_PENDING", "calendar-1", "CONFIG", "LOW", "READ_ONLY", "Calendar event pending publish", "Publish calendar event in source module.", "/admin/calendar", "/api/v1/calendar/admin/events/calendar-1"));
+        todoSeeds.add(todo("todo-changelog-1", "CHANGELOG", "CHANGELOG_RELEASE_PENDING", "release-1", "CONFIG", "LOW", "READ_ONLY", "Changelog release pending publish", "Publish changelog in source module.", "/admin/changelog", "/api/v1/changelog/admin/releases/release-1"));
+        todoSeeds.add(todo("todo-material-1", "MATERIAL", "MATERIAL_REVIEW", "material-1", "REVIEW", "HIGH", "READ_ONLY", "Material pending review", "Review material submission in source module.", "/admin/materials", "/api/v1/materials/admin/items/material-1"));
+        todoSeeds.add(todo("todo-guide-1", "GUIDE", "GUIDE_REVIEW", "guide-1", "REVIEW", "MEDIUM", "READ_ONLY", "Guide article pending review", "Review guide article in source module.", "/admin/guides", "/api/v1/guides/admin/articles/guide-1"));
+        todoSeeds.add(todo("todo-ops-control-1", "OPS_CONTROL", "OPS_CONTROL_HEALTH", "ops-health", "HEALTH", "MEDIUM", "READ_ONLY", "Ops control health needs review", "Inspect ops control summary.", "/admin/ops-control", "/api/v1/ops-control/ops/summary"));
+        todoSeeds.add(todo("todo-node-daemon-1", "NODE_DAEMON", "NODE_DAEMON_HEALTH", "node-health", "HEALTH", "MEDIUM", "READ_ONLY", "Node daemon health needs review", "Inspect node daemon summary.", "/admin/node-daemon", "/api/v1/node-daemon/ops/summary"));
+        todoSeeds.add(todo("todo-cloudreve-sync-1", "CLOUDREVE_SYNC", "CLOUDREVE_SYNC_HEALTH", "cloudreve-health", "HEALTH", "LOW", "READ_ONLY", "Cloudreve sync health summary", "Inspect Cloudreve sync module.", "/admin/cloudreve-sync", "/api/v1/cloudreve-sync/ops/summary"));
+        todoSeeds.add(todo("todo-backup-recovery-1", "BACKUP_RECOVERY", "BACKUP_RECOVERY_DRILL", "backup-drill", "FOLLOW_UP", "MEDIUM", "READ_ONLY", "Backup drill needs review", "Inspect backup recovery module.", "/admin/backup-recovery", "/api/v1/backup-recovery/restore-drills"));
+        todoSeeds.add(todo("todo-alerting-1", "ALERTING", "ALERTING_OPEN_ALERT", "alert-1", "HEALTH", "HIGH", "READ_ONLY", "Open alert needs acknowledgement", "Inspect alerting module.", "/admin/alerting", "/api/v1/alerting/alerts/alert-1"));
+        todoSeeds.add(todo("todo-online-map-1", "ONLINE_MAP", "ONLINE_MAP_PROVIDER_HEALTH", "map-provider-1", "HEALTH", "LOW", "READ_ONLY", "Online map provider health summary", "Inspect online map module.", "/admin/online-map", "/api/v1/online-map/admin/providers/map-provider-1"));
+        todoSeeds.add(todo("todo-plugin-integration-1", "PLUGIN_INTEGRATION", "PLUGIN_EVENT_REPLAY", "plugin-event-1", "FOLLOW_UP", "MEDIUM", "READ_ONLY", "Plugin event replay candidate", "Inspect plugin integration module.", "/admin/plugin-integration", "/api/v1/plugin-integration/admin/events/plugin-event-1"));
+        todoSeeds.add(todo("todo-cross-platform-notification-1", "CROSS_PLATFORM_NOTIFICATION", "CROSS_PLATFORM_DELIVERY", "delivery-1", "FAILURE", "MEDIUM", "READ_ONLY", "Cross-platform delivery failed", "Inspect cross-platform notification module.", "/admin/cross-platform-notification", "/api/v1/cross-platform-notification/admin/deliveries/delivery-1"));
+        todoSeeds.add(todo("todo-ops-image-market-1", "OPS_IMAGE_MARKET", "OPS_IMAGE_MARKET_REVIEW", "image-1", "REVIEW", "MEDIUM", "READ_ONLY", "Ops image version pending review", "Inspect image market module.", "/admin/ops-image-market", "/api/v1/ops-image-market/admin/images/image-1"));
     }
 
     private Map<String, Object> todo(String id, String module, String sourceType, String sourceId, String type, String severity, String status, String title, String summary, String route, String api) {
@@ -994,6 +1148,26 @@ class AdminStore {
         auditSeeds.add(audit("audit-content-1", "CONTENT", "CONTENT_REVIEWED", "admin", "CONTENT", "content-1", "MEDIUM", "SUCCESS"));
         auditSeeds.add(audit("audit-status-1", "SERVER_STATUS", "SERVER_OUTAGE_CONFIRMED", "admin", "OUTAGE", "outage-1", "LOW", "SUCCESS"));
         auditSeeds.add(audit("audit-resource-1", "RESOURCE", "RESOURCE_REVIEWED", "admin", "RESOURCE", "resource-1", "MEDIUM", "SUCCESS"));
+        auditSeeds.add(audit("audit-onboarding-1", "ONBOARDING", "ONBOARDING_REVIEWED", "admin", "ONBOARDING", "onboarding-1", "LOW", "SUCCESS"));
+        auditSeeds.add(audit("audit-exam-1", "EXAM", "EXAM_REVIEWED", "admin", "EXAM", "exam-1", "MEDIUM", "SUCCESS"));
+        auditSeeds.add(audit("audit-whitelist-1", "WHITELIST", "WHITELIST_REVIEWED", "admin", "WHITELIST", "whitelist-1", "MEDIUM", "SUCCESS"));
+        auditSeeds.add(audit("audit-attendance-1", "ATTENDANCE", "ATTENDANCE_ADJUSTED", "admin", "ATTENDANCE", "attendance-1", "MEDIUM", "SUCCESS"));
+        auditSeeds.add(audit("audit-community-1", "COMMUNITY", "COMMUNITY_REPORT_REVIEWED", "admin", "REPORT", "report-1", "MEDIUM", "SUCCESS"));
+        auditSeeds.add(audit("audit-activity-1", "ACTIVITY", "ACTIVITY_RESULT_PUBLISHED", "admin", "ACTIVITY", "activity-1", "MEDIUM", "SUCCESS"));
+        auditSeeds.add(audit("audit-calendar-1", "CALENDAR", "CALENDAR_EVENT_PUBLISHED", "admin", "CALENDAR_EVENT", "calendar-1", "LOW", "SUCCESS"));
+        auditSeeds.add(audit("audit-changelog-1", "CHANGELOG", "CHANGELOG_PUBLISHED", "admin", "CHANGELOG", "release-1", "LOW", "SUCCESS"));
+        auditSeeds.add(audit("audit-ops-control-1", "OPS_CONTROL", "OPS_TASK_INDEXED", "admin", "OPS_TASK", "task-1", "LOW", "SUCCESS"));
+        auditSeeds.add(audit("audit-node-daemon-1", "NODE_DAEMON", "NODE_HEARTBEAT_INDEXED", "admin", "NODE", "node-1", "LOW", "SUCCESS"));
+        auditSeeds.add(audit("audit-cloudreve-sync-1", "CLOUDREVE_SYNC", "CLOUDREVE_SYNC_JOB_INDEXED", "admin", "SYNC_JOB", "sync-1", "LOW", "SUCCESS"));
+        auditSeeds.add(audit("audit-backup-recovery-1", "BACKUP_RECOVERY", "BACKUP_POLICY_INDEXED", "admin", "BACKUP_POLICY", "backup-1", "LOW", "SUCCESS"));
+        auditSeeds.add(audit("audit-alerting-1", "ALERTING", "ALERT_ACKNOWLEDGED", "admin", "ALERT", "alert-1", "LOW", "SUCCESS"));
+        auditSeeds.add(audit("audit-online-map-1", "ONLINE_MAP", "MAP_PROVIDER_INDEXED", "admin", "MAP_PROVIDER", "map-provider-1", "LOW", "SUCCESS"));
+        auditSeeds.add(audit("audit-plugin-integration-1", "PLUGIN_INTEGRATION", "PLUGIN_EVENT_INDEXED", "admin", "PLUGIN_EVENT", "plugin-event-1", "LOW", "SUCCESS"));
+        auditSeeds.add(audit("audit-cross-platform-notification-1", "CROSS_PLATFORM_NOTIFICATION", "CROSS_PLATFORM_DELIVERY_INDEXED", "admin", "DELIVERY", "delivery-1", "LOW", "SUCCESS"));
+        auditSeeds.add(audit("audit-ops-image-market-1", "OPS_IMAGE_MARKET", "OPS_IMAGE_VERSION_REVIEWED", "admin", "OPS_IMAGE", "image-1", "MEDIUM", "SUCCESS"));
+        auditSeeds.add(audit("audit-material-1", "MATERIAL", "MATERIAL_REVIEWED", "admin", "MATERIAL", "material-1", "MEDIUM", "SUCCESS"));
+        auditSeeds.add(audit("audit-guide-1", "GUIDE", "GUIDE_REVIEWED", "admin", "GUIDE", "guide-1", "MEDIUM", "SUCCESS"));
+        auditSeeds.add(audit("audit-api-gateway-1", "API_GATEWAY", "GATEWAY_ROUTE_INDEXED", "admin", "GATEWAY_ROUTE", "route-1", "LOW", "SUCCESS"));
     }
 
     private Map<String, Object> audit(String id, String source, String action, String actor, String targetType, String targetId, String risk, String result) {
@@ -1012,7 +1186,7 @@ class AdminStore {
         row.put("result", result);
         row.put("reasonSummary", "sanitized reason");
         row.put("failureReason", "FAILED".equals(result) ? "sanitized failure" : null);
-        row.put("targetRoute", "/admin/" + source.toLowerCase().replace('_', '-'));
+        row.put("targetRoute", "API_GATEWAY".equals(source) ? "/admin/platform/api-gateway" : frontendRoute(source));
         row.put("indexedAt", NOW);
         row.put("createdAt", NOW);
         return row;
