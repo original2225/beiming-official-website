@@ -767,12 +767,19 @@ class GuideStore {
         Map<String, Object> category = requireCategory(categoryId);
         requireReason(body);
         if (bool(category.get("archived"))) throw new GuideException(409, 43910, "state conflict");
+        String key = optionalString(body, "idempotencyKey", null);
+        String idemKey = key == null ? null : actor.id() + ":category:patch:" + categoryId + ":" + key;
+        Map<String, Object> existing = idempotent(idemKey, body, null);
+        if (existing != null) return existing;
+        if (body.containsKey("sortOrder")) intValue(body.get("sortOrder"));
         if (body.containsKey("description")) category.put("description", body.get("description"));
         if (body.containsKey("enabled")) category.put("enabled", bool(body.get("enabled")));
         if (body.containsKey("sortOrder")) category.put("sortOrder", intValue(body.get("sortOrder")));
         category.put("updatedAt", now());
         audit(actor, categoryId, "GUIDE_CATEGORY_UPDATED", "SUCCESS", null, category, requiredString(body, "reason"));
-        return category;
+        Map<String, Object> value = new LinkedHashMap<>(category);
+        idempotent(idemKey, body, value);
+        return value;
     }
 
     synchronized Map<String, Object> archiveCategory(AuthUser actor, String categoryId, Map<String, Object> body, HttpServletRequest request) {
@@ -822,14 +829,20 @@ class GuideStore {
         Map<String, Object> channel = requireChannel(channelId);
         requireReason(body);
         if ("ARCHIVED".equals(channel.get("status"))) throw new GuideException(409, 43910, "state conflict");
+        String key = optionalString(body, "idempotencyKey", null);
+        String idemKey = key == null ? null : actor.id() + ":channel:patch:" + channelId + ":" + key;
+        Map<String, Object> existing = idempotent(idemKey, body, null);
+        if (existing != null) return existing;
         if (body.containsKey("entryUrl")) checkPublicUrl(optionalString(body, "entryUrl", null));
         if (body.containsKey("visibility")) enumValue(text(body.get("visibility")), VISIBILITIES);
         if (body.containsKey("sortOrder")) intValue(body.get("sortOrder"));
-        for (String key : List.of("purpose", "joinCondition", "entryUrl", "entryHint", "visibility", "adminNote", "sortOrder")) {
-            if (body.containsKey(key)) channel.put(key, body.get(key));
+        for (String field : List.of("purpose", "joinCondition", "entryUrl", "entryHint", "visibility", "adminNote", "sortOrder")) {
+            if (body.containsKey(field)) channel.put(field, body.get(field));
         }
         audit(actor, channelId, "GUIDE_CHANNEL_UPDATED", "SUCCESS", null, channel, requiredString(body, "reason"));
-        return channel;
+        Map<String, Object> value = new LinkedHashMap<>(channel);
+        idempotent(idemKey, body, value);
+        return value;
     }
 
     synchronized Map<String, Object> channelState(AuthUser actor, String channelId, Map<String, Object> body, HttpServletRequest request, String action) {
