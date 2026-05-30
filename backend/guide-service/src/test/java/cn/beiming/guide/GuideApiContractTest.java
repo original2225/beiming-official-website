@@ -55,7 +55,7 @@ class GuideApiContractTest {
         addRange(mapped, "GUIDE-ADMIN-CREATE", 1, 30);
         addRange(mapped, "GUIDE-ADMIN-PATCH", 1, 24);
         addRange(mapped, "GUIDE-STATE", 1, 88);
-        addRange(mapped, "GUIDE-VERSION", 1, 30);
+        addRange(mapped, "GUIDE-VERSION", 1, 32);
         addRange(mapped, "GUIDE-CAT-ADMIN", 1, 52);
         addRange(mapped, "GUIDE-CHANNEL-ADMIN", 1, 70);
         addRange(mapped, "GUIDE-FEEDBACK-ADMIN", 1, 38);
@@ -63,12 +63,13 @@ class GuideApiContractTest {
         addRange(mapped, "GUIDE-OPS", 1, 14);
         addRange(mapped, "GUIDE-COMPAT", 1, 24);
 
-        assertThat(mapped).hasSize(643);
+        assertThat(mapped).hasSize(645);
         assertThat(mapped).contains(
                 "GUIDE-COM-001",
                 "GUIDE-HOME-014",
                 "GUIDE-PUB-LIST-032",
                 "GUIDE-STATE-088",
+                "GUIDE-VERSION-032",
                 "GUIDE-CHANNEL-ADMIN-070",
                 "GUIDE-COMPAT-024"
         );
@@ -341,6 +342,12 @@ class GuideApiContractTest {
         performJson(get("/api/v1/guides/admin/articles/missing").header("Authorization", bearer("helper-token")), 404, 43900);
 
         performJson(post("/api/v1/guides/admin/articles").header("Authorization", bearer("admin-token")), validGuide("admin-flow", "slug-conflict"), 409, 43911);
+        JsonNode reusableSlug = performJson(post("/api/v1/guides/admin/articles").header("Authorization", bearer("admin-token")), validGuide("reusable-slug", "reusable-slug"), 201);
+        String reusableSlugId = reusableSlug.at("/data/guideId").asText();
+        performJson(patch("/api/v1/guides/admin/articles/" + reusableSlugId).header("Authorization", bearer("admin-token")), Map.of("slug", "reusable-slug-new", "reason", "release slug", "idempotencyKey", "reusable-slug-patch"), 200);
+        JsonNode recreatedSlug = performJson(post("/api/v1/guides/admin/articles").header("Authorization", bearer("admin-token")), validGuide("reusable-slug", "reusable-slug-recreated"), 201);
+        assertThat(recreatedSlug.at("/data/guideId").asText()).isNotEqualTo(reusableSlugId);
+        assertThat(performJson(get("/api/v1/guides/admin/articles/" + reusableSlugId).header("Authorization", bearer("admin-token")), 200).at("/data/slug").asText()).isEqualTo("reusable-slug-new");
         performJson(post("/api/v1/guides/admin/articles").header("Authorization", bearer("admin-token")), with(validGuide("bad-category", "bad-category"), "categoryId", "missing"), 404, 43901);
         performJson(post("/api/v1/guides/admin/articles").header("Authorization", bearer("admin-token")), with(validGuide("bad-rule", "bad-rule"), "type", "SERVER_RULE"), 400, 40001);
         Map<String, Object> duplicateRule = with(with(validGuide("duplicate-rule", "duplicate-rule"), "type", "SERVER_RULE"), "ruleVersion", "rules-2026-v2");
@@ -382,12 +389,82 @@ class GuideApiContractTest {
         JsonNode restoreArticle = performJson(post("/api/v1/guides/admin/articles")
                 .header("Authorization", bearer("admin-token")), validGuide("restore-flow", "restore-flow"), 201);
         String restoreGuideId = restoreArticle.at("/data/guideId").asText();
-        performJson(patch("/api/v1/guides/admin/articles/" + restoreGuideId).header("Authorization", bearer("admin-token")), Map.of("title", "Restore Changed", "body", "Restore changed body", "reason", "update", "idempotencyKey", "restore-patch"), 200);
+        Map<String, Object> restorePatch = new LinkedHashMap<>();
+        restorePatch.put("slug", "restore-flow-new");
+        restorePatch.put("title", "Restore Changed");
+        restorePatch.put("summary", "Restore changed summary");
+        restorePatch.put("body", "Restore changed body");
+        restorePatch.put("categoryId", "cat-client");
+        restorePatch.put("tags", java.util.List.of("patched"));
+        restorePatch.put("audience", java.util.List.of("MEMBER"));
+        restorePatch.put("visibility", "MEMBER_ONLY");
+        restorePatch.put("pinned", true);
+        restorePatch.put("toc", java.util.List.of(Map.of("title", "Changed", "anchor", "changed", "level", 1, "sortOrder", 1)));
+        restorePatch.put("commandEntries", java.util.List.of(Map.of("command", "/home", "usage", "home", "permissionHint", "player")));
+        restorePatch.put("externalChannelIds", java.util.List.of("channel-oopz"));
+        restorePatch.put("visibleFrom", "2026-06-01T00:00:00Z");
+        restorePatch.put("visibleUntil", "2026-12-01T00:00:00Z");
+        restorePatch.put("verifiedAt", "2026-06-02T00:00:00Z");
+        restorePatch.put("expiresAt", "2026-12-02T00:00:00Z");
+        restorePatch.put("reason", "update");
+        restorePatch.put("idempotencyKey", "restore-patch");
+        performJson(patch("/api/v1/guides/admin/articles/" + restoreGuideId).header("Authorization", bearer("admin-token")), restorePatch, 200);
         Map<String, Object> restoreBody = Map.of("reason", "restore", "idempotencyKey", "restore-key");
         JsonNode restored = performJson(patch("/api/v1/guides/admin/articles/" + restoreGuideId + "/versions/1/restore").header("Authorization", bearer("admin-token")), restoreBody, 200);
         assertThat(restored.at("/data/title").asText()).contains("restore-flow");
+        assertThat(restored.at("/data/slug").asText()).isEqualTo("restore-flow");
+        assertThat(restored.at("/data/summary").asText()).isEqualTo("A guide summary");
+        assertThat(restored.at("/data/category/categoryId").asText()).isEqualTo("cat-join");
+        assertThat(restored.at("/data/tags").toString()).contains("join", "client").doesNotContain("patched");
+        assertThat(restored.at("/data/audience").toString()).contains("VISITOR").doesNotContain("MEMBER");
+        assertThat(restored.at("/data/visibility").asText()).isEqualTo("PUBLIC");
+        assertThat(restored.at("/data/pinned").asBoolean()).isFalse();
+        assertThat(restored.at("/data/toc/0/title").asText()).isEqualTo("Start");
+        assertThat(restored.at("/data/commandEntries").size()).isZero();
+        assertThat(restored.at("/data/externalChannelRefs").size()).isZero();
+        assertThat(restored.at("/data/visibleFrom").asText()).isEqualTo("2026-05-01T00:00:00Z");
+        assertThat(restored.at("/data/visibleUntil").asText()).isEqualTo("2026-12-31T00:00:00Z");
+        assertThat(restored.at("/data/verifiedAt").asText()).isEqualTo("2026-05-20T00:00:00Z");
+        assertThat(restored.at("/data/expiresAt").asText()).isEqualTo("2026-12-31T00:00:00Z");
+        assertThat(restored.at("/data/currentVersion").asInt()).isEqualTo(3);
+        JsonNode restoredVersion = performJson(get("/api/v1/guides/admin/articles/" + restoreGuideId + "/versions/3").header("Authorization", bearer("admin-token")), 200);
+        assertThat(restoredVersion.at("/data/restoredFromVersion").asInt()).isEqualTo(1);
+        assertThat(restoredVersion.at("/data/snapshot/externalChannelIds").size()).isZero();
         performJson(patch("/api/v1/guides/admin/articles/" + restoreGuideId + "/versions/1/restore").header("Authorization", bearer("admin-token")), restoreBody, 200);
         performJson(patch("/api/v1/guides/admin/articles/" + restoreGuideId + "/versions/1/restore").header("Authorization", bearer("admin-token")), Map.of("reason", "restore changed", "idempotencyKey", "restore-key"), 409, 43914);
+
+        JsonNode slugRestore = performJson(post("/api/v1/guides/admin/articles")
+                .header("Authorization", bearer("admin-token")), validGuide("restore-slug", "restore-slug"), 201);
+        String slugRestoreId = slugRestore.at("/data/guideId").asText();
+        performJson(patch("/api/v1/guides/admin/articles/" + slugRestoreId).header("Authorization", bearer("admin-token")), Map.of("slug", "restore-slug-new", "reason", "slug", "idempotencyKey", "restore-slug-patch"), 200);
+        JsonNode slugHolder = performJson(post("/api/v1/guides/admin/articles").header("Authorization", bearer("admin-token")), validGuide("restore-slug-holder", "restore-slug-holder"), 201);
+        performJson(patch("/api/v1/guides/admin/articles/" + slugHolder.at("/data/guideId").asText()).header("Authorization", bearer("admin-token")), Map.of("slug", "restore-slug", "reason", "slug holder", "idempotencyKey", "restore-slug-holder-patch"), 200);
+        performJson(patch("/api/v1/guides/admin/articles/" + slugRestoreId + "/versions/1/restore").header("Authorization", bearer("admin-token")), reason("restore slug conflict"), 409, 43911);
+
+        Map<String, Object> ruleRestoreBody = with(with(validGuide("restore-rule", "restore-rule"), "type", "SERVER_RULE"), "ruleVersion", "rules-restore-original");
+        JsonNode ruleRestore = performJson(post("/api/v1/guides/admin/articles")
+                .header("Authorization", bearer("admin-token")), ruleRestoreBody, 201);
+        String ruleRestoreId = ruleRestore.at("/data/guideId").asText();
+        performJson(patch("/api/v1/guides/admin/articles/" + ruleRestoreId).header("Authorization", bearer("admin-token")), Map.of("ruleVersion", "rules-restore-new", "reason", "rule", "idempotencyKey", "restore-rule-patch"), 200);
+        performJson(post("/api/v1/guides/admin/articles").header("Authorization", bearer("admin-token")), with(with(validGuide("restore-rule-holder", "restore-rule-holder"), "type", "SERVER_RULE"), "ruleVersion", "rules-restore-original"), 201);
+        performJson(patch("/api/v1/guides/admin/articles/" + ruleRestoreId + "/versions/1/restore").header("Authorization", bearer("admin-token")), reason("restore rule conflict"), 409, 43913);
+
+        JsonNode oldCategory = performJson(post("/api/v1/guides/admin/categories")
+                .header("Authorization", bearer("admin-token")), validCategory("restore-old-category"), 201);
+        String oldCategoryId = oldCategory.at("/data/categoryId").asText();
+        JsonNode categoryRestore = performJson(post("/api/v1/guides/admin/articles")
+                .header("Authorization", bearer("admin-token")), with(validGuide("restore-category", "restore-category"), "categoryId", oldCategoryId), 201);
+        String categoryRestoreId = categoryRestore.at("/data/guideId").asText();
+        performJson(patch("/api/v1/guides/admin/articles/" + categoryRestoreId).header("Authorization", bearer("admin-token")), Map.of("categoryId", "cat-join", "reason", "category", "idempotencyKey", "restore-category-patch"), 200);
+        performJson(patch("/api/v1/guides/admin/categories/" + oldCategoryId + "/archive").header("Authorization", bearer("admin-token")), reason("archive unused category"), 200);
+        performJson(patch("/api/v1/guides/admin/articles/" + categoryRestoreId + "/versions/1/restore").header("Authorization", bearer("admin-token")), reason("restore category conflict"), 404, 43901);
+
+        JsonNode channelRestore = performJson(post("/api/v1/guides/admin/articles")
+                .header("Authorization", bearer("admin-token")), with(validGuide("restore-channel", "restore-channel"), "externalChannelIds", java.util.List.of("channel-oopz")), 201);
+        String channelRestoreId = channelRestore.at("/data/guideId").asText();
+        performJson(patch("/api/v1/guides/admin/articles/" + channelRestoreId).header("Authorization", bearer("admin-token")), Map.of("externalChannelIds", java.util.List.of(), "reason", "channel", "idempotencyKey", "restore-channel-patch"), 200);
+        performJson(patch("/api/v1/guides/admin/external-channels/channel-oopz/archive").header("Authorization", bearer("admin-token")), reason("archive unused channel"), 200);
+        performJson(patch("/api/v1/guides/admin/articles/" + channelRestoreId + "/versions/1/restore").header("Authorization", bearer("admin-token")), reason("restore channel conflict"), 404, 43903);
 
         JsonNode category = performJson(post("/api/v1/guides/admin/categories")
                 .header("Authorization", bearer("admin-token")), validCategory("new-guide-category"), 201);

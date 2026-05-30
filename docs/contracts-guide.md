@@ -437,7 +437,7 @@
 
 请求字段包括 `type`、`slug`、`title`、`summary`、`body`、`categoryId`、`tags`、`audience`、`visibility`、`pinned`、`toc`、`commandEntries`、`references`、`externalChannelIds`、`maintainerMemberId`、`ruleVersion`、`visibleFrom`、`visibleUntil`、`verifiedAt`、`expiresAt`、`adminNote`、`reason` 和 `idempotencyKey`。
 
-成功响应 HTTP `201`，`data` 为 `AdminGuideArticle`，默认状态为 `DRAFT`，初始版本为 `1`。slug 在未软删除指南中唯一，冲突返回 `43911`。分类不存在返回 `43901`。`SERVER_RULE` 类型必须提供 `ruleVersion`。非规则类型不得占用同一规则版本。审计失败返回 `51901`，不得创建指南。
+成功响应 HTTP `201`，`data` 为 `AdminGuideArticle`，默认状态为 `DRAFT`，初始版本为 `1`。`guideId` 由服务端生成且创建后不可变，旧 slug 被修改释放后再次创建同 slug 时必须生成新的 `guideId`，不得覆盖已有指南。slug 在未软删除指南中唯一，冲突返回 `43911`。分类不存在返回 `43901`。`SERVER_RULE` 类型必须提供 `ruleVersion`。非规则类型不得占用同一规则版本。审计失败返回 `51901`，不得创建指南。
 
 ### 修改指南
 
@@ -487,7 +487,7 @@
 
 ## 版本、分类、渠道、反馈、审计和自检
 
-`GET /api/v1/guides/admin/articles/{guideId}/versions` 返回指南版本分页。`GET /api/v1/guides/admin/articles/{guideId}/versions/{version}` 返回指定版本。`PATCH /api/v1/guides/admin/articles/{guideId}/versions/{version}/restore` 用指定历史版本生成新版本；恢复必须原子应用历史快照中的可恢复字段，包括标题、摘要、正文、类型、slug、分类、标签、受众、可见性、置顶、目录、指令条目、外部入口 ID、规则版本、可见时间窗、验证时间、复核时间、后台备注和维护人快照。恢复不得覆盖 `guideId`、当前状态、当前版本号、创建人、发布时间、删除时间、版本摘要、反馈摘要和审计记录；成功后递增当前版本，写入 `RESTORED` 版本并记录 `restoredFromVersion`。`ARCHIVED` 和 `DELETED` 指南不得恢复；历史 slug 被其他未删除指南占用返回 `43911`，历史规则版本被其他指南占用返回 `43913`，历史分类不存在返回 `43901`，历史外部入口不存在返回 `43903`。审计失败、幂等冲突或任一校验失败时不得改变业务状态。
+`GET /api/v1/guides/admin/articles/{guideId}/versions` 返回指南版本分页。`GET /api/v1/guides/admin/articles/{guideId}/versions/{version}` 返回指定版本。`PATCH /api/v1/guides/admin/articles/{guideId}/versions/{version}/restore` 用指定历史版本生成新版本；恢复必须原子应用历史快照中的可恢复字段，包括标题、摘要、正文、类型、slug、分类、标签、受众、可见性、置顶、目录、指令条目、外部入口 ID、规则版本、可见时间窗、验证时间、复核时间、后台备注和维护人快照。恢复不得覆盖 `guideId`、当前状态、当前版本号、创建人、发布时间、删除时间、版本摘要、反馈摘要和审计记录；成功后递增当前版本，写入 `RESTORED` 版本并记录 `restoredFromVersion`。`ARCHIVED` 和 `DELETED` 指南不得恢复；历史 slug 被其他未删除指南占用返回 `43911`，历史规则版本被其他指南占用返回 `43913`，历史分类不存在或已归档返回 `43901`，历史外部入口不存在或已归档返回 `43903`。审计失败、幂等冲突或任一校验失败时不得改变业务状态。
 
 后台分类接口支持列表、创建、修改和归档。创建和修改字段包括 `name`、`slug`、`description`、`icon`、`sortOrder`、`enabled`、`reason` 和可选 `idempotencyKey`。仍被未归档指南引用的分类不能归档，返回 `43915`。归档后公开分类列表不再返回。
 

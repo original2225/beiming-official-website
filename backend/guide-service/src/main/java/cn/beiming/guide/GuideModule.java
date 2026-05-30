@@ -591,7 +591,7 @@ class GuideStore {
         if (existing != null) return existing;
         String slug = requiredString(body, "slug");
         if (slugExists(slug)) throw new GuideException(409, 43911, "slug conflict");
-        String guideId = "guide-" + slug;
+        String guideId = nextGuideId(slug);
         GuideArticle guide = articleFromBody(guideId, actor, body);
         guides.put(guideId, guide);
         addVersion(guide, "CREATED", actor, requiredString(body, "reason"), null);
@@ -704,7 +704,8 @@ class GuideStore {
                 .orElseThrow(() -> new GuideException(404, 43902, "version not found"));
     }
 
-    Map<String, Object> restore(AuthUser actor, String guideId, int version, Map<String, Object> body, HttpServletRequest request) {
+    synchronized Map<String, Object> restore(AuthUser actor, String guideId, int version, Map<String, Object> body, HttpServletRequest request) {
+        if (request.getHeader("X-Test-Fail-Audit") != null) throw new GuideException(500, 51901, "audit failed");
         GuideArticle guide = requireGuide(guideId);
         requireReason(body);
         if (Set.of("ARCHIVED", "DELETED").contains(guide.status)) throw new GuideException(409, 43910, "state conflict");
@@ -712,9 +713,9 @@ class GuideStore {
         String idemKey = key == null ? null : actor.id() + ":restore:" + guideId + ":" + version + ":" + key;
         Map<String, Object> existing = idempotent(idemKey, body, null);
         if (existing != null) return existing;
-        Map<String, Object> snapshot = version(guideId, version);
-        guide.title = text(map(snapshot.get("snapshot")).get("title"));
-        guide.body = text(map(snapshot.get("snapshot")).get("body"));
+        Map<String, Object> record = version(guideId, version);
+        restoreGuideFields(guide, map(record.get("snapshot")));
+        guide.updatedAt = now();
         guide.currentVersion++;
         addVersion(guide, "RESTORED", actor, requiredString(body, "reason"), version);
         audit(actor, guideId, "GUIDE_VERSION_RESTORED", "SUCCESS", null, adminView(guide), requiredString(body, "reason"));
@@ -967,21 +968,104 @@ class GuideStore {
     }
 
     private void copyGuideFields(GuideArticle guide, Map<String, Object> body) {
-        if (body.containsKey("title")) guide.title = text(body.get("title"));
+        String type = body.containsKey("type") ? requiredString(body, "type") : guide.type;
+        enumValue(type, GUIDE_TYPES);
+        String title = body.containsKey("title") ? requiredString(body, "title") : guide.title;
+        if (title.length() < 2) throw new GuideException(400, 40001, "validation failed");
+        String newBody = body.containsKey("body") ? requiredString(body, "body") : guide.body;
+        String categoryId = body.containsKey("categoryId") ? text(body.get("categoryId")) : guide.categoryId;
+        requireRestorableCategory(categoryId);
+        List<String> tags = body.containsKey("tags") ? new ArrayList<>(strings(body.get("tags"))) : new ArrayList<>(guide.tags);
+        List<String> audience = body.containsKey("audience") ? new ArrayList<>(strings(body.get("audience"))) : new ArrayList<>(guide.audience);
+        for (String value : audience) enumValue(value, AUDIENCES);
+        String visibility = body.containsKey("visibility") ? text(body.get("visibility")) : guide.visibility;
+        enumValue(visibility, VISIBILITIES);
+        List<Map<String, Object>> toc = body.containsKey("toc") ? copyList(list(body.get("toc"))) : copyList(guide.toc);
+        List<Map<String, Object>> commandEntries = body.containsKey("commandEntries") ? copyList(list(body.get("commandEntries"))) : copyList(guide.commandEntries);
+        List<String> externalChannelIds = body.containsKey("externalChannelIds") ? new ArrayList<>(strings(body.get("externalChannelIds"))) : new ArrayList<>(guide.externalChannelIds);
+        for (String channelId : externalChannelIds) requireRestorableChannel(channelId);
+        String ruleVersion = body.containsKey("ruleVersion") ? optionalString(body, "ruleVersion", null) : guide.ruleVersion;
+        if ("SERVER_RULE".equals(type) && ruleVersion == null) throw new GuideException(400, 40001, "validation failed");
+        if (ruleVersion != null) checkRuleVersionAvailable(guide.guideId, ruleVersion);
+        String visibleFrom = body.containsKey("visibleFrom") ? optionalString(body, "visibleFrom", null) : guide.visibleFrom;
+        String visibleUntil = body.containsKey("visibleUntil") ? optionalString(body, "visibleUntil", null) : guide.visibleUntil;
+        String verifiedAt = body.containsKey("verifiedAt") ? optionalString(body, "verifiedAt", null) : guide.verifiedAt;
+        String expiresAt = body.containsKey("expiresAt") ? optionalString(body, "expiresAt", null) : guide.expiresAt;
+        validateTimes(visibleFrom, visibleUntil, verifiedAt, expiresAt);
+
+        guide.type = type;
+        guide.title = title;
         if (body.containsKey("summary")) guide.summary = optionalString(body, "summary", null);
-        if (body.containsKey("body")) guide.body = text(body.get("body"));
-        if (body.containsKey("categoryId")) {
-            requireCategory(text(body.get("categoryId")));
-            guide.categoryId = text(body.get("categoryId"));
+        guide.body = newBody;
+        guide.categoryId = categoryId;
+        guide.tags = tags;
+        guide.audience = audience;
+        guide.visibility = visibility;
+        if (body.containsKey("pinned")) guide.pinned = bool(body.get("pinned"));
+        guide.toc = toc;
+        guide.commandEntries = commandEntries;
+        guide.externalChannelIds = externalChannelIds;
+        guide.ruleVersion = ruleVersion;
+        guide.visibleFrom = visibleFrom;
+        guide.visibleUntil = visibleUntil;
+        guide.verifiedAt = verifiedAt;
+        guide.expiresAt = expiresAt;
+        if (body.containsKey("adminNote")) guide.adminNote = optionalString(body, "adminNote", null);
+    }
+
+    private void restoreGuideFields(GuideArticle guide, Map<String, Object> snapshot) {
+        String slug = optionalString(snapshot, "slug", guide.slug);
+        validateSlug(slug);
+        if (guides.values().stream().anyMatch(g -> !g.guideId.equals(guide.guideId) && !"DELETED".equals(g.status) && slug.equals(g.slug))) {
+            throw new GuideException(409, 43911, "slug conflict");
         }
-        if (body.containsKey("tags")) guide.tags = strings(body.get("tags"));
-        if (body.containsKey("toc")) guide.toc = list(body.get("toc"));
-        if (body.containsKey("commandEntries")) guide.commandEntries = list(body.get("commandEntries"));
-        if (body.containsKey("externalChannelIds")) guide.externalChannelIds = strings(body.get("externalChannelIds"));
-        if (body.containsKey("ruleVersion")) {
-            if (body.get("ruleVersion") != null) checkRuleVersionAvailable(guide.guideId, text(body.get("ruleVersion")));
-            guide.ruleVersion = optionalString(body, "ruleVersion", null);
-        }
+        String type = optionalString(snapshot, "type", guide.type);
+        enumValue(type, GUIDE_TYPES);
+        String title = optionalString(snapshot, "title", guide.title);
+        if (title == null || title.length() < 2) throw new GuideException(400, 40001, "validation failed");
+        String body = optionalString(snapshot, "body", guide.body);
+        if (body == null || body.isBlank()) throw new GuideException(400, 40001, "validation failed");
+        String categoryId = snapshotCategoryId(snapshot, guide.categoryId);
+        requireRestorableCategory(categoryId);
+        List<String> tags = snapshot.containsKey("tags") ? new ArrayList<>(strings(snapshot.get("tags"))) : new ArrayList<>(guide.tags);
+        List<String> audience = snapshot.containsKey("audience") ? new ArrayList<>(strings(snapshot.get("audience"))) : new ArrayList<>(guide.audience);
+        for (String value : audience) enumValue(value, AUDIENCES);
+        String visibility = optionalString(snapshot, "visibility", guide.visibility);
+        enumValue(visibility, VISIBILITIES);
+        List<Map<String, Object>> toc = snapshot.containsKey("toc") ? copyList(list(snapshot.get("toc"))) : copyList(guide.toc);
+        List<Map<String, Object>> commandEntries = snapshot.containsKey("commandEntries") ? copyList(list(snapshot.get("commandEntries"))) : copyList(guide.commandEntries);
+        List<String> externalChannelIds = snapshot.containsKey("externalChannelIds") ? new ArrayList<>(strings(snapshot.get("externalChannelIds"))) : new ArrayList<>(guide.externalChannelIds);
+        for (String channelId : externalChannelIds) requireRestorableChannel(channelId);
+        String ruleVersion = snapshot.containsKey("ruleVersion") ? optionalString(snapshot, "ruleVersion", null) : guide.ruleVersion;
+        if ("SERVER_RULE".equals(type) && ruleVersion == null) throw new GuideException(400, 40001, "validation failed");
+        if (ruleVersion != null) checkRuleVersionAvailable(guide.guideId, ruleVersion);
+        String visibleFrom = optionalString(snapshot, "visibleFrom", guide.visibleFrom);
+        String visibleUntil = optionalString(snapshot, "visibleUntil", guide.visibleUntil);
+        String verifiedAt = optionalString(snapshot, "verifiedAt", guide.verifiedAt);
+        String expiresAt = optionalString(snapshot, "expiresAt", guide.expiresAt);
+        validateTimes(visibleFrom, visibleUntil, verifiedAt, expiresAt);
+        Map<String, Object> maintainerSnapshot = snapshot.containsKey("maintainerSnapshot") ? copyMap(map(snapshot.get("maintainerSnapshot"))) : copyMap(guide.maintainer);
+
+        guide.slug = slug;
+        guide.type = type;
+        guide.title = title;
+        guide.summary = optionalString(snapshot, "summary", null);
+        guide.body = body;
+        guide.categoryId = categoryId;
+        guide.tags = tags;
+        guide.audience = audience;
+        guide.visibility = visibility;
+        guide.pinned = boolDefault(snapshot.get("pinned"), false);
+        guide.toc = toc;
+        guide.commandEntries = commandEntries;
+        guide.externalChannelIds = externalChannelIds;
+        guide.ruleVersion = ruleVersion;
+        guide.visibleFrom = visibleFrom;
+        guide.visibleUntil = visibleUntil;
+        guide.verifiedAt = verifiedAt;
+        guide.expiresAt = expiresAt;
+        guide.adminNote = optionalString(snapshot, "adminNote", null);
+        guide.maintainer = maintainerSnapshot;
     }
 
     private Map<String, Object> publicSummary(GuideArticle guide, HttpServletRequest request) {
@@ -1079,9 +1163,21 @@ class GuideStore {
         return category;
     }
 
+    private Map<String, Object> requireRestorableCategory(String categoryId) {
+        Map<String, Object> category = requireCategory(categoryId);
+        if (bool(category.get("archived"))) throw new GuideException(404, 43901, "category not found");
+        return category;
+    }
+
     private Map<String, Object> requireChannel(String channelId) {
         Map<String, Object> channel = channels.get(channelId);
         if (channel == null) throw new GuideException(404, 43903, "channel not found");
+        return channel;
+    }
+
+    private Map<String, Object> requireRestorableChannel(String channelId) {
+        Map<String, Object> channel = requireChannel(channelId);
+        if ("ARCHIVED".equals(channel.get("status"))) throw new GuideException(404, 43903, "channel not found");
         return channel;
     }
 
@@ -1142,7 +1238,18 @@ class GuideStore {
     }
 
     private Map<String, Object> adminViewNoVersions(GuideArticle guide) {
-        return mapOf("guideId", guide.guideId, "title", guide.title, "body", guide.body, "status", guide.status, "slug", guide.slug, "type", guide.type);
+        Map<String, Object> view = new LinkedHashMap<>(adminView(guide));
+        view.remove("versionsSummary");
+        view.remove("feedbackSummary");
+        view.remove("referenceDegradeSummary");
+        view.put("categoryId", guide.categoryId);
+        view.put("externalChannelIds", new ArrayList<>(guide.externalChannelIds));
+        view.put("tags", new ArrayList<>(guide.tags));
+        view.put("audience", new ArrayList<>(guide.audience));
+        view.put("toc", copyList(guide.toc));
+        view.put("commandEntries", copyList(guide.commandEntries));
+        view.put("maintainerSnapshot", copyMap(guide.maintainer));
+        return view;
     }
 
     private void audit(AuthUser actor, String targetId, String action, String result, Map<String, Object> before, Map<String, Object> after, String reason) {
@@ -1237,6 +1344,49 @@ class GuideStore {
         }
     }
 
+    private void validateTimes(String visibleFrom, String visibleUntil, String verifiedAt, String expiresAt) {
+        Instant from = parseOptionalInstant(visibleFrom);
+        Instant until = parseOptionalInstant(visibleUntil);
+        parseOptionalInstant(verifiedAt);
+        parseOptionalInstant(expiresAt);
+        if (from != null && until != null && until.isBefore(from)) throw new GuideException(400, 40001, "validation failed");
+    }
+
+    private Instant parseOptionalInstant(String value) {
+        if (value == null) return null;
+        try {
+            return Instant.parse(value);
+        } catch (RuntimeException ex) {
+            throw new GuideException(400, 40001, "validation failed");
+        }
+    }
+
+    private String snapshotCategoryId(Map<String, Object> snapshot, String fallback) {
+        if (snapshot.containsKey("categoryId")) return text(snapshot.get("categoryId"));
+        Map<String, Object> category = map(snapshot.get("category"));
+        if (category.containsKey("categoryId")) return text(category.get("categoryId"));
+        return fallback;
+    }
+
+    private static Map<String, Object> copyMap(Map<String, Object> source) {
+        Map<String, Object> copy = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> entry : source.entrySet()) {
+            copy.put(entry.getKey(), copyValue(entry.getValue()));
+        }
+        return copy;
+    }
+
+    private static List<Map<String, Object>> copyList(List<Map<String, Object>> source) {
+        return source.stream().map(GuideStore::copyMap).toList();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Object copyValue(Object value) {
+        if (value instanceof Map<?, ?> map) return copyMap((Map<String, Object>) map);
+        if (value instanceof List<?> list) return list.stream().map(GuideStore::copyValue).toList();
+        return value;
+    }
+
     private Comparator<GuideArticle> publicComparator(String sort) {
         Comparator<GuideArticle> byId = Comparator.comparing(g -> g.guideId);
         if ("title_asc".equals(sort)) return Comparator.comparing((GuideArticle g) -> g.title).thenComparing(byId);
@@ -1302,6 +1452,14 @@ class GuideStore {
 
     private boolean slugExists(String slug) {
         return guides.values().stream().anyMatch(g -> slug.equals(g.slug) && !"DELETED".equals(g.status));
+    }
+
+    private String nextGuideId(String slug) {
+        String candidate = "guide-" + slug;
+        if (!guides.containsKey(candidate)) return candidate;
+        int suffix = 2;
+        while (guides.containsKey(candidate + "-" + suffix)) suffix++;
+        return candidate + "-" + suffix;
     }
 
     private Map<String, Object> maintainer(AuthUser actor) {
