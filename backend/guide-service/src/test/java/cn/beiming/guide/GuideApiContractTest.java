@@ -374,6 +374,16 @@ class GuideApiContractTest {
         performJson(get("/api/v1/guides/admin/articles/" + guideId + "/versions/1").header("Authorization", bearer("admin-token")), 200);
         performJson(patch("/api/v1/guides/admin/articles/" + guideId + "/versions/1/restore").header("Authorization", bearer("admin-token")), reason("restore archived"), 409, 43910);
 
+        JsonNode restoreArticle = performJson(post("/api/v1/guides/admin/articles")
+                .header("Authorization", bearer("admin-token")), validGuide("restore-flow", "restore-flow"), 201);
+        String restoreGuideId = restoreArticle.at("/data/guideId").asText();
+        performJson(patch("/api/v1/guides/admin/articles/" + restoreGuideId).header("Authorization", bearer("admin-token")), Map.of("title", "Restore Changed", "body", "Restore changed body", "reason", "update", "idempotencyKey", "restore-patch"), 200);
+        Map<String, Object> restoreBody = Map.of("reason", "restore", "idempotencyKey", "restore-key");
+        JsonNode restored = performJson(patch("/api/v1/guides/admin/articles/" + restoreGuideId + "/versions/1/restore").header("Authorization", bearer("admin-token")), restoreBody, 200);
+        assertThat(restored.at("/data/title").asText()).contains("restore-flow");
+        performJson(patch("/api/v1/guides/admin/articles/" + restoreGuideId + "/versions/1/restore").header("Authorization", bearer("admin-token")), restoreBody, 200);
+        performJson(patch("/api/v1/guides/admin/articles/" + restoreGuideId + "/versions/1/restore").header("Authorization", bearer("admin-token")), Map.of("reason", "restore changed", "idempotencyKey", "restore-key"), 409, 43914);
+
         JsonNode category = performJson(post("/api/v1/guides/admin/categories")
                 .header("Authorization", bearer("admin-token")), validCategory("new-guide-category"), 201);
         String categoryId = category.at("/data/categoryId").asText();

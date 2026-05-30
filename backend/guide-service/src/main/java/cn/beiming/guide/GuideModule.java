@@ -708,13 +708,19 @@ class GuideStore {
         GuideArticle guide = requireGuide(guideId);
         requireReason(body);
         if (Set.of("ARCHIVED", "DELETED").contains(guide.status)) throw new GuideException(409, 43910, "state conflict");
+        String key = optionalString(body, "idempotencyKey", null);
+        String idemKey = key == null ? null : actor.id() + ":restore:" + guideId + ":" + version + ":" + key;
+        Map<String, Object> existing = idempotent(idemKey, body, null);
+        if (existing != null) return existing;
         Map<String, Object> snapshot = version(guideId, version);
         guide.title = text(map(snapshot.get("snapshot")).get("title"));
         guide.body = text(map(snapshot.get("snapshot")).get("body"));
         guide.currentVersion++;
         addVersion(guide, "RESTORED", actor, requiredString(body, "reason"), version);
         audit(actor, guideId, "GUIDE_VERSION_RESTORED", "SUCCESS", null, adminView(guide), requiredString(body, "reason"));
-        return adminView(guide);
+        Map<String, Object> value = adminView(guide);
+        idempotent(idemKey, body, value);
+        return value;
     }
 
     Map<String, Object> auditLogs(String guideId, Map<String, String> query) {
