@@ -811,6 +811,7 @@ class GuideStore {
         Map<String, Object> channel = addChannel("channel-" + slug, requiredString(body, "type"), "ENABLED", requiredString(body, "name"), slug, requiredString(body, "purpose"), requiredString(body, "joinCondition"), optionalString(body, "entryUrl", null), optionalString(body, "entryHint", null));
         channel.put("rules", list(body.get("rules")));
         channel.put("visibility", optionalString(body, "visibility", "PUBLIC"));
+        channel.put("sortOrder", intValue(body.getOrDefault("sortOrder", 10)));
         channel.put("adminNote", optionalString(body, "adminNote", null));
         audit(actor, text(channel.get("channelId")), "GUIDE_CHANNEL_CREATED", "SUCCESS", null, channel, requiredString(body, "reason"));
         idempotent(idemKey, body, channel);
@@ -822,7 +823,9 @@ class GuideStore {
         requireReason(body);
         if ("ARCHIVED".equals(channel.get("status"))) throw new GuideException(409, 43910, "state conflict");
         if (body.containsKey("entryUrl")) checkPublicUrl(optionalString(body, "entryUrl", null));
-        for (String key : List.of("purpose", "joinCondition", "entryUrl", "entryHint", "visibility", "adminNote")) {
+        if (body.containsKey("visibility")) enumValue(text(body.get("visibility")), VISIBILITIES);
+        if (body.containsKey("sortOrder")) intValue(body.get("sortOrder"));
+        for (String key : List.of("purpose", "joinCondition", "entryUrl", "entryHint", "visibility", "adminNote", "sortOrder")) {
             if (body.containsKey(key)) channel.put(key, body.get(key));
         }
         audit(actor, channelId, "GUIDE_CHANNEL_UPDATED", "SUCCESS", null, channel, requiredString(body, "reason"));
@@ -1070,7 +1073,11 @@ class GuideStore {
         for (String audience : strings(body.get("audience"))) enumValue(audience, AUDIENCES);
         if ("SERVER_RULE".equals(body.get("type")) && optionalString(body, "ruleVersion", null) == null) throw new GuideException(400, 40001, "validation failed");
         if (!"SERVER_RULE".equals(body.get("type")) && optionalString(body, "ruleVersion", null) != null && guides.values().stream().anyMatch(g -> Objects.equals(g.ruleVersion, body.get("ruleVersion")))) throw new GuideException(409, 43913, "rule version conflict");
-        if (body.containsKey("visibleFrom") && body.containsKey("visibleUntil") && Instant.parse(text(body.get("visibleUntil"))).isBefore(Instant.parse(text(body.get("visibleFrom"))))) throw new GuideException(400, 40001, "validation failed");
+        Instant visibleFrom = instantBody(body, "visibleFrom");
+        Instant visibleUntil = instantBody(body, "visibleUntil");
+        instantBody(body, "verifiedAt");
+        instantBody(body, "expiresAt");
+        if (visibleFrom != null && visibleUntil != null && visibleUntil.isBefore(visibleFrom)) throw new GuideException(400, 40001, "validation failed");
         requireReason(body);
     }
 
@@ -1089,6 +1096,7 @@ class GuideStore {
         if (list(body.get("rules")).size() > 20) throw new GuideException(400, 40001, "validation failed");
         checkPublicUrl(optionalString(body, "entryUrl", null));
         enumValue(optionalString(body, "visibility", "PUBLIC"), VISIBILITIES);
+        if (body.containsKey("sortOrder")) intValue(body.get("sortOrder"));
         requireReason(body);
     }
 
@@ -1191,6 +1199,15 @@ class GuideStore {
         }
     }
 
+    private Instant instantBody(Map<String, Object> body, String key) {
+        if (body == null || !body.containsKey(key) || body.get(key) == null) return null;
+        try {
+            return Instant.parse(text(body.get(key)));
+        } catch (RuntimeException ex) {
+            throw new GuideException(400, 40001, "validation failed");
+        }
+    }
+
     private Comparator<GuideArticle> publicComparator(String sort) {
         Comparator<GuideArticle> byId = Comparator.comparing(g -> g.guideId);
         if ("title_asc".equals(sort)) return Comparator.comparing((GuideArticle g) -> g.title).thenComparing(byId);
@@ -1279,7 +1296,11 @@ class GuideStore {
     }
 
     private static int intValue(Object value) {
-        return value instanceof Number number ? number.intValue() : Integer.parseInt(Objects.toString(value));
+        try {
+            return value instanceof Number number ? number.intValue() : Integer.parseInt(Objects.toString(value));
+        } catch (NumberFormatException ex) {
+            throw new GuideException(400, 40001, "validation failed");
+        }
     }
 
     private static String text(Object value) {

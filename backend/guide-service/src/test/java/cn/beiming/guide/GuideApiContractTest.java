@@ -344,6 +344,8 @@ class GuideApiContractTest {
         performJson(post("/api/v1/guides/admin/articles").header("Authorization", bearer("admin-token")), with(validGuide("bad-category", "bad-category"), "categoryId", "missing"), 404, 43901);
         performJson(post("/api/v1/guides/admin/articles").header("Authorization", bearer("admin-token")), with(validGuide("bad-rule", "bad-rule"), "type", "SERVER_RULE"), 400, 40001);
         performJson(post("/api/v1/guides/admin/articles").header("Authorization", bearer("admin-token")), with(validGuide("bad-time", "bad-time"), "visibleUntil", "2026-01-01T00:00:00Z"), 400, 40001);
+        performJson(post("/api/v1/guides/admin/articles").header("Authorization", bearer("admin-token")), with(validGuide("bad-visible-from", "bad-visible-from"), "visibleFrom", "bad-time"), 400, 40001);
+        performJson(post("/api/v1/guides/admin/articles").header("Authorization", bearer("admin-token")), with(validGuide("bad-visible-until", "bad-visible-until"), "visibleUntil", "bad-time"), 400, 40001);
 
         Map<String, Object> patchBody = new LinkedHashMap<>();
         patchBody.put("title", "Flow Guide Updated");
@@ -376,17 +378,23 @@ class GuideApiContractTest {
                 .header("Authorization", bearer("admin-token")), validCategory("new-guide-category"), 201);
         String categoryId = category.at("/data/categoryId").asText();
         performJson(get("/api/v1/guides/admin/categories").header("Authorization", bearer("helper-token")).param("enabled", "true").param("keyword", "new"), 200);
+        performJson(post("/api/v1/guides/admin/categories")
+                .header("Authorization", bearer("admin-token")), with(validCategory("bad-cat-sort"), "sortOrder", "abc"), 400, 40001);
         performJson(patch("/api/v1/guides/admin/categories/" + categoryId).header("Authorization", bearer("admin-token")), Map.of("description", "updated", "reason", "patch", "idempotencyKey", "cat-patch"), 200);
+        performJson(patch("/api/v1/guides/admin/categories/" + categoryId).header("Authorization", bearer("admin-token")), Map.of("sortOrder", "abc", "reason", "patch", "idempotencyKey", "cat-patch-bad"), 400, 40001);
         performJson(patch("/api/v1/guides/admin/categories/" + categoryId + "/archive").header("Authorization", bearer("admin-token")), reason("archive"), 200);
         performJson(patch("/api/v1/guides/admin/categories/cat-rules/archive").header("Authorization", bearer("admin-token")), reason("used"), 409, 43915);
 
         JsonNode channel = performJson(post("/api/v1/guides/admin/external-channels")
                 .header("Authorization", bearer("admin-token")), validChannel("new-qq"), 201);
         String channelId = channel.at("/data/channelId").asText();
+        assertThat(channel.at("/data/sortOrder").asInt()).isEqualTo(20);
         performJson(get("/api/v1/guides/admin/external-channels").header("Authorization", bearer("helper-token")).param("type", "QQ_GROUP").param("status", "ENABLED"), 200);
         performJson(get("/api/v1/guides/admin/external-channels").header("Authorization", bearer("helper-token")).param("type", "BAD"), 400, 40001);
         performJson(get("/api/v1/guides/admin/external-channels").header("Authorization", bearer("helper-token")).param("page", "0"), 400, 40002);
+        performJson(post("/api/v1/guides/admin/external-channels").header("Authorization", bearer("admin-token")), with(validChannel("bad-channel-sort"), "sortOrder", "abc"), 400, 40001);
         performJson(patch("/api/v1/guides/admin/external-channels/" + channelId).header("Authorization", bearer("admin-token")), Map.of("purpose", "updated", "reason", "patch", "idempotencyKey", "channel-patch"), 200);
+        performJson(patch("/api/v1/guides/admin/external-channels/" + channelId).header("Authorization", bearer("admin-token")), Map.of("visibility", "BAD", "reason", "patch", "idempotencyKey", "channel-patch-bad"), 400, 40001);
         performJson(patch("/api/v1/guides/admin/external-channels/" + channelId + "/disable").header("Authorization", bearer("admin-token")), reason("disable"), 200);
         performJson(patch("/api/v1/guides/admin/external-channels/" + channelId + "/enable").header("Authorization", bearer("admin-token")), reason("enable"), 200);
         performJson(patch("/api/v1/guides/admin/external-channels/" + channelId + "/archive").header("Authorization", bearer("admin-token")), reason("archive"), 200);
