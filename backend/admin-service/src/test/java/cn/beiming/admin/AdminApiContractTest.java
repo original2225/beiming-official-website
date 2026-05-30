@@ -100,6 +100,7 @@ class AdminApiContractTest {
     void overviewContract() throws Exception {
         JsonNode helper = performJson(get("/api/v1/admin/overview").header("Authorization", bearer("helper-token")), 200);
         assertThat(helper.toString()).contains("CONTENT", "RESOURCE", "SERVER_STATUS", "MATERIAL", "GUIDE").doesNotContain("settings", "audit-logs");
+        assertThat(valuesAt(helper, "/data/modules", "moduleKey")).doesNotContain("OPS_CONTROL", "NODE_DAEMON", "ONLINE_MAP", "PLUGIN_INTEGRATION", "OPS_IMAGE_MARKET");
 
         JsonNode owner = performJson(get("/api/v1/admin/overview")
                 .header("Authorization", bearer("owner-token"))
@@ -132,7 +133,7 @@ class AdminApiContractTest {
     @DisplayName("ADM-MODULES registry and detail expose stable entries without business write proxies")
     void moduleContract() throws Exception {
         JsonNode modules = performJson(get("/api/v1/admin/modules")
-                .header("Authorization", bearer("admin-token"))
+                .header("Authorization", bearer("owner-token"))
                 .param("includeNotImplemented", "true")
                 .param("sort", "moduleKey_asc"), 200);
         assertThat(valuesAt(modules, "/data/items", "moduleKey")).containsAll(expectedImplementedModules()).doesNotContain("API_GATEWAY");
@@ -143,9 +144,16 @@ class AdminApiContractTest {
         assertNoSecrets(modules);
 
         JsonNode implementedOnly = performJson(get("/api/v1/admin/modules")
-                .header("Authorization", bearer("admin-token"))
+                .header("Authorization", bearer("owner-token"))
                 .param("includeNotImplemented", "false"), 200);
         assertThat(valuesAt(implementedOnly, "/data/items", "moduleKey")).containsAll(expectedImplementedModules()).doesNotContain("API_GATEWAY");
+
+        JsonNode adminModules = performJson(get("/api/v1/admin/modules").header("Authorization", bearer("admin-token")), 200);
+        assertThat(valuesAt(adminModules, "/data/items", "moduleKey")).doesNotContain("OPS_CONTROL", "NODE_DAEMON");
+        JsonNode adminWithoutNode = performJson(get("/api/v1/admin/modules").header("Authorization", bearer("admin-no-node-token")), 200);
+        assertThat(valuesAt(adminWithoutNode, "/data/items", "moduleKey")).doesNotContain("ONLINE_MAP", "PLUGIN_INTEGRATION", "OPS_IMAGE_MARKET");
+        performJson(get("/api/v1/admin/modules/OPS_CONTROL").header("Authorization", bearer("admin-token")), 403, 42001);
+        performJson(get("/api/v1/admin/modules/ONLINE_MAP").header("Authorization", bearer("admin-no-node-token")), 403, 42002);
 
         JsonNode content = performJson(get("/api/v1/admin/modules/CONTENT").header("Authorization", bearer("helper-token")), 200);
         assertThat(content.at("/data/moduleKey").asText()).isEqualTo("CONTENT");
@@ -182,7 +190,7 @@ class AdminApiContractTest {
                 .param("sort", "severity_desc"), 200);
         assertThat(valuesAt(list, "/data/items", "sourceModule"))
                 .contains("AUTH", "PROFILE", "NOTIFICATION", "CONTENT", "SERVER_STATUS", "RESOURCE", "ONBOARDING", "EXAM", "WHITELIST", "ATTENDANCE", "COMMUNITY", "ACTIVITY", "CALENDAR", "CHANGELOG", "MATERIAL", "GUIDE")
-                .doesNotContain("API_GATEWAY");
+                .doesNotContain("OPS_CONTROL", "NODE_DAEMON", "API_GATEWAY");
         assertThat(list.toString()).contains("\"readOnly\":true", "CONTENT_REVIEW", "RESOURCE_REVIEW", "MATERIAL_REVIEW", "GUIDE_REVIEW");
         assertNoSecrets(list);
 
@@ -220,10 +228,13 @@ class AdminApiContractTest {
     @Test
     @DisplayName("ADM-METRICS summary keeps unknown degraded values distinct from real zero")
     void metricContract() throws Exception {
-        JsonNode metrics = performJson(get("/api/v1/admin/metrics/summary").header("Authorization", bearer("helper-token")), 200);
+        JsonNode metrics = performJson(get("/api/v1/admin/metrics/summary").header("Authorization", bearer("owner-token")), 200);
         assertThat(valuesAt(metrics, "/data/items", "sourceModule")).containsAll(expectedImplementedModules()).doesNotContain("API_GATEWAY");
         assertThat(metrics.toString()).contains("content.pendingReview", "resource.pendingReview", "material.pendingReview", "guide.pendingReview", "\"degraded\":false");
         assertNoSecrets(metrics);
+
+        JsonNode helperMetrics = performJson(get("/api/v1/admin/metrics/summary").header("Authorization", bearer("helper-token")), 200);
+        assertThat(valuesAt(helperMetrics, "/data/items", "sourceModule")).doesNotContain("OPS_CONTROL", "NODE_DAEMON", "ONLINE_MAP", "PLUGIN_INTEGRATION", "OPS_IMAGE_MARKET");
 
         JsonNode contentMetrics = performJson(get("/api/v1/admin/metrics/summary")
                 .header("Authorization", bearer("admin-token"))
@@ -322,6 +333,10 @@ class AdminApiContractTest {
         performJson(patch("/api/v1/admin/settings")
                 .header("Authorization", bearer("admin-token"))
                 .header("X-Test-Fail-Settings", "true"), settingsPatchBody("settings-fail", "settings fail", List.of("AUTH", "ADMIN"), List.of()), 500, 51702);
+        performJson(patch("/api/v1/admin/settings").header("Authorization", bearer("admin-token")),
+                invalidLayoutListBody("bad-navigation-card", "navigationModuleOrder", List.of("AUTH", "todos")), 400, 40001);
+        performJson(patch("/api/v1/admin/settings").header("Authorization", bearer("admin-token")),
+                invalidLayoutListBody("bad-hidden-card", "hiddenModules", List.of("RESOURCE", "health")), 400, 40001);
 
         JsonNode afterFailures = performJson(get("/api/v1/admin/settings").header("Authorization", bearer("admin-token")), 200);
         assertThat(afterFailures.toString()).doesNotContain("audit fail", "settings fail");
@@ -336,13 +351,18 @@ class AdminApiContractTest {
 
         JsonNode adminModules = performJson(get("/api/v1/admin/modules").header("Authorization", bearer("admin-token")), 200);
         assertThat(valuesAt(adminModules, "/data/items", "moduleKey")).doesNotContain("RESOURCE");
+        performJson(get("/api/v1/admin/modules/RESOURCE").header("Authorization", bearer("admin-token")), 409, 43713);
 
         JsonNode ownerModules = performJson(get("/api/v1/admin/modules")
                 .header("Authorization", bearer("owner-token"))
                 .param("includeDisabled", "true"), 200);
         assertThat(ownerModules.toString()).contains("\"moduleKey\":\"RESOURCE\"", "\"status\":\"DISABLED\"");
+        JsonNode ownerResource = performJson(get("/api/v1/admin/modules/RESOURCE").header("Authorization", bearer("owner-token")), 200);
+        assertThat(ownerResource.at("/data/status").asText()).isEqualTo("DISABLED");
 
         performJson(patch("/api/v1/admin/settings").header("Authorization", bearer("admin-token")), invalidQuickActionBody("bad-quick-action"), 409, 43713);
+        performJson(patch("/api/v1/admin/settings").header("Authorization", bearer("admin-token")),
+                quickActionBody("bad-ops-logs", "ops-logs", "/admin/ops-control/logs/live"), 409, 43713);
 
         Map<String, Object> first = nestedIdempotencyBody("nested-idem-1", true);
         JsonNode updated = performJson(patch("/api/v1/admin/settings").header("Authorization", bearer("admin-token")), first, 200);
@@ -555,11 +575,25 @@ class AdminApiContractTest {
     }
 
     private Map<String, Object> invalidQuickActionBody(String idempotencyKey) {
+        return quickActionBody(idempotencyKey, "ops-control", "/admin/ops-control/terminal");
+    }
+
+    private Map<String, Object> quickActionBody(String idempotencyKey, String key, String targetRoute) {
         Map<String, Object> layout = new LinkedHashMap<>();
-        layout.put("quickActions", List.of(Map.of("key", "ops-control", "targetRoute", "/admin/ops-control/terminal")));
+        layout.put("quickActions", List.of(Map.of("key", key, "targetRoute", targetRoute)));
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("layout", layout);
         body.put("reason", "invalid quick action");
+        body.put("idempotencyKey", idempotencyKey);
+        return body;
+    }
+
+    private Map<String, Object> invalidLayoutListBody(String idempotencyKey, String field, List<String> values) {
+        Map<String, Object> layout = new LinkedHashMap<>();
+        layout.put(field, values);
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("layout", layout);
+        body.put("reason", "invalid layout list");
         body.put("idempotencyKey", idempotencyKey);
         return body;
     }

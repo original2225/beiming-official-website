@@ -197,7 +197,9 @@ class AdminStore {
         if (modules.size() > moduleLimit) {
             modules = new ArrayList<>(modules.subList(0, moduleLimit));
         }
-        List<String> degraded = degradedModules(request);
+        List<String> degraded = degradedModules(request).stream()
+                .filter(moduleKey -> canAccessModule(actor, moduleKey))
+                .toList();
         Map<String, Object> todoSummary = new LinkedHashMap<>();
         List<Map<String, Object>> todos = filteredTodos(actor, Map.of(), request);
         todoSummary.put("total", todos.size());
@@ -249,6 +251,9 @@ class AdminStore {
             if (!includeDisabled && (!config.enabled || hiddenModules().contains(config.key))) {
                 continue;
             }
+            if (!canAccessModule(actor, config.key)) {
+                continue;
+            }
             Map<String, Object> row = moduleEntry(actor, config.key, request);
             if (status != null && !status.equals(row.get("status"))) {
                 continue;
@@ -275,9 +280,10 @@ class AdminStore {
         if (config == null) {
             throw new AdminException(404, 43700, "module not found");
         }
-        if (!config.enabled && !actor.hasRole("OWNER")) {
+        if ((!config.enabled || hiddenModules().contains(moduleKey)) && !actor.hasRole("OWNER")) {
             throw new AdminException(409, 43713, "module disabled");
         }
+        requireModuleAccess(actor, moduleKey);
         return moduleEntry(actor, moduleKey, request);
     }
 
@@ -340,6 +346,7 @@ class AdminStore {
         addMetric(metrics, "guide.pendingReview", "Pending guides", "GUIDE", 2, "/admin/guides", request);
         return metrics.stream()
                 .filter(metric -> source == null || source.equals(metric.get("sourceModule")))
+                .filter(metric -> canAccessModule(actor, metric.get("sourceModule").toString()))
                 .filter(metric -> includeDegraded || !Boolean.TRUE.equals(metric.get("degraded")))
                 .toList();
     }
@@ -536,6 +543,7 @@ class AdminStore {
         }
         return rows.stream()
                 .filter(todo -> source == null || source.equals(todo.get("sourceModule")))
+                .filter(todo -> canAccessModule(actor, todo.get("sourceModule").toString()))
                 .filter(todo -> type == null || type.equals(todo.get("type")))
                 .filter(todo -> severity == null || severity.equals(todo.get("severity")))
                 .filter(todo -> status == null || status.equals(todo.get("status")))
@@ -623,18 +631,18 @@ class AdminStore {
         Object layoutObj = body.get("layout");
         if (layoutObj instanceof Map<?, ?> patch) {
             if (patch.containsKey("navigationModuleOrder")) {
-                List<String> order = stringList(patch.get("navigationModuleOrder"));
+                List<String> order = moduleKeyList(patch.get("navigationModuleOrder"));
                 layout.put("navigationModuleOrder", order);
             }
             if (patch.containsKey("hiddenModules")) {
-                List<String> hidden = stringList(patch.get("hiddenModules"));
+                List<String> hidden = moduleKeyList(patch.get("hiddenModules"));
                 if (hidden.containsAll(IMPLEMENTED)) {
                     throw new AdminException(409, 43710, "cannot hide all implemented modules");
                 }
                 layout.put("hiddenModules", hidden);
             }
             if (patch.containsKey("dashboardCards")) {
-                layout.put("dashboardCards", stringList(patch.get("dashboardCards")));
+                layout.put("dashboardCards", dashboardCardList(patch.get("dashboardCards")));
             }
             if (patch.containsKey("quickActions")) {
                 layout.put("quickActions", quickActions(patch.get("quickActions"), actor));
@@ -682,7 +690,7 @@ class AdminStore {
                 && IMPLEMENTED.contains(moduleKey)
                 && !hiddenModules().contains(moduleKey)
                 && !sensitiveQuickActionRoute(route)
-                && actor.hasAny(requiredRoles(moduleKey).toArray(String[]::new));
+                && canAccessModule(actor, moduleKey);
     }
 
     private boolean sensitiveQuickActionRoute(String route) {
@@ -692,9 +700,11 @@ class AdminStore {
                 || route.startsWith("/admin/ops-control/nodes")
                 || route.startsWith("/admin/ops-control/tasks")
                 || route.startsWith("/admin/ops-control/approvals")
+                || route.startsWith("/admin/ops-control/logs")
                 || route.startsWith("/admin/node-daemon/nodes")
                 || route.startsWith("/admin/node-daemon/keys")
-                || route.startsWith("/admin/node-daemon/tasks");
+                || route.startsWith("/admin/node-daemon/tasks")
+                || route.startsWith("/admin/node-daemon/logs");
     }
 
     private String moduleKeyForRoute(String route) {
@@ -732,7 +742,7 @@ class AdminStore {
         }
         Object layoutObj = body.get("layout");
         if (layoutObj instanceof Map<?, ?> patch && patch.containsKey("hiddenModules")) {
-            return stringList(patch.get("hiddenModules")).stream().anyMatch(key -> Set.of("AUTH", "ADMIN").contains(key));
+            return moduleKeyList(patch.get("hiddenModules")).stream().anyMatch(key -> Set.of("AUTH", "ADMIN").contains(key));
         }
         return false;
     }
@@ -814,14 +824,29 @@ class AdminStore {
         return text;
     }
 
-    private List<String> stringList(Object value) {
+    private List<String> moduleKeyList(Object value) {
         if (!(value instanceof List<?> list)) {
             throw new AdminException(400, 40001, "invalid list");
         }
         List<String> result = new ArrayList<>();
         for (Object item : list) {
             String text = Objects.toString(item, "");
-            if (!MODULE_KEYS.contains(text) && !Set.of("todos", "metrics", "health").contains(text)) {
+            if (!MODULE_KEYS.contains(text)) {
+                throw new AdminException(400, 40001, "invalid list item");
+            }
+            result.add(text);
+        }
+        return result;
+    }
+
+    private List<String> dashboardCardList(Object value) {
+        if (!(value instanceof List<?> list)) {
+            throw new AdminException(400, 40001, "invalid list");
+        }
+        List<String> result = new ArrayList<>();
+        for (Object item : list) {
+            String text = Objects.toString(item, "");
+            if (!Set.of("todos", "metrics", "health").contains(text)) {
                 throw new AdminException(400, 40001, "invalid list item");
             }
             result.add(text);
@@ -977,6 +1002,20 @@ class AdminStore {
             return List.of("NODE_READ");
         }
         return List.of();
+    }
+
+    private boolean canAccessModule(AuthUser actor, String moduleKey) {
+        return actor.hasAny(requiredRoles(moduleKey).toArray(String[]::new))
+                && actor.hasPermissions(requiredPermissions(moduleKey));
+    }
+
+    private void requireModuleAccess(AuthUser actor, String moduleKey) {
+        if (!actor.hasAny(requiredRoles(moduleKey).toArray(String[]::new))) {
+            throw new AdminException(403, 42001, "role permission denied");
+        }
+        if (!actor.hasPermissions(requiredPermissions(moduleKey))) {
+            throw new AdminException(403, 42002, "capability permission denied");
+        }
     }
 
     private List<String> degradedModules(HttpServletRequest request) {
@@ -1206,10 +1245,11 @@ class TestAdminAuthProvider {
             throw new AdminException(504, 46704, "auth context timeout");
         }
         AuthUser user = switch (token) {
-            case "owner-token" -> new AuthUser("owner", Set.of("OWNER"));
-            case "admin-token" -> new AuthUser("admin", Set.of("ADMIN"));
-            case "helper-token" -> new AuthUser("helper", Set.of("HELPER"));
-            case "user-token" -> new AuthUser("user", Set.of("USER"));
+            case "owner-token" -> new AuthUser("owner", Set.of("OWNER"), Set.of("NODE_READ"));
+            case "admin-token" -> new AuthUser("admin", Set.of("ADMIN"), Set.of("NODE_READ"));
+            case "admin-no-node-token" -> new AuthUser("admin-no-node", Set.of("ADMIN"), Set.of());
+            case "helper-token" -> new AuthUser("helper", Set.of("HELPER"), Set.of());
+            case "user-token" -> new AuthUser("user", Set.of("USER"), Set.of());
             default -> throw new AdminException(401, 41001, "invalid session");
         };
         if (!user.hasAny(roles)) {
@@ -1219,7 +1259,7 @@ class TestAdminAuthProvider {
     }
 }
 
-record AuthUser(String userId, Set<String> roles) {
+record AuthUser(String userId, Set<String> roles, Set<String> permissions) {
     boolean hasRole(String role) {
         return roles.contains(role);
     }
@@ -1231,6 +1271,10 @@ record AuthUser(String userId, Set<String> roles) {
             }
         }
         return false;
+    }
+
+    boolean hasPermissions(List<String> required) {
+        return permissions.containsAll(required);
     }
 }
 
