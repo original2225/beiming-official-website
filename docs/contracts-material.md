@@ -44,6 +44,8 @@
 
 当前请求认证上下文至少包含 `userId`、`displayName`、`roles`、`permissions` 和 `status`。用户状态为 `DISABLED`、`BANNED` 或 `DELETED` 时不得创建上传会话、投稿或访问后台接口。
 
+`material` 通过 api-gateway 访问时，优先读取网关注入的可信身份头：`X-Beiming-Actor-User-Id`、`X-Beiming-Actor-Roles`、`X-Beiming-Actor-Permissions`、`X-Beiming-Actor-Minecraft-Id` 和 `X-Gateway-Internal-Request-Id`。P0.1 中只有 `X-Gateway-Internal-Request-Id` 与当前 `X-Request-Id` 一致时，才接受这些 actor 头。客户端直接伪造的 actor 头必须忽略，不得覆盖 `Authorization` 校验结果。生产接入内部签名或 mTLS 前，自检摘要必须暴露 `GATEWAY_INTERNAL_SIGNATURE_NOT_ENABLED` 缺口。
+
 后台写操作中的 `createdBy`、`updatedBy`、`submittedBy`、`reviewedBy`、`featuredBy`、`offlineBy`、`archivedBy` 和 `deletedBy` 均来自服务端认证上下文。auth 上下文不可用返回 `46700`，auth 调用超时返回 `46701`，auth 字段缺失或枚举不兼容返回 `46702`。
 
 ## profile 兼容契约
@@ -89,6 +91,7 @@ P0 上传采用 `LOCAL_STUB` 模式。客户端先创建上传会话，服务端
 | `slug` | string | 是 | 分类 slug，2 到 80 位，只允许小写字母、数字和短横线。 |
 | `description` | string 或 null | 是 | 分类说明，最多 200 位。 |
 | `sortOrder` | integer | 是 | 排序值，数字越小越靠前。 |
+| `kind` | string | 是 | 适用素材类型。P0.1 创建分类未传时默认为 `IMAGE`。 |
 | `enabled` | boolean | 是 | 是否启用。 |
 | `archived` | boolean | 是 | 是否归档。 |
 | `createdAt` | string | 是 | 创建时间。 |
@@ -269,7 +272,7 @@ P0 上传采用 `LOCAL_STUB` 模式。客户端先创建上传会话，服务端
 
 `GET /api/v1/materials/featured`
 
-查询参数包括 `limit`、`kind`、`categoryId` 和 `tag`。`limit` 默认 `12`，最大 `50`。成功响应 HTTP `200`，`data.items` 为 `PublicMaterialSummary[]`，只返回 `FEATURED`、`PUBLIC`、文件安全、未下架、未归档和未软删除素材。
+查询参数包括 `limit`、`kind`、`categoryId` 和 `tag`。`limit` 默认 `12`，最大 `50`。成功响应 HTTP `200`，`data.items` 为 `PublicMaterialSummary[]`，只返回 `FEATURED`、`PUBLIC`、文件安全、未下架、未归档、未软删除且处于可见时间范围内的素材。
 
 ### 公开素材列表
 
@@ -277,7 +280,7 @@ P0 上传采用 `LOCAL_STUB` 模式。客户端先创建上传会话，服务端
 
 查询参数包括 `page`、`pageSize`、`kind`、`categoryId`、`tag`、`authorUserId`、`keyword` 和 `sort`。`sort` 允许 `publishedAt_desc`、`updatedAt_desc`、`title_asc`、`featured_desc`。成功响应 HTTP `200`，分页 `items` 为 `PublicMaterialSummary[]`。
 
-公开列表必须按过滤后的全集计算 `total`。空页返回空数组，不得回退第一页。公开列表不得返回未审核、需修改、已拒绝、已下架、已归档、已软删除、非公开可见或文件安全未通过的素材。
+公开列表必须按过滤后的全集计算 `total`。空页返回空数组，不得回退第一页。`authorUserId` 只按已保存作者快照做公开筛选，不暴露作者敏感字段。公开列表不得返回未审核、需修改、已拒绝、已下架、已归档、已软删除、非公开可见、文件安全未通过、可见时间未开始或可见时间已结束的素材。
 
 ### 公开素材详情
 
@@ -355,7 +358,7 @@ P0 上传采用 `LOCAL_STUB` 模式。客户端先创建上传会话，服务端
 
 ### 后台素材列表和详情
 
-`GET /api/v1/materials/admin/items` 支持 `page`、`pageSize`、`status`、`kind`、`visibility`、`categoryId`、`authorUserId`、`assetStatus`、`keyword` 和 `sort`。`sort` 允许 `submittedAt_desc`、`updatedAt_desc`、`publishedAt_desc`、`title_asc`。成功响应分页 `items` 为 `AdminMaterialItem[]`。
+`GET /api/v1/materials/admin/items` 支持 `page`、`pageSize`、`status`、`kind`、`visibility`、`categoryId`、`authorUserId`、`assetStatus`、`keyword` 和 `sort`。`sort` 允许 `submittedAt_desc`、`updatedAt_desc`、`publishedAt_desc`、`title_asc`。成功响应分页 `items` 为 `AdminMaterialItem[]`。所有筛选条件必须在分页前生效。
 
 `GET /api/v1/materials/admin/items/{materialId}` 成功响应 `AdminMaterialItem`。素材不存在返回 `43700`。
 
@@ -363,7 +366,7 @@ P0 上传采用 `LOCAL_STUB` 模式。客户端先创建上传会话，服务端
 
 `PATCH /api/v1/materials/admin/items/{materialId}/approve`
 
-请求字段包括 `reviewOpinion`、`reason` 和可选 `idempotencyKey`。`PENDING_REVIEW` 可流转为 `APPROVED`，并写入 `reviewedAt`、`publishedAt` 和审核人。重复审核已 `APPROVED` 返回成功，不重复写审计。所有文件必须为 `SAFE`，否则返回 `43715`。辅助通知失败时主流程成功但审计记录失败摘要。
+请求字段包括 `reviewOpinion`、`reason` 和可选 `idempotencyKey`。`PENDING_REVIEW` 可流转为 `APPROVED`，并写入 `reviewedAt`、`publishedAt` 和审核人。相同操作者、相同 `idempotencyKey` 和相同请求体重复审核返回首次结果，不重复写审计；相同 `idempotencyKey` 搭配不同请求体返回 `43714`。未传 `idempotencyKey` 时，重复审核已 `APPROVED` 返回成功，不重复写审计。所有文件必须为 `SAFE`，否则返回 `43715`。辅助通知失败时主流程成功但审计记录失败摘要。
 
 ### 审核拒绝
 
@@ -389,21 +392,21 @@ P0 上传采用 `LOCAL_STUB` 模式。客户端先创建上传会话，服务端
 
 `PATCH /api/v1/materials/admin/items/{materialId}/delete` 只做软删除，状态为 `DELETED`，写入 `deletedAt`。公开中的素材必须先下架再软删除。P0 不提供真实删除接口。
 
-这些状态接口请求字段均包含必填 `reason`。审计失败时不得改变业务状态。
+这些状态接口请求字段均包含必填 `reason` 和可选 `idempotencyKey`。相同操作者、相同接口语义、相同 `idempotencyKey` 和相同请求体重复提交返回首次结果；相同 `idempotencyKey` 搭配不同请求体返回 `43714`。审计失败时不得改变业务状态。
 
 ## 后台分类接口
 
-`GET /api/v1/materials/admin/categories` 支持 `includeArchived`、`enabled`、`kind` 和 `keyword`。`POST /api/v1/materials/admin/categories` 创建分类，`PATCH /api/v1/materials/admin/categories/{categoryId}` 修改分类，`PATCH /api/v1/materials/admin/categories/{categoryId}/archive` 归档分类。创建和修改字段包括 `name`、`slug`、`description`、`sortOrder`、`enabled`、`reason` 和可选 `idempotencyKey`。分类名称或 slug 冲突返回 `43711`。仍被未归档、未软删除素材引用的分类不能归档，返回 `43716`。
+`GET /api/v1/materials/admin/categories` 支持 `includeArchived`、`enabled`、`kind` 和 `keyword`。`POST /api/v1/materials/admin/categories` 创建分类，`PATCH /api/v1/materials/admin/categories/{categoryId}` 修改分类，`PATCH /api/v1/materials/admin/categories/{categoryId}/archive` 归档分类。创建和修改字段包括 `name`、`slug`、`description`、`sortOrder`、`enabled`、`kind`、`reason` 和可选 `idempotencyKey`。分类名称或 slug 冲突返回 `43711`。仍被未归档、未软删除素材引用的分类不能归档，返回 `43716`。
 
 ## 后台文件安全接口
 
-`GET /api/v1/materials/admin/assets` 支持 `page`、`pageSize`、`status`、`ownerUserId`、`materialId`、`extension`、`mimeType` 和 `sort`。后台可以查看 `securityRejectReason`，但不得返回上传票据或内部绝对路径。
+`GET /api/v1/materials/admin/assets` 支持 `page`、`pageSize`、`status`、`ownerUserId`、`materialId`、`extension`、`mimeType` 和 `sort`。`sort` 允许 `createdAt_desc`、`createdAt_asc` 和 `size_desc`。后台可以查看 `securityRejectReason`，但不得返回上传票据或内部绝对路径。
 
-`PATCH /api/v1/materials/admin/assets/{assetId}/security-status` 请求字段包括 `status`、`securityRejectReason` 和 `reason`。允许在 `SCANNING`、`SAFE`、`REJECTED`、`QUARANTINED` 间维护安全状态。把已公开素材的唯一公开文件改为非 `SAFE` 时，关联素材必须停止公开展示或返回文件安全冲突，不得继续公开危险文件。
+`PATCH /api/v1/materials/admin/assets/{assetId}/security-status` 请求字段包括 `status`、`securityRejectReason`、`reason` 和可选 `idempotencyKey`。允许在 `SCANNING`、`SAFE`、`REJECTED`、`QUARANTINED` 间维护安全状态。相同操作者、相同 `idempotencyKey` 和相同请求体重复提交返回首次结果；相同 `idempotencyKey` 搭配不同请求体返回 `43714`。把已公开素材的唯一公开文件改为非 `SAFE` 时，关联素材必须停止公开展示或返回文件安全冲突，不得继续公开危险文件。
 
 ## 审计和自检接口
 
-`GET /api/v1/materials/admin/items/{materialId}/audit-logs` 支持 `page`、`pageSize`、`action`、`actorUserId`、`result`、`from`、`to` 和 `sort`。只有 `ADMIN` 和 `OWNER` 可访问。审计日志不得通过 material API 删除。
+`GET /api/v1/materials/admin/items/{materialId}/audit-logs` 支持 `page`、`pageSize`、`action`、`actorUserId`、`result`、`from`、`to` 和 `sort`。`sort` 允许 `createdAt_desc` 和 `createdAt_asc`。只有 `ADMIN` 和 `OWNER` 可访问。审计日志不得通过 material API 删除。
 
 `GET /api/v1/materials/admin/ops/summary` 返回服务运行模式、端口、存储模式、auth/profile/notification/storage 适配模式、素材数量、待审核数量、精选数量、文件数量、安全状态统计、审计数量、幂等记录数量、生产化缺口和最近审计时间。摘要不得返回 token、上传票据、内部路径、后台备注、审核意见全文、通知正文、对象存储密钥或异常堆栈。
 
@@ -413,9 +416,9 @@ P0 上传采用 `LOCAL_STUB` 模式。客户端先创建上传会话，服务端
 
 文件安全状态和素材审核状态必须分开。文件未上传、校验中、隔离、拒绝或过期时，素材不能提交审核，也不能公开展示。素材审核通过不代表文件安全通过；文件安全通过也不代表审核通过。
 
-创建上传会话、完成上传、创建投稿、提交审核、后台审核、创建分类和修改安全状态支持 `idempotencyKey`。同一操作者、同一接口语义、同一幂等键、同一请求体重复提交时返回同一结果。相同幂等键搭配不同请求体返回 `43714`。请求体指纹必须基于结构化 JSON 规范化结果，嵌套对象按字段名递归排序，数组保留顺序，不能依赖浏览器字段顺序或 Java `Map.toString()`。
+创建上传会话、完成上传、创建投稿、提交审核、后台审核、后台状态操作、创建分类、修改分类和修改安全状态支持 `idempotencyKey`。同一操作者、同一接口语义、同一幂等键、同一请求体重复提交时返回同一结果。相同幂等键搭配不同请求体返回 `43714`。请求体指纹必须基于结构化 JSON 规范化结果，嵌套对象按字段名递归排序，数组保留顺序，不能依赖浏览器字段顺序或 Java `Map.toString()`。
 
-并发创建相同 slug、相同分类 slug、相同上传 complete 文件摘要时只能一个成功或一个幂等成功，其余返回冲突。公开读取允许读到更新前或更新后的完整状态，不能返回半更新对象。
+P0.1 内存实现必须用本服务内临界区保护创建上传会话、完成上传、创建投稿、修改投稿、提交审核、撤回、重新提交、后台审核、后台状态操作、分类维护和文件安全状态修改。并发创建相同 slug、相同分类 slug、相同上传 complete 文件摘要时只能一个成功或一个幂等成功，其余返回冲突。公开读取允许读到更新前或更新后的完整状态，不能返回半更新对象。后续持久化实现必须把这些保护迁移为数据库事务、唯一约束、条件更新或等效机制。
 
 ## 审计要求
 
