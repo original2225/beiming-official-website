@@ -171,7 +171,7 @@
 
 ### AdminGuideArticle
 
-后台指南视图包含公开字段、草稿正文、状态、可见性、目录、指令条目、引用快照、外部入口引用、维护人快照、后台备注、审核意见、通知摘要、验证时间、复核时间、版本号、状态时间、操作者 ID、删除时间和生产化提示。后台详情可以返回引用降级摘要，但不得返回 token、分享密码、外部渠道管理凭据、完整请求头或异常堆栈。
+后台指南视图包含公开字段、草稿正文、状态、可见性、目录、指令条目、引用快照、外部入口引用、外部入口 ID 快照、维护人快照、后台备注、审核意见、通知摘要、验证时间、复核时间、版本号、状态时间、操作者 ID、删除时间和生产化提示。后台详情可以返回引用降级摘要，但不得返回 token、分享密码、外部渠道管理凭据、完整请求头或异常堆栈。
 
 ### GuideVersion
 
@@ -180,7 +180,7 @@
 | `guideId` | string | 是 | 指南 ID。 |
 | `version` | integer | 是 | 版本号，从 1 开始递增。 |
 | `sourceAction` | string | 是 | `CREATED`、`UPDATED`、`PUBLISHED`、`RESTORED` 等。 |
-| `snapshot` | AdminGuideArticle | 是 | 后台安全快照。 |
+| `snapshot` | AdminGuideArticle | 是 | 后台安全恢复快照，必须冻结标题、摘要、正文、类型、slug、分类、标签、受众、可见性、置顶、目录、指令条目、外部入口 ID、规则版本、可见时间窗、验证时间、复核时间、后台备注和维护人快照；不得包含版本摘要、反馈摘要、通知正文、token、密码、分享密钥、完整请求头或异常堆栈。 |
 | `createdBy` | string | 是 | 创建版本的用户 ID。 |
 | `createdAt` | string | 是 | 版本创建时间。 |
 | `reason` | string 或 null | 是 | 操作原因。 |
@@ -487,7 +487,7 @@
 
 ## 版本、分类、渠道、反馈、审计和自检
 
-`GET /api/v1/guides/admin/articles/{guideId}/versions` 返回指南版本分页。`GET /api/v1/guides/admin/articles/{guideId}/versions/{version}` 返回指定版本。`PATCH /api/v1/guides/admin/articles/{guideId}/versions/{version}/restore` 用指定历史版本生成新版本；`ARCHIVED` 和 `DELETED` 指南不得恢复，slug 或规则版本冲突返回 `43911` 或 `43913`。
+`GET /api/v1/guides/admin/articles/{guideId}/versions` 返回指南版本分页。`GET /api/v1/guides/admin/articles/{guideId}/versions/{version}` 返回指定版本。`PATCH /api/v1/guides/admin/articles/{guideId}/versions/{version}/restore` 用指定历史版本生成新版本；恢复必须原子应用历史快照中的可恢复字段，包括标题、摘要、正文、类型、slug、分类、标签、受众、可见性、置顶、目录、指令条目、外部入口 ID、规则版本、可见时间窗、验证时间、复核时间、后台备注和维护人快照。恢复不得覆盖 `guideId`、当前状态、当前版本号、创建人、发布时间、删除时间、版本摘要、反馈摘要和审计记录；成功后递增当前版本，写入 `RESTORED` 版本并记录 `restoredFromVersion`。`ARCHIVED` 和 `DELETED` 指南不得恢复；历史 slug 被其他未删除指南占用返回 `43911`，历史规则版本被其他指南占用返回 `43913`，历史分类不存在返回 `43901`，历史外部入口不存在返回 `43903`。审计失败、幂等冲突或任一校验失败时不得改变业务状态。
 
 后台分类接口支持列表、创建、修改和归档。创建和修改字段包括 `name`、`slug`、`description`、`icon`、`sortOrder`、`enabled`、`reason` 和可选 `idempotencyKey`。仍被未归档指南引用的分类不能归档，返回 `43915`。归档后公开分类列表不再返回。
 
