@@ -357,8 +357,14 @@ class MaterialStore {
     private static final Set<String> KINDS = Set.of("IMAGE", "VIDEO", "BUILD_SCREENSHOT", "PROJECT_RECORD", "EVENT_MEMORY", "DOCUMENT_ATTACHMENT", "OTHER");
     private static final Set<String> SAFE_EXTENSIONS = Set.of("png", "jpg", "jpeg", "webp", "gif", "mp4", "webm", "pdf", "txt", "md");
     private static final Set<String> IMAGE_MIMES = Set.of("image/png", "image/jpeg", "image/webp", "image/gif");
+    private static final Set<String> VIDEO_MIMES = Set.of("video/mp4", "video/webm");
+    private static final Set<String> DOCUMENT_MIMES = Set.of("application/pdf", "text/plain", "text/markdown");
+    private static final Set<String> IMAGE_VIDEO_MIMES = Set.of("image/png", "image/jpeg", "image/webp", "image/gif", "video/mp4", "video/webm");
+    private static final Set<String> ALL_SAFE_MIMES = Set.of("image/png", "image/jpeg", "image/webp", "image/gif", "video/mp4", "video/webm", "application/pdf", "text/plain", "text/markdown");
     private static final Set<String> PUBLIC_SORTS = Set.of("publishedAt_desc", "updatedAt_desc", "title_asc", "featured_desc");
     private static final Set<String> ADMIN_SORTS = Set.of("submittedAt_desc", "updatedAt_desc", "publishedAt_desc", "title_asc");
+    private static final Set<String> ASSET_SORTS = Set.of("createdAt_desc", "createdAt_asc", "size_desc");
+    private static final Set<String> AUDIT_SORTS = Set.of("createdAt_desc", "createdAt_asc");
 
     private final Map<String, Map<String, Object>> materials = new ConcurrentHashMap<>();
     private final Map<String, Map<String, Object>> categories = new ConcurrentHashMap<>();
@@ -391,6 +397,7 @@ class MaterialStore {
         addMaterial("mat-pending-reject", "pending-reject", "IMAGE", "PENDING_REVIEW", "PUBLIC", "cat-builds", List.of("pending"), List.of("asset-owned-safe"), true, "member", true);
         addMaterial("mat-pending-changes", "pending-changes", "IMAGE", "PENDING_REVIEW", "PUBLIC", "cat-builds", List.of("pending"), List.of("asset-owned-safe"), true, "member", true);
         addMaterial("mat-pending-unsafe", "pending-unsafe", "IMAGE", "PENDING_REVIEW", "PUBLIC", "cat-builds", List.of("pending"), List.of("asset-unsafe"), true, "member", true);
+        addMaterial("mat-pending-aux", "pending-aux", "IMAGE", "PENDING_REVIEW", "PUBLIC", "cat-builds", List.of("pending"), List.of("asset-owned-safe"), true, "member", true);
         addMaterial("mat-rejected", "rejected-spawn", "IMAGE", "REJECTED", "PUBLIC", "cat-builds", List.of("reject"), List.of("asset-owned-safe"), true, "member", true);
         addMaterial("mat-needs", "needs-spawn", "IMAGE", "NEEDS_CHANGES", "PUBLIC", "cat-builds", List.of("needs"), List.of("asset-owned-safe"), true, "member", true);
         addMaterial("mat-offline", "offline-spawn", "IMAGE", "OFFLINE", "PUBLIC", "cat-builds", List.of("offline"), List.of("asset-owned-safe"), true, "member", true);
@@ -440,13 +447,15 @@ class MaterialStore {
     }
 
     List<Map<String, Object>> publicCategories(Map<String, String> query) {
-        if (query.containsKey("kind") && !KINDS.contains(query.get("kind"))) {
+        String kind = query.get("kind");
+        if (kind != null && !KINDS.contains(kind)) {
             throw new MaterialException(400, 40001, "invalid kind");
         }
         String keyword = lower(query.get("keyword"));
         return categories.values().stream()
                 .filter(item -> bool(item.get("enabled")))
                 .filter(item -> !bool(item.get("archived")))
+                .filter(item -> kind == null || kind.equals(item.get("kind")))
                 .filter(item -> keyword == null || lower(str(item.get("name"))).contains(keyword) || lower(str(item.get("slug"))).contains(keyword))
                 .sorted(Comparator.<Map<String, Object>>comparingInt(item -> intValue(item.get("sortOrder"), 100)).thenComparing(item -> str(item.get("name"))))
                 .map(this::categoryPublicView)
@@ -461,7 +470,7 @@ class MaterialStore {
                 .toList();
     }
 
-    Map<String, Object> createUploadSession(AuthUser user, Map<String, Object> body, HttpServletRequest request) {
+    synchronized Map<String, Object> createUploadSession(AuthUser user, Map<String, Object> body, HttpServletRequest request) {
         checkStorage(request);
         String key = str(body.get("idempotencyKey"));
         String idemKey = user.id() + ":upload-session:" + key;
@@ -469,6 +478,8 @@ class MaterialStore {
         Map<String, Object> existing = (Map<String, Object>) replay(idemKey, body);
         if (existing != null) return existing;
         validateUploadSessionBody(body);
+        List<String> expectedFileNames = list(body.get("expectedFileNames"));
+        List<String> expectedMimeTypes = list(body.get("expectedMimeTypes"));
 
         String id = "sess-" + (++idSeq);
         Map<String, Object> session = mapOf(
@@ -476,16 +487,17 @@ class MaterialStore {
                 "provider", "LOCAL_STUB",
                 "purpose", "MATERIAL_SUBMISSION",
                 "ownerUserId", user.id(),
-                "allowedExtensions", List.of("png", "jpg", "jpeg", "webp", "gif"),
-                "allowedMimeTypes", List.of("image/png", "image/jpeg", "image/webp", "image/gif"),
+                "kind", body.get("kind"),
+                "allowedExtensions", expectedFileNames.stream().map(this::extensionOf).toList(),
+                "allowedMimeTypes", expectedMimeTypes,
                 "maxFileSizeBytes", body.get("maxFileSizeBytes"),
-                "maxFiles", list(body.get("expectedFileNames")).size(),
+                "maxFiles", expectedFileNames.size(),
                 "uploadTicket", "ticket-" + id,
                 "uploadTarget", "/local-stub/materials/" + id,
                 "status", "PENDING_UPLOAD",
                 "expiresAt", "2026-05-30T01:00:00Z",
                 "createdAt", NOW,
-                "expectedFileNames", list(body.get("expectedFileNames")),
+                "expectedFileNames", expectedFileNames,
                 "checksumSha256", body.get("checksumSha256")
         );
         sessions.put(id, session);
@@ -494,7 +506,7 @@ class MaterialStore {
         return new LinkedHashMap<>(session);
     }
 
-    List<Map<String, Object>> completeUploadSession(AuthUser user, String sessionId, Map<String, Object> body, HttpServletRequest request) {
+    synchronized List<Map<String, Object>> completeUploadSession(AuthUser user, String sessionId, Map<String, Object> body, HttpServletRequest request) {
         checkStorage(request);
         if ("true".equals(request.getHeader("X-Test-Fail-Upload-Record"))) {
             throw new MaterialException(500, 51702, "upload record failed");
@@ -544,7 +556,7 @@ class MaterialStore {
         return created;
     }
 
-    Map<String, Object> createSubmission(AuthUser user, Map<String, Object> body, HttpServletRequest request) {
+    synchronized Map<String, Object> createSubmission(AuthUser user, Map<String, Object> body, HttpServletRequest request) {
         validateSubmissionBody(body, true);
         String key = str(body.get("idempotencyKey"));
         String idemKey = user.id() + ":submission:" + key;
@@ -598,7 +610,7 @@ class MaterialStore {
         return myView(material);
     }
 
-    Map<String, Object> patchSubmission(AuthUser user, String materialId, Map<String, Object> body, HttpServletRequest request) {
+    synchronized Map<String, Object> patchSubmission(AuthUser user, String materialId, Map<String, Object> body, HttpServletRequest request) {
         Map<String, Object> material = requireMine(user, materialId);
         if (!Set.of("DRAFT", "NEEDS_CHANGES").contains(material.get("status"))) {
             throw new MaterialException(409, 43710, "invalid state");
@@ -612,7 +624,7 @@ class MaterialStore {
         return myView(material);
     }
 
-    Map<String, Object> submitReview(AuthUser user, String materialId, Map<String, Object> body, HttpServletRequest request, boolean resubmit) {
+    synchronized Map<String, Object> submitReview(AuthUser user, String materialId, Map<String, Object> body, HttpServletRequest request, boolean resubmit) {
         Map<String, Object> material = requireMine(user, materialId);
         validateReason(body);
         validateProfile(user);
@@ -630,7 +642,7 @@ class MaterialStore {
         return myView(material);
     }
 
-    Map<String, Object> withdraw(AuthUser user, String materialId, Map<String, Object> body, HttpServletRequest request) {
+    synchronized Map<String, Object> withdraw(AuthUser user, String materialId, Map<String, Object> body, HttpServletRequest request) {
         Map<String, Object> material = requireMine(user, materialId);
         validateReason(body);
         if ("DRAFT".equals(material.get("status"))) return myView(material);
@@ -648,12 +660,21 @@ class MaterialStore {
         validateSort(query.get("sort"), ADMIN_SORTS, "updatedAt_desc");
         String status = query.get("status");
         String kind = query.get("kind");
+        if (kind != null && !KINDS.contains(kind)) throw new MaterialException(400, 40001, "invalid kind");
+        String visibility = query.get("visibility");
+        String categoryId = query.get("categoryId");
+        String authorUserId = query.get("authorUserId");
         String assetStatus = query.get("assetStatus");
+        String keyword = lower(query.get("keyword"));
         List<Map<String, Object>> items = materials.values().stream()
                 .filter(item -> status == null || status.equals(item.get("status")))
                 .filter(item -> kind == null || kind.equals(item.get("kind")))
+                .filter(item -> visibility == null || visibility.equals(item.get("visibility")))
+                .filter(item -> categoryId == null || categoryId.equals(item.get("categoryId")))
+                .filter(item -> authorUserId == null || authorUserId.equals(item.get("authorUserId")))
                 .filter(item -> assetStatus == null || materialAssets(item).stream().anyMatch(asset -> assetStatus.equals(asset.get("status"))))
-                .sorted(Comparator.comparing(item -> str(item.get("updatedAt")), Comparator.reverseOrder()))
+                .filter(item -> keyword == null || lower(str(item.get("title"))).contains(keyword) || lower(str(item.get("slug"))).contains(keyword) || lower(str(item.get("summary"))).contains(keyword))
+                .sorted(adminComparator(query.getOrDefault("sort", "updatedAt_desc")))
                 .map(this::adminView)
                 .toList();
         return page(items, page);
@@ -663,10 +684,15 @@ class MaterialStore {
         return adminView(requireMaterial(materialId));
     }
 
-    Map<String, Object> review(AuthUser actor, String materialId, Map<String, Object> body, HttpServletRequest request, String action) {
+    synchronized Map<String, Object> review(AuthUser actor, String materialId, Map<String, Object> body, HttpServletRequest request, String action) {
         Map<String, Object> material = requireMaterial(materialId);
         validateReason(body);
         requireReview(body);
+        String key = str(body.get("idempotencyKey"));
+        String idemKey = actor.id() + ":review:" + action + ":" + materialId + ":" + key;
+        @SuppressWarnings("unchecked")
+        Map<String, Object> existing = (Map<String, Object>) replay(idemKey, body);
+        if (existing != null) return existing;
         if ("request-changes".equals(action) && str(body.get("publicComment")) == null) {
             throw new MaterialException(400, 40001, "public comment required");
         }
@@ -698,12 +724,19 @@ class MaterialStore {
         material.put("reviewedBy", actor.id());
         material.put("updatedAt", NOW);
         audit(actor, materialId, "MATERIAL_" + action.toUpperCase().replace('-', '_'), "SUCCESS", before, material, str(body.get("reason")));
-        return adminView(material);
+        Map<String, Object> view = adminView(material);
+        remember(idemKey, body, view);
+        return view;
     }
 
-    Map<String, Object> adminState(AuthUser actor, String materialId, Map<String, Object> body, HttpServletRequest request, String action) {
+    synchronized Map<String, Object> adminState(AuthUser actor, String materialId, Map<String, Object> body, HttpServletRequest request, String action) {
         Map<String, Object> material = requireMaterial(materialId);
         validateReason(body);
+        String key = str(body.get("idempotencyKey"));
+        String idemKey = actor.id() + ":admin-state:" + action + ":" + materialId + ":" + key;
+        @SuppressWarnings("unchecked")
+        Map<String, Object> existing = (Map<String, Object>) replay(idemKey, body);
+        if (existing != null) return existing;
         String status = str(material.get("status"));
         String next = null;
         switch (action) {
@@ -731,7 +764,6 @@ class MaterialStore {
                 if ("DELETED".equals(status)) return adminView(material);
                 if (Set.of("APPROVED", "FEATURED", "PENDING_REVIEW").contains(status)) throw new MaterialException(409, 43710, "invalid state");
                 next = "DELETED";
-                material.put("deletedAt", NOW);
             }
             default -> throw new MaterialException(409, 43710, "invalid state");
         }
@@ -739,25 +771,31 @@ class MaterialStore {
         Map<String, Object> before = snapshot(material);
         material.put("status", next);
         material.put("featured", "FEATURED".equals(next));
+        if ("delete".equals(action)) material.put("deletedAt", NOW);
         material.put("updatedAt", NOW);
         audit(actor, materialId, "MATERIAL_" + action.toUpperCase(), "SUCCESS", before, material, str(body.get("reason")));
-        return adminView(material);
+        Map<String, Object> view = adminView(material);
+        remember(idemKey, body, view);
+        return view;
     }
 
     List<Map<String, Object>> adminCategories(Map<String, String> query) {
         Boolean includeArchived = boolQuery(query.get("includeArchived"), true);
         Boolean enabled = query.containsKey("enabled") ? boolQuery(query.get("enabled"), true) : null;
+        String kind = query.get("kind");
+        if (kind != null && !KINDS.contains(kind)) throw new MaterialException(400, 40001, "invalid kind");
         String keyword = lower(query.get("keyword"));
         return categories.values().stream()
                 .filter(item -> includeArchived || !bool(item.get("archived")))
                 .filter(item -> enabled == null || bool(item.get("enabled")) == enabled)
+                .filter(item -> kind == null || kind.equals(item.get("kind")))
                 .filter(item -> keyword == null || lower(str(item.get("name"))).contains(keyword) || lower(str(item.get("slug"))).contains(keyword))
                 .sorted(Comparator.comparingInt(item -> intValue(item.get("sortOrder"), 100)))
                 .map(this::snapshot)
                 .toList();
     }
 
-    Map<String, Object> createCategory(AuthUser actor, Map<String, Object> body, HttpServletRequest request) {
+    synchronized Map<String, Object> createCategory(AuthUser actor, Map<String, Object> body, HttpServletRequest request) {
         validateCategoryBody(body, true);
         String key = str(body.get("idempotencyKey"));
         String idemKey = key == null ? null : actor.id() + ":category:" + key;
@@ -771,27 +809,38 @@ class MaterialStore {
         Map<String, Object> category = addCategory("cat-" + (++idSeq), str(body.get("name")), str(body.get("slug")), boolValue(body.getOrDefault("enabled", true)), false);
         category.put("description", body.getOrDefault("description", null));
         category.put("sortOrder", intValue(body.get("sortOrder"), 100));
+        category.put("kind", body.getOrDefault("kind", "IMAGE"));
         if (idemKey != null) remember(idemKey, body, category);
         audit(actor, str(category.get("categoryId")), "MATERIAL_CATEGORY_CREATED", "SUCCESS", null, category, str(body.get("reason")));
         return category;
     }
 
-    Map<String, Object> patchCategory(AuthUser actor, String categoryId, Map<String, Object> body, HttpServletRequest request) {
+    synchronized Map<String, Object> patchCategory(AuthUser actor, String categoryId, Map<String, Object> body, HttpServletRequest request) {
         Map<String, Object> category = categories.get(categoryId);
         if (category == null) throw new MaterialException(404, 43703, "category not found");
         validateReason(body);
         validateCategoryBody(body, false);
+        String key = str(body.get("idempotencyKey"));
+        String idemKey = actor.id() + ":category-patch:" + categoryId + ":" + key;
+        @SuppressWarnings("unchecked")
+        Map<String, Object> existing = (Map<String, Object>) replay(idemKey, body);
+        if (existing != null) return existing;
+        if (body.containsKey("slug") && categories.values().stream().anyMatch(item -> !categoryId.equals(item.get("categoryId")) && str(body.get("slug")).equals(item.get("slug")) && !bool(item.get("archived")))) {
+            throw new MaterialException(409, 43711, "category conflict");
+        }
         failAudit(request);
         Map<String, Object> before = snapshot(category);
-        for (String key : List.of("name", "slug", "description", "sortOrder", "enabled")) {
-            if (body.containsKey(key)) category.put(key, body.get(key));
+        for (String field : List.of("name", "slug", "description", "sortOrder", "enabled", "kind")) {
+            if (body.containsKey(field)) category.put(field, body.get(field));
         }
         category.put("updatedAt", NOW);
         audit(actor, categoryId, "MATERIAL_CATEGORY_UPDATED", "SUCCESS", before, category, str(body.get("reason")));
-        return snapshot(category);
+        Map<String, Object> view = snapshot(category);
+        remember(idemKey, body, view);
+        return view;
     }
 
-    Map<String, Object> archiveCategory(AuthUser actor, String categoryId, Map<String, Object> body, HttpServletRequest request) {
+    synchronized Map<String, Object> archiveCategory(AuthUser actor, String categoryId, Map<String, Object> body, HttpServletRequest request) {
         Map<String, Object> category = categories.get(categoryId);
         if (category == null) throw new MaterialException(404, 43703, "category not found");
         validateReason(body);
@@ -809,33 +858,45 @@ class MaterialStore {
 
     Map<String, Object> adminAssets(Map<String, String> query) {
         Page page = page(query);
+        validateSort(query.get("sort"), ASSET_SORTS, "createdAt_asc");
         String status = query.get("status");
         String owner = query.get("ownerUserId");
         String materialId = query.get("materialId");
+        String extension = lower(query.get("extension"));
+        String mimeType = query.get("mimeType");
         List<Map<String, Object>> items = assets.values().stream()
                 .filter(asset -> status == null || status.equals(asset.get("status")))
                 .filter(asset -> owner == null || owner.equals(asset.get("ownerUserId")))
                 .filter(asset -> materialId == null || materialId.equals(asset.get("materialId")))
-                .sorted(Comparator.comparing(asset -> str(asset.get("createdAt"))))
+                .filter(asset -> extension == null || extension.equals(asset.get("extension")))
+                .filter(asset -> mimeType == null || mimeType.equals(asset.get("mimeType")))
+                .sorted(assetComparator(query.getOrDefault("sort", "createdAt_asc")))
                 .map(this::adminAsset)
                 .toList();
         return page(items, page);
     }
 
-    Map<String, Object> patchAssetStatus(AuthUser actor, String assetId, Map<String, Object> body, HttpServletRequest request) {
+    synchronized Map<String, Object> patchAssetStatus(AuthUser actor, String assetId, Map<String, Object> body, HttpServletRequest request) {
         Map<String, Object> asset = assets.get(assetId);
         if (asset == null) throw new MaterialException(404, 43702, "asset not found");
         validateReason(body);
         String status = str(body.get("status"));
         if (!Set.of("SCANNING", "SAFE", "REJECTED", "QUARANTINED").contains(status)) throw new MaterialException(400, 40001, "invalid status");
         if ("REJECTED".equals(status) && str(body.get("securityRejectReason")) == null) throw new MaterialException(400, 40001, "security reason required");
+        String key = str(body.get("idempotencyKey"));
+        String idemKey = actor.id() + ":asset-status:" + assetId + ":" + key;
+        @SuppressWarnings("unchecked")
+        Map<String, Object> existing = (Map<String, Object>) replay(idemKey, body);
+        if (existing != null) return existing;
         failAudit(request);
         Map<String, Object> before = snapshot(asset);
         asset.put("status", status);
         asset.put("securityRejectReason", body.getOrDefault("securityRejectReason", null));
         asset.put("updatedAt", NOW);
         audit(actor, assetId, "MATERIAL_ASSET_SECURITY_UPDATED", "SUCCESS", before, asset, str(body.get("reason")));
-        return adminAsset(asset);
+        Map<String, Object> view = adminAsset(asset);
+        remember(idemKey, body, view);
+        return view;
     }
 
     Map<String, Object> auditLogs(String materialId, Map<String, String> query) {
@@ -845,11 +906,17 @@ class MaterialStore {
         Instant to = parseInstant(query.get("to"));
         if (from != null && to != null && from.isAfter(to)) throw new MaterialException(400, 40001, "invalid time range");
         String action = query.get("action");
+        String actorUserId = query.get("actorUserId");
+        String result = query.get("result");
+        validateSort(query.get("sort"), AUDIT_SORTS, "createdAt_desc");
         List<Map<String, Object>> items = audits.stream()
                 .filter(audit -> materialId.equals(audit.get("targetId")))
                 .filter(audit -> action == null || action.equals(audit.get("action")))
+                .filter(audit -> actorUserId == null || actorUserId.equals(audit.get("actorUserId")))
+                .filter(audit -> result == null || result.equals(audit.get("result")))
                 .filter(audit -> from == null || !Instant.parse(str(audit.get("createdAt"))).isBefore(from))
                 .filter(audit -> to == null || !Instant.parse(str(audit.get("createdAt"))).isAfter(to))
+                .sorted(auditComparator(query.getOrDefault("sort", "createdAt_desc")))
                 .map(this::snapshot)
                 .toList();
         return page(items, page);
@@ -876,7 +943,7 @@ class MaterialStore {
                 "auditsTotal", audits.size(),
                 "idempotencyRecordsTotal", idem.size(),
                 "lastAuditAt", audits.isEmpty() ? null : audits.get(audits.size() - 1).get("createdAt"),
-                "productionGaps", List.of("PERSISTENT_STORAGE_NOT_ENABLED", "REAL_AUTH_ADAPTER_NOT_ENABLED", "REAL_PROFILE_ADAPTER_NOT_ENABLED", "REAL_NOTIFICATION_ADAPTER_NOT_ENABLED", "REAL_OBJECT_STORAGE_NOT_ENABLED")
+                "productionGaps", List.of("PERSISTENT_STORAGE_NOT_ENABLED", "REAL_AUTH_ADAPTER_NOT_ENABLED", "REAL_PROFILE_ADAPTER_NOT_ENABLED", "REAL_NOTIFICATION_ADAPTER_NOT_ENABLED", "REAL_OBJECT_STORAGE_NOT_ENABLED", "GATEWAY_INTERNAL_SIGNATURE_NOT_ENABLED")
         );
     }
 
@@ -885,20 +952,27 @@ class MaterialStore {
         if (kind != null && !KINDS.contains(kind)) throw new MaterialException(400, 40001, "invalid kind");
         String categoryId = query.get("categoryId");
         String tag = query.get("tag");
+        String authorUserId = query.get("authorUserId");
         String keyword = lower(query.get("keyword"));
         return materials.values().stream()
                 .filter(this::isPublicVisible)
                 .filter(item -> kind == null || kind.equals(item.get("kind")))
                 .filter(item -> categoryId == null || categoryId.equals(item.get("categoryId")))
                 .filter(item -> tag == null || list(item.get("tags")).contains(tag))
+                .filter(item -> authorUserId == null || authorUserId.equals(item.get("authorUserId")))
                 .filter(item -> keyword == null || lower(str(item.get("title"))).contains(keyword) || lower(str(item.get("summary"))).contains(keyword))
                 .toList();
     }
 
     private boolean isPublicVisible(Map<String, Object> material) {
         String status = str(material.get("status"));
+        Instant now = Instant.parse(NOW);
+        String visibleFrom = str(material.get("visibleFrom"));
+        String visibleUntil = str(material.get("visibleUntil"));
         return Set.of("APPROVED", "FEATURED").contains(status)
                 && "PUBLIC".equals(material.get("visibility"))
+                && (visibleFrom == null || !now.isBefore(Instant.parse(visibleFrom)))
+                && (visibleUntil == null || !now.isAfter(Instant.parse(visibleUntil)))
                 && materialAssets(material).stream().allMatch(asset -> "SAFE".equals(asset.get("status")));
     }
 
@@ -1011,14 +1085,15 @@ class MaterialStore {
     }
 
     private void validateUploadSessionBody(Map<String, Object> body) {
-        if (!KINDS.contains(str(body.get("kind")))) throw new MaterialException(400, 40001, "invalid kind");
+        String kind = str(body.get("kind"));
+        if (!KINDS.contains(kind)) throw new MaterialException(400, 40001, "invalid kind");
         List<String> names = list(body.get("expectedFileNames"));
         if (names.isEmpty() || names.size() > 10) throw new MaterialException(400, 40001, "invalid file count");
         if (str(body.get("checksumSha256")) == null || !str(body.get("checksumSha256")).matches("[a-f0-9]{64}")) throw new MaterialException(400, 40001, "invalid checksum");
         if (intValue(body.get("maxFileSizeBytes"), 0) < 1 || intValue(body.get("maxFileSizeBytes"), 0) > 10_485_760) throw new MaterialException(400, 40001, "invalid size");
         for (String name : names) validateFileName(name);
         for (String mime : list(body.get("expectedMimeTypes"))) {
-            if (!IMAGE_MIMES.contains(mime)) throw new MaterialException(400, 43712, "invalid mime");
+            if (!allowedMimeTypes(kind).contains(mime)) throw new MaterialException(400, 43712, "invalid mime");
         }
     }
 
@@ -1028,9 +1103,12 @@ class MaterialStore {
         if (intValue(file.get("fileSizeBytes"), 0) > intValue(session.get("maxFileSizeBytes"), 0)) throw new MaterialException(400, 43712, "file too large");
         String extension = lower(str(file.get("extension")));
         if (!displayName.toLowerCase().endsWith("." + extension)) throw new MaterialException(400, 43712, "extension mismatch");
-        if (!IMAGE_MIMES.contains(str(file.get("mimeType")))) throw new MaterialException(400, 43712, "mime invalid");
+        if (!list(session.get("allowedExtensions")).contains(extension)) throw new MaterialException(400, 43712, "extension invalid");
+        if (!list(session.get("allowedMimeTypes")).contains(str(file.get("mimeType")))) throw new MaterialException(400, 43712, "mime invalid");
         if (!Objects.equals(file.get("checksumSha256"), session.get("checksumSha256"))) throw new MaterialException(400, 43712, "checksum mismatch");
-        if (!"PNG".equals(file.get("signature")) && "png".equals(extension)) throw new MaterialException(400, 43712, "signature mismatch");
+        if ("png".equals(extension) && !"PNG".equals(file.get("signature"))) throw new MaterialException(400, 43712, "signature mismatch");
+        if ("mp4".equals(extension) && !"MP4".equals(file.get("signature"))) throw new MaterialException(400, 43712, "signature mismatch");
+        if ("pdf".equals(extension) && !"PDF".equals(file.get("signature"))) throw new MaterialException(400, 43712, "signature mismatch");
     }
 
     private void validateFileName(String name) {
@@ -1067,6 +1145,7 @@ class MaterialStore {
         if (create && (str(body.get("name")) == null || str(body.get("slug")) == null)) throw new MaterialException(400, 40001, "invalid category");
         if (body.containsKey("slug") && !str(body.get("slug")).matches("[a-z0-9-]{2,80}")) throw new MaterialException(400, 40001, "invalid slug");
         if (body.containsKey("name") && str(body.get("name")).length() < 2) throw new MaterialException(400, 40001, "invalid name");
+        if (body.containsKey("kind") && !KINDS.contains(str(body.get("kind")))) throw new MaterialException(400, 40001, "invalid kind");
     }
 
     private void validateReason(Map<String, Object> body) {
@@ -1135,6 +1214,24 @@ class MaterialStore {
         return Comparator.comparing((Map<String, Object> item) -> str(item.get("publishedAt")), Comparator.reverseOrder());
     }
 
+    private Comparator<Map<String, Object>> adminComparator(String sort) {
+        if ("submittedAt_desc".equals(sort)) return Comparator.comparing((Map<String, Object> item) -> str(item.get("submittedAt")), Comparator.nullsLast(Comparator.reverseOrder()));
+        if ("publishedAt_desc".equals(sort)) return Comparator.comparing((Map<String, Object> item) -> str(item.get("publishedAt")), Comparator.nullsLast(Comparator.reverseOrder()));
+        if ("title_asc".equals(sort)) return Comparator.comparing(item -> str(item.get("title")));
+        return Comparator.comparing((Map<String, Object> item) -> str(item.get("updatedAt")), Comparator.reverseOrder());
+    }
+
+    private Comparator<Map<String, Object>> assetComparator(String sort) {
+        if ("createdAt_desc".equals(sort)) return Comparator.comparing((Map<String, Object> asset) -> str(asset.get("createdAt")), Comparator.reverseOrder());
+        if ("size_desc".equals(sort)) return Comparator.comparingInt((Map<String, Object> asset) -> intValue(asset.get("fileSizeBytes"), 0)).reversed();
+        return Comparator.comparing(asset -> str(asset.get("createdAt")));
+    }
+
+    private Comparator<Map<String, Object>> auditComparator(String sort) {
+        if ("createdAt_asc".equals(sort)) return Comparator.comparing(audit -> str(audit.get("createdAt")));
+        return Comparator.comparing((Map<String, Object> audit) -> str(audit.get("createdAt")), Comparator.reverseOrder());
+    }
+
     private int intQuery(Map<String, String> query, String key, int fallback) {
         try {
             return query.containsKey(key) ? Integer.parseInt(query.get(key)) : fallback;
@@ -1163,7 +1260,7 @@ class MaterialStore {
     }
 
     private Map<String, Object> addCategory(String id, String name, String slug, boolean enabled, boolean archived) {
-        Map<String, Object> category = mapOf("categoryId", id, "name", name, "slug", slug, "description", null, "sortOrder", 10, "enabled", enabled, "archived", archived, "createdAt", NOW, "updatedAt", NOW, "archivedAt", archived ? NOW : null);
+        Map<String, Object> category = mapOf("categoryId", id, "name", name, "slug", slug, "description", null, "sortOrder", 10, "enabled", enabled, "archived", archived, "kind", "IMAGE", "createdAt", NOW, "updatedAt", NOW, "archivedAt", archived ? NOW : null);
         categories.put(id, category);
         return category;
     }
@@ -1175,6 +1272,22 @@ class MaterialStore {
     private Map<String, Object> asset(String assetId, String materialId, String owner, String status, String fileName) {
         String extension = fileName.substring(fileName.lastIndexOf('.') + 1).toLowerCase();
         return mapOf("assetId", assetId, "materialId", materialId, "uploadSessionId", "seed-session", "provider", "LOCAL_STUB", "status", status, "displayName", fileName, "extension", extension, "mimeType", extension.equals("png") ? "image/png" : "application/octet-stream", "fileSizeBytes", 2048, "checksumSha256", "a".repeat(64), "width", 1920, "height", 1080, "durationSeconds", null, "publicAssetUrl", "SAFE".equals(status) ? "/api/v1/materials/assets/" + assetId : null, "securityRejectReason", "SAFE".equals(status) ? null : "unsafe file", "ownerUserId", owner, "createdAt", NOW, "updatedAt", NOW);
+    }
+
+    private String extensionOf(String fileName) {
+        String value = str(fileName);
+        int index = value == null ? -1 : value.lastIndexOf('.');
+        return index < 0 ? "" : value.substring(index + 1).toLowerCase();
+    }
+
+    private Set<String> allowedMimeTypes(String kind) {
+        return switch (kind) {
+            case "IMAGE" -> IMAGE_MIMES;
+            case "VIDEO" -> VIDEO_MIMES;
+            case "DOCUMENT_ATTACHMENT" -> DOCUMENT_MIMES;
+            case "BUILD_SCREENSHOT", "PROJECT_RECORD", "EVENT_MEMORY" -> IMAGE_VIDEO_MIMES;
+            default -> ALL_SAFE_MIMES;
+        };
     }
 
     private void addMaterial(String id, String slug, String kind, String status, String visibility, String categoryId, List<String> tags, List<String> assetIds, boolean hasLicense, String authorUserId, boolean allowFeature) {
@@ -1298,6 +1411,8 @@ record AuthUser(String id, Set<String> roles, String profileMode) {
 
 class TestMaterialAuthProvider {
     AuthUser requireAuthenticated(String authorization) {
+        AuthUser trustedActor = trustedGatewayActor();
+        if (trustedActor != null) return trustedActor;
         if (authorization == null || authorization.isBlank()) throw new MaterialException(401, 41000, "not logged in");
         if (!authorization.startsWith("Bearer ")) throw new MaterialException(401, 41003, "invalid token");
         String token = authorization.substring("Bearer ".length());
@@ -1324,6 +1439,26 @@ class TestMaterialAuthProvider {
             throw new MaterialException(403, 42001, "role permission denied");
         }
         return user;
+    }
+
+    private AuthUser trustedGatewayActor() {
+        ServletRequestAttributes attrs = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+        HttpServletRequest request = attrs == null ? null : attrs.getRequest();
+        if (request == null) return null;
+        String internalRequestId = request.getHeader("X-Gateway-Internal-Request-Id");
+        String currentRequestId = MaterialController.currentRequestId();
+        if (internalRequestId == null || !internalRequestId.equals(currentRequestId)) return null;
+        String actorUserId = request.getHeader("X-Beiming-Actor-User-Id");
+        if (actorUserId == null || actorUserId.isBlank()) return null;
+        String rolesHeader = request.getHeader("X-Beiming-Actor-Roles");
+        Set<String> roles = new LinkedHashSet<>();
+        if (rolesHeader != null) {
+            for (String role : rolesHeader.split(",")) {
+                if (!role.isBlank()) roles.add(role.trim());
+            }
+        }
+        if (roles.isEmpty()) roles.add("USER");
+        return new AuthUser(actorUserId, roles, "ACTIVE");
     }
 }
 

@@ -481,7 +481,11 @@ class MaterialApiContractTest {
         performJson(get("/api/v1/materials/admin/ops/summary").header("Authorization", bearer("admin-token")).header("X-Test-Fail-Store", "true"), 500, 51700);
 
         assertThat(ops.toString()).doesNotContain("container", "terminal", "node-daemon", "file-manager", "Cloudreve", "downloadUrl");
-        String source = Files.readString(Path.of("backend/material-service/src/main/java/cn/beiming/material/MaterialModule.java"));
+        Path sourcePath = Path.of("backend/material-service/src/main/java/cn/beiming/material/MaterialModule.java");
+        if (!Files.exists(sourcePath)) {
+            sourcePath = Path.of("src/main/java/cn/beiming/material/MaterialModule.java");
+        }
+        String source = Files.readString(sourcePath);
         assertThat(source).contains("synchronized");
     }
 
