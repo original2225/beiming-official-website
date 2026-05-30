@@ -737,6 +737,7 @@ class GatewayState {
         items.add(route("plugin-integration", "PLUGIN_INTEGRATION", "plugin-integration", "/api/v1/plugin-integration", 8122, "/api/v1/plugin-integration/health"));
         items.add(route("cross-platform-notification", "CROSS_PLATFORM_NOTIFICATION", "cross-platform-notification", "/api/v1/cross-platform-notification", 8123, "/api/v1/cross-platform-notification/health"));
         items.add(route("ops-image-market", "OPS_IMAGE_MARKET", "ops-image-market", "/api/v1/ops-image-market", 8124, "/api/v1/ops-image-market/health"));
+        items.add(route("material", "MATERIAL", "material", "/api/v1/materials", 8126, "/api/v1/materials/featured"));
         return List.copyOf(items);
     }
 
