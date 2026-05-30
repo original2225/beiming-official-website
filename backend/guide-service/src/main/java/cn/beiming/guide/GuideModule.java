@@ -719,6 +719,7 @@ class GuideStore {
 
     Map<String, Object> auditLogs(String guideId, Map<String, String> query) {
         requireGuide(guideId);
+        checkPaging(query, 100);
         checkSort(query, Set.of("createdAt_desc", "createdAt_asc"));
         checkTimeRange(query);
         List<Map<String, Object>> items = audits.stream()
@@ -785,6 +786,10 @@ class GuideStore {
     }
 
     Map<String, Object> adminChannels(Map<String, String> query) {
+        checkPaging(query, 100);
+        enumQuery(query, "type", CHANNEL_TYPES);
+        enumQuery(query, "status", Set.of("ENABLED", "DISABLED", "ARCHIVED"));
+        enumQuery(query, "visibility", VISIBILITIES);
         List<Map<String, Object>> items = channels.values().stream()
                 .filter(c -> query.get("type") == null || query.get("type").equals(c.get("type")))
                 .filter(c -> query.get("status") == null || query.get("status").equals(c.get("status")))
@@ -840,8 +845,11 @@ class GuideStore {
     }
 
     Map<String, Object> adminFeedback(Map<String, String> query) {
+        checkPaging(query, 100);
         checkSort(query, Set.of("createdAt_desc", "createdAt_asc", "resolvedAt_desc"));
         checkTimeRange(query);
+        enumQuery(query, "type", FEEDBACK_TYPES);
+        enumQuery(query, "status", Set.of("OPEN", "RESOLVED", "IGNORED"));
         List<Map<String, Object>> items = feedback.values().stream()
                 .filter(f -> query.get("guideId") == null || query.get("guideId").equals(f.get("guideId")))
                 .filter(f -> query.get("type") == null || query.get("type").equals(f.get("type")))
@@ -1141,17 +1149,25 @@ class GuideStore {
     }
 
     private Map<String, Object> page(List<Map<String, Object>> items, Map<String, String> query) {
-        int page = Integer.parseInt(query.getOrDefault("page", "1"));
-        int pageSize = Integer.parseInt(query.getOrDefault("pageSize", "20"));
+        int page = pageParam(query, "page");
+        int pageSize = pageParam(query, "pageSize");
         int from = Math.min(items.size(), (page - 1) * pageSize);
         int to = Math.min(items.size(), from + pageSize);
         return mapOf("items", items.subList(from, to), "page", page, "pageSize", pageSize, "total", items.size());
     }
 
     private void checkPaging(Map<String, String> query, int max) {
-        int page = Integer.parseInt(query.getOrDefault("page", "1"));
-        int pageSize = Integer.parseInt(query.getOrDefault("pageSize", "20"));
+        int page = pageParam(query, "page");
+        int pageSize = pageParam(query, "pageSize");
         if (page < 1 || pageSize < 1 || pageSize > max) throw new GuideException(400, 40002, "invalid page");
+    }
+
+    private int pageParam(Map<String, String> query, String key) {
+        try {
+            return Integer.parseInt(query.getOrDefault(key, "pageSize".equals(key) ? "20" : "1"));
+        } catch (NumberFormatException ex) {
+            throw new GuideException(400, 40002, "invalid page");
+        }
     }
 
     private void checkSort(Map<String, String> query, Set<String> allowed) {
@@ -1160,7 +1176,19 @@ class GuideStore {
     }
 
     private void checkTimeRange(Map<String, String> query) {
-        if (query.get("from") != null && query.get("to") != null && Instant.parse(query.get("from")).isAfter(Instant.parse(query.get("to")))) throw new GuideException(400, 40001, "validation failed");
+        Instant from = instantQuery(query, "from");
+        Instant to = instantQuery(query, "to");
+        if (from != null && to != null && from.isAfter(to)) throw new GuideException(400, 40001, "validation failed");
+    }
+
+    private Instant instantQuery(Map<String, String> query, String key) {
+        String value = query.get(key);
+        if (value == null) return null;
+        try {
+            return Instant.parse(value);
+        } catch (RuntimeException ex) {
+            throw new GuideException(400, 40001, "validation failed");
+        }
     }
 
     private Comparator<GuideArticle> publicComparator(String sort) {

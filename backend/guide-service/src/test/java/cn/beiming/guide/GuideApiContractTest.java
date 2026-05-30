@@ -88,6 +88,7 @@ class GuideApiContractTest {
         assertThat(generated.at("/requestId").asText()).isNotBlank();
 
         performJson(get("/api/v1/guides/articles").param("page", "0"), 400, 40002);
+        performJson(get("/api/v1/guides/articles").param("page", "abc"), 400, 40002);
         performJson(get("/api/v1/guides/articles").param("pageSize", "101"), 400, 40002);
         performJson(get("/api/v1/guides/articles").param("sort", "bad"), 400, 40003);
         performJson(post("/api/v1/guides/articles/guide-rules/feedback"), feedback("HELPFUL", "good", "fb-unauth"), 401, 41000);
@@ -291,6 +292,16 @@ class GuideApiContractTest {
                 .header("Authorization", bearer("helper-token"))
                 .param("from", "2026-06-01T00:00:00Z")
                 .param("to", "2026-05-01T00:00:00Z"), 400, 40001);
+        performJson(get("/api/v1/guides/admin/feedback")
+                .header("Authorization", bearer("helper-token"))
+                .param("page", "abc"), 400, 40002);
+        performJson(get("/api/v1/guides/admin/feedback")
+                .header("Authorization", bearer("helper-token"))
+                .param("from", "bad-time")
+                .param("to", "2026-06-01T00:00:00Z"), 400, 40001);
+        performJson(get("/api/v1/guides/admin/feedback")
+                .header("Authorization", bearer("helper-token"))
+                .param("type", "BAD"), 400, 40001);
 
         JsonNode resolved = performJson(patch("/api/v1/guides/admin/feedback/" + feedbackId + "/resolve")
                 .header("Authorization", bearer("admin-token")), feedbackResolution("fixed", true, "resolve-1"), 200);
@@ -373,6 +384,8 @@ class GuideApiContractTest {
                 .header("Authorization", bearer("admin-token")), validChannel("new-qq"), 201);
         String channelId = channel.at("/data/channelId").asText();
         performJson(get("/api/v1/guides/admin/external-channels").header("Authorization", bearer("helper-token")).param("type", "QQ_GROUP").param("status", "ENABLED"), 200);
+        performJson(get("/api/v1/guides/admin/external-channels").header("Authorization", bearer("helper-token")).param("type", "BAD"), 400, 40001);
+        performJson(get("/api/v1/guides/admin/external-channels").header("Authorization", bearer("helper-token")).param("page", "0"), 400, 40002);
         performJson(patch("/api/v1/guides/admin/external-channels/" + channelId).header("Authorization", bearer("admin-token")), Map.of("purpose", "updated", "reason", "patch", "idempotencyKey", "channel-patch"), 200);
         performJson(patch("/api/v1/guides/admin/external-channels/" + channelId + "/disable").header("Authorization", bearer("admin-token")), reason("disable"), 200);
         performJson(patch("/api/v1/guides/admin/external-channels/" + channelId + "/enable").header("Authorization", bearer("admin-token")), reason("enable"), 200);
@@ -403,6 +416,13 @@ class GuideApiContractTest {
         performJson(get("/api/v1/guides/admin/articles/guide-rules/audit-logs")
                 .header("Authorization", bearer("admin-token"))
                 .param("sort", "bad"), 400, 40003);
+        performJson(get("/api/v1/guides/admin/articles/guide-rules/audit-logs")
+                .header("Authorization", bearer("admin-token"))
+                .param("page", "0"), 400, 40002);
+        performJson(get("/api/v1/guides/admin/articles/guide-rules/audit-logs")
+                .header("Authorization", bearer("admin-token"))
+                .param("from", "bad-time")
+                .param("to", "2026-06-01T00:00:00Z"), 400, 40001);
 
         JsonNode ops = performJson(get("/api/v1/guides/admin/ops/summary").header("Authorization", bearer("admin-token")), 200);
         assertThat(ops.at("/data/service").asText()).isEqualTo("guide");
