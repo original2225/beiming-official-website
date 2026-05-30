@@ -13,6 +13,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -42,18 +44,18 @@ class MaterialApiContractTest {
     void everyDocumentedCaseHasCoverageMapping() {
         Set<String> mapped = new TreeSet<>();
         addRange(mapped, "MAT-COM", 1, 28);
-        addRange(mapped, "MAT-PUB", 1, 30);
-        addRange(mapped, "MAT-UPLOAD", 1, 38);
-        addRange(mapped, "MAT-ME", 1, 38);
-        addRange(mapped, "MAT-ADMIN", 1, 36);
-        addRange(mapped, "MAT-CAT", 1, 18);
-        addRange(mapped, "MAT-ASSET", 1, 14);
-        addRange(mapped, "MAT-AUDIT", 1, 8);
+        addRange(mapped, "MAT-PUB", 1, 32);
+        addRange(mapped, "MAT-UPLOAD", 1, 40);
+        addRange(mapped, "MAT-ME", 1, 40);
+        addRange(mapped, "MAT-ADMIN", 1, 42);
+        addRange(mapped, "MAT-CAT", 1, 21);
+        addRange(mapped, "MAT-ASSET", 1, 18);
+        addRange(mapped, "MAT-AUDIT", 1, 11);
         addRange(mapped, "MAT-OPS", 1, 8);
-        addRange(mapped, "MAT-COMPAT", 1, 18);
+        addRange(mapped, "MAT-COMPAT", 1, 19);
 
-        assertThat(mapped).hasSize(236);
-        assertThat(mapped).contains("MAT-COM-001", "MAT-PUB-030", "MAT-UPLOAD-038", "MAT-ME-038", "MAT-ADMIN-036", "MAT-COMPAT-018");
+        assertThat(mapped).hasSize(259);
+        assertThat(mapped).contains("MAT-COM-001", "MAT-PUB-032", "MAT-UPLOAD-040", "MAT-ME-040", "MAT-ADMIN-042", "MAT-COMPAT-019");
     }
 
     @Test
@@ -138,6 +140,8 @@ class MaterialApiContractTest {
         assertThat(first.at("/data/items/0/materialId").asText()).isNotEqualTo(second.at("/data/items/0/materialId").asText());
         JsonNode empty = performJson(get("/api/v1/materials").param("page", "99").param("pageSize", "20"), 200);
         assertThat(empty.at("/data/items").size()).isEqualTo(0);
+        JsonNode authorFiltered = performJson(get("/api/v1/materials").param("authorUserId", "other"), 200);
+        assertThat(authorFiltered.at("/data/items").toString()).doesNotContain("member");
 
         performJson(get("/api/v1/materials").param("kind", "BAD"), 400, 40001);
         performJson(get("/api/v1/materials/mat-featured"), 200);
@@ -150,8 +154,20 @@ class MaterialApiContractTest {
 
         JsonNode categories = performJson(get("/api/v1/materials/categories").param("kind", "IMAGE"), 200);
         assertThat(categories.at("/data/items").toString()).contains("cat-builds").doesNotContain("cat-disabled", "cat-archived");
+        performJson(post("/api/v1/materials/admin/categories")
+                .header("Authorization", bearer("admin-token")), with(validCategory("video"), "kind", "VIDEO"), 201);
+        JsonNode imageCategories = performJson(get("/api/v1/materials/categories").param("kind", "IMAGE"), 200);
+        assertThat(imageCategories.at("/data/items").toString()).doesNotContain("video");
+        performJson(get("/api/v1/materials/categories").param("kind", "BAD"), 400, 40001);
         JsonNode assets = performJson(get("/api/v1/materials/mat-featured/assets"), 200);
         assertThat(assets.at("/data/items").toString()).contains("asset-featured-cover").doesNotContain("securityRejectReason", "uploadTicket", "internalPath");
+
+        JsonNode future = createUserSubmission("future-window", "future-window");
+        performJson(patch("/api/v1/materials/me/submissions/" + future.at("/data/materialId").asText() + "/submit-review")
+                .header("Authorization", bearer("member-token")), reason("submit"), 200);
+        performJson(patch("/api/v1/materials/admin/items/" + future.at("/data/materialId").asText() + "/approve")
+                .header("Authorization", bearer("admin-token")), review("ok"), 200);
+        performJson(get("/api/v1/materials/" + future.at("/data/materialId").asText()), 404, 43700);
     }
 
     @Test
@@ -213,6 +229,18 @@ class MaterialApiContractTest {
         performJson(patch("/api/v1/materials/me/upload-sessions/" + failSession.at("/data/uploadSessionId").asText() + "/complete")
                 .header("Authorization", bearer("member-token"))
                 .header("X-Test-Fail-Upload-Record", "true"), completeBody(failSession.at("/data/uploadTicket").asText(), "fail-write.png", "fail-write"), 500, 51702);
+
+        JsonNode videoSession = performJson(post("/api/v1/materials/me/upload-sessions")
+                .header("Authorization", bearer("member-token")), validUploadSession("clip.mp4", "video-session", "VIDEO", "video/mp4"), 201);
+        JsonNode videoComplete = performJson(patch("/api/v1/materials/me/upload-sessions/" + videoSession.at("/data/uploadSessionId").asText() + "/complete")
+                .header("Authorization", bearer("member-token")), completeBody(videoSession.at("/data/uploadTicket").asText(), "clip.mp4", "video-complete", "video/mp4", "MP4"), 200);
+        assertThat(videoComplete.at("/data/items/0/extension").asText()).isEqualTo("mp4");
+
+        JsonNode documentSession = performJson(post("/api/v1/materials/me/upload-sessions")
+                .header("Authorization", bearer("member-token")), validUploadSession("rules.pdf", "document-session", "DOCUMENT_ATTACHMENT", "application/pdf"), 201);
+        JsonNode documentComplete = performJson(patch("/api/v1/materials/me/upload-sessions/" + documentSession.at("/data/uploadSessionId").asText() + "/complete")
+                .header("Authorization", bearer("member-token")), completeBody(documentSession.at("/data/uploadTicket").asText(), "rules.pdf", "document-complete", "application/pdf", "PDF"), 200);
+        assertThat(documentComplete.at("/data/items/0/mimeType").asText()).isEqualTo("application/pdf");
     }
 
     @Test
@@ -271,6 +299,20 @@ class MaterialApiContractTest {
                 .header("Authorization", bearer("member-token")), reason("resubmit"), 200);
         performJson(patch("/api/v1/materials/me/submissions/mat-draft/resubmit")
                 .header("Authorization", bearer("member-token")), reason("bad"), 409, 43710);
+
+        JsonNode trustedActor = performJson(get("/api/v1/materials/me/submissions")
+                .header("Authorization", bearer("user-token"))
+                .header("X-Request-Id", "req-material-trusted")
+                .header("X-Gateway-Internal-Request-Id", "req-material-trusted")
+                .header("X-Beiming-Actor-User-Id", "member")
+                .header("X-Beiming-Actor-Roles", "USER")
+                .header("X-Beiming-Actor-Permissions", "MATERIAL_SUBMIT"), 200);
+        assertThat(trustedActor.at("/data/items").toString()).contains("mat-draft");
+        JsonNode forgedActor = performJson(get("/api/v1/materials/me/submissions")
+                .header("Authorization", bearer("user-token"))
+                .header("X-Beiming-Actor-User-Id", "member")
+                .header("X-Beiming-Actor-Roles", "USER"), 200);
+        assertThat(forgedActor.at("/data/items").toString()).doesNotContain("mat-draft");
     }
 
     @Test
@@ -282,13 +324,30 @@ class MaterialApiContractTest {
                 .param("kind", "IMAGE")
                 .param("assetStatus", "SAFE")
                 .param("sort", "submittedAt_desc"), 200);
+        JsonNode privateItems = performJson(get("/api/v1/materials/admin/items").header("Authorization", bearer("helper-token")).param("visibility", "PRIVATE"), 200);
+        assertThat(privateItems.at("/data/items").toString()).contains("mat-private").doesNotContain("mat-featured");
+        JsonNode eventItems = performJson(get("/api/v1/materials/admin/items").header("Authorization", bearer("helper-token")).param("categoryId", "cat-events"), 200);
+        assertThat(eventItems.at("/data/items").toString()).contains("mat-public").doesNotContain("mat-featured");
+        JsonNode otherAuthorItems = performJson(get("/api/v1/materials/admin/items").header("Authorization", bearer("helper-token")).param("authorUserId", "other"), 200);
+        assertThat(otherAuthorItems.at("/data/items").toString()).contains("mat-other-user").doesNotContain("mat-draft");
+        JsonNode keywordItems = performJson(get("/api/v1/materials/admin/items").header("Authorization", bearer("helper-token")).param("keyword", "offline"), 200);
+        assertThat(keywordItems.at("/data/items").toString()).contains("mat-offline").doesNotContain("mat-featured");
         performJson(get("/api/v1/materials/admin/items/missing").header("Authorization", bearer("admin-token")), 404, 43700);
 
         performJson(patch("/api/v1/materials/admin/items/mat-pending/approve").header("Authorization", bearer("helper-token")), review("ok"), 200);
         performJson(patch("/api/v1/materials/admin/items/mat-approved/approve").header("Authorization", bearer("admin-token")), review("again"), 200);
         performJson(patch("/api/v1/materials/admin/items/mat-draft/approve").header("Authorization", bearer("admin-token")), review("bad"), 409, 43710);
         performJson(patch("/api/v1/materials/admin/items/mat-pending-unsafe/approve").header("Authorization", bearer("admin-token")), review("unsafe"), 409, 43715);
+        Map<String, Object> reviewIdempotent = with(review("idem ok"), "idempotencyKey", "review-idem");
+        JsonNode approvedByIdem = performJson(patch("/api/v1/materials/admin/items/mat-pending-approve/approve")
+                .header("Authorization", bearer("admin-token")), reviewIdempotent, 200);
+        JsonNode approvedByIdemReplay = performJson(patch("/api/v1/materials/admin/items/mat-pending-approve/approve")
+                .header("Authorization", bearer("admin-token")), reviewIdempotent, 200);
+        assertThat(approvedByIdemReplay.at("/data/materialId").asText()).isEqualTo(approvedByIdem.at("/data/materialId").asText());
         performJson(patch("/api/v1/materials/admin/items/mat-pending-approve/approve")
+                .header("Authorization", bearer("admin-token")), with(review("changed"), "idempotencyKey", "review-idem"), 409, 43714);
+
+        performJson(patch("/api/v1/materials/admin/items/mat-pending-aux/approve")
                 .header("Authorization", bearer("admin-token"))
                 .header("X-Test-Notification-Mode", "aux-fail"), review("ok"), 200);
 
@@ -322,15 +381,28 @@ class MaterialApiContractTest {
                 .param("enabled", "true")
                 .param("keyword", "Build"), 200);
         JsonNode category = performJson(post("/api/v1/materials/admin/categories")
-                .header("Authorization", bearer("admin-token")), validCategory("screenshots"), 201);
+                .header("Authorization", bearer("admin-token")), with(validCategory("screenshots"), "kind", "VIDEO"), 201);
         assertThat(category.at("/data/slug").asText()).isEqualTo("screenshots");
+        assertThat(category.at("/data/kind").asText()).isEqualTo("VIDEO");
+        JsonNode videoCategories = performJson(get("/api/v1/materials/admin/categories")
+                .header("Authorization", bearer("helper-token"))
+                .param("kind", "VIDEO"), 200);
+        assertThat(videoCategories.at("/data/items").toString()).contains("screenshots").doesNotContain("cat-builds");
         performJson(post("/api/v1/materials/admin/categories").header("Authorization", bearer("helper-token")), validCategory("helper"), 403, 42001);
         performJson(post("/api/v1/materials/admin/categories").header("Authorization", bearer("admin-token")), validCategory("builds"), 409, 43711);
         performJson(post("/api/v1/materials/admin/categories").header("Authorization", bearer("admin-token")), with(validCategory("bad slug"), "slug", "Bad Slug"), 400, 40001);
-        performJson(patch("/api/v1/materials/admin/categories/cat-builds").header("Authorization", bearer("admin-token")), Map.of("description", "updated", "reason", "patch"), 200);
+        Map<String, Object> patchCategory = Map.of("description", "updated", "reason", "patch", "idempotencyKey", "cat-patch");
+        performJson(patch("/api/v1/materials/admin/categories/cat-builds").header("Authorization", bearer("admin-token")), patchCategory, 200);
+        performJson(patch("/api/v1/materials/admin/categories/cat-builds").header("Authorization", bearer("admin-token")), patchCategory, 200);
+        performJson(patch("/api/v1/materials/admin/categories/cat-builds").header("Authorization", bearer("admin-token")), Map.of("description", "changed", "reason", "patch", "idempotencyKey", "cat-patch"), 409, 43714);
         performJson(patch("/api/v1/materials/admin/categories/missing").header("Authorization", bearer("admin-token")), Map.of("description", "updated", "reason", "patch"), 404, 43703);
         performJson(patch("/api/v1/materials/admin/categories/cat-free/archive").header("Authorization", bearer("admin-token")), reason("archive"), 200);
         performJson(patch("/api/v1/materials/admin/categories/cat-builds/archive").header("Authorization", bearer("admin-token")), reason("used"), 409, 43716);
+
+        JsonNode pdfSession = performJson(post("/api/v1/materials/me/upload-sessions")
+                .header("Authorization", bearer("member-token")), validUploadSession("asset-filter.pdf", "asset-filter-pdf", "DOCUMENT_ATTACHMENT", "application/pdf"), 201);
+        performJson(patch("/api/v1/materials/me/upload-sessions/" + pdfSession.at("/data/uploadSessionId").asText() + "/complete")
+                .header("Authorization", bearer("member-token")), completeBody(pdfSession.at("/data/uploadTicket").asText(), "asset-filter.pdf", "asset-filter-complete", "application/pdf", "PDF"), 200);
 
         JsonNode assets = performJson(get("/api/v1/materials/admin/assets")
                 .header("Authorization", bearer("helper-token"))
@@ -338,6 +410,12 @@ class MaterialApiContractTest {
                 .param("ownerUserId", "member")
                 .param("materialId", "mat-featured"), 200);
         assertThat(assets.toString()).doesNotContain("uploadTicket", "internalPath");
+        JsonNode pdfAssets = performJson(get("/api/v1/materials/admin/assets")
+                .header("Authorization", bearer("helper-token"))
+                .param("extension", "pdf")
+                .param("mimeType", "application/pdf")
+                .param("sort", "createdAt_desc"), 200);
+        assertThat(pdfAssets.at("/data/items").toString()).contains("asset-filter.pdf").doesNotContain("featured.png");
         performJson(patch("/api/v1/materials/admin/assets/asset-scanning/security-status")
                 .header("Authorization", bearer("admin-token")), Map.of("status", "SAFE", "reason", "safe"), 200);
         performJson(patch("/api/v1/materials/admin/assets/asset-featured-cover/security-status")
@@ -348,6 +426,13 @@ class MaterialApiContractTest {
                 .header("Authorization", bearer("admin-token")), Map.of("status", "BAD", "reason", "bad"), 400, 40001);
         performJson(patch("/api/v1/materials/admin/assets/asset-featured-cover/security-status")
                 .header("Authorization", bearer("admin-token")), Map.of("status", "REJECTED", "reason", "bad"), 400, 40001);
+        Map<String, Object> assetIdempotent = Map.of("status", "QUARANTINED", "reason", "quarantine", "idempotencyKey", "asset-status-idem");
+        performJson(patch("/api/v1/materials/admin/assets/asset-featured-cover/security-status")
+                .header("Authorization", bearer("admin-token")), assetIdempotent, 200);
+        performJson(patch("/api/v1/materials/admin/assets/asset-featured-cover/security-status")
+                .header("Authorization", bearer("admin-token")), assetIdempotent, 200);
+        performJson(patch("/api/v1/materials/admin/assets/asset-featured-cover/security-status")
+                .header("Authorization", bearer("admin-token")), Map.of("status", "SAFE", "reason", "changed", "idempotencyKey", "asset-status-idem"), 409, 43714);
         performJson(patch("/api/v1/materials/admin/assets/asset-featured-cover/security-status")
                 .header("Authorization", bearer("admin-token")), Map.of("status", "REJECTED", "securityRejectReason", "malware", "reason", "reject"), 200);
         performJson(get("/api/v1/materials/mat-featured"), 404, 43700);
@@ -359,8 +444,11 @@ class MaterialApiContractTest {
         JsonNode audit = performJson(get("/api/v1/materials/admin/items/mat-featured/audit-logs")
                 .header("Authorization", bearer("admin-token"))
                 .param("action", "MATERIAL_FEATURED")
+                .param("actorUserId", "system")
+                .param("result", "SUCCESS")
                 .param("from", "2026-05-20T00:00:00Z")
-                .param("to", "2026-05-31T00:00:00Z"), 200);
+                .param("to", "2026-05-31T00:00:00Z")
+                .param("sort", "createdAt_asc"), 200);
         assertThat(audit.at("/data/items").isArray()).isTrue();
         if (audit.at("/data/items").size() > 0) {
             assertThat(audit.at("/data/items/0/requestId").asText()).isNotBlank();
@@ -373,18 +461,27 @@ class MaterialApiContractTest {
                 .header("Authorization", bearer("admin-token"))
                 .param("from", "2026-06-01T00:00:00Z")
                 .param("to", "2026-05-01T00:00:00Z"), 400, 40001);
+        JsonNode noActorAudit = performJson(get("/api/v1/materials/admin/items/mat-featured/audit-logs")
+                .header("Authorization", bearer("admin-token"))
+                .param("actorUserId", "owner"), 200);
+        assertThat(noActorAudit.at("/data/items").size()).isEqualTo(0);
+        performJson(get("/api/v1/materials/admin/items/mat-featured/audit-logs")
+                .header("Authorization", bearer("admin-token"))
+                .param("sort", "bad"), 400, 40003);
 
         JsonNode ops = performJson(get("/api/v1/materials/admin/ops/summary").header("Authorization", bearer("admin-token")), 200);
         assertThat(ops.at("/data/service").asText()).isEqualTo("material");
         assertThat(ops.at("/data/port").asInt()).isEqualTo(8126);
         assertThat(ops.at("/data/storageMode").asText()).isEqualTo("IN_MEMORY");
         assertThat(ops.at("/data/uploadProvider").asText()).isEqualTo("LOCAL_STUB");
-        assertThat(ops.at("/data/productionGaps").toString()).contains("PERSISTENT_STORAGE_NOT_ENABLED", "REAL_OBJECT_STORAGE_NOT_ENABLED");
+        assertThat(ops.at("/data/productionGaps").toString()).contains("PERSISTENT_STORAGE_NOT_ENABLED", "REAL_OBJECT_STORAGE_NOT_ENABLED", "GATEWAY_INTERNAL_SIGNATURE_NOT_ENABLED");
         assertThat(ops.toString()).doesNotContain("token", "ticket", "secret", "internalPath", "stackTrace");
         performJson(get("/api/v1/materials/admin/ops/summary").header("Authorization", bearer("helper-token")), 403, 42001);
         performJson(get("/api/v1/materials/admin/ops/summary").header("Authorization", bearer("admin-token")).header("X-Test-Fail-Store", "true"), 500, 51700);
 
         assertThat(ops.toString()).doesNotContain("container", "terminal", "node-daemon", "file-manager", "Cloudreve", "downloadUrl");
+        String source = Files.readString(Path.of("backend/material-service/src/main/java/cn/beiming/material/MaterialModule.java"));
+        assertThat(source).contains("synchronized");
     }
 
     private JsonNode createUserSubmission(String slug, String idempotencyKey) throws Exception {
@@ -438,14 +535,25 @@ class MaterialApiContractTest {
         return body;
     }
 
+    private Map<String, Object> validUploadSession(String fileName, String key, String kind, String mimeType) {
+        Map<String, Object> body = validUploadSession(fileName, key);
+        body.put("kind", kind);
+        body.put("expectedMimeTypes", List.of(mimeType));
+        return body;
+    }
+
     private Map<String, Object> completeBody(String ticket, String fileName, String key) {
+        return completeBody(ticket, fileName, key, "image/png", "PNG");
+    }
+
+    private Map<String, Object> completeBody(String ticket, String fileName, String key, String mimeType, String signature) {
         Map<String, Object> file = new LinkedHashMap<>();
         file.put("displayName", fileName);
-        file.put("mimeType", "image/png");
+        file.put("mimeType", mimeType);
         file.put("extension", extension(fileName));
         file.put("fileSizeBytes", 2048);
         file.put("checksumSha256", "a".repeat(64));
-        file.put("signature", "PNG");
+        file.put("signature", signature);
         file.put("width", 1920);
         file.put("height", 1080);
         file.put("durationSeconds", null);
