@@ -1,0 +1,303 @@
+# 北冥官网 business-core API 契约
+
+版本：0.1
+
+## 文档定位
+
+本文档是 `business-core` 运行合并单元的正式 API 契约。`business-core` 用于承载第一批已完成闭环的业务模块，包括 `auth`、`profile`、`notification`、`content`、`server-status`、`resource` 和 `admin`。本文档只定义合并后的运行形态、模块装配、自检接口、网关切换边界和验收口径，不替代七个业务模块自己的 API 契约。
+
+本文档继承 `docs/contracts-common.md`、`docs/contracts-auth.md`、`docs/contracts-profile.md`、`docs/contracts-notification.md`、`docs/contracts-content.md`、`docs/contracts-server-status.md`、`docs/contracts-resource.md` 和 `docs/contracts-admin.md`。七个业务模块的路径、方法、认证、权限、请求字段、响应字段、错误码、分页、幂等、状态流转、降级、审计和验收口径仍以各自契约为准。
+
+`business-core` 不是新的业务模块，不新增用户、成员、通知、内容、状态、资源或后台聚合的业务语义。它的目标是减少第一批业务后端的运行进程数量，同时保留模块边界和现有 API 行为。
+
+## 职责边界
+
+`business-core` 负责以下能力。
+
+| 能力 | 说明 |
+| --- | --- |
+| 运行合并 | 用一个 Spring Boot 运行单元承载第一批七个业务模块。 |
+| 模块装配 | 按原模块包名、路由和契约装配 controller、service、adapter、store 和测试替身。 |
+| 契约保持 | 保持七个模块既有 API 路径、HTTP 方法、响应结构、错误码、认证、权限、状态流转、幂等和审计行为。 |
+| 内部适配 | 把合并前跨服务 HTTP 适配收敛为同进程 adapter 或 facade，但不允许跨模块直接读写主数据。 |
+| 自检摘要 | 暴露 `business-core` 自身健康检查和后台装配摘要，便于迁移验证。 |
+| 网关切换准备 | 为 `api-gateway` 后续把第一批路径上游切到 `business-core` 提供稳定目标。 |
+
+`business-core` 不负责吸收 `api-gateway`。第一阶段仍保留 `api-gateway-service` 作为统一入口。`business-core` 不负责后续模块，如 `onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、`ops-control`、`node-daemon` 和 P3 扩展。
+
+`business-core` 不允许把后续模块逻辑塞进第一批模块，不允许让前端直连新增路径吞掉业务，也不允许为了合并修改旧模块的稳定契约。
+
+## 运行形态
+
+本地验证运行单元为 `backend/business-core-service`，本地验证端口为 `8130`。端口 `8101` 到 `8107` 继续保留给旧七个微服务作为回归基线，端口 `8125` 继续保留给 `api-gateway-service`。
+
+Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `cn.beiming`。第一批模块应保留原包名 `cn.beiming.auth`、`cn.beiming.profile`、`cn.beiming.notification`、`cn.beiming.content`、`cn.beiming.serverstatus`、`cn.beiming.resource` 和 `cn.beiming.admin`。不得为了合并进行无业务收益的大规模包名迁移。
+
+`business-core` 的自有路径前缀为 `/api/v1/business-core`。七个业务模块路径保持原样，不加 `/business-core` 前缀。
+
+## 承载模块
+
+| 模块 | 正式契约 | 路径前缀 | 原服务端口 | 现有代码路由数 | 是否进入 business-core |
+| --- | --- | --- | --- | ---: | --- |
+| `auth` | `docs/contracts-auth.md` | `/api/v1/auth` | `8101` | 20 | 是 |
+| `profile` | `docs/contracts-profile.md` | `/api/v1/profile` | `8102` | 16 | 是 |
+| `notification` | `docs/contracts-notification.md` | `/api/v1/notifications` | `8103` | 19 | 是 |
+| `content` | `docs/contracts-content.md` | `/api/v1/content` | `8104` | 55 | 是 |
+| `server-status` | `docs/contracts-server-status.md` | `/api/v1/server-status` | `8105` | 25 | 是 |
+| `resource` | `docs/contracts-resource.md` | `/api/v1/resources` | `8106` | 29 | 是 |
+| `admin` | `docs/contracts-admin.md` | `/api/v1/admin` | `8107` | 10 | 是 |
+
+第一批合并后，`business-core` 需要承载以上 169 个既有业务路由。`business-core` 自身新增 2 个运行单元自检路由。合并验证总路由数为 171。
+
+## API 路径清单
+
+七个业务模块的完整接口定义仍在各模块正式契约中维护。本文档只登记它们在 `business-core` 中的装配范围。
+
+| 路径前缀 | 方法范围 | 业务归属 | 完整接口定义 |
+| --- | --- | --- | --- |
+| `/api/v1/auth/**` | `GET`、`POST`、`PUT`、`PATCH`、`DELETE` | 账号、会话、角色、权限、邀请码、密码、Minecraft 账号级绑定 | `docs/contracts-auth.md` |
+| `/api/v1/profile/**` | `GET`、`POST`、`PUT`、`PATCH` | 成员档案、公开成员、成员组、成员事迹、作品快照 | `docs/contracts-profile.md` |
+| `/api/v1/notifications/**` | `GET`、`POST`、`PATCH` | 站内通知、模板、收件人状态、通知审计 | `docs/contracts-notification.md` |
+| `/api/v1/content/**` | `GET`、`POST`、`PUT`、`PATCH` | 首页配置、内容、专题、分类、标签、SEO、预览、内容审计 | `docs/contracts-content.md` |
+| `/api/v1/server-status/**` | `GET`、`POST`、`PATCH` | 玩家可见状态、线路、历史快照、状态源、宕机记录 | `docs/contracts-server-status.md` |
+| `/api/v1/resources/**` | `GET`、`POST`、`PATCH` | 玩家资源、版本、分类、下载、Cloudreve 分享链接、资源审计 | `docs/contracts-resource.md` |
+| `/api/v1/admin/**` | `GET`、`PATCH` | 后台总览、模块注册表、待办、指标、审计索引、系统配置 | `docs/contracts-admin.md` |
+| `/api/v1/business-core/**` | `GET` | `business-core` 运行单元自检 | 本文档 |
+
+路径匹配必须保持既有模块前缀，不得把 `/api/v1/resources/**` 误匹配到其他模块，不得把 `/api/v1/resourceful` 误命中 `resource`，不得把 `/api/v1/admin/**` 路径交给其他模块处理。
+
+## 自有对象
+
+### BusinessCoreModuleStatus
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `moduleKey` | string | 是 | 模块键，允许 `AUTH`、`PROFILE`、`NOTIFICATION`、`CONTENT`、`SERVER_STATUS`、`RESOURCE`、`ADMIN`。 |
+| `moduleName` | string | 是 | 模块展示名。 |
+| `pathPrefix` | string | 是 | 模块路径前缀。 |
+| `contract` | string | 是 | 模块正式契约文件路径。 |
+| `legacyPort` | integer | 是 | 旧微服务端口。 |
+| `mounted` | boolean | 是 | 模块是否已装配到 `business-core`。 |
+| `routesTotal` | integer | 是 | 该模块在当前运行单元内登记的路由数量。 |
+| `contractRoutesTotal` | integer | 是 | 该模块契约期望路由数量。 |
+| `adapters` | string[] | 是 | 当前模块需要的内部 adapter 或 facade 摘要。 |
+| `compatibilityMode` | string | 是 | `LEGACY_BASELINE`、`IN_PROCESS_ADAPTER` 或 `GATEWAY_SWITCH_READY`。 |
+| `lastVerifiedAt` | string 或 null | 是 | 最近一次契约测试通过时间。 |
+| `status` | string | 是 | `NOT_MOUNTED`、`MOUNTED`、`DEGRADED` 或 `READY`。 |
+| `gaps` | string[] | 是 | 当前模块仍未完成的迁移或生产化缺口。 |
+
+### BusinessCoreOpsSummary
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `service` | string | 是 | 固定为 `business-core`。 |
+| `port` | integer | 是 | 本地验证固定为 `8130`。 |
+| `status` | string | 是 | `UP`、`DEGRADED` 或 `DOWN`。 |
+| `modulesTotal` | integer | 是 | 固定为 `7`。 |
+| `modulesMounted` | integer | 是 | 已装配模块数量。 |
+| `routesTotal` | integer | 是 | 当前运行单元登记路由总数。 |
+| `businessRoutesTotal` | integer | 是 | 七个业务模块路由总数，完成后为 `169`。 |
+| `selfRoutesTotal` | integer | 是 | `business-core` 自有路由总数，固定为 `2`。 |
+| `moduleRoutes` | `BusinessCoreModuleStatus[]` | 是 | 七个模块装配状态。 |
+| `gatewaySwitchReady` | boolean | 是 | 是否允许进入网关切换前置文档和测试步骤。 |
+| `legacyBaselines` | object[] | 是 | 旧七个微服务和网关基线摘要。 |
+| `productionGaps` | string[] | 是 | 生产化差距摘要。 |
+| `generatedAt` | string | 是 | 摘要生成时间。 |
+
+## 接口总览
+
+| 接口 | 方法 | 路径 | 认证 | 权限 | 风险 |
+| --- | --- | --- | --- | --- | --- |
+| business-core 健康检查 | GET | `/api/v1/business-core/health` | 否 | 无 | LOW |
+| business-core 后台装配摘要 | GET | `/api/v1/business-core/admin/ops/summary` | 是 | `ADMIN` 或 `OWNER` | LOW |
+| 七个业务模块接口 | 继承各模块契约 | `/api/v1/auth/**`、`/api/v1/profile/**`、`/api/v1/notifications/**`、`/api/v1/content/**`、`/api/v1/server-status/**`、`/api/v1/resources/**`、`/api/v1/admin/**` | 继承各模块契约 | 继承各模块契约 | 继承各模块契约 |
+
+## 健康检查
+
+`GET /api/v1/business-core/health`
+
+该接口无需认证，只表示 `business-core` 进程和运行单元自检能力可用，不表示七个业务模块全部契约通过。
+
+请求字段：无。
+
+成功响应 HTTP `200`。
+
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "service": "business-core",
+    "status": "UP",
+    "port": 8130,
+    "modulesTotal": 7,
+    "modulesMounted": 7,
+    "businessRoutesTotal": 169,
+    "selfRoutesTotal": 2,
+    "moduleRoutes": [
+      {
+        "moduleKey": "AUTH",
+        "pathPrefix": "/api/v1/auth",
+        "mounted": true,
+        "routesTotal": 20,
+        "status": "READY"
+      }
+    ],
+    "generatedAt": "2026-06-02T05:26:20Z"
+  },
+  "requestId": "req_example"
+}
+```
+
+响应字段：
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `service` | string | 是 | 固定为 `business-core`。 |
+| `status` | string | 是 | `UP`、`DEGRADED` 或 `DOWN`。 |
+| `port` | integer | 是 | 本地验证固定为 `8130`。 |
+| `modulesTotal` | integer | 是 | 固定为 `7`。 |
+| `modulesMounted` | integer | 是 | 已装配模块数量。 |
+| `businessRoutesTotal` | integer | 是 | 七个业务模块路由总数，完成后为 `169`。 |
+| `selfRoutesTotal` | integer | 是 | `business-core` 自有路由数，固定为 `2`。 |
+| `moduleRoutes` | object[] | 是 | 低敏模块路由摘要，只返回 `moduleKey`、`pathPrefix`、`mounted`、`routesTotal` 和 `status`。 |
+| `generatedAt` | string | 是 | ISO 8601 时间。 |
+
+失败规则：运行单元内部异常返回 HTTP `500` 和错误码 `51730`。模块装配异常导致无法生成健康摘要时返回 HTTP `500` 和错误码 `51731`。该接口不得返回 token、Cookie、真实数据库连接串、异常栈、外部凭据或请求头原文。
+
+分页规则：无分页。
+
+幂等规则：只读接口，重复调用不改变任何业务状态。
+
+审计要求：无后台业务审计要求，但必须保留请求编号，便于运行日志排障。
+
+## 后台装配摘要
+
+`GET /api/v1/business-core/admin/ops/summary`
+
+该接口需要 `Authorization: Bearer <token>`。只有 `ADMIN` 和 `OWNER` 可访问。未登录返回公共错误码 `41000`，令牌格式错误返回 `41003`，权限不足返回 `42001`。用户状态为 `DISABLED`、`BANNED` 或 `DELETED` 时，按认证上下文返回对应模块契约错误或公共认证错误。
+
+请求字段：无。
+
+成功响应 HTTP `200`，`data` 为 `BusinessCoreOpsSummary`。
+
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "service": "business-core",
+    "port": 8130,
+    "status": "UP",
+    "modulesTotal": 7,
+    "modulesMounted": 7,
+    "routesTotal": 171,
+    "businessRoutesTotal": 169,
+    "selfRoutesTotal": 2,
+    "moduleRoutes": [],
+    "gatewaySwitchReady": false,
+    "legacyBaselines": [
+      {
+        "service": "auth-service",
+        "port": 8101,
+        "contract": "docs/contracts-auth.md",
+        "testCommand": "mvn -f backend/auth-service/pom.xml test"
+      }
+    ],
+    "productionGaps": [
+      "real database persistence is still module dependent",
+      "gateway route switch is not complete"
+    ],
+    "generatedAt": "2026-06-02T05:26:20Z"
+  },
+  "requestId": "req_example"
+}
+```
+
+业务规则：该接口只读取 `business-core` 内部装配状态和最近测试摘要，不主动执行七个模块的业务写操作，不调用旧服务进行实时健康探测，不把未完成模块伪装成 `READY`。只有当七个模块全部装配、七个模块在 `business-core` 中的继承契约测试通过、旧七个服务回归通过、`api-gateway` 基线通过时，`gatewaySwitchReady` 才能为 `true`。
+
+失败规则：运行单元内部异常返回 `51730`。模块装配信息缺失返回 `51731`。当前登记路由与本文档或七个模块契约期望不一致时返回 `51732` 或在 `status=DEGRADED` 的成功摘要中列入 `gaps`，由实现按是否影响接口可用性决定。认证上下文解析失败返回原模块契约或公共认证错误，可信网关上下文字段缺失或格式不兼容时返回 `51733`。
+
+分页规则：无分页。
+
+幂等规则：只读接口，重复调用不改变任何业务状态。
+
+状态流转：该接口不改变业务状态。模块装配状态只允许按迁移过程从 `NOT_MOUNTED` 进入 `MOUNTED`，契约测试通过后进入 `READY`，发现路由缺失、adapter 不可用或继承测试失败时进入 `DEGRADED`。
+
+审计要求：读取后台装配摘要属于低风险后台读取，应保留请求编号、操作者、角色和访问时间的运行日志。不得记录 token 原文。
+
+## 认证上下文
+
+七个业务模块继续兼容 `Authorization: Bearer <token>`。需要登录或后台权限的接口仍按各模块契约解析当前用户、角色、权限、Minecraft 绑定和用户状态。
+
+经 `api-gateway` 访问时，`business-core` 继续兼容以下可信身份头。
+
+| 请求头 | 说明 |
+| --- | --- |
+| `X-Beiming-Actor-User-Id` | 当前用户 ID。 |
+| `X-Beiming-Actor-Roles` | 逗号分隔角色。 |
+| `X-Beiming-Actor-Permissions` | 逗号分隔能力点。 |
+| `X-Beiming-Actor-Minecraft-Id` | 已绑定的 Minecraft ID。 |
+| `X-Beiming-Actor-Minecraft-Uuid` | 已绑定的 Minecraft UUID。 |
+| `X-Gateway-Internal-Request-Id` | 网关注入的内部请求编号。 |
+
+`X-Gateway-Internal-Request-Id` 存在时，各模块按自身契约优先解析可信认证上下文。字段缺失、格式非法、角色或能力点不兼容时，不得静默降级成匿名用户。生产入口必须由 `api-gateway` 或反向代理剥离客户端伪造的同名可信头；直连本地测试必须覆盖伪造头不能绕过权限的场景。
+
+## 内部适配规则
+
+`auth` 仍拥有账号、会话、角色、能力点、邀请码和 Minecraft 账号级绑定主数据。
+
+`profile` 仍拥有成员档案、公开成员字段、成员组、事迹和作品快照主数据。它只能通过认证上下文或 auth adapter 读取账号快照，不能直接写 auth 用户状态。
+
+`notification` 仍拥有通知、模板、收件人状态、未读数、归档状态和通知审计主数据。
+
+`content` 仍拥有首页配置、内容、专题、分类、标签、SEO、预览令牌和内容审计主数据。强制通知失败回滚、辅助通知失败不阻塞的规则必须保留。
+
+`server-status` 仍只负责玩家可见状态、线路、历史快照、MOTD、在线人数、延迟和状态降级，不能承接真实服务器运维操作。
+
+`resource` 仍只负责玩家可见资源、版本、分类、下载权限和 Cloudreve 分享链接，不能承接运维文件管理能力。
+
+`admin` 仍是后台聚合入口，只能通过模块 adapter 汇总状态、待办、指标和审计摘要，不能替业务模块处理审核、资源状态、内容状态或通知投递。
+
+同 JVM 内部调用可以从 HTTP client 改为 adapter 或 facade，但 adapter 必须保留失败模拟能力，测试必须能覆盖 auth 不可用、profile 快照失败、notification 投递失败、状态采集失败和资源外部依赖失败。
+
+## 错误码
+
+七个业务模块接口继续使用各自契约中的错误码，不因进入 `business-core` 改码。公共错误码继续继承 `docs/contracts-common.md`。
+
+`business-core` 自有错误码如下。
+
+| 错误码 | HTTP 状态 | 含义 |
+| --- | --- | --- |
+| `51730` | 500 | business-core 内部错误。 |
+| `51731` | 500 | business-core 模块装配错误。 |
+| `51732` | 500 | business-core 路由快照与契约不一致。 |
+| `51733` | 502 | business-core 可信认证上下文解析失败。 |
+
+以上错误码只用于 `/api/v1/business-core/**` 自有接口，或用于运行单元装配层在请求到达业务模块前发生的错误。已经进入七个业务模块处理流程的请求，错误码必须按对应模块契约返回。
+
+## 网关策略
+
+第一阶段不修改 `api-gateway-service`。旧路由仍指向 `8101` 到 `8107`，`business-core-service` 在 `8130` 进行直连契约测试。前端仍通过原 API 路径访问，不新增前端直连约定。
+
+当 `business-core` 直连测试、七个旧服务回归和 `api-gateway` 基线全部通过后，才能进入网关切换步骤。网关切换前必须先更新 `docs/contracts-api-gateway.md` 和 `.local-docs/tests-api-gateway.md`，把 `auth`、`profile`、`notification`、`content`、`server-status`、`resource` 和 `admin` 的上游从旧端口调整为 `business-core` 约定端口，确认测试红灯后再修改网关实现。
+
+网关切换后，业务路径仍保持 `/api/v1/auth/**`、`/api/v1/profile/**`、`/api/v1/notifications/**`、`/api/v1/content/**`、`/api/v1/server-status/**`、`/api/v1/resources/**` 和 `/api/v1/admin/**`，不得改成 `/api/v1/business-core/<module>/**`。
+
+## 迁移顺序
+
+迁移顺序固定为基线验证、`business-core` 空壳与自检红灯、`auth`、`profile`、`notification`、`content`、`server-status`、`resource`、`admin`、网关切换准备、网关切换实现、全量回归。
+
+`auth` 必须先迁入，因为其他受保护接口都依赖认证上下文。`admin` 必须最后迁入，因为它依赖前面模块的可见状态、待办、指标和审计摘要。
+
+每迁入一个模块，都必须先根据本文档和该模块正式契约生成或补齐 `business-core` 自动化测试，确认测试因为模块未装配或行为不满足而失败，再迁入实现。迁入后必须运行 `business-core` 对应测试、旧模块测试和该模块前序依赖测试。
+
+## 验收口径
+
+`business-core` 完成的最低标准是，单进程承载第一批七个业务模块的全部既有 API 路径，且响应格式、错误码、认证、权限、请求编号、分页、状态流转、幂等、审计和降级行为与七个模块正式契约一致。
+
+`mvn -f backend/business-core-service/pom.xml test` 必须覆盖本文档两个自有接口和七个模块继承过来的全部契约测试。七个旧服务和 `api-gateway-service` 仍必须保持测试通过，直到用户明确确认旧服务清理。
+
+完成 `business-core` 直连合并不等于完成网关切换。网关切换必须单独更新网关契约、网关本地测试文档和网关自动化测试，并再次完成红灯、实现、全绿和测试记录闭环。
+
+旧服务目录不得因本契约自动删除。需要清理旧服务时，必须单独列出明确文件路径并取得用户确认，且只能逐个文件处理。
