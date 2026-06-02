@@ -1305,7 +1305,7 @@ class ResourceRequestIdFilter extends OncePerRequestFilter {
     }
 }
 
-@RestControllerAdvice
+@RestControllerAdvice(assignableTypes = ResourceController.class)
 class ResourceExceptionHandler {
     @ExceptionHandler(ApiException.class)
     ResponseEntity<Map<String, Object>> handle(ApiException ex) {

@@ -1127,7 +1127,7 @@ class AuthStore {
     }
 }
 
-@RestControllerAdvice
+@RestControllerAdvice(assignableTypes = AuthController.class)
 class AuthExceptionHandler {
     @ExceptionHandler(ApiException.class)
     ResponseEntity<Map<String, Object>> api(ApiException exception) {

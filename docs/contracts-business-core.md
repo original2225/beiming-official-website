@@ -47,7 +47,7 @@ Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `
 | `resource` | `docs/contracts-resource.md` | `/api/v1/resources` | `8106` | 29 | 是 |
 | `admin` | `docs/contracts-admin.md` | `/api/v1/admin` | `8107` | 10 | 是 |
 
-第一批合并后，`business-core` 需要承载以上 169 个既有业务路由。`business-core` 自身新增 2 个运行单元自检路由。合并验证总路由数为 171。
+第一批合并后，`business-core` 需要承载以上 174 个既有业务方法路由。`business-core` 自身新增 2 个运行单元自检路由。合并验证总方法路由数为 176。
 
 ## API 路径清单
 
@@ -96,7 +96,7 @@ Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `
 | `modulesTotal` | integer | 是 | 固定为 `7`。 |
 | `modulesMounted` | integer | 是 | 已装配模块数量。 |
 | `routesTotal` | integer | 是 | 当前运行单元登记路由总数。 |
-| `businessRoutesTotal` | integer | 是 | 七个业务模块路由总数，完成后为 `169`。 |
+| `businessRoutesTotal` | integer | 是 | 七个业务模块方法路由总数，完成后为 `174`。 |
 | `selfRoutesTotal` | integer | 是 | `business-core` 自有路由总数，固定为 `2`。 |
 | `moduleRoutes` | `BusinessCoreModuleStatus[]` | 是 | 七个模块装配状态。 |
 | `gatewaySwitchReady` | boolean | 是 | 是否允许进入网关切换前置文档和测试步骤。 |
@@ -132,7 +132,7 @@ Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `
     "port": 8130,
     "modulesTotal": 7,
     "modulesMounted": 7,
-    "businessRoutesTotal": 169,
+    "businessRoutesTotal": 174,
     "selfRoutesTotal": 2,
     "moduleRoutes": [
       {
@@ -158,7 +158,7 @@ Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `
 | `port` | integer | 是 | 本地验证固定为 `8130`。 |
 | `modulesTotal` | integer | 是 | 固定为 `7`。 |
 | `modulesMounted` | integer | 是 | 已装配模块数量。 |
-| `businessRoutesTotal` | integer | 是 | 七个业务模块路由总数，完成后为 `169`。 |
+| `businessRoutesTotal` | integer | 是 | 七个业务模块方法路由总数，完成后为 `174`。 |
 | `selfRoutesTotal` | integer | 是 | `business-core` 自有路由数，固定为 `2`。 |
 | `moduleRoutes` | object[] | 是 | 低敏模块路由摘要，只返回 `moduleKey`、`pathPrefix`、`mounted`、`routesTotal` 和 `status`。 |
 | `generatedAt` | string | 是 | ISO 8601 时间。 |
@@ -191,8 +191,8 @@ Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `
     "status": "UP",
     "modulesTotal": 7,
     "modulesMounted": 7,
-    "routesTotal": 171,
-    "businessRoutesTotal": 169,
+    "routesTotal": 176,
+    "businessRoutesTotal": 174,
     "selfRoutesTotal": 2,
     "moduleRoutes": [],
     "gatewaySwitchReady": false,

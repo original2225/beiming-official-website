@@ -1494,7 +1494,7 @@ class NotificationStore {
     }
 }
 
-@RestControllerAdvice
+@RestControllerAdvice(assignableTypes = NotificationController.class)
 class NotificationExceptionHandler {
     @ExceptionHandler(ApiException.class)
     ResponseEntity<Map<String, Object>> api(ApiException exception) {

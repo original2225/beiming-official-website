@@ -1445,7 +1445,7 @@ class AdminResponses {
     }
 }
 
-@RestControllerAdvice
+@RestControllerAdvice(assignableTypes = AdminController.class)
 class AdminExceptionHandler {
     @ExceptionHandler(AdminException.class)
     ResponseEntity<Map<String, Object>> handleAdmin(AdminException exception) {

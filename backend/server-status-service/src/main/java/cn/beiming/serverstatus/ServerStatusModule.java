@@ -47,7 +47,7 @@ class ServerStatusModule {
         return new ServerStatusStore();
     }
 
-    @Bean
+    @Bean("serverStatusTestAuthContextProvider")
     TestAuthContextProvider testAuthContextProvider() {
         return new TestAuthContextProvider();
     }
@@ -1411,7 +1411,7 @@ class RequestIdFilter extends OncePerRequestFilter {
     }
 }
 
-@RestControllerAdvice
+@RestControllerAdvice(assignableTypes = ServerStatusController.class)
 class ServerStatusExceptionHandler {
     @ExceptionHandler(ServerStatusException.class)
     ResponseEntity<Map<String, Object>> serverStatus(ServerStatusException exception) {

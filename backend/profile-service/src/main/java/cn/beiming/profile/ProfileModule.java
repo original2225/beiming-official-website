@@ -1275,7 +1275,7 @@ class ProfileStore {
     }
 }
 
-@RestControllerAdvice
+@RestControllerAdvice(assignableTypes = ProfileController.class)
 class ProfileExceptionHandler {
     @ExceptionHandler(ApiException.class)
     ResponseEntity<Map<String, Object>> api(ApiException exception) {

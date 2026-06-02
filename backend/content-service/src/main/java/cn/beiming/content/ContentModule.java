@@ -47,7 +47,7 @@ class ContentModule {
         return new ContentStore();
     }
 
-    @Bean
+    @Bean("contentTestAuthContextProvider")
     TestAuthContextProvider testAuthContextProvider() {
         return new TestAuthContextProvider();
     }
@@ -2069,7 +2069,7 @@ class RequestIdFilter extends OncePerRequestFilter {
     }
 }
 
-@RestControllerAdvice
+@RestControllerAdvice(assignableTypes = ContentController.class)
 class ContentExceptionHandler {
     @ExceptionHandler(ContentException.class)
     ResponseEntity<Map<String, Object>> content(ContentException exception) {
