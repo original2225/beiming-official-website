@@ -11,6 +11,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -19,7 +20,9 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.Enumeration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -106,7 +109,6 @@ class BusinessCoreController {
                 "LIVE_GATEWAY_HTTP_SMOKE",
                 "PRODUCTION_AUTH_CONTEXT",
                 "PERSISTENCE_AND_AUDIT",
-                "TEST_CONTROL_GUARD",
                 "SOURCE_DRIFT_GUARD"
         ));
         data.put("legacyBaselinesKept", true);
@@ -144,10 +146,6 @@ class BusinessCoreController {
                         "LOCAL_FIXED_TOKENS_AND_TRUSTED_HEADERS", "REAL_AUTH_SESSION_AND_TRUSTED_GATEWAY_ONLY",
                         "Replace local fixed-token checks for business-core self endpoints with real auth context.",
                         "Verify forged trusted headers cannot grant access and real gateway context is accepted."),
-                readinessGap("TEST_CONTROL_HEADERS_REQUIRE_PRODUCTION_GUARD", "SAFETY", "MEDIUM", "ALL_FIRST_BATCH_MODULES",
-                        "MODULE_LOCAL_TEST_CONTROLS", "CENTRAL_PRODUCTION_GUARD",
-                        "Add a central guard that disables X-Test-* controls outside local test mode.",
-                        "Run boundary tests proving X-Test-* headers are ignored or rejected in production mode."),
                 readinessGap("LEGACY_SOURCE_DRIFT_GUARD_REQUIRED", "MAINTENANCE", "MEDIUM", "BUSINESS_CORE",
                         "DUPLICATED_SOURCE_BASELINES", "EXPLICIT_FREEZE_OR_SHARED_SOURCE_POLICY",
                         "Define whether old services are frozen or generated from shared sources, then guard drift in tests.",
@@ -177,7 +175,7 @@ class BusinessCoreController {
                 check("PERSISTENT_AUDIT", "NOT_CONNECTED", "Audit records are still module-local in-memory records.", true),
                 check("PRODUCTION_AUTH_CONTEXT", "REQUIRED", "Business-core self endpoints still accept local fixed test tokens.", true),
                 check("GATEWAY_INTERNAL_SIGNATURE", "REQUIRED", "Gateway internal signature or mTLS is not enabled.", true),
-                check("TEST_CONTROL_GUARD", "REQUIRED", "X-Test-* controls need a central production guard.", true),
+                check("TEST_CONTROL_GUARD", "PASS", "Business-core rejects X-Test-* headers when test-control headers are disabled.", true),
                 check("SOURCE_DRIFT_GUARD", "REQUIRED", "Legacy services and business-core source copies can drift.", true)
         );
     }
@@ -203,14 +201,19 @@ class BusinessCoreController {
     private Map<String, Object> testControls() {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("productionGuardRequired", true);
+        data.put("productionGuardStatus", "ENFORCED_OUTSIDE_TEST_MODE");
         data.put("knownControlHeaders", List.of(
                 "X-Test-Fail-Audit",
                 "X-Test-Notification-Mode",
                 "X-Test-Profile-Mode",
                 "X-Test-Auth-Mode",
-                "X-Test-Status-Collector"
+                "X-Test-Status-Collector",
+                "X-Test-Fail-Store",
+                "X-Test-Fail-Download-Record",
+                "X-Test-Module-Mode",
+                "X-Test-Platform-Mode"
         ));
-        data.put("risk", "TEST_CONTROLS_MUST_NOT_TRIGGER_FAILURES_IN_PRODUCTION");
+        data.put("risk", "TEST_CONTROLS_ARE_REJECTED_WHEN_PRODUCTION_GUARD_IS_DISABLED");
         return data;
     }
 
@@ -379,6 +382,16 @@ class BusinessCoreFilterConfig {
         registration.addUrlPatterns("/api/v1/*");
         return registration;
     }
+
+    @Bean
+    FilterRegistrationBean<BusinessCoreTestControlHeaderGuardFilter> businessCoreTestControlHeaderGuardFilter(
+            @Value("${beiming.business-core.test-control-headers.enabled:false}") boolean enabled) {
+        FilterRegistrationBean<BusinessCoreTestControlHeaderGuardFilter> registration = new FilterRegistrationBean<>();
+        registration.setFilter(new BusinessCoreTestControlHeaderGuardFilter(enabled));
+        registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 1);
+        registration.addUrlPatterns("/api/v1/*");
+        return registration;
+    }
 }
 
 class BusinessCoreRequestIdFilter extends OncePerRequestFilter {
@@ -409,5 +422,76 @@ class BusinessCoreRequest extends HttpServletRequestWrapper {
             return requestId;
         }
         return super.getHeader(name);
+    }
+}
+
+class BusinessCoreTestControlHeaderGuardFilter extends OncePerRequestFilter {
+    private final boolean testControlHeadersEnabled;
+
+    BusinessCoreTestControlHeaderGuardFilter(boolean testControlHeadersEnabled) {
+        this.testControlHeadersEnabled = testControlHeadersEnabled;
+    }
+
+    @Override
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+            throws ServletException, IOException {
+        if (!testControlHeadersEnabled && hasTestControlHeader(request)) {
+            reject(request, response);
+            return;
+        }
+        filterChain.doFilter(request, response);
+    }
+
+    private boolean hasTestControlHeader(HttpServletRequest request) {
+        Enumeration<String> names = request.getHeaderNames();
+        while (names.hasMoreElements()) {
+            if (names.nextElement().toLowerCase(java.util.Locale.ROOT).startsWith("x-test-")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void reject(HttpServletRequest request, HttpServletResponse response) throws IOException {
+        String requestId = requestId(request);
+        response.setStatus(HttpStatus.BAD_REQUEST.value());
+        response.setHeader("X-Request-Id", requestId);
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        response.getWriter().write("{\"code\":51735,\"message\":\"test control headers are disabled\",\"data\":null,\"requestId\":\""
+                + jsonEscape(requestId) + "\"}");
+    }
+
+    private String requestId(HttpServletRequest request) {
+        Object value = request.getAttribute("requestId");
+        if (value instanceof String text && !text.isBlank()) {
+            return text;
+        }
+        String header = request.getHeader("X-Request-Id");
+        return header == null || header.isBlank() ? "req_" + UUID.randomUUID() : header;
+    }
+
+    private String jsonEscape(String value) {
+        StringBuilder escaped = new StringBuilder(value.length());
+        for (int index = 0; index < value.length(); index++) {
+            char current = value.charAt(index);
+            switch (current) {
+                case '"' -> escaped.append("\\\"");
+                case '\\' -> escaped.append("\\\\");
+                case '\b' -> escaped.append("\\b");
+                case '\f' -> escaped.append("\\f");
+                case '\n' -> escaped.append("\\n");
+                case '\r' -> escaped.append("\\r");
+                case '\t' -> escaped.append("\\t");
+                default -> {
+                    if (current < 0x20) {
+                        escaped.append(String.format("\\u%04x", (int) current));
+                    } else {
+                        escaped.append(current);
+                    }
+                }
+            }
+        }
+        return escaped.toString();
     }
 }

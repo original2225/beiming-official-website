@@ -120,7 +120,7 @@ Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `
 | `highGapsTotal` | integer | 是 | 高风险缺口数量。 |
 | `integrationChecks` | object[] | 是 | 生产联调检查项。每项包含 `checkKey`、`status`、`evidence` 和 `requiredBeforeProduction`。 |
 | `testScope` | object | 是 | 当前测试覆盖摘要，必须区分 MockMvc、本地 Maven、旧服务回归、网关路由切换和真实 HTTP 联调。 |
-| `testControls` | object | 是 | 测试控制头生产隔离摘要，包含 `productionGuardRequired`、`knownControlHeaders` 和 `risk`。 |
+| `testControls` | object | 是 | 测试控制头生产隔离摘要，包含 `productionGuardRequired`、`productionGuardStatus`、`knownControlHeaders` 和 `risk`。 |
 | `sourceDrift` | object | 是 | 旧服务源码基线和 `business-core` 副本漂移风险摘要。 |
 | `nextDevelopmentOrder` | string[] | 是 | 后续生产化建议顺序。 |
 | `legacyBaselinesKept` | boolean | 是 | 旧七服务和独立契约是否仍保留作回归基线。 |
@@ -293,12 +293,20 @@ Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `
         "verification": "记录命令、端口、请求路径、响应码、请求编号和失败降级结果到 .local-docs/tests-business-core.md。"
       }
     ],
-    "gapsTotal": 6,
+    "gapsTotal": 5,
     "criticalGapsTotal": 0,
     "highGapsTotal": 4,
     "integrationChecks": [],
     "testScope": {},
-    "testControls": {},
+    "testControls": {
+      "productionGuardRequired": true,
+      "productionGuardStatus": "ENFORCED_OUTSIDE_TEST_MODE",
+      "knownControlHeaders": [
+        "X-Test-Fail-Audit",
+        "X-Test-Notification-Mode"
+      ],
+      "risk": "TEST_CONTROLS_ARE_REJECTED_WHEN_PRODUCTION_GUARD_IS_DISABLED"
+    },
     "sourceDrift": {},
     "nextDevelopmentOrder": [
       "LIVE_GATEWAY_HTTP_SMOKE",
@@ -314,7 +322,7 @@ Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `
 }
 ```
 
-业务规则：生产就绪摘要必须诚实暴露 `business-core` 尚未完成的生产化阻塞项，不能因为合并测试全绿就返回 `productionReady=true`。当前至少要列出真实网关到 `business-core` HTTP 联调未验证、真实数据库持久化未接入、真实审计持久化未接入、生产认证上下文或网关内部签名未接入、测试控制头生产隔离仍依赖模块自身开关、旧服务和合并副本存在双维护漂移风险。该接口只读，不执行联调，不访问旧服务端口，不连接数据库，不调用真实外部依赖。
+业务规则：生产就绪摘要必须诚实暴露 `business-core` 尚未完成的生产化阻塞项，不能因为合并测试全绿就返回 `productionReady=true`。当前至少要列出真实网关到 `business-core` HTTP 联调未验证、真实数据库持久化未接入、真实审计持久化未接入、生产认证上下文或网关内部签名未接入、旧服务和合并副本存在双维护漂移风险。该接口只读，不执行联调，不访问旧服务端口，不连接数据库，不调用真实外部依赖。测试控制头生产隔离完成后，`TEST_CONTROL_GUARD` 集成检查必须返回 `PASS`，且该项不得继续作为阻塞缺口。
 
 `integrationChecks` 至少包含以下检查项：`LIVE_GATEWAY_HTTP_SMOKE`、`PERSISTENT_DATABASE`、`PERSISTENT_AUDIT`、`PRODUCTION_AUTH_CONTEXT`、`GATEWAY_INTERNAL_SIGNATURE`、`TEST_CONTROL_GUARD`、`SOURCE_DRIFT_GUARD`。状态允许 `PASS`、`PARTIAL`、`NOT_VERIFIED`、`NOT_CONNECTED` 或 `REQUIRED`。
 
@@ -344,6 +352,16 @@ Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `
 | `X-Gateway-Internal-Request-Id` | 网关注入的内部请求编号。 |
 
 `X-Gateway-Internal-Request-Id` 存在时，各模块按自身契约优先解析可信认证上下文。字段缺失、格式非法、角色或能力点不兼容时，不得静默降级成匿名用户。生产入口必须由 `api-gateway` 或反向代理剥离客户端伪造的同名可信头；直连本地测试必须覆盖伪造头不能绕过权限的场景。
+
+## 测试控制头生产隔离
+
+`business-core` 允许本地自动化测试通过 `X-Test-*` 请求头模拟审计失败、存储失败、通知失败、模块降级和平台降级。该能力只属于测试环境，不属于正式业务 API。
+
+运行单元必须提供中央开关 `beiming.business-core.test-control-headers.enabled`。该开关为 `true` 时，`X-Test-*` 请求头按各模块测试契约继续生效。该开关为 `false` 时，所有 `/api/v1/**` 请求只要携带任意 `X-Test-*` 请求头，就必须在 `business-core` 装配层返回 HTTP `400` 和错误码 `51735`。拒绝响应必须使用统一响应格式，保留 `requestId`，响应头必须带同一个 `X-Request-Id`。
+
+生产模式拒绝测试控制头时，不得继续调用业务 controller，不得创建、修改或删除业务数据，不得写入由该请求触发的业务审计，不得触发模块降级、通知失败、存储失败或审计失败测试钩子。拒绝响应不得暴露被拒绝请求头的值、Authorization、Cookie、数据库连接串、异常栈、本地绝对路径、外部凭据、真实分享密码或节点密钥。拒绝响应体中的 `requestId` 必须保持合法 JSON 字符串，不能因请求编号包含引号、反斜杠或控制字符导致响应不可解析。
+
+验收口径为生产模式下携带 `X-Test-Fail-Audit`、`X-Test-Notification-Mode`、`X-Test-Fail-Store`、`X-Test-Fail-Download-Record`、`X-Test-Module-Mode` 或 `X-Test-Platform-Mode` 调用任意第一批业务路径和 `business-core` 自有路径，均返回 `51735`。本地测试模式下，既有继承测试仍能使用这些请求头完成失败降级和回滚验证。
 
 ## 内部适配规则
 
@@ -376,6 +394,7 @@ Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `
 | `51732` | 500 | business-core 路由快照与契约不一致。 |
 | `51733` | 502 | business-core 可信认证上下文解析失败。 |
 | `51734` | 500 | business-core 生产就绪摘要生成失败。 |
+| `51735` | 400 | business-core 生产模式拒绝测试控制头。 |
 
 以上错误码只用于 `/api/v1/business-core/**` 自有接口，或用于运行单元装配层在请求到达业务模块前发生的错误。已经进入七个业务模块处理流程的请求，错误码必须按对应模块契约返回。
 

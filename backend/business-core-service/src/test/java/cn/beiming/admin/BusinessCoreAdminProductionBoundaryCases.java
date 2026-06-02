@@ -61,18 +61,16 @@ abstract class BusinessCoreAdminProductionBoundaryCases {
     }
 
     @Test
-    @DisplayName("ADM-PROD production mode ignores X-Test degradation and failure hooks")
-    void productionModeIgnoresTestHooks() throws Exception {
-        JsonNode overview = performJson(trusted(get("/api/v1/admin/overview")
+    @DisplayName("ADM-PROD production mode rejects X-Test degradation and failure hooks")
+    void productionModeRejectsTestHooks() throws Exception {
+        performJson(trusted(get("/api/v1/admin/overview")
                 .header("X-Test-Module-Mode", "CONTENT:UNAVAILABLE")
-                .header("X-Test-Platform-Mode", "API_GATEWAY:UNAVAILABLE"), "gateway-owner", "OWNER", "NODE_READ"), 200);
-        assertThat(overview.at("/data/degradedModules").toString()).doesNotContain("CONTENT");
-        assertThat(overview.at("/data/platformDependencies").toString()).contains("\"status\":\"AVAILABLE\"").doesNotContain("UNAVAILABLE");
+                .header("X-Test-Platform-Mode", "API_GATEWAY:UNAVAILABLE"), "gateway-owner", "OWNER", "NODE_READ"), 400, 51735);
 
-        JsonNode patched = performJson(trusted(patch("/api/v1/admin/settings")
+        JsonNode rejected = performJson(trusted(patch("/api/v1/admin/settings")
                 .header("X-Test-Fail-Audit", "true")
-                .header("X-Test-Fail-Settings", "true"), "gateway-admin", "ADMIN", "NODE_READ"), settingsPatchBody("prod-safe-1"), 200);
-        assertThat(patched.at("/data/idempotency/replayed").asBoolean()).isFalse();
+                .header("X-Test-Fail-Settings", "true"), "gateway-admin", "ADMIN", "NODE_READ"), settingsPatchBody("prod-safe-1"), 400);
+        assertThat(rejected.at("/code").asInt()).isEqualTo(51735);
     }
 
     @Test
