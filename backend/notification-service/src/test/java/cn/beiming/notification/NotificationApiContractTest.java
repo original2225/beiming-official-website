@@ -263,7 +263,7 @@ class NotificationApiContractTest {
                 .header("X-Beiming-Actor-Minecraft-Id", "ActorMc")
                 .header("X-Beiming-Actor-Minecraft-Uuid", "bad-uuid"), 502, 46302);
 
-        String source = java.nio.file.Files.readString(java.nio.file.Path.of("src/main/java/cn/beiming/notification/NotificationModule.java"));
+        String source = java.nio.file.Files.readString(notificationModuleSourcePath());
         assertThat(source).doesNotContain("cn.beiming.auth", "cn.beiming.profile", "cn.beiming.apigateway",
                 "AuthRepository", "ProfileRepository", "JdbcTemplate", "node-daemon", "container", "file-manager",
                 "Remove-Item -Recurse", "rm -rf", "externalWebhookToken");
@@ -1055,5 +1055,13 @@ class NotificationApiContractTest {
         return java.util.stream.StreamSupport.stream(root.at(arrayPointer).spliterator(), false)
                 .map(item -> fieldName == null ? item.asText() : item.path(fieldName).asText())
                 .toList();
+    }
+
+    private java.nio.file.Path notificationModuleSourcePath() {
+        java.nio.file.Path localPath = java.nio.file.Path.of("src/main/java/cn/beiming/notification/NotificationModule.java");
+        if (java.nio.file.Files.exists(localPath)) {
+            return localPath;
+        }
+        return java.nio.file.Path.of("../notification-service/src/main/java/cn/beiming/notification/NotificationModule.java");
     }
 }

@@ -299,7 +299,7 @@ class ProfileApiContractTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.items[0].actorUserId").value("gateway_actor"));
 
-        String source = java.nio.file.Files.readString(java.nio.file.Path.of("src/main/java/cn/beiming/profile/ProfileModule.java"));
+        String source = java.nio.file.Files.readString(profileModuleSourcePath());
         assertThat(source).doesNotContain("cn.beiming.auth", "AuthStore", "AuthRepository");
     }
 
@@ -740,5 +740,13 @@ class ProfileApiContractTest {
         return java.util.stream.StreamSupport.stream(root.at(arrayPointer).spliterator(), false)
                 .map(item -> item.path(fieldName).asText())
                 .toList();
+    }
+
+    private java.nio.file.Path profileModuleSourcePath() {
+        java.nio.file.Path localPath = java.nio.file.Path.of("src/main/java/cn/beiming/profile/ProfileModule.java");
+        if (java.nio.file.Files.exists(localPath)) {
+            return localPath;
+        }
+        return java.nio.file.Path.of("../profile-service/src/main/java/cn/beiming/profile/ProfileModule.java");
     }
 }

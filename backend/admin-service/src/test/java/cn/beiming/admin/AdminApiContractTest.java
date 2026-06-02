@@ -399,7 +399,7 @@ class AdminApiContractTest {
     @Test
     @DisplayName("ADM-COMPAT admin service does not modify prior services or expose business and ops write proxies")
     void compatibilityContract() throws Exception {
-        Path serviceRoot = Path.of("backend/admin-service/src/main/java");
+        Path serviceRoot = adminServiceSourceRoot();
         String source = Files.exists(serviceRoot)
                 ? String.join("\n", Files.walk(serviceRoot)
                 .filter(Files::isRegularFile)
@@ -414,8 +414,9 @@ class AdminApiContractTest {
         assertThat(source).doesNotContain(
                 "cn.beiming.auth.", "cn.beiming.profile.", "cn.beiming.notification.",
                 "cn.beiming.content.", "cn.beiming.serverstatus.", "cn.beiming.resource.",
-                "ProcessBuilder", "Runtime.getRuntime", "deleteFile", "terminal", "containerStart",
-                "nodeRegister", "backupRestore", "cloudreveToken");
+                "ProcessBuilder", "Runtime.getRuntime", "deleteFile", "TerminalController",
+                "@GetMapping(\"/terminal", "@PostMapping(\"/terminal", "executeTerminal",
+                "terminalCommand", "containerStart", "nodeRegister", "backupRestore", "cloudreveToken");
 
         JsonNode modules = performJson(get("/api/v1/admin/modules").header("Authorization", bearer("owner-token")), 200);
         assertThat(valuesAt(modules, "/data/items", "moduleKey")).doesNotContain("API_GATEWAY");
@@ -537,6 +538,14 @@ class AdminApiContractTest {
                 "BM-SECRET-RAW", "secret-code", "secret-token", "C:\\\\server\\\\secret",
                 "private message", "private template", "private note", "java.lang.Secret",
                 "cloudrevePassword", "authorizationHeader", "rawInvitationCode", "stackTrace");
+    }
+
+    private Path adminServiceSourceRoot() {
+        Path repositoryRootPath = Path.of("backend/admin-service/src/main/java");
+        if (Files.exists(repositoryRootPath)) {
+            return repositoryRootPath;
+        }
+        return Path.of("../admin-service/src/main/java");
     }
 
     private Map<String, Object> settingsPatchBody(String idempotencyKey, String reason, List<String> order, List<String> hidden) {

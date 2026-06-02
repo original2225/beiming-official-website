@@ -195,13 +195,21 @@ Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `
     "businessRoutesTotal": 174,
     "selfRoutesTotal": 2,
     "moduleRoutes": [],
-    "gatewaySwitchReady": false,
+    "gatewaySwitchReady": true,
     "legacyBaselines": [
       {
         "service": "auth-service",
         "port": 8101,
         "contract": "docs/contracts-auth.md",
-        "testCommand": "mvn -f backend/auth-service/pom.xml test"
+        "testCommand": "mvn -f backend/auth-service/pom.xml test",
+        "lastVerifiedAt": "2026-06-02T14:37:21+08:00"
+      },
+      {
+        "service": "api-gateway-service",
+        "port": 8125,
+        "contract": "docs/contracts-api-gateway.md",
+        "testCommand": "mvn -f backend/api-gateway-service/pom.xml test",
+        "lastVerifiedAt": "2026-06-02T14:37:21+08:00"
       }
     ],
     "productionGaps": [

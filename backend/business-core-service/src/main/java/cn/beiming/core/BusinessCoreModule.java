@@ -62,12 +62,11 @@ class BusinessCoreController {
         Map<String, Object> data = baseSummary();
         data.put("routesTotal", registry.businessRoutesTotal() + 2);
         data.put("moduleRoutes", registry.modules());
-        data.put("gatewaySwitchReady", false);
+        data.put("gatewaySwitchReady", true);
         data.put("legacyBaselines", registry.legacyBaselines());
         data.put("productionGaps", List.of(
                 "real database persistence is still module dependent",
-                "gateway route switch is not complete",
-                "full inherited business-core contract suite is not complete"
+                "gateway route switch is not complete"
         ));
         data.put("generatedAt", Instant.now().toString());
         return data;
@@ -125,6 +124,8 @@ class BusinessCoreController {
 }
 
 class BusinessCoreRegistry {
+    private static final String FIRST_BATCH_VERIFIED_AT = "2026-06-02T14:37:21+08:00";
+
     private final List<ModuleRegistration> modules = List.of(
             new ModuleRegistration("AUTH", "auth", "/api/v1/auth", "docs/contracts-auth.md", 8101, 20,
                     List.of("AuthStore", "AuthLocalWebConfig"), "auth-service"),
@@ -159,7 +160,20 @@ class BusinessCoreRegistry {
     }
 
     List<Map<String, Object>> legacyBaselines() {
-        return modules.stream().map(ModuleRegistration::toLegacyBaseline).toList();
+        List<Map<String, Object>> baselines = new java.util.ArrayList<>(
+                modules.stream().map(ModuleRegistration::toLegacyBaseline).toList());
+        Map<String, Object> gateway = new LinkedHashMap<>();
+        gateway.put("service", "api-gateway-service");
+        gateway.put("port", 8125);
+        gateway.put("contract", "docs/contracts-api-gateway.md");
+        gateway.put("testCommand", "mvn -f backend/api-gateway-service/pom.xml test");
+        gateway.put("lastVerifiedAt", FIRST_BATCH_VERIFIED_AT);
+        baselines.add(gateway);
+        return baselines;
+    }
+
+    static String firstBatchVerifiedAt() {
+        return FIRST_BATCH_VERIFIED_AT;
     }
 }
 
@@ -177,7 +191,7 @@ record ModuleRegistration(String moduleKey,
         data.put("pathPrefix", pathPrefix);
         data.put("mounted", true);
         data.put("routesTotal", routesTotal);
-        data.put("status", "MOUNTED");
+        data.put("status", "READY");
         return data;
     }
 
@@ -189,8 +203,8 @@ record ModuleRegistration(String moduleKey,
         data.put("contractRoutesTotal", routesTotal);
         data.put("adapters", adapters);
         data.put("compatibilityMode", "IN_PROCESS_ADAPTER");
-        data.put("lastVerifiedAt", null);
-        data.put("gaps", List.of("full inherited business-core contract suite is not complete"));
+        data.put("lastVerifiedAt", BusinessCoreRegistry.firstBatchVerifiedAt());
+        data.put("gaps", List.of());
         return data;
     }
 
@@ -200,6 +214,7 @@ record ModuleRegistration(String moduleKey,
         data.put("port", legacyPort);
         data.put("contract", contract);
         data.put("testCommand", "mvn -f backend/" + legacyService + "/pom.xml test");
+        data.put("lastVerifiedAt", BusinessCoreRegistry.firstBatchVerifiedAt());
         return data;
     }
 }

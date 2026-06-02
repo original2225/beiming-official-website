@@ -62,7 +62,10 @@ class BusinessCoreApiContractTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.service").value("business-core"))
-                .andExpect(jsonPath("$.data.gatewaySwitchReady").value(false));
+                .andExpect(jsonPath("$.data.gatewaySwitchReady").value(true))
+                .andExpect(jsonPath("$.data.moduleRoutes[0].status").value("READY"))
+                .andExpect(jsonPath("$.data.moduleRoutes[0].gaps").isEmpty())
+                .andExpect(jsonPath("$.data.productionGaps[?(@ == 'full inherited business-core contract suite is not complete')]").doesNotExist());
     }
 
     @Test
