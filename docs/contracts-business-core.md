@@ -4,7 +4,7 @@
 
 ## 文档定位
 
-本文档是 `business-core` 运行合并单元的正式 API 契约。`business-core` 用于承载第一批已完成闭环的业务模块，包括 `auth`、`profile`、`notification`、`content`、`server-status`、`resource` 和 `admin`。本文档只定义合并后的运行形态、模块装配、自检接口、网关切换边界和验收口径，不替代七个业务模块自己的 API 契约。
+本文档是 `business-core` 运行合并单元的正式 API 契约。`business-core` 用于承载第一批已完成闭环的业务模块，包括 `auth`、`profile`、`notification`、`content`、`server-status`、`resource` 和 `admin`。本文档只定义合并后的运行形态、模块装配、自检接口、生产就绪摘要、网关切换边界和验收口径，不替代七个业务模块自己的 API 契约。
 
 本文档继承 `docs/contracts-common.md`、`docs/contracts-auth.md`、`docs/contracts-profile.md`、`docs/contracts-notification.md`、`docs/contracts-content.md`、`docs/contracts-server-status.md`、`docs/contracts-resource.md` 和 `docs/contracts-admin.md`。七个业务模块的路径、方法、认证、权限、请求字段、响应字段、错误码、分页、幂等、状态流转、降级、审计和验收口径仍以各自契约为准。
 
@@ -20,7 +20,7 @@
 | 模块装配 | 按原模块包名、路由和契约装配 controller、service、adapter、store 和测试替身。 |
 | 契约保持 | 保持七个模块既有 API 路径、HTTP 方法、响应结构、错误码、认证、权限、状态流转、幂等和审计行为。 |
 | 内部适配 | 把合并前跨服务 HTTP 适配收敛为同进程 adapter 或 facade，但不允许跨模块直接读写主数据。 |
-| 自检摘要 | 暴露 `business-core` 自身健康检查和后台装配摘要，便于迁移验证。 |
+| 自检摘要 | 暴露 `business-core` 自身健康检查、后台装配摘要和生产就绪摘要，便于迁移验证和生产化排障。 |
 | 网关切换状态 | 为 `api-gateway` 第一批路径上游切换提供稳定目标，并在切换完成后暴露完成状态。 |
 
 `business-core` 不负责吸收 `api-gateway`。第一阶段仍保留 `api-gateway-service` 作为统一入口。`business-core` 不负责后续模块，如 `onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、`ops-control`、`node-daemon` 和 P3 扩展。
@@ -47,7 +47,7 @@ Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `
 | `resource` | `docs/contracts-resource.md` | `/api/v1/resources` | `8106` | 29 | 是 |
 | `admin` | `docs/contracts-admin.md` | `/api/v1/admin` | `8107` | 10 | 是 |
 
-第一批合并后，`business-core` 需要承载以上 174 个既有业务方法路由。`business-core` 自身新增 2 个运行单元自检路由。合并验证总方法路由数为 176。
+第一批合并后，`business-core` 需要承载以上 174 个既有业务方法路由。`business-core` 自身新增 3 个运行单元自检和生产就绪路由。合并验证总方法路由数为 177。
 
 ## API 路径清单
 
@@ -62,7 +62,7 @@ Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `
 | `/api/v1/server-status/**` | `GET`、`POST`、`PATCH` | 玩家可见状态、线路、历史快照、状态源、宕机记录 | `docs/contracts-server-status.md` |
 | `/api/v1/resources/**` | `GET`、`POST`、`PATCH` | 玩家资源、版本、分类、下载、Cloudreve 分享链接、资源审计 | `docs/contracts-resource.md` |
 | `/api/v1/admin/**` | `GET`、`PATCH` | 后台总览、模块注册表、待办、指标、审计索引、系统配置 | `docs/contracts-admin.md` |
-| `/api/v1/business-core/**` | `GET` | `business-core` 运行单元自检 | 本文档 |
+| `/api/v1/business-core/**` | `GET` | `business-core` 运行单元自检和生产就绪摘要 | 本文档 |
 
 路径匹配必须保持既有模块前缀，不得把 `/api/v1/resources/**` 误匹配到其他模块，不得把 `/api/v1/resourceful` 误命中 `resource`，不得把 `/api/v1/admin/**` 路径交给其他模块处理。
 
@@ -97,7 +97,7 @@ Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `
 | `modulesMounted` | integer | 是 | 已装配模块数量。 |
 | `routesTotal` | integer | 是 | 当前运行单元登记路由总数。 |
 | `businessRoutesTotal` | integer | 是 | 七个业务模块方法路由总数，完成后为 `174`。 |
-| `selfRoutesTotal` | integer | 是 | `business-core` 自有路由总数，固定为 `2`。 |
+| `selfRoutesTotal` | integer | 是 | `business-core` 自有路由总数，固定为 `3`。 |
 | `moduleRoutes` | `BusinessCoreModuleStatus[]` | 是 | 七个模块装配状态。 |
 | `gatewaySwitchReady` | boolean | 是 | 是否已满足网关切换前置条件。网关切换完成后仍为 `true`。 |
 | `gatewaySwitchStatus` | string | 是 | 网关切换状态，允许 `NOT_READY`、`READY` 或 `COMPLETED`。 |
@@ -105,12 +105,34 @@ Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `
 | `productionGaps` | string[] | 是 | 生产化差距摘要。 |
 | `generatedAt` | string | 是 | 摘要生成时间。 |
 
+### BusinessCoreProductionReadiness
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `service` | string | 是 | 固定为 `business-core`。 |
+| `port` | integer | 是 | 本地验证固定为 `8130`。 |
+| `productionReady` | boolean | 是 | 是否达到生产就绪。只有所有阻塞项完成并有真实联调记录时才能为 `true`。 |
+| `readinessStatus` | string | 是 | `NOT_READY`、`PARTIAL` 或 `READY_FOR_PRODUCTION`。当前未完成真实持久化、真实认证边界和真实 HTTP 联调时必须为 `NOT_READY`。 |
+| `routeSummary` | object | 是 | 路由摘要，包含 `businessRoutesTotal`、`selfRoutesTotal` 和 `routesTotal`。 |
+| `blockingGaps` | object[] | 是 | 阻塞生产化的缺口清单。每项包含 `gapKey`、`category`、`severity`、`ownerModule`、`currentMode`、`requiredMode`、`nextAction` 和 `verification`。 |
+| `gapsTotal` | integer | 是 | 阻塞缺口总数。 |
+| `criticalGapsTotal` | integer | 是 | 严重缺口数量。 |
+| `highGapsTotal` | integer | 是 | 高风险缺口数量。 |
+| `integrationChecks` | object[] | 是 | 生产联调检查项。每项包含 `checkKey`、`status`、`evidence` 和 `requiredBeforeProduction`。 |
+| `testScope` | object | 是 | 当前测试覆盖摘要，必须区分 MockMvc、本地 Maven、旧服务回归、网关路由切换和真实 HTTP 联调。 |
+| `testControls` | object | 是 | 测试控制头生产隔离摘要，包含 `productionGuardRequired`、`knownControlHeaders` 和 `risk`。 |
+| `sourceDrift` | object | 是 | 旧服务源码基线和 `business-core` 副本漂移风险摘要。 |
+| `nextDevelopmentOrder` | string[] | 是 | 后续生产化建议顺序。 |
+| `legacyBaselinesKept` | boolean | 是 | 旧七服务和独立契约是否仍保留作回归基线。 |
+| `generatedAt` | string | 是 | ISO 8601 时间。 |
+
 ## 接口总览
 
 | 接口 | 方法 | 路径 | 认证 | 权限 | 风险 |
 | --- | --- | --- | --- | --- | --- |
 | business-core 健康检查 | GET | `/api/v1/business-core/health` | 否 | 无 | LOW |
 | business-core 后台装配摘要 | GET | `/api/v1/business-core/admin/ops/summary` | 是 | `ADMIN` 或 `OWNER` | LOW |
+| business-core 生产就绪摘要 | GET | `/api/v1/business-core/admin/production-readiness` | 是 | `ADMIN` 或 `OWNER` | LOW |
 | 七个业务模块接口 | 继承各模块契约 | `/api/v1/auth/**`、`/api/v1/profile/**`、`/api/v1/notifications/**`、`/api/v1/content/**`、`/api/v1/server-status/**`、`/api/v1/resources/**`、`/api/v1/admin/**` | 继承各模块契约 | 继承各模块契约 | 继承各模块契约 |
 
 ## 健康检查
@@ -134,7 +156,7 @@ Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `
     "modulesTotal": 7,
     "modulesMounted": 7,
     "businessRoutesTotal": 174,
-    "selfRoutesTotal": 2,
+    "selfRoutesTotal": 3,
     "moduleRoutes": [
       {
         "moduleKey": "AUTH",
@@ -160,7 +182,7 @@ Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `
 | `modulesTotal` | integer | 是 | 固定为 `7`。 |
 | `modulesMounted` | integer | 是 | 已装配模块数量。 |
 | `businessRoutesTotal` | integer | 是 | 七个业务模块方法路由总数，完成后为 `174`。 |
-| `selfRoutesTotal` | integer | 是 | `business-core` 自有路由数，固定为 `2`。 |
+| `selfRoutesTotal` | integer | 是 | `business-core` 自有路由数，固定为 `3`。 |
 | `moduleRoutes` | object[] | 是 | 低敏模块路由摘要，只返回 `moduleKey`、`pathPrefix`、`mounted`、`routesTotal` 和 `status`。 |
 | `generatedAt` | string | 是 | ISO 8601 时间。 |
 
@@ -192,9 +214,9 @@ Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `
     "status": "UP",
     "modulesTotal": 7,
     "modulesMounted": 7,
-    "routesTotal": 176,
+    "routesTotal": 177,
     "businessRoutesTotal": 174,
-    "selfRoutesTotal": 2,
+    "selfRoutesTotal": 3,
     "moduleRoutes": [],
     "gatewaySwitchReady": true,
     "gatewaySwitchStatus": "COMPLETED",
@@ -234,6 +256,77 @@ Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `
 状态流转：该接口不改变业务状态。模块装配状态只允许按迁移过程从 `NOT_MOUNTED` 进入 `MOUNTED`，契约测试通过后进入 `READY`，发现路由缺失、adapter 不可用或继承测试失败时进入 `DEGRADED`。
 
 审计要求：读取后台装配摘要属于低风险后台读取，应保留请求编号、操作者、角色和访问时间的运行日志。不得记录 token 原文。
+
+## 生产就绪摘要
+
+`GET /api/v1/business-core/admin/production-readiness`
+
+该接口需要 `Authorization: Bearer <token>`。只有 `ADMIN` 和 `OWNER` 可访问。未登录返回公共错误码 `41000`，令牌格式错误返回 `41003`，权限不足返回 `42001`。`HELPER` 和 `USER` 均不得读取生产就绪摘要。
+
+请求字段：无。
+
+成功响应 HTTP `200`，`data` 为 `BusinessCoreProductionReadiness`。
+
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "service": "business-core",
+    "port": 8130,
+    "productionReady": false,
+    "readinessStatus": "NOT_READY",
+    "routeSummary": {
+      "businessRoutesTotal": 174,
+      "selfRoutesTotal": 3,
+      "routesTotal": 177
+    },
+    "blockingGaps": [
+      {
+        "gapKey": "LIVE_GATEWAY_HTTP_SMOKE_NOT_VERIFIED",
+        "category": "INTEGRATION",
+        "severity": "HIGH",
+        "ownerModule": "BUSINESS_CORE",
+        "currentMode": "MOCKMVC_AND_MAVEN_CONTRACTS",
+        "requiredMode": "REAL_HTTP_GATEWAY_TO_BUSINESS_CORE",
+        "nextAction": "启动 api-gateway-service 与 business-core-service，执行经网关访问第一批路径的真实 HTTP 冒烟测试。",
+        "verification": "记录命令、端口、请求路径、响应码、请求编号和失败降级结果到 .local-docs/tests-business-core.md。"
+      }
+    ],
+    "gapsTotal": 6,
+    "criticalGapsTotal": 0,
+    "highGapsTotal": 4,
+    "integrationChecks": [],
+    "testScope": {},
+    "testControls": {},
+    "sourceDrift": {},
+    "nextDevelopmentOrder": [
+      "LIVE_GATEWAY_HTTP_SMOKE",
+      "PRODUCTION_AUTH_CONTEXT",
+      "PERSISTENCE_AND_AUDIT",
+      "TEST_CONTROL_GUARD",
+      "SOURCE_DRIFT_GUARD"
+    ],
+    "legacyBaselinesKept": true,
+    "generatedAt": "2026-06-03T00:00:00Z"
+  },
+  "requestId": "req_example"
+}
+```
+
+业务规则：生产就绪摘要必须诚实暴露 `business-core` 尚未完成的生产化阻塞项，不能因为合并测试全绿就返回 `productionReady=true`。当前至少要列出真实网关到 `business-core` HTTP 联调未验证、真实数据库持久化未接入、真实审计持久化未接入、生产认证上下文或网关内部签名未接入、测试控制头生产隔离仍依赖模块自身开关、旧服务和合并副本存在双维护漂移风险。该接口只读，不执行联调，不访问旧服务端口，不连接数据库，不调用真实外部依赖。
+
+`integrationChecks` 至少包含以下检查项：`LIVE_GATEWAY_HTTP_SMOKE`、`PERSISTENT_DATABASE`、`PERSISTENT_AUDIT`、`PRODUCTION_AUTH_CONTEXT`、`GATEWAY_INTERNAL_SIGNATURE`、`TEST_CONTROL_GUARD`、`SOURCE_DRIFT_GUARD`。状态允许 `PASS`、`PARTIAL`、`NOT_VERIFIED`、`NOT_CONNECTED` 或 `REQUIRED`。
+
+`testScope` 必须明确 `mockMvcContractTests`、`legacyBaselineTests`、`apiGatewayRouteSwitchTests` 和 `liveHttpSmokeTests` 的覆盖状态。当前真实 HTTP 联调未执行时，`liveHttpSmokeTests.status` 必须为 `NOT_VERIFIED`。
+
+失败规则：运行单元内部异常返回 `51730`。模块装配信息缺失返回 `51731`。生产就绪摘要生成时发现路由总数与契约不一致，返回 `51732` 或在成功摘要中把 `SOURCE_DRIFT_GUARD` 标为 `REQUIRED` 并列入阻塞项。认证上下文解析失败返回原模块契约或公共认证错误，可信网关上下文字段缺失或格式不兼容时返回 `51733`。
+
+分页规则：无分页。
+
+幂等规则：只读接口，重复调用不改变任何业务状态。
+
+审计要求：读取生产就绪摘要属于低风险后台读取，应保留请求编号、操作者、角色和访问时间的运行日志。响应不得包含 token、Cookie、完整请求头、数据库连接串、异常栈、外部凭据、真实分享密码、节点密钥或本地绝对运行路径。
 
 ## 认证上下文
 
@@ -282,6 +375,7 @@ Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `
 | `51731` | 500 | business-core 模块装配错误。 |
 | `51732` | 500 | business-core 路由快照与契约不一致。 |
 | `51733` | 502 | business-core 可信认证上下文解析失败。 |
+| `51734` | 500 | business-core 生产就绪摘要生成失败。 |
 
 以上错误码只用于 `/api/v1/business-core/**` 自有接口，或用于运行单元装配层在请求到达业务模块前发生的错误。已经进入七个业务模块处理流程的请求，错误码必须按对应模块契约返回。
 
@@ -305,7 +399,7 @@ Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `
 
 `business-core` 完成的最低标准是，单进程承载第一批七个业务模块的全部既有 API 路径，且响应格式、错误码、认证、权限、请求编号、分页、状态流转、幂等、审计和降级行为与七个模块正式契约一致。
 
-`mvn -f backend/business-core-service/pom.xml test` 必须覆盖本文档两个自有接口和七个模块继承过来的全部契约测试。七个旧服务和 `api-gateway-service` 仍必须保持测试通过，直到用户明确确认旧服务清理。
+`mvn -f backend/business-core-service/pom.xml test` 必须覆盖本文档三个自有接口和七个模块继承过来的全部契约测试。七个旧服务和 `api-gateway-service` 仍必须保持测试通过，直到用户明确确认旧服务清理。
 
 `business-core` 直连合并和第一批网关切换均已完成测试闭环。后续不能因此删除旧服务目录；旧服务仍作为回归基线保留，直到用户明确确认清理。
 

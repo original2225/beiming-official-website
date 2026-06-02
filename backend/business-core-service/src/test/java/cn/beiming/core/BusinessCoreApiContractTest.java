@@ -45,7 +45,7 @@ class BusinessCoreApiContractTest {
                 .andExpect(jsonPath("$.data.port").value(8130))
                 .andExpect(jsonPath("$.data.modulesTotal").value(7))
                 .andExpect(jsonPath("$.data.businessRoutesTotal").value(174))
-                .andExpect(jsonPath("$.data.selfRoutesTotal").value(2));
+                .andExpect(jsonPath("$.data.selfRoutesTotal").value(3));
     }
 
     @Test
@@ -74,6 +74,79 @@ class BusinessCoreApiContractTest {
                 .andExpect(jsonPath("$.data.moduleRoutes[0].gaps").isEmpty())
                 .andExpect(jsonPath("$.data.productionGaps[?(@ == 'gateway route switch is not complete')]").doesNotExist())
                 .andExpect(jsonPath("$.data.productionGaps[?(@ == 'full inherited business-core contract suite is not complete')]").doesNotExist());
+    }
+
+    @Test
+    void exposesProductionReadinessWithoutPretendingProductionIsReady() throws Exception {
+        mockMvc.perform(get("/api/v1/business-core/admin/production-readiness"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(41000));
+
+        mockMvc.perform(get("/api/v1/business-core/admin/production-readiness")
+                        .header("Authorization", "Basic admin-token"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(41003));
+
+        mockMvc.perform(get("/api/v1/business-core/admin/production-readiness")
+                        .header("Authorization", "Bearer helper-token"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(42001));
+
+        mockMvc.perform(get("/api/v1/business-core/admin/production-readiness")
+                        .header("Authorization", "Bearer user-token"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(42001));
+
+        mockMvc.perform(get("/api/v1/business-core/admin/production-readiness")
+                        .header("Authorization", "Bearer owner-token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.service").value("business-core"));
+
+        MvcResult result = mockMvc.perform(get("/api/v1/business-core/admin/production-readiness")
+                        .header("Authorization", "Bearer admin-token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.service").value("business-core"))
+                .andExpect(jsonPath("$.data.port").value(8130))
+                .andExpect(jsonPath("$.data.productionReady").value(false))
+                .andExpect(jsonPath("$.data.readinessStatus").value("NOT_READY"))
+                .andExpect(jsonPath("$.data.routeSummary.businessRoutesTotal").value(174))
+                .andExpect(jsonPath("$.data.routeSummary.selfRoutesTotal").value(3))
+                .andExpect(jsonPath("$.data.routeSummary.routesTotal").value(177))
+                .andExpect(jsonPath("$.data.blockingGaps[?(@.gapKey == 'LIVE_GATEWAY_HTTP_SMOKE_NOT_VERIFIED')]").exists())
+                .andExpect(jsonPath("$.data.blockingGaps[?(@.gapKey == 'PERSISTENT_DATABASE_NOT_CONNECTED')]").exists())
+                .andExpect(jsonPath("$.data.blockingGaps[?(@.gapKey == 'PERSISTENT_AUDIT_NOT_CONNECTED')]").exists())
+                .andExpect(jsonPath("$.data.blockingGaps[?(@.gapKey == 'PRODUCTION_AUTH_CONTEXT_NOT_CONNECTED')]").exists())
+                .andExpect(jsonPath("$.data.blockingGaps[?(@.gapKey == 'TEST_CONTROL_HEADERS_REQUIRE_PRODUCTION_GUARD')]").exists())
+                .andExpect(jsonPath("$.data.blockingGaps[?(@.gapKey == 'LEGACY_SOURCE_DRIFT_GUARD_REQUIRED')]").exists())
+                .andExpect(jsonPath("$.data.gapsTotal").value(6))
+                .andExpect(jsonPath("$.data.criticalGapsTotal").value(0))
+                .andExpect(jsonPath("$.data.highGapsTotal").value(4))
+                .andExpect(jsonPath("$.data.integrationChecks[?(@.checkKey == 'LIVE_GATEWAY_HTTP_SMOKE' && @.status == 'NOT_VERIFIED' && @.requiredBeforeProduction == true)]").exists())
+                .andExpect(jsonPath("$.data.integrationChecks[?(@.checkKey == 'PERSISTENT_DATABASE' && @.status == 'NOT_CONNECTED')]").exists())
+                .andExpect(jsonPath("$.data.integrationChecks[?(@.checkKey == 'PERSISTENT_AUDIT' && @.status == 'NOT_CONNECTED')]").exists())
+                .andExpect(jsonPath("$.data.integrationChecks[?(@.checkKey == 'PRODUCTION_AUTH_CONTEXT' && @.status != 'PASS')]").exists())
+                .andExpect(jsonPath("$.data.integrationChecks[?(@.checkKey == 'GATEWAY_INTERNAL_SIGNATURE' && @.status != 'PASS')]").exists())
+                .andExpect(jsonPath("$.data.testScope.mockMvcContractTests.status").value("PASS"))
+                .andExpect(jsonPath("$.data.testScope.liveHttpSmokeTests.status").value("NOT_VERIFIED"))
+                .andExpect(jsonPath("$.data.testControls.productionGuardRequired").value(true))
+                .andExpect(jsonPath("$.data.testControls.knownControlHeaders[?(@ == 'X-Test-Fail-Audit')]").exists())
+                .andExpect(jsonPath("$.data.testControls.knownControlHeaders[?(@ == 'X-Test-Notification-Mode')]").exists())
+                .andExpect(jsonPath("$.data.sourceDrift.risk").value("DUAL_MAINTENANCE"))
+                .andExpect(jsonPath("$.data.nextDevelopmentOrder[0]").value("LIVE_GATEWAY_HTTP_SMOKE"))
+                .andExpect(jsonPath("$.data.nextDevelopmentOrder[?(@ == 'PERSISTENCE_AND_AUDIT')]").exists())
+                .andExpect(jsonPath("$.data.legacyBaselinesKept").value(true))
+                .andReturn();
+
+        String body = result.getResponse().getContentAsString();
+        assertThat(body)
+                .doesNotContain("Authorization")
+                .doesNotContain("Cookie")
+                .doesNotContain("jdbc:")
+                .doesNotContain("Exception")
+                .doesNotContain("sharePassword")
+                .doesNotContain("nodeSecret");
     }
 
     @Test
@@ -123,7 +196,7 @@ class BusinessCoreApiContractTest {
                 .filter(pattern -> pattern.startsWith("/api/v1/"))
                 .collect(Collectors.toCollection(java.util.TreeSet::new));
 
-        assertThat(apiRouteMappings).isEqualTo(176);
+        assertThat(apiRouteMappings).isEqualTo(177);
         assertThat(apiRoutes).contains(
                 "/api/v1/auth/me",
                 "/api/v1/profile/members",
@@ -133,7 +206,8 @@ class BusinessCoreApiContractTest {
                 "/api/v1/resources",
                 "/api/v1/admin/overview",
                 "/api/v1/business-core/health",
-                "/api/v1/business-core/admin/ops/summary"
+                "/api/v1/business-core/admin/ops/summary",
+                "/api/v1/business-core/admin/production-readiness"
         );
     }
 
