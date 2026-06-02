@@ -5,6 +5,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.FilterType;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
@@ -17,7 +19,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest
+@SpringBootTest(classes = BusinessCoreServiceApplication.class)
 @AutoConfigureMockMvc
 class BusinessCoreApiContractTest {
     @Autowired
@@ -64,6 +66,10 @@ class BusinessCoreApiContractTest {
                 .andExpect(jsonPath("$.data.service").value("business-core"))
                 .andExpect(jsonPath("$.data.gatewaySwitchReady").value(true))
                 .andExpect(jsonPath("$.data.gatewaySwitchStatus").value("COMPLETED"))
+                .andExpect(jsonPath("$.data.legacyBaselines[?(@.service == 'auth-service')]").exists())
+                .andExpect(jsonPath("$.data.legacyBaselines[?(@.service == 'api-gateway-service')]").exists())
+                .andExpect(jsonPath("$.data.moduleRoutes[0].legacyPort").value(8101))
+                .andExpect(jsonPath("$.data.moduleRoutes[0].contract").value("docs/contracts-auth.md"))
                 .andExpect(jsonPath("$.data.moduleRoutes[0].status").value("READY"))
                 .andExpect(jsonPath("$.data.moduleRoutes[0].gaps").isEmpty())
                 .andExpect(jsonPath("$.data.productionGaps[?(@ == 'gateway route switch is not complete')]").doesNotExist())
@@ -130,4 +136,16 @@ class BusinessCoreApiContractTest {
                 "/api/v1/business-core/admin/ops/summary"
         );
     }
+
+    @Test
+    void excludesLegacyServiceApplicationClassesFromMergedComponentScan() {
+        ComponentScan componentScan = BusinessCoreServiceApplication.class.getAnnotation(ComponentScan.class);
+
+        assertThat(componentScan).isNotNull();
+        assertThat(componentScan.excludeFilters()).anySatisfy(filter -> {
+            assertThat(filter.type()).isEqualTo(FilterType.REGEX);
+            assertThat(filter.pattern()).contains("cn\\.beiming\\.(auth|profile|notification|content|serverstatus|resource|admin)\\..*ServiceApplication");
+        });
+    }
+
 }

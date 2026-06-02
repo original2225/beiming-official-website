@@ -4,5 +4,5 @@ import cn.beiming.core.BusinessCoreServiceApplication;
 import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest(classes = BusinessCoreServiceApplication.class, properties = "beiming.admin.test-mode=true")
-class BusinessCoreAdminApiContractTest extends AdminApiContractTest {
+class BusinessCoreAdminApiContractTest extends BusinessCoreAdminContractCases {
 }

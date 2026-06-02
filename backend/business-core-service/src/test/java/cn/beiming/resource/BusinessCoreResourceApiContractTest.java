@@ -4,5 +4,5 @@ import cn.beiming.core.BusinessCoreServiceApplication;
 import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest(classes = BusinessCoreServiceApplication.class)
-class BusinessCoreResourceApiContractTest extends ResourceApiContractTest {
+class BusinessCoreResourceApiContractTest extends BusinessCoreResourceContractCases {
 }

@@ -34,11 +34,6 @@
             <artifactId>spring-security-crypto</artifactId>
         </dependency>
         <dependency>
-            <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
@@ -48,67 +43,17 @@
     <build>
         <plugins>
             <plugin>
-                <groupId>org.codehaus.mojo</groupId>
-                <artifactId>build-helper-maven-plugin</artifactId>
-                <version>3.6.0</version>
-                <executions>
-                    <execution>
-                        <id>add-first-batch-service-sources</id>
-                        <phase>generate-sources</phase>
-                        <goals>
-                            <goal>add-source</goal>
-                        </goals>
-                        <configuration>
-                            <sources>
-                                <source>../auth-service/src/main/java</source>
-                                <source>../profile-service/src/main/java</source>
-                                <source>../notification-service/src/main/java</source>
-                                <source>../content-service/src/main/java</source>
-                                <source>../server-status-service/src/main/java</source>
-                                <source>../resource-service/src/main/java</source>
-                                <source>../admin-service/src/main/java</source>
-                            </sources>
-                        </configuration>
-                    </execution>
-                    <execution>
-                        <id>add-auth-service-test-sources</id>
-                        <phase>generate-test-sources</phase>
-                        <goals>
-                            <goal>add-test-source</goal>
-                        </goals>
-                        <configuration>
-                            <sources>
-                                <source>../auth-service/src/test/java</source>
-                                <source>../profile-service/src/test/java</source>
-                                <source>../notification-service/src/test/java</source>
-                                <source>../content-service/src/test/java</source>
-                                <source>../server-status-service/src/test/java</source>
-                                <source>../resource-service/src/test/java</source>
-                                <source>../admin-service/src/test/java</source>
-                            </sources>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
-            <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
                     <excludes>
                         <exclude>**/AuthApiContractTest.class</exclude>
-                        <exclude>**/AuthPortConfigTest.class</exclude>
                         <exclude>**/ProfileApiContractTest.class</exclude>
-                        <exclude>**/ProfilePortConfigTest.class</exclude>
                         <exclude>**/NotificationApiContractTest.class</exclude>
-                        <exclude>**/NotificationPortConfigTest.class</exclude>
                         <exclude>**/ContentApiContractTest.class</exclude>
-                        <exclude>**/ContentPortConfigTest.class</exclude>
                         <exclude>**/ServerStatusApiContractTest.class</exclude>
-                        <exclude>**/ServerStatusPortConfigTest.class</exclude>
                         <exclude>**/ResourceApiContractTest.class</exclude>
-                        <exclude>**/ResourcePortConfigTest.class</exclude>
                         <exclude>**/AdminApiContractTest.class</exclude>
-                        <exclude>**/AdminPortConfigTest.class</exclude>
                         <exclude>**/AdminProductionBoundaryTest.class</exclude>
                     </excludes>
                 </configuration>
