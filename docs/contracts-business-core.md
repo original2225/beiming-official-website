@@ -21,7 +21,7 @@
 | 契约保持 | 保持七个模块既有 API 路径、HTTP 方法、响应结构、错误码、认证、权限、状态流转、幂等和审计行为。 |
 | 内部适配 | 把合并前跨服务 HTTP 适配收敛为同进程 adapter 或 facade，但不允许跨模块直接读写主数据。 |
 | 自检摘要 | 暴露 `business-core` 自身健康检查和后台装配摘要，便于迁移验证。 |
-| 网关切换准备 | 为 `api-gateway` 后续把第一批路径上游切到 `business-core` 提供稳定目标。 |
+| 网关切换状态 | 为 `api-gateway` 第一批路径上游切换提供稳定目标，并在切换完成后暴露完成状态。 |
 
 `business-core` 不负责吸收 `api-gateway`。第一阶段仍保留 `api-gateway-service` 作为统一入口。`business-core` 不负责后续模块，如 `onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、`ops-control`、`node-daemon` 和 P3 扩展。
 
@@ -99,7 +99,8 @@ Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `
 | `businessRoutesTotal` | integer | 是 | 七个业务模块方法路由总数，完成后为 `174`。 |
 | `selfRoutesTotal` | integer | 是 | `business-core` 自有路由总数，固定为 `2`。 |
 | `moduleRoutes` | `BusinessCoreModuleStatus[]` | 是 | 七个模块装配状态。 |
-| `gatewaySwitchReady` | boolean | 是 | 是否允许进入网关切换前置文档和测试步骤。 |
+| `gatewaySwitchReady` | boolean | 是 | 是否已满足网关切换前置条件。网关切换完成后仍为 `true`。 |
+| `gatewaySwitchStatus` | string | 是 | 网关切换状态，允许 `NOT_READY`、`READY` 或 `COMPLETED`。 |
 | `legacyBaselines` | object[] | 是 | 旧七个微服务和网关基线摘要。 |
 | `productionGaps` | string[] | 是 | 生产化差距摘要。 |
 | `generatedAt` | string | 是 | 摘要生成时间。 |
@@ -196,25 +197,25 @@ Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `
     "selfRoutesTotal": 2,
     "moduleRoutes": [],
     "gatewaySwitchReady": true,
+    "gatewaySwitchStatus": "COMPLETED",
     "legacyBaselines": [
       {
         "service": "auth-service",
         "port": 8101,
         "contract": "docs/contracts-auth.md",
         "testCommand": "mvn -f backend/auth-service/pom.xml test",
-        "lastVerifiedAt": "2026-06-02T14:37:21+08:00"
+        "lastVerifiedAt": "2026-06-02T15:34:38+08:00"
       },
       {
         "service": "api-gateway-service",
         "port": 8125,
         "contract": "docs/contracts-api-gateway.md",
         "testCommand": "mvn -f backend/api-gateway-service/pom.xml test",
-        "lastVerifiedAt": "2026-06-02T14:37:21+08:00"
+        "lastVerifiedAt": "2026-06-02T15:34:38+08:00"
       }
     ],
     "productionGaps": [
-      "real database persistence is still module dependent",
-      "gateway route switch is not complete"
+      "real database persistence is still module dependent"
     ],
     "generatedAt": "2026-06-02T05:26:20Z"
   },
@@ -222,7 +223,7 @@ Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `
 }
 ```
 
-业务规则：该接口只读取 `business-core` 内部装配状态和最近测试摘要，不主动执行七个模块的业务写操作，不调用旧服务进行实时健康探测，不把未完成模块伪装成 `READY`。只有当七个模块全部装配、七个模块在 `business-core` 中的继承契约测试通过、旧七个服务回归通过、`api-gateway` 基线通过时，`gatewaySwitchReady` 才能为 `true`。
+业务规则：该接口只读取 `business-core` 内部装配状态和最近测试摘要，不主动执行七个模块的业务写操作，不调用旧服务进行实时健康探测，不把未完成模块伪装成 `READY`。只有当七个模块全部装配、七个模块在 `business-core` 中的继承契约测试通过、旧七个服务回归通过、`api-gateway` 基线通过时，`gatewaySwitchReady` 才能为 `true`。只有当 `api-gateway` 契约、测试文档、自动化红灯、网关实现和全量后端回归均完成后，`gatewaySwitchStatus` 才能为 `COMPLETED`。
 
 失败规则：运行单元内部异常返回 `51730`。模块装配信息缺失返回 `51731`。当前登记路由与本文档或七个模块契约期望不一致时返回 `51732` 或在 `status=DEGRADED` 的成功摘要中列入 `gaps`，由实现按是否影响接口可用性决定。认证上下文解析失败返回原模块契约或公共认证错误，可信网关上下文字段缺失或格式不兼容时返回 `51733`。
 
@@ -286,9 +287,9 @@ Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `
 
 ## 网关策略
 
-第一阶段不修改 `api-gateway-service`。旧路由仍指向 `8101` 到 `8107`，`business-core-service` 在 `8130` 进行直连契约测试。前端仍通过原 API 路径访问，不新增前端直连约定。
+第一批网关切换已完成。`api-gateway-service` 已把 `auth`、`profile`、`notification`、`content`、`server-status`、`resource` 和 `admin` 的上游从旧端口调整为 `business-core-service` 约定端口 `8130`。前端仍通过原 API 路径访问，不新增前端直连约定。
 
-当 `business-core` 直连测试、七个旧服务回归和 `api-gateway` 基线全部通过后，才能进入网关切换步骤。网关切换前必须先更新 `docs/contracts-api-gateway.md` 和 `.local-docs/tests-api-gateway.md`，把 `auth`、`profile`、`notification`、`content`、`server-status`、`resource` 和 `admin` 的上游从旧端口调整为 `business-core` 约定端口，确认测试红灯后再修改网关实现。
+后续若再次调整网关路由，必须先更新 `docs/contracts-api-gateway.md` 和 `.local-docs/tests-api-gateway.md`，确认测试红灯后再修改网关实现。
 
 网关切换后，业务路径仍保持 `/api/v1/auth/**`、`/api/v1/profile/**`、`/api/v1/notifications/**`、`/api/v1/content/**`、`/api/v1/server-status/**`、`/api/v1/resources/**` 和 `/api/v1/admin/**`，不得改成 `/api/v1/business-core/<module>/**`。
 
@@ -306,6 +307,6 @@ Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `
 
 `mvn -f backend/business-core-service/pom.xml test` 必须覆盖本文档两个自有接口和七个模块继承过来的全部契约测试。七个旧服务和 `api-gateway-service` 仍必须保持测试通过，直到用户明确确认旧服务清理。
 
-完成 `business-core` 直连合并不等于完成网关切换。网关切换必须单独更新网关契约、网关本地测试文档和网关自动化测试，并再次完成红灯、实现、全绿和测试记录闭环。
+`business-core` 直连合并和第一批网关切换均已完成测试闭环。后续不能因此删除旧服务目录；旧服务仍作为回归基线保留，直到用户明确确认清理。
 
 旧服务目录不得因本契约自动删除。需要清理旧服务时，必须单独列出明确文件路径并取得用户确认，且只能逐个文件处理。

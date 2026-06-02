@@ -63,10 +63,10 @@ class BusinessCoreController {
         data.put("routesTotal", registry.businessRoutesTotal() + 2);
         data.put("moduleRoutes", registry.modules());
         data.put("gatewaySwitchReady", true);
+        data.put("gatewaySwitchStatus", "COMPLETED");
         data.put("legacyBaselines", registry.legacyBaselines());
         data.put("productionGaps", List.of(
-                "real database persistence is still module dependent",
-                "gateway route switch is not complete"
+                "real database persistence is still module dependent"
         ));
         data.put("generatedAt", Instant.now().toString());
         return data;
@@ -124,7 +124,7 @@ class BusinessCoreController {
 }
 
 class BusinessCoreRegistry {
-    private static final String FIRST_BATCH_VERIFIED_AT = "2026-06-02T14:37:21+08:00";
+    private static final String FIRST_BATCH_VERIFIED_AT = "2026-06-02T15:34:38+08:00";
 
     private final List<ModuleRegistration> modules = List.of(
             new ModuleRegistration("AUTH", "auth", "/api/v1/auth", "docs/contracts-auth.md", 8101, 20,
