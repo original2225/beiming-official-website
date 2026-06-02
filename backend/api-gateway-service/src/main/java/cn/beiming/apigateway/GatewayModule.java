@@ -713,13 +713,13 @@ class GatewayState {
 
     private List<GatewayRoute> createRoutes() {
         List<GatewayRoute> items = new ArrayList<>();
-        items.add(route("auth", "AUTH", "auth", "/api/v1/auth", 8101, "/api/v1/auth/session/verify"));
-        items.add(route("profile", "PROFILE", "profile", "/api/v1/profile", 8102, "/api/v1/profile/members"));
-        items.add(route("notification", "NOTIFICATION", "notification", "/api/v1/notifications", 8103, "/api/v1/notifications/me/unread-count"));
-        items.add(route("content", "CONTENT", "content", "/api/v1/content", 8104, "/api/v1/content/homepage"));
-        items.add(route("server-status", "SERVER_STATUS", "server-status", "/api/v1/server-status", 8105, "/api/v1/server-status/overview"));
-        items.add(route("resource", "RESOURCE", "resource", "/api/v1/resources", 8106, "/api/v1/resources"));
-        items.add(route("admin", "ADMIN", "admin", "/api/v1/admin", 8107, "/api/v1/admin/overview"));
+        items.add(route("auth", "AUTH", "auth", "/api/v1/auth", 8130, "/api/v1/auth/session/verify"));
+        items.add(route("profile", "PROFILE", "profile", "/api/v1/profile", 8130, "/api/v1/profile/members"));
+        items.add(route("notification", "NOTIFICATION", "notification", "/api/v1/notifications", 8130, "/api/v1/notifications/me/unread-count"));
+        items.add(route("content", "CONTENT", "content", "/api/v1/content", 8130, "/api/v1/content/home"));
+        items.add(route("server-status", "SERVER_STATUS", "server-status", "/api/v1/server-status", 8130, "/api/v1/server-status/overview"));
+        items.add(route("resource", "RESOURCE", "resource", "/api/v1/resources", 8130, "/api/v1/resources"));
+        items.add(route("admin", "ADMIN", "admin", "/api/v1/admin", 8130, "/api/v1/admin/overview"));
         items.add(route("onboarding", "ONBOARDING", "onboarding", "/api/v1/onboarding", 8108, "/api/v1/onboarding/me/progress"));
         items.add(route("exam", "EXAM", "exam", "/api/v1/exams", 8109, "/api/v1/exams/me/sessions"));
         items.add(route("whitelist", "WHITELIST", "whitelist", "/api/v1/whitelist", 8110, "/api/v1/whitelist/me/applications/current"));

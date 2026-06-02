@@ -71,14 +71,15 @@ class GatewayApiContractTest {
         addRange(mapped, "GATE-HEALTH", 1, 6);
         addRange(mapped, "GATE-ROUTE", 1, 16);
         addRange(mapped, "GATE-PFX", 1, 26);
+        addRange(mapped, "GATE-BCORE", 1, 10);
         addRange(mapped, "GATE-UP", 1, 20);
         addRange(mapped, "GATE-LOG", 1, 20);
         addRange(mapped, "GATE-PROXY", 1, 49);
         addRange(mapped, "GATE-CORS", 1, 10);
         addRange(mapped, "GATE-SEC", 1, 11);
 
-        assertThat(mapped).hasSize(184);
-        assertThat(mapped).contains("GATE-COM-001", "GATE-PFX-026", "GATE-UP-020", "GATE-PROXY-049", "GATE-SEC-011");
+        assertThat(mapped).hasSize(194);
+        assertThat(mapped).contains("GATE-COM-001", "GATE-PFX-026", "GATE-BCORE-010", "GATE-UP-020", "GATE-PROXY-049", "GATE-SEC-011");
     }
 
     @Test
@@ -150,13 +151,13 @@ class GatewayApiContractTest {
                 .param("pageSize", "100")
                 .param("sort", "upstreamPort_asc"), 200);
         assertThat(routes.at("/data/total").asInt()).isEqualTo(26);
-        assertRoute(routes, "auth", "AUTH", "/api/v1/auth", 8101);
-        assertRoute(routes, "profile", "PROFILE", "/api/v1/profile", 8102);
-        assertRoute(routes, "notification", "NOTIFICATION", "/api/v1/notifications", 8103);
-        assertRoute(routes, "content", "CONTENT", "/api/v1/content", 8104);
-        assertRoute(routes, "server-status", "SERVER_STATUS", "/api/v1/server-status", 8105);
-        assertRoute(routes, "resource", "RESOURCE", "/api/v1/resources", 8106);
-        assertRoute(routes, "admin", "ADMIN", "/api/v1/admin", 8107);
+        assertRoute(routes, "auth", "AUTH", "/api/v1/auth", 8130);
+        assertRoute(routes, "profile", "PROFILE", "/api/v1/profile", 8130);
+        assertRoute(routes, "notification", "NOTIFICATION", "/api/v1/notifications", 8130);
+        assertRoute(routes, "content", "CONTENT", "/api/v1/content", 8130);
+        assertRoute(routes, "server-status", "SERVER_STATUS", "/api/v1/server-status", 8130);
+        assertRoute(routes, "resource", "RESOURCE", "/api/v1/resources", 8130);
+        assertRoute(routes, "admin", "ADMIN", "/api/v1/admin", 8130);
         assertRoute(routes, "onboarding", "ONBOARDING", "/api/v1/onboarding", 8108);
         assertRoute(routes, "exam", "EXAM", "/api/v1/exams", 8109);
         assertRoute(routes, "whitelist", "WHITELIST", "/api/v1/whitelist", 8110);
@@ -176,6 +177,7 @@ class GatewayApiContractTest {
         assertRoute(routes, "ops-image-market", "OPS_IMAGE_MARKET", "/api/v1/ops-image-market", 8124);
         assertRoute(routes, "material", "MATERIAL", "/api/v1/materials", 8126);
         assertRoute(routes, "guide", "GUIDE", "/api/v1/guides", 8127);
+        assertFirstBatchBusinessCoreRoutes(routes);
 
         JsonNode filtered = performJson(get("/api/v1/gateway/admin/routes")
                 .header("Authorization", bearer("helper-token"))
@@ -235,6 +237,15 @@ class GatewayApiContractTest {
         GatewayHttpRequest guideHealth = fakeClient.lastRequestFor("GUIDE");
         assertThat(guideHealth.path()).isEqualTo("/api/v1/guides/categories");
         assertThat(guideHealth.headers().get("X-Request-Id")).containsExactly("req-up-guide");
+
+        fakeClient.respond("CONTENT", 200, body(0, "success", Map.of("home", true)));
+        JsonNode contentHealth = performJson(post("/api/v1/gateway/admin/upstreams/CONTENT/health-refresh")
+                .header("Authorization", bearer("helper-token"))
+                .header("X-Request-Id", "req-up-content"), 200);
+        assertThat(contentHealth.at("/data/status").asText()).isEqualTo("UP");
+        GatewayHttpRequest contentRefresh = fakeClient.lastRequestFor("CONTENT");
+        assertThat(contentRefresh.path()).isEqualTo("/api/v1/content/home");
+        assertThat(contentRefresh.headers().get("X-Request-Id")).containsExactly("req-up-content");
 
         JsonNode filtered = performJson(get("/api/v1/gateway/admin/upstreams")
                 .header("Authorization", bearer("helper-token"))
@@ -398,11 +409,12 @@ class GatewayApiContractTest {
 
         fakeClient.authStatus("ses-invalid-user", 401, body(41001, "invalid session", null));
         fakeClient.respond("CONTENT", 200, Map.of("code", 0, "message", "success", "data", Map.of("content", true)));
-        performJson(get("/api/v1/content/homepage")
+        performJson(get("/api/v1/content/home")
                 .header("Authorization", bearer("ses-invalid-user"))
                 .header("X-Beiming-Actor-Roles", "OWNER"), 200);
 
         GatewayHttpRequest content = fakeClient.lastRequestFor("CONTENT");
+        assertThat(content.path()).isEqualTo("/api/v1/content/home");
         assertThat(content.headers().get("Authorization")).containsExactly(bearer("ses-invalid-user"));
         assertThat(content.headers()).doesNotContainKey("X-Beiming-Actor-User-Id");
         assertThat(content.headers()).doesNotContainKey("X-Beiming-Actor-Roles");
@@ -632,6 +644,21 @@ class GatewayApiContractTest {
             }
         }
         throw new AssertionError("missing route " + routeId);
+    }
+
+    private void assertFirstBatchBusinessCoreRoutes(JsonNode routes) {
+        Set<String> firstBatch = Set.of("auth", "profile", "notification", "content", "server-status", "resource", "admin");
+        Set<Integer> legacyPorts = Set.of(8101, 8102, 8103, 8104, 8105, 8106, 8107);
+        for (String routeId : firstBatch) {
+            JsonNode route = findRoute(routes, routeId);
+            assertThat(route.path("upstreamPort").asInt()).isEqualTo(8130);
+            assertThat(route.path("upstreamBaseUrl").asText()).isEqualTo("http://127.0.0.1:8130");
+            assertThat(route.path("pathPrefix").asText()).doesNotStartWith("/api/v1/business-core");
+            assertThat(legacyPorts).doesNotContain(route.path("upstreamPort").asInt());
+        }
+        assertThat(findRoute(routes, "onboarding").path("upstreamPort").asInt()).isEqualTo(8108);
+        assertThat(findRoute(routes, "guide").path("upstreamPort").asInt()).isEqualTo(8127);
+        assertThat(findRoute(routes, "content").path("healthCheckPath").asText()).isEqualTo("/api/v1/content/home");
     }
 
     private String bearer(String token) {

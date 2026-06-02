@@ -63,13 +63,13 @@
 
 | 路由 ID | 服务键 | 路径前缀 | 上游端口 | 健康探测路径 |
 | --- | --- | --- | --- | --- |
-| `auth` | `AUTH` | `/api/v1/auth` | `8101` | `/api/v1/auth/session/verify` |
-| `profile` | `PROFILE` | `/api/v1/profile` | `8102` | `/api/v1/profile/members` |
-| `notification` | `NOTIFICATION` | `/api/v1/notifications` | `8103` | `/api/v1/notifications/me/unread-count` |
-| `content` | `CONTENT` | `/api/v1/content` | `8104` | `/api/v1/content/homepage` |
-| `server-status` | `SERVER_STATUS` | `/api/v1/server-status` | `8105` | `/api/v1/server-status/overview` |
-| `resource` | `RESOURCE` | `/api/v1/resources` | `8106` | `/api/v1/resources` |
-| `admin` | `ADMIN` | `/api/v1/admin` | `8107` | `/api/v1/admin/overview` |
+| `auth` | `AUTH` | `/api/v1/auth` | `8130` | `/api/v1/auth/session/verify` |
+| `profile` | `PROFILE` | `/api/v1/profile` | `8130` | `/api/v1/profile/members` |
+| `notification` | `NOTIFICATION` | `/api/v1/notifications` | `8130` | `/api/v1/notifications/me/unread-count` |
+| `content` | `CONTENT` | `/api/v1/content` | `8130` | `/api/v1/content/home` |
+| `server-status` | `SERVER_STATUS` | `/api/v1/server-status` | `8130` | `/api/v1/server-status/overview` |
+| `resource` | `RESOURCE` | `/api/v1/resources` | `8130` | `/api/v1/resources` |
+| `admin` | `ADMIN` | `/api/v1/admin` | `8130` | `/api/v1/admin/overview` |
 | `onboarding` | `ONBOARDING` | `/api/v1/onboarding` | `8108` | `/api/v1/onboarding/me/progress` |
 | `exam` | `EXAM` | `/api/v1/exams` | `8109` | `/api/v1/exams/me/sessions` |
 | `whitelist` | `WHITELIST` | `/api/v1/whitelist` | `8110` | `/api/v1/whitelist/me/applications/current` |
@@ -89,6 +89,8 @@
 | `ops-image-market` | `OPS_IMAGE_MARKET` | `/api/v1/ops-image-market` | `8124` | `/api/v1/ops-image-market/health` |
 | `material` | `MATERIAL` | `/api/v1/materials` | `8126` | `/api/v1/materials/featured` |
 | `guide` | `GUIDE` | `/api/v1/guides` | `8127` | `/api/v1/guides/categories` |
+
+`auth`、`profile`、`notification`、`content`、`server-status`、`resource` 和 `admin` 已完成第一批运行合并。网关必须把这七个路由的上游统一切到 `business-core-service` 的 `8130`，但路由 ID、服务键、路径前缀、请求路径、认证透传、可信身份头剥离与注入、请求日志、错误码和响应透传规则都保持原样。端口 `8101` 到 `8107` 只作为旧服务回归基线保留，不再作为网关第一批业务路由的默认上游。
 
 路径匹配规则为最长前缀优先。`/api/v1/resources` 和 `/api/v1/resources/**` 都必须命中 `resource`。未知路径返回网关错误，不转发到任何上游。
 
@@ -379,6 +381,6 @@ P0 `api-gateway` 是本地契约实现，必须在自检摘要中明确以下生
 
 `api-gateway` API 文档按 `docs/contracts-api-gateway.md` 独立存在，并由 `.local-docs/tests-api-gateway.md` 记录本地测试闭环。
 
-本文档列出的每个网关自有接口都有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、分页排序、状态刷新、失败降级、日志脱敏和验收口径。业务转发测试必须覆盖 26 个已接入微服务的路径前缀，确认路由表端口准确、请求编号透传、请求编号非法拒绝、认证头透传、可信身份头剥离、`auth` 会话校验成功后的可信身份注入、`auth` 校验失败后的不注入降级、查询参数透传、JSON body 透传、请求体大小限制、响应头白名单、上游 2xx 透传、上游 4xx 透传、上游 5xx 透传、未知路径、非法方法、CORS 预检、上游不可用、上游超时和敏感字段不落日志。
+本文档列出的每个网关自有接口都有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、分页排序、状态刷新、失败降级、日志脱敏和验收口径。业务转发测试必须覆盖 26 个已接入微服务的路径前缀，确认路由表端口准确、第一批七个路由统一指向 `business-core-service:8130`、第一批路径不被改写为 `/api/v1/business-core/**`、请求编号透传、请求编号非法拒绝、认证头透传、可信身份头剥离、`auth` 会话校验成功后的可信身份注入、`auth` 校验失败后的不注入降级、查询参数透传、JSON body 透传、请求体大小限制、响应头白名单、上游 2xx 透传、上游 4xx 透传、上游 5xx 透传、未知路径、非法方法、CORS 预检、上游不可用、上游超时和敏感字段不落日志。
 
 开发完成后必须执行 `mvn -f backend/api-gateway-service/pom.xml test`，并执行已有 25 个后端微服务和 `guide` 的相关回归测试，确认网关新增没有修改前序服务结构、接口、端口、响应格式、认证方式、错误码、状态机、测试或构建脚本。测试过程必须写入 `.local-docs/tests-api-gateway.md`。
