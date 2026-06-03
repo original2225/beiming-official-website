@@ -689,7 +689,8 @@ class ActivityController {
         auth.requireStaff(request);
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("service", "activity");
-        data.put("port", 8113);
+        data.put("port", 8132);
+        data.put("legacyPort", 8113);
         data.put("storageMode", "IN_MEMORY");
         data.put("authMode", "TEST_STUB");
         data.put("profileMode", "TEST_STUB");

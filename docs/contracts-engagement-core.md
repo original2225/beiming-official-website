@@ -45,7 +45,7 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
 | `calendar` | `docs/contracts-calendar.md` | `/api/v1/calendar` | `8114` | 21 | 是 |
 | `changelog` | `docs/contracts-changelog.md` | `/api/v1/changelog` | `8115` | 23 | 是 |
 
-第三批合并后，`engagement-core` 需要承载以上 149 个既有业务方法路由。`engagement-core` 自身新增 2 个运行单元自检路由。合并验证总方法路由数为 151。
+第三批合并后，`engagement-core` 需要承载以上 149 个既有业务方法路由。`engagement-core` 自身新增 2 个运行单元自检路由。合并验证总方法路由数为 151。四个业务模块自检摘要必须返回当前运行端口 `port=8132`，并用 `legacyPort` 记录各自历史端口。
 
 ## API 路径清单
 
@@ -71,7 +71,8 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
 | `moduleName` | string | 是 | 模块展示名。 |
 | `pathPrefix` | string | 是 | 模块路径前缀。 |
 | `contract` | string | 是 | 模块正式契约文件路径。 |
-| `legacyPort` | integer | 是 | 旧微服务端口。 |
+| `port` | integer | 是 | 当前运行端口，第三批合并后固定为 `8132`。 |
+| `legacyPort` | integer | 是 | 历史原服务端口，只用于追溯，不作为运行入口、网关上游或测试命令。 |
 | `mounted` | boolean | 是 | 模块是否已装配到 `engagement-core`。 |
 | `routesTotal` | integer | 是 | 该模块在当前运行单元内登记的路由数量。 |
 | `contractRoutesTotal` | integer | 是 | 该模块契约期望路由数量。 |
@@ -263,9 +264,11 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
       }
     ],
     "productionGaps": [
+      "complete inherited contract tests are not all mounted in engagement-core",
+      "real auth and gateway trusted context adapters are not connected",
       "real database persistence is still module dependent",
-      "real cross-service adapters are still represented by local test stubs",
       "persistent audit storage is not connected",
+      "real cross-service adapters are still represented by local test stubs",
       "real notification delivery is not connected",
       "live gateway-to-engagement-core HTTP smoke is not verified"
     ],
@@ -275,7 +278,7 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
 }
 ```
 
-业务规则：该接口只读取 `engagement-core` 内部装配状态和最近测试摘要，不主动执行四个模块的业务写操作，不调用旧服务进行实时健康探测，不把未完成模块伪装成 `READY`。第三批旧四服务清理后，`gatewaySwitchReady` 的判定只依赖四个模块在 `engagement-core` 中的继承契约测试、`business-core-service` 基线、`admission-core-service` 基线和 `api-gateway-service` 基线。只有当 `api-gateway` 契约、测试文档、自动化红灯、网关实现和全量后端回归均完成后，`gatewaySwitchStatus` 才能为 `COMPLETED`。
+业务规则：该接口只读取 `engagement-core` 内部装配状态和最近测试摘要，不主动执行四个模块的业务写操作，不调用旧服务进行实时健康探测，不把未完成模块伪装成 `READY`。第三批旧四服务清理后，`gatewaySwitchReady` 的判定只依赖四个模块在 `engagement-core` 中的继承契约测试、`business-core-service` 基线、`admission-core-service` 基线和 `api-gateway-service` 基线。只有当 `api-gateway` 契约、测试文档、自动化红灯、网关实现和全量后端回归均完成后，`gatewaySwitchStatus` 才能为 `COMPLETED`。四个业务模块自己的后台自检摘要必须同步合并后入口，返回 `port=8132` 和历史 `legacyPort`，不得继续把 `8112` 到 `8115` 暴露成当前运行端口。
 
 失败规则：运行单元内部异常返回 `53230`。模块装配信息缺失返回 `53231`。当前登记路由与本文档或四个模块契约期望不一致时返回 `53232` 或在 `status=DEGRADED` 的成功摘要中列入 `gaps`，由实现按是否影响接口可用性决定。认证上下文解析失败返回原模块契约或公共认证错误，可信网关上下文字段缺失或格式不兼容时返回 `53233`。内部 adapter 链装配错误返回 `53234`。
 
@@ -349,19 +352,34 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
 
 网关切换后，业务路径仍保持 `/api/v1/community/**`、`/api/v1/activity/**`、`/api/v1/calendar/**` 和 `/api/v1/changelog/**`，不得改成 `/api/v1/engagement-core/<module>/**`。
 
+## 后续完善顺序
+
+第三批合并后的后续完善按以下优先级进入闭环。每一项都必须单独完成 API 契约、测试文档、红灯、实现、复测和记录。合并后自检端口口径已经纳入当前小步；完整继承契约测试仍是后续最高优先级，不能因为自检测试通过就视为业务契约完成。
+
+| 顺序 | 完善项 | 契约要求 | 自动化测试要求 |
+| --- | --- | --- | --- |
+| 1 | 完整继承契约测试 | 把 community、activity、calendar 和 changelog 的全部 API 行为纳入 `engagement-core-service` 测试，不只保留代表路由。 | 新增模块级 contract cases，覆盖 149 个业务路由的成功、字段校验、认证、权限、资源不存在、状态冲突、幂等并发、降级、审计和生产硬化。 |
+| 2 | 合并后自检端口口径 | 四个业务模块自检摘要返回 `port=8132` 和 `legacyPort`，旧端口只用于历史追溯。 | 已新增红灯测试先断言旧端口失败，再实现并复测。 |
+| 3 | 真实认证与可信网关上下文 | 固定 token 只能用于本地测试 profile；生产路径必须消费 `auth` 或网关注入的可信身份上下文。 | 覆盖直连伪造 `X-Beiming-Actor-*` 不能绕过权限、网关注入上下文可用、字段缺失失败。 |
+| 4 | 持久化与审计持久化 | 社区、活动、日程、更新日志、互动、报名、收藏、工单、处罚、幂等和审计迁入数据库事务或等效持久层。 | 覆盖重启后数据仍在、审计失败回滚、唯一约束、并发幂等和分页过滤。 |
+| 5 | 真实跨服务 adapter | profile、content、resource、server-status、notification、attendance 和内部 calendar/changelog 适配通过正式接口或受控 adapter。 | 覆盖不可用、超时、字段不兼容、旧快照降级、通知失败不伪造成功。 |
+| 6 | 真实 HTTP 联调 | `api-gateway-service` 到 `engagement-core-service:8132` 做真实进程 smoke，验证路径、认证、请求编号和错误透传。 | 启动当前入口后执行真实 HTTP smoke，记录到 `.local-docs/tests-engagement-core.md` 和 `.local-docs/tests-api-gateway.md`。 |
+
 ## 迁移顺序
 
 迁移顺序固定为基线验证、`engagement-core` 空壳与自检红灯、`community`、`activity`、`calendar`、`changelog`、网关切换准备、网关切换实现、全量回归。
 
 `community` 必须先迁入，因为它是社区互动和治理底座，也是 activity 可选讨论快照来源。`activity` 必须在 community 之后迁入，因为它只能消费 community 公开快照。`calendar` 必须在 activity 之后迁入，因为它只能消费 activity 日历摘要。`changelog` 必须在 calendar 之后迁入，因为它保存 calendar 同步摘要和发布日程引用。
 
-每迁入一个模块，都必须先根据本文档和该模块正式契约生成或补齐 `engagement-core` 自动化测试，确认测试因为模块未装配或行为不满足而失败，再迁入实现。迁入后必须运行 `engagement-core` 对应测试、旧模块测试和该模块前序依赖测试。
+第三批旧四服务清理后，后续补强必须先根据本文档和该模块正式契约生成或补齐 `engagement-core` 自动化测试，确认测试因为行为不满足而失败，再修改当前实现。实现后必须运行 `engagement-core-service` 对应测试和当前前序依赖测试，不得恢复或执行旧四服务测试。
 
 ## 验收口径
 
 `engagement-core` 完成的最低标准是，单进程承载第三批四个业务模块的全部既有 API 路径，且响应格式、错误码、认证、权限、请求编号、分页、状态流转、幂等、审计和降级行为与四个模块正式契约一致。
 
 `mvn -f backend/engagement-core-service/pom.xml test` 必须覆盖本文档两个自有接口和四个模块继承过来的全部契约测试。第三批旧服务清理后，相关回归基线为 `engagement-core-service`、`business-core-service`、`admission-core-service` 和 `api-gateway-service`，不得为了测试恢复 `community-service`、`activity-service`、`calendar-service` 或 `changelog-service`。
+
+当前阶段不得把 `engagement-core-service` 的 8 个自检与代表路由测试视为第三批业务完成。只有 149 个业务方法路由的继承契约测试和 2 个自有接口测试都进入自动化验证，并且所有当前回归入口全绿，第三批合并后完善闭环才算完成。
 
 `engagement-core` 直连合并和第三批网关切换均已完成测试闭环。第三批业务路径经网关访问时仍保持原路径，网关只切换上游端口，不改写业务前缀。
 

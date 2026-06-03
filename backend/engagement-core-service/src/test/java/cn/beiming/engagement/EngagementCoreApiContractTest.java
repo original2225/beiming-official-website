@@ -100,11 +100,17 @@ class EngagementCoreApiContractTest {
                 .andExpect(jsonPath("$.data.gatewaySwitchReady").value(true))
                 .andExpect(jsonPath("$.data.gatewaySwitchStatus").value("COMPLETED"))
                 .andExpect(jsonPath("$.data.productionGaps[?(@ == 'gateway route switch is not complete')]").doesNotExist())
+                .andExpect(jsonPath("$.data.productionGaps[?(@ == 'complete inherited contract tests are not all mounted in engagement-core')]").exists())
+                .andExpect(jsonPath("$.data.productionGaps[?(@ == 'real auth and gateway trusted context adapters are not connected')]").exists())
                 .andExpect(jsonPath("$.data.businessCoreDependency.service").value("business-core"))
                 .andExpect(jsonPath("$.data.businessCoreDependency.port").value(8130))
                 .andExpect(jsonPath("$.data.admissionCoreDependency.service").value("admission-core"))
                 .andExpect(jsonPath("$.data.admissionCoreDependency.port").value(8131))
                 .andExpect(jsonPath("$.data.admissionCoreDependency.status").value("STABLE_BASELINE"))
+                .andExpect(jsonPath("$.data.moduleRoutes[?(@.moduleKey == 'COMMUNITY' && @.port == 8132 && @.legacyPort == 8112)]").exists())
+                .andExpect(jsonPath("$.data.moduleRoutes[?(@.moduleKey == 'ACTIVITY' && @.port == 8132 && @.legacyPort == 8113)]").exists())
+                .andExpect(jsonPath("$.data.moduleRoutes[?(@.moduleKey == 'CALENDAR' && @.port == 8132 && @.legacyPort == 8114)]").exists())
+                .andExpect(jsonPath("$.data.moduleRoutes[?(@.moduleKey == 'CHANGELOG' && @.port == 8132 && @.legacyPort == 8115)]").exists())
                 .andExpect(jsonPath("$.data.adapterChain[?(@.from == 'activity' && @.to == 'community' && @.mutable == false)]").exists())
                 .andExpect(jsonPath("$.data.adapterChain[?(@.from == 'calendar' && @.to == 'activity' && @.mutable == false)]").exists())
                 .andExpect(jsonPath("$.data.adapterChain[?(@.from == 'changelog' && @.to == 'calendar' && @.mutable == false)]").exists())
@@ -120,6 +126,37 @@ class EngagementCoreApiContractTest {
                 .andExpect(jsonPath("$.data.retiredLegacyServices[?(@.service == 'calendar-service' && @.directory == 'backend/calendar-service' && @.testCommand == null)]").exists())
                 .andExpect(jsonPath("$.data.retiredLegacyServices[?(@.service == 'changelog-service' && @.directory == 'backend/changelog-service' && @.testCommand == null)]").exists())
                 .andExpect(jsonPath("$.data.generatedAt").isNotEmpty());
+    }
+
+    @Test
+    void exposesMergedModuleOpsSummariesWithCurrentPortAndLegacyPort() throws Exception {
+        mockMvc.perform(get("/api/v1/community/admin/ops/summary")
+                        .header("Authorization", "Bearer helper-token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.service").value("community"))
+                .andExpect(jsonPath("$.data.port").value(8132))
+                .andExpect(jsonPath("$.data.legacyPort").value(8112));
+
+        mockMvc.perform(get("/api/v1/activity/admin/ops/summary")
+                        .header("Authorization", "Bearer helper-token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.service").value("activity"))
+                .andExpect(jsonPath("$.data.port").value(8132))
+                .andExpect(jsonPath("$.data.legacyPort").value(8113));
+
+        mockMvc.perform(get("/api/v1/calendar/admin/ops/summary")
+                        .header("Authorization", "Bearer helper-token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.service").value("calendar"))
+                .andExpect(jsonPath("$.data.port").value(8132))
+                .andExpect(jsonPath("$.data.legacyPort").value(8114));
+
+        mockMvc.perform(get("/api/v1/changelog/admin/ops/summary")
+                        .header("Authorization", "Bearer helper-token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.service").value("changelog"))
+                .andExpect(jsonPath("$.data.port").value(8132))
+                .andExpect(jsonPath("$.data.legacyPort").value(8115));
     }
 
     @Test

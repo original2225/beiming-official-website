@@ -1419,7 +1419,8 @@ class CommunityStore {
     Map<String, Object> opsSummary() {
         return linkedMap(
                 "service", "community",
-                "port", 8112,
+                "port", 8132,
+                "legacyPort", 8112,
                 "storageMode", "IN_MEMORY",
                 "authMode", "TEST_STUB",
                 "profileMode", "TEST_STUB",

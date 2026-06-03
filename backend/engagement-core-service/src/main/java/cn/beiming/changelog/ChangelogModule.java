@@ -1217,7 +1217,8 @@ class ChangelogStore {
     Map<String, Object> ops(boolean testControlsEnabled) {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("service", "changelog");
-        data.put("port", 8115);
+        data.put("port", 8132);
+        data.put("legacyPort", 8115);
         data.put("storageMode", "IN_MEMORY");
         data.put("authMode", "TEST_STUB");
         data.put("resourceMode", "TEST_STUB");

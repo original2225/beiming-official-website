@@ -203,9 +203,11 @@ class EngagementCoreRegistry {
 
     List<String> productionGaps() {
         return List.of(
+                "complete inherited contract tests are not all mounted in engagement-core",
+                "real auth and gateway trusted context adapters are not connected",
                 "real database persistence is still module dependent",
-                "real cross-service adapters are still represented by local test stubs",
                 "persistent audit storage is not connected",
+                "real cross-service adapters are still represented by local test stubs",
                 "real notification delivery is not connected",
                 "live gateway-to-engagement-core HTTP smoke is not verified"
         );
@@ -270,6 +272,7 @@ record EngagementModuleRegistration(String moduleKey,
         Map<String, Object> data = toPublicMap();
         data.put("moduleName", moduleName);
         data.put("contract", contract);
+        data.put("port", 8132);
         data.put("legacyPort", legacyPort);
         data.put("contractRoutesTotal", routesTotal);
         data.put("adapters", adapters);

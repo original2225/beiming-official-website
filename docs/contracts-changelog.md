@@ -37,7 +37,7 @@ P1 内存实现必须完整兑现本文档已经承诺的 HTTP 行为，包括�
 
 ## 基础路径与认证
 
-所有接口默认使用 `/api/v1/changelog` 前缀。P1 本地端口固定为 `8115`，自检摘要必须返回该端口。
+所有接口默认使用 `/api/v1/changelog` 前缀。当前运行入口为 `engagement-core-service:8132`。历史原服务端口 `8115` 只作为 `legacyPort` 返回，不再作为独立服务入口、网关上游或回归测试命令。
 
 公开接口允许游客读取 `PUBLISHED` 且 `visibility=PUBLIC` 的发布记录。公开接口不得返回内部备注、后台审核字段、通知失败详情、完整依赖错误、审计参数、安全修复 exploit 细节、服务器内部路径、节点地址、token、真实运维命令或 Cloudreve 管理信息。
 
@@ -380,7 +380,8 @@ P1 内存实现必须完整兑现本文档已经承诺的 HTTP 行为，包括�
   "message": "success",
   "data": {
     "service": "changelog",
-    "port": 8115,
+    "port": 8132,
+    "legacyPort": 8115,
     "storageMode": "IN_MEMORY",
     "authMode": "TEST_STUB",
     "resourceMode": "TEST_STUB",
@@ -444,6 +445,6 @@ notification 是辅助依赖。发布、下架和安全修复通知失败不得�
 
 `changelog` API 文档按 `docs/contracts-changelog.md` 独立存在，并由 `.local-docs/tests-changelog.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求和模块验收口径。
 
-`changelog` 完成时必须满足以下条件：全部接口按本文档实现；公开接口只返回公开可见发布记录和脱敏变更项；当前用户只能维护自己的收藏；后台接口按角色限制；发布状态机不可非法回退；安全修复公开摘要不泄露敏感信息；资源、server-status、content、calendar 和 notification 都只走正式契约或受控适配层；calendar 同步失败不影响 changelog 主状态；notification 失败记录脱敏摘要；所有写操作有审计；端口固定为 `8115`；`.local-docs/tests-changelog.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 changelog 全部测试通过；auth、profile、notification、content、server-status、resource、admin、onboarding、exam、whitelist、attendance、community、activity 和 calendar 前序服务回归测试通过；没有修改前序服务稳定接口；没有把官网公告、资源下载、日历主数据、活动报名、后台聚合、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复或 Cloudreve 管理能力塞进 changelog。
+`changelog` 完成时必须满足以下条件：全部接口按本文档实现；公开接口只返回公开可见发布记录和脱敏变更项；当前用户只能维护自己的收藏；后台接口按角色限制；发布状态机不可非法回退；安全修复公开摘要不泄露敏感信息；资源、server-status、content、calendar 和 notification 都只走正式契约或受控适配层；calendar 同步失败不影响 changelog 主状态；notification 失败记录脱敏摘要；所有写操作有审计；当前运行端口固定为 `8132`，自检摘要返回 `port=8132` 和 `legacyPort=8115`；`.local-docs/tests-changelog.md` 与 `.local-docs/tests-engagement-core.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 changelog 在 `engagement-core-service` 中全部测试通过；auth、profile、notification、content、server-status、resource、admin、onboarding、exam、whitelist、attendance、community、activity 和 calendar 前序服务回归测试通过；不恢复 `backend/changelog-service` 旧入口；没有修改前序服务稳定接口；没有把官网公告、资源下载、日历主数据、活动报名、后台聚合、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复或 Cloudreve 管理能力塞进 changelog。
 
 生产化硬化验收还必须满足：测试控制头默认关闭，只有本地自动化测试显式启用时才生效；关闭状态下依赖失败模拟头、写入失败模拟头、时间模拟头和通知失败模拟头全部被忽略；自检摘要明确返回当前测试控制头开关状态。

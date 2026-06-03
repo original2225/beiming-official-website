@@ -7834,7 +7834,7 @@ notification 是辅助依赖。通知失败不得回滚初始化、积分调整�
 
 ### 基础路径与认证
 
-所有接口默认使用 `/api/v1/community` 前缀。P1 本地端口固定为 `8112`，自检摘要必须返回该端口。
+所有接口默认使用 `/api/v1/community` 前缀。当前运行入口为 `engagement-core-service:8132`。历史原服务端口 `8112` 只作为 `legacyPort` 返回，不再作为独立服务入口、网关上游或回归测试命令。
 
 公开接口允许游客读取已公开、已通过、未下架、未软删除的数据。公开接口不得返回内部备注、举报详情、处罚证据、工单内容、审核参数、管理员 ID、通知失败详情、完整依赖错误或审计参数。
 
@@ -8441,7 +8441,8 @@ notification 是辅助依赖。通知失败不得回滚初始化、积分调整�
   "message": "success",
   "data": {
     "service": "community",
-    "port": 8112,
+    "port": 8132,
+    "legacyPort": 8112,
     "storageMode": "IN_MEMORY",
     "authMode": "TEST_STUB",
     "profileMode": "TEST_STUB",
@@ -8519,7 +8520,7 @@ attendance 在 P1 不作为社区主流程依赖。社区贡献候选可以记�
 
 `community` API 文档按 `docs/contracts-community.md` 独立存在，并由 `.local-docs/tests-community.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求和模块验收口径。
 
-`community` 完成时必须满足以下条件：全部接口按本文档实现；公开接口只返回公开可见数据；当前用户接口只能访问自己的帖子草稿、评论、互动、收藏、投票、举报和工单；后台接口按角色限制；帖子、评论、举报、工单、处罚和投票有服务端状态机；举报和工单不是前端假状态；处罚只影响 community 写权限，不执行白名单移除、服务器命令或 attendance 积分修改；所有后台写操作和高风险操作有审计；通知失败按辅助降级记录；端口固定为 `8112`；`.local-docs/tests-community.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 community 全部测试通过；auth、profile、notification、content、server-status、resource、admin、onboarding、exam、whitelist 和 attendance 前序服务回归测试通过；没有修改前序服务稳定接口；没有把活动、日历、更新日志、后台聚合、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复或 Cloudreve 管理能力塞进 community。
+`community` 完成时必须满足以下条件：全部接口按本文档实现；公开接口只返回公开可见数据；当前用户接口只能访问自己的帖子草稿、评论、互动、收藏、投票、举报和工单；后台接口按角色限制；帖子、评论、举报、工单、处罚和投票有服务端状态机；举报和工单不是前端假状态；处罚只影响 community 写权限，不执行白名单移除、服务器命令或 attendance 积分修改；所有后台写操作和高风险操作有审计；通知失败按辅助降级记录；当前运行端口固定为 `8132`，自检摘要返回 `port=8132` 和 `legacyPort=8112`；`.local-docs/tests-community.md` 与 `.local-docs/tests-engagement-core.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 community 在 `engagement-core-service` 中全部测试通过；auth、profile、notification、content、server-status、resource、admin、onboarding、exam、whitelist 和 attendance 前序服务回归测试通过；不恢复 `backend/community-service` 旧入口；没有修改前序服务稳定接口；没有把活动、日历、更新日志、后台聚合、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复或 Cloudreve 管理能力塞进 community。
 
 生产化硬化验收还必须满足：测试控制头默认关闭，只有本地自动化测试显式启用时才生效；关闭状态下依赖失败模拟头、写入失败模拟头和通知失败模拟头全部被忽略；自检摘要明确返回当前测试控制头开关状态。
 
@@ -8563,7 +8564,7 @@ attendance 在 P1 不作为社区主流程依赖。社区贡献候选可以记�
 
 ### 基础路径与认证
 
-所有接口默认使用 `/api/v1/activity` 前缀。P1 本地端口固定为 `8113`，自检摘要必须返回该端口。
+所有接口默认使用 `/api/v1/activity` 前缀。当前运行入口为 `engagement-core-service:8132`。历史原服务端口 `8113` 只作为 `legacyPort` 返回，不再作为独立服务入口、网关上游或回归测试命令。
 
 公开接口允许游客读取已发布、未下架、未归档、未软删除的数据。公开接口不得返回内部备注、报名审核参数、管理员 ID、通知失败详情、完整依赖错误、奖励后台备注、贡献候选内部原因或审计参数。
 
@@ -8996,7 +8997,8 @@ attendance 在 P1 不作为社区主流程依赖。社区贡献候选可以记�
   "message": "success",
   "data": {
     "service": "activity",
-    "port": 8113,
+    "port": 8132,
+    "legacyPort": 8113,
     "storageMode": "IN_MEMORY",
     "authMode": "TEST_STUB",
     "profileMode": "TEST_STUB",
@@ -9077,7 +9079,7 @@ community、content 和 resource 是关联快照辅助依赖。创建或修改�
 
 `activity` API 文档按 `docs/contracts-activity.md` 独立存在，并由 `.local-docs/tests-activity.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求和模块验收口径。
 
-`activity` 完成时必须满足以下条件：全部接口按本文档实现；公开接口只返回公开可见活动、结果和摘要；当前用户接口只能访问自己的报名、签到和奖励；后台接口按角色限制；活动、报名、签到、结果和奖励有服务端状态机；名额、候补和签到由服务端计数和幂等保证；所有后台写操作和高风险操作有审计；通知失败按辅助降级记录；贡献奖励只生成 activity 贡献候选，不直接写 attendance 积分；端口固定为 `8113`；`.local-docs/tests-activity.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 activity 全部测试通过；auth、profile、notification、content、server-status、resource、admin、onboarding、exam、whitelist、attendance 和 community 前序服务回归测试通过；没有修改前序服务稳定接口；没有把日历、更新日志、后台聚合、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复或 Cloudreve 管理能力塞进 activity。
+`activity` 完成时必须满足以下条件：全部接口按本文档实现；公开接口只返回公开可见活动、结果和摘要；当前用户接口只能访问自己的报名、签到和奖励；后台接口按角色限制；活动、报名、签到、结果和奖励有服务端状态机；名额、候补和签到由服务端计数和幂等保证；所有后台写操作和高风险操作有审计；通知失败按辅助降级记录；贡献奖励只生成 activity 贡献候选，不直接写 attendance 积分；当前运行端口固定为 `8132`，自检摘要返回 `port=8132` 和 `legacyPort=8113`；`.local-docs/tests-activity.md` 与 `.local-docs/tests-engagement-core.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 activity 在 `engagement-core-service` 中全部测试通过；auth、profile、notification、content、server-status、resource、admin、onboarding、exam、whitelist、attendance 和 community 前序服务回归测试通过；不恢复 `backend/activity-service` 旧入口；没有修改前序服务稳定接口；没有把日历、更新日志、后台聚合、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复或 Cloudreve 管理能力塞进 activity。
 
 生产化硬化验收还必须满足：测试控制头默认关闭，只有本地自动化测试显式启用时才生效；关闭状态下依赖失败模拟头、写入失败模拟头、时间模拟头和通知失败模拟头全部被忽略；自检摘要明确返回当前测试控制头开关状态。
 
@@ -9116,7 +9118,7 @@ community、content 和 resource 是关联快照辅助依赖。创建或修改�
 
 `notification` 是提醒投递的未来正式来源。P1 中 `calendar` 只保存提醒摘要和投递意图，不创建 notification 主数据、不维护未读数、不写通知模板。后续需要真实投递时，必须通过 `notification` 正式接口适配。
 
-`changelog` 尚未开发。本轮 `calendar` 可以保存 `VERSION_RELEASE` 手工事件和未来 changelog 来源占位，自检摘要中必须暴露 `CHANGELOG_NOT_CONNECTED`，但不能创建 changelog 服务，也不能把版本更新日志正文、插件变更、规则调整和地图更新主数据塞进 `calendar`。
+`changelog` 已经由 `engagement-core-service` 承载。本轮 `calendar` 可以保存 `VERSION_RELEASE` 手工事件和 changelog 来源占位，自检摘要中必须暴露 `CHANGELOG_NOT_CONNECTED`，直到 calendar 与 changelog 的正式写入适配单独完成闭环；calendar 不能把版本更新日志正文、插件变更、规则调整和地图更新主数据塞进自己。
 
 维护窗口在本模块只是日程元数据。任何真实服务器启动、停止、重启、命令执行、日志流、文件管理、备份恢复和节点操作都属于后续 `ops-control` 与 `node-daemon`。
 
@@ -9128,7 +9130,7 @@ community、content 和 resource 是关联快照辅助依赖。创建或修改�
 
 ### 基础路径与认证
 
-所有接口默认使用 `/api/v1/calendar` 前缀。P1 本地端口固定为 `8114`，自检摘要必须返回该端口。
+所有接口默认使用 `/api/v1/calendar` 前缀。当前运行入口为 `engagement-core-service:8132`。历史原服务端口 `8114` 只作为 `legacyPort` 返回，不再作为独立服务入口、网关上游或回归测试命令。
 
 公开接口允许游客读取 `PUBLISHED` 且符合可见范围的事件。公开接口不得返回内部备注、审核参数、管理员 ID、提醒失败详情、完整依赖错误、审计参数、幂等键或来源模块内部路径。
 
@@ -9477,7 +9479,8 @@ P1 来源创建限制：后台创建接口传入 `ACTIVITY`、`COMMUNITY_POLL` �
   "message": "success",
   "data": {
     "service": "calendar",
-    "port": 8114,
+    "port": 8132,
+    "legacyPort": 8114,
     "storageMode": "IN_MEMORY",
     "authMode": "TEST_STUB",
     "activityMode": "TEST_STUB",
@@ -9539,7 +9542,7 @@ changelog 当前未连接。手工版本更新事件不依赖 changelog；未来
 
 `calendar` API 文档按 `docs/contracts-calendar.md` 独立存在，并由 `.local-docs/tests-calendar.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求和模块验收口径。
 
-`calendar` 完成时必须满足以下条件：全部接口按本文档实现；公开接口只返回公开可见事件；当前用户只能维护自己的关注；后台接口按角色限制；事件状态机不可非法回退；跨月、时间范围重叠和全天事件查询正确；activity 同步只读且有失败降级；changelog 只保留占位；维护窗口不触发真实运维；所有写操作有审计；端口固定为 `8114`；`.local-docs/tests-calendar.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 calendar 全部测试通过；auth、profile、notification、content、server-status、resource、admin、onboarding、exam、whitelist、attendance、community 和 activity 前序服务回归测试通过；没有修改前序服务稳定接口；没有把更新日志主数据、活动报名、社区投票、后台聚合、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复或 Cloudreve 管理能力塞进 calendar。
+`calendar` 完成时必须满足以下条件：全部接口按本文档实现；公开接口只返回公开可见事件；当前用户只能维护自己的关注；后台接口按角色限制；事件状态机不可非法回退；跨月、时间范围重叠和全天事件查询正确；activity 同步只读且有失败降级；changelog 只保留占位；维护窗口不触发真实运维；所有写操作有审计；当前运行端口固定为 `8132`，自检摘要返回 `port=8132` 和 `legacyPort=8114`；`.local-docs/tests-calendar.md` 与 `.local-docs/tests-engagement-core.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 calendar 在 `engagement-core-service` 中全部测试通过；auth、profile、notification、content、server-status、resource、admin、onboarding、exam、whitelist、attendance、community 和 activity 前序服务回归测试通过；不恢复 `backend/calendar-service` 旧入口；没有修改前序服务稳定接口；没有把更新日志主数据、活动报名、社区投票、后台聚合、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复或 Cloudreve 管理能力塞进 calendar。
 
 生产化硬化验收还必须满足：测试控制头默认关闭，只有本地自动化测试显式启用时才生效；关闭状态下依赖失败模拟头、写入失败模拟头、时间模拟头和通知失败模拟头全部被忽略；自检摘要明确返回当前测试控制头开关状态。
 
@@ -9584,7 +9587,7 @@ P1 内存实现必须完整兑现本文档已经承诺的 HTTP 行为，包括�
 
 ### 基础路径与认证
 
-所有接口默认使用 `/api/v1/changelog` 前缀。P1 本地端口固定为 `8115`，自检摘要必须返回该端口。
+所有接口默认使用 `/api/v1/changelog` 前缀。当前运行入口为 `engagement-core-service:8132`。历史原服务端口 `8115` 只作为 `legacyPort` 返回，不再作为独立服务入口、网关上游或回归测试命令。
 
 公开接口允许游客读取 `PUBLISHED` 且 `visibility=PUBLIC` 的发布记录。公开接口不得返回内部备注、后台审核字段、通知失败详情、完整依赖错误、审计参数、安全修复 exploit 细节、服务器内部路径、节点地址、token、真实运维命令或 Cloudreve 管理信息。
 
@@ -9927,7 +9930,8 @@ P1 内存实现必须完整兑现本文档已经承诺的 HTTP 行为，包括�
   "message": "success",
   "data": {
     "service": "changelog",
-    "port": 8115,
+    "port": 8132,
+    "legacyPort": 8115,
     "storageMode": "IN_MEMORY",
     "authMode": "TEST_STUB",
     "resourceMode": "TEST_STUB",
@@ -9991,7 +9995,7 @@ notification 是辅助依赖。发布、下架和安全修复通知失败不得�
 
 `changelog` API 文档按 `docs/contracts-changelog.md` 独立存在，并由 `.local-docs/tests-changelog.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求和模块验收口径。
 
-`changelog` 完成时必须满足以下条件：全部接口按本文档实现；公开接口只返回公开可见发布记录和脱敏变更项；当前用户只能维护自己的收藏；后台接口按角色限制；发布状态机不可非法回退；安全修复公开摘要不泄露敏感信息；资源、server-status、content、calendar 和 notification 都只走正式契约或受控适配层；calendar 同步失败不影响 changelog 主状态；notification 失败记录脱敏摘要；所有写操作有审计；端口固定为 `8115`；`.local-docs/tests-changelog.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 changelog 全部测试通过；auth、profile、notification、content、server-status、resource、admin、onboarding、exam、whitelist、attendance、community、activity 和 calendar 前序服务回归测试通过；没有修改前序服务稳定接口；没有把官网公告、资源下载、日历主数据、活动报名、后台聚合、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复或 Cloudreve 管理能力塞进 changelog。
+`changelog` 完成时必须满足以下条件：全部接口按本文档实现；公开接口只返回公开可见发布记录和脱敏变更项；当前用户只能维护自己的收藏；后台接口按角色限制；发布状态机不可非法回退；安全修复公开摘要不泄露敏感信息；资源、server-status、content、calendar 和 notification 都只走正式契约或受控适配层；calendar 同步失败不影响 changelog 主状态；notification 失败记录脱敏摘要；所有写操作有审计；当前运行端口固定为 `8132`，自检摘要返回 `port=8132` 和 `legacyPort=8115`；`.local-docs/tests-changelog.md` 与 `.local-docs/tests-engagement-core.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 changelog 在 `engagement-core-service` 中全部测试通过；auth、profile、notification、content、server-status、resource、admin、onboarding、exam、whitelist、attendance、community、activity 和 calendar 前序服务回归测试通过；不恢复 `backend/changelog-service` 旧入口；没有修改前序服务稳定接口；没有把官网公告、资源下载、日历主数据、活动报名、后台聚合、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复或 Cloudreve 管理能力塞进 changelog。
 
 生产化硬化验收还必须满足：测试控制头默认关闭，只有本地自动化测试显式启用时才生效；关闭状态下依赖失败模拟头、写入失败模拟头、时间模拟头和通知失败模拟头全部被忽略；自检摘要明确返回当前测试控制头开关状态。
 

@@ -989,7 +989,8 @@ class CalendarStore {
     Map<String, Object> ops(boolean testControlsEnabled) {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("service", "calendar");
-        data.put("port", 8114);
+        data.put("port", 8132);
+        data.put("legacyPort", 8114);
         data.put("storageMode", "IN_MEMORY");
         data.put("authMode", "TEST_STUB");
         data.put("activityMode", "TEST_STUB");
