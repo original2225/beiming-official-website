@@ -405,7 +405,7 @@ record EngagementModuleRegistration(String moduleKey,
     }
 
     int completeBehaviorContractRoutesVerifiedTotal() {
-        if ("COMMUNITY".equals(moduleKey) || "CHANGELOG".equals(moduleKey)) {
+        if ("COMMUNITY".equals(moduleKey) || "ACTIVITY".equals(moduleKey) || "CHANGELOG".equals(moduleKey)) {
             return routesTotal;
         }
         return 0;
