@@ -101,6 +101,9 @@ class EngagementCoreController {
         data.put("trustedGatewayCoverageStatus", "OPS_SUMMARIES_ONLY");
         data.put("routeDriftStatus", "NO_DRIFT");
         data.put("legacyServiceRestoreStatus", "NOT_RESTORED");
+        data.put("completeBehaviorContractRoutesVerifiedTotal", registry.completeBehaviorContractRoutesVerifiedTotal());
+        data.put("pendingBehaviorContractRoutesTotal", registry.pendingBehaviorContractRoutesTotal());
+        data.put("behaviorCoverageByModule", registry.behaviorCoverageByModule());
         data.put("checks", registry.productionReadinessChecks());
         data.put("productionBlockers", registry.productionGaps());
         data.put("generatedAt", Instant.now().toString());
@@ -202,12 +205,24 @@ class EngagementCoreRegistry {
         return modules.stream().mapToInt(EngagementModuleRegistration::routeContractRoutesVerifiedTotal).sum();
     }
 
+    int completeBehaviorContractRoutesVerifiedTotal() {
+        return modules.stream().mapToInt(EngagementModuleRegistration::completeBehaviorContractRoutesVerifiedTotal).sum();
+    }
+
+    int pendingBehaviorContractRoutesTotal() {
+        return engagementRoutesTotal() - completeBehaviorContractRoutesVerifiedTotal();
+    }
+
     List<Map<String, Object>> publicModules() {
         return modules.stream().map(EngagementModuleRegistration::toPublicMap).toList();
     }
 
     List<Map<String, Object>> modules() {
         return modules.stream().map(EngagementModuleRegistration::toOpsMap).toList();
+    }
+
+    List<Map<String, Object>> behaviorCoverageByModule() {
+        return modules.stream().map(EngagementModuleRegistration::toBehaviorCoverageMap).toList();
     }
 
     List<Map<String, Object>> adapterChain() {
@@ -272,7 +287,11 @@ class EngagementCoreRegistry {
                 check("ROUTE_SIGNATURES", "PASS", "149 inherited business route signatures are verified", true,
                         Map.of("verifiedRoutesTotal", routeContractRoutesVerifiedTotal())),
                 check("BEHAVIOR_CONTRACTS", "BLOCKED", "complete inherited behavior contract tests are still pending", true,
-                        Map.of("requiredBusinessRoutesTotal", engagementRoutesTotal())),
+                        Map.of(
+                                "requiredBusinessRoutesTotal", engagementRoutesTotal(),
+                                "completeBehaviorContractRoutesVerifiedTotal", completeBehaviorContractRoutesVerifiedTotal(),
+                                "pendingBehaviorContractRoutesTotal", pendingBehaviorContractRoutesTotal()
+                        )),
                 check("TRUSTED_GATEWAY_CONTEXT", "PARTIAL", "trusted gateway context is mounted for ops summaries only", true, Map.of()),
                 check("PERSISTENCE", "BLOCKED", "real database persistence is still module dependent", true, Map.of()),
                 check("AUDIT_PERSISTENCE", "BLOCKED", "persistent audit storage is not connected", true, Map.of()),
@@ -367,8 +386,46 @@ record EngagementModuleRegistration(String moduleKey,
         return data;
     }
 
+    Map<String, Object> toBehaviorCoverageMap() {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("moduleKey", moduleKey);
+        data.put("moduleName", moduleName);
+        data.put("contract", contract);
+        data.put("routesTotal", routesTotal);
+        data.put("routeSignatureRoutesVerifiedTotal", routeContractRoutesVerifiedTotal());
+        data.put("completeBehaviorContractRoutesVerifiedTotal", completeBehaviorContractRoutesVerifiedTotal());
+        data.put("pendingBehaviorContractRoutesTotal", pendingBehaviorContractRoutesTotal());
+        data.put("behaviorCoverageStatus", "PENDING_COMPLETE_BEHAVIOR_CONTRACTS");
+        data.put("pendingBehaviorCategories", pendingBehaviorCategories());
+        return data;
+    }
+
     int routeContractRoutesVerifiedTotal() {
         return routesTotal;
+    }
+
+    int completeBehaviorContractRoutesVerifiedTotal() {
+        return 0;
+    }
+
+    int pendingBehaviorContractRoutesTotal() {
+        return routesTotal - completeBehaviorContractRoutesVerifiedTotal();
+    }
+
+    private List<String> pendingBehaviorCategories() {
+        return List.of(
+                "SUCCESS_PATH",
+                "FIELD_VALIDATION",
+                "AUTHENTICATION",
+                "AUTHORIZATION",
+                "RESOURCE_NOT_FOUND",
+                "STATE_CONFLICT",
+                "IDEMPOTENCY_OR_CONCURRENCY",
+                "STATE_TRANSITION",
+                "FAILURE_DEGRADATION",
+                "AUDIT",
+                "PRODUCTION_HARDENING"
+        );
     }
 }
 

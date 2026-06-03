@@ -10049,9 +10049,11 @@ notification 是辅助依赖。发布、下架和安全修复通知失败不得�
 
 `GET /api/v1/engagement-core/admin/production-readiness`
 
-该接口需要 `ADMIN` 或 `OWNER`，可使用 Bearer 本地兼容 token 或可信网关上下文。成功响应 HTTP `200`，`data` 至少包含 `service=engagement-core`、`port=8132`、`readyForProduction=false`、`readinessStatus=NOT_READY`、`routesTotal=152`、`engagementRoutesTotal=149`、`selfRoutesTotal=3`、`routeContractCoverageStatus=ROUTE_CONTRACT_VERIFIED`、`behaviorContractCoverageStatus=PARTIAL_BEHAVIOR_CONTRACT_TESTS`、`trustedGatewayCoverageStatus=OPS_SUMMARIES_ONLY`、`routeDriftStatus=NO_DRIFT`、`legacyServiceRestoreStatus=NOT_RESTORED`、`checks`、`productionBlockers` 和 `generatedAt`。
+该接口需要 `ADMIN` 或 `OWNER`，可使用 Bearer 本地兼容 token 或可信网关上下文。成功响应 HTTP `200`，`data` 至少包含 `service=engagement-core`、`port=8132`、`readyForProduction=false`、`readinessStatus=NOT_READY`、`routesTotal=152`、`engagementRoutesTotal=149`、`selfRoutesTotal=3`、`routeContractCoverageStatus=ROUTE_CONTRACT_VERIFIED`、`behaviorContractCoverageStatus=PARTIAL_BEHAVIOR_CONTRACT_TESTS`、`trustedGatewayCoverageStatus=OPS_SUMMARIES_ONLY`、`routeDriftStatus=NO_DRIFT`、`legacyServiceRestoreStatus=NOT_RESTORED`、`completeBehaviorContractRoutesVerifiedTotal=0`、`pendingBehaviorContractRoutesTotal=149`、`behaviorCoverageByModule`、`checks`、`productionBlockers` 和 `generatedAt`。
 
 `checks` 必须包含 `ROUTE_SIGNATURES=PASS`、`BEHAVIOR_CONTRACTS=BLOCKED`、`TRUSTED_GATEWAY_CONTEXT=PARTIAL`、`PERSISTENCE=BLOCKED`、`AUDIT_PERSISTENCE=BLOCKED`、`CROSS_SERVICE_ADAPTERS=BLOCKED`、`NOTIFICATION_DELIVERY=BLOCKED`、`LIVE_HTTP_SMOKE=BLOCKED` 和 `LEGACY_SERVICES=PASS`。该接口只读诊断摘要，不调用旧服务，不执行真实 HTTP smoke，不触发业务写操作，不返回 token、Cookie、完整请求头、真实数据库连接串、内部 URL、异常栈、节点凭据、服务器命令、举报证据、工单内部备注、通知正文或 Cloudreve token。
+
+`behaviorCoverageByModule` 必须按 community、activity、calendar 和 changelog 返回完整行为契约覆盖进度。当前四个模块的完整行为契约已验证路由数均为 `0`，待补路由数分别为 community `64`、activity `41`、calendar `21`、changelog `23`。代表路由测试、后台自检测试和路由签名测试不得计入完整行为契约覆盖。
 
 ### 验收口径
 
