@@ -45,11 +45,11 @@ class EngagementCoreController {
     @GetMapping("/admin/ops/summary")
     ResponseEntity<Map<String, Object>> opsSummary(HttpServletRequest request,
                                                    @RequestHeader(value = "Authorization", required = false) String authorization) {
-        EngagementAuthDecision decision = authorizeAdminOrOwner(authorization);
+        EngagementAuthDecision decision = authorizeAdminOrOwner(request, authorization);
         if (!decision.allowed()) {
             return ResponseEntity.status(decision.status()).body(envelope(decision.code(), decision.message(), null, requestId(request)));
         }
-        return ResponseEntity.ok(envelope(0, "success", opsSummary(), requestId(request)));
+        return ResponseEntity.ok(envelope(0, "success", opsSummary(decision), requestId(request)));
     }
 
     private Map<String, Object> healthSummary() {
@@ -59,8 +59,10 @@ class EngagementCoreController {
         return data;
     }
 
-    private Map<String, Object> opsSummary() {
+    private Map<String, Object> opsSummary(EngagementAuthDecision auth) {
         Map<String, Object> data = baseSummary();
+        data.put("authMode", auth.authMode());
+        data.put("actorUserId", auth.actorUserId());
         data.put("routesTotal", registry.engagementRoutesTotal() + SELF_ROUTES_TOTAL);
         data.put("moduleRoutes", registry.modules());
         data.put("adapterChain", registry.adapterChain());
@@ -90,21 +92,36 @@ class EngagementCoreController {
         return data;
     }
 
-    private EngagementAuthDecision authorizeAdminOrOwner(String authorization) {
+    private EngagementAuthDecision authorizeAdminOrOwner(HttpServletRequest request, String authorization) {
+        try {
+            var trusted = TrustedGatewayAuth.from(request);
+            if (trusted.isPresent()) {
+                TrustedGatewayAuth.Actor actor = trusted.get();
+                if (!actor.hasAny("ADMIN", "OWNER")) {
+                    return new EngagementAuthDecision(false, HttpStatus.FORBIDDEN, 42001, "role permission denied", actor.authMode(), actor.userId());
+                }
+                return new EngagementAuthDecision(true, HttpStatus.OK, 0, "success", actor.authMode(), actor.userId());
+            }
+        } catch (TrustedGatewayAuth.MalformedContextException exception) {
+            return new EngagementAuthDecision(false, HttpStatus.BAD_GATEWAY, 53233, "trusted auth context incompatible", "TRUSTED_GATEWAY_CONTEXT", null);
+        }
         if (authorization == null || authorization.isBlank()) {
-            return new EngagementAuthDecision(false, HttpStatus.UNAUTHORIZED, 41000, "not logged in");
+            return new EngagementAuthDecision(false, HttpStatus.UNAUTHORIZED, 41000, "not logged in", "TEST_STUB", null);
         }
         if (!authorization.startsWith("Bearer ")) {
-            return new EngagementAuthDecision(false, HttpStatus.UNAUTHORIZED, 41003, "invalid token format");
+            return new EngagementAuthDecision(false, HttpStatus.UNAUTHORIZED, 41003, "invalid token format", "TEST_STUB", null);
         }
         String token = authorization.substring("Bearer ".length());
-        if ("admin-token".equals(token) || "owner-token".equals(token)) {
-            return new EngagementAuthDecision(true, HttpStatus.OK, 0, "success");
+        if ("admin-token".equals(token)) {
+            return new EngagementAuthDecision(true, HttpStatus.OK, 0, "success", "TEST_STUB", "admin");
+        }
+        if ("owner-token".equals(token)) {
+            return new EngagementAuthDecision(true, HttpStatus.OK, 0, "success", "TEST_STUB", "owner");
         }
         if ("helper-token".equals(token) || "user-token".equals(token)) {
-            return new EngagementAuthDecision(false, HttpStatus.FORBIDDEN, 42001, "role permission denied");
+            return new EngagementAuthDecision(false, HttpStatus.FORBIDDEN, 42001, "role permission denied", "TEST_STUB", null);
         }
-        return new EngagementAuthDecision(false, HttpStatus.UNAUTHORIZED, 41001, "invalid session");
+        return new EngagementAuthDecision(false, HttpStatus.UNAUTHORIZED, 41001, "invalid session", "TEST_STUB", null);
     }
 
     private Map<String, Object> envelope(int code, String message, Object data, String requestId) {
@@ -211,7 +228,7 @@ class EngagementCoreRegistry {
     List<String> productionGaps() {
         return List.of(
                 "complete inherited behavior contract tests are not all mounted in engagement-core",
-                "real auth and gateway trusted context adapters are not connected",
+                "gateway trusted context is mounted for ops summaries only; complete business behavior auth coverage is still pending",
                 "real database persistence is still module dependent",
                 "persistent audit storage is not connected",
                 "real cross-service adapters are still represented by local test stubs",
@@ -299,7 +316,7 @@ record EngagementModuleRegistration(String moduleKey,
     }
 }
 
-record EngagementAuthDecision(boolean allowed, HttpStatus status, int code, String message) {
+record EngagementAuthDecision(boolean allowed, HttpStatus status, int code, String message, String authMode, String actorUserId) {
 }
 
 @Configuration

@@ -53,7 +53,7 @@
 
 ## 合并后运行入口
 
-当前已入仓的合并运行入口是 `business-core-service`、`admission-core-service` 和 `engagement-core-service`。第三批社区运营路径已经由网关统一切到 `8132`。
+当前已入仓的合并运行入口是 `business-core-service`、`admission-core-service` 和 `engagement-core-service`。第三批社区运营路径已经由网关统一切到 `8132`。`engagement-core-service` 的五个后台自检摘要入口已经支持网关注入的可信认证上下文；完整 149 个业务方法路由的认证、权限、actor 审计和当前用户隔离仍按第三批完整行为契约继续补测。
 
 `engagement-core` 的 2 个自有接口只用于运行单元自检和后台装配摘要。它不新增 community、activity、calendar 或 changelog 的业务语义。第三批 149 个业务路由签名必须在 `engagement-core-service` 中逐条自动化验证；完整业务行为契约仍必须继续覆盖成功、字段校验、认证、权限、资源不存在、状态冲突、幂等并发、降级、审计和生产硬化。
 

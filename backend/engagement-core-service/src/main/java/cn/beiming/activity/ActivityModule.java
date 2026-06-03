@@ -1,5 +1,6 @@
 package cn.beiming.activity;
 
+import cn.beiming.engagement.TrustedGatewayAuth;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import jakarta.servlet.FilterChain;
@@ -686,13 +687,14 @@ class ActivityController {
 
     @GetMapping("/admin/ops/summary")
     ResponseEntity<Map<String, Object>> opsSummary(HttpServletRequest request) {
-        auth.requireStaff(request);
+        Actor actor = auth.requireStaff(request);
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("service", "activity");
         data.put("port", 8132);
         data.put("legacyPort", 8113);
         data.put("storageMode", "IN_MEMORY");
-        data.put("authMode", "TEST_STUB");
+        data.put("authMode", actor.authMode);
+        data.put("actorUserId", actor.userId);
         data.put("profileMode", "TEST_STUB");
         data.put("notificationMode", "TEST_STUB");
         data.put("attendanceMode", "SKIPPED");
@@ -1505,6 +1507,15 @@ class ActivityAuditRecord {
 @Service
 class ActivityAuth {
     Actor current(HttpServletRequest request) {
+        try {
+            var trusted = TrustedGatewayAuth.from(request);
+            if (trusted.isPresent()) {
+                TrustedGatewayAuth.Actor actor = trusted.get();
+                return new Actor(actor.userId(), actor.primaryRole(), actor.userId(), null, actor.authMode());
+            }
+        } catch (TrustedGatewayAuth.MalformedContextException exception) {
+            throw new ApiException(HttpStatus.BAD_GATEWAY, 49402, "auth incompatible");
+        }
         String header = request.getHeader("Authorization");
         if (header == null || header.isBlank()) {
             throw new ApiException(HttpStatus.UNAUTHORIZED, 41000, "unauthenticated");
@@ -1514,13 +1525,13 @@ class ActivityAuth {
         }
         String token = header.substring("Bearer ".length());
         return switch (token) {
-            case "owner-token" -> new Actor("owner-user", "OWNER", "Owner", "mem-owner");
-            case "admin-token" -> new Actor("admin-user", "ADMIN", "Admin", "mem-admin");
-            case "helper-token" -> new Actor("helper-user", "HELPER", "Helper", "mem-helper");
-            case "user-token" -> new Actor("plain-user", "USER", "PlainUser", null);
-            case "member-user-1-token" -> new Actor("member-user-1", "USER", "MemberOne", "mem-001");
-            case "member-user-2-token" -> new Actor("member-user-2", "USER", "MemberTwo", "mem-002");
-            case "pending-profile-token" -> new Actor("pending-user", "USER", "PendingUser", null);
+            case "owner-token" -> local("owner-user", "OWNER", "Owner", "mem-owner");
+            case "admin-token" -> local("admin-user", "ADMIN", "Admin", "mem-admin");
+            case "helper-token" -> local("helper-user", "HELPER", "Helper", "mem-helper");
+            case "user-token" -> local("plain-user", "USER", "PlainUser", null);
+            case "member-user-1-token" -> local("member-user-1", "USER", "MemberOne", "mem-001");
+            case "member-user-2-token" -> local("member-user-2", "USER", "MemberTwo", "mem-002");
+            case "pending-profile-token" -> local("pending-user", "USER", "PendingUser", null);
             default -> throw new ApiException(HttpStatus.UNAUTHORIZED, 41003, "bad token");
         };
     }
@@ -1540,6 +1551,10 @@ class ActivityAuth {
         }
         return actor;
     }
+
+    private Actor local(String userId, String role, String displayName, String memberId) {
+        return new Actor(userId, role, displayName, memberId, "TEST_STUB");
+    }
 }
 
 class Actor {
@@ -1547,12 +1562,14 @@ class Actor {
     final String role;
     final String displayName;
     final String memberId;
+    final String authMode;
 
-    Actor(String userId, String role, String displayName, String memberId) {
+    Actor(String userId, String role, String displayName, String memberId, String authMode) {
         this.userId = userId;
         this.role = role;
         this.displayName = displayName;
         this.memberId = memberId;
+        this.authMode = authMode;
     }
 }
 
@@ -1583,7 +1600,7 @@ class ActivityRequestIdFilter extends OncePerRequestFilter {
     }
 }
 
-@RestControllerAdvice
+@RestControllerAdvice(basePackageClasses = ActivityController.class)
 class ActivityExceptionHandler {
     private final ObjectMapper objectMapper;
 

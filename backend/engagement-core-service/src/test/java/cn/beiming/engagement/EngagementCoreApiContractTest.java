@@ -8,6 +8,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
 import java.nio.file.Files;
@@ -105,7 +106,8 @@ class EngagementCoreApiContractTest {
                 .andExpect(jsonPath("$.data.productionGaps[?(@ == 'gateway route switch is not complete')]").doesNotExist())
                 .andExpect(jsonPath("$.data.productionGaps[?(@ == 'complete inherited contract tests are not all mounted in engagement-core')]").doesNotExist())
                 .andExpect(jsonPath("$.data.productionGaps[?(@ == 'complete inherited behavior contract tests are not all mounted in engagement-core')]").exists())
-                .andExpect(jsonPath("$.data.productionGaps[?(@ == 'real auth and gateway trusted context adapters are not connected')]").exists())
+                .andExpect(jsonPath("$.data.productionGaps[?(@ == 'real auth and gateway trusted context adapters are not connected')]").doesNotExist())
+                .andExpect(jsonPath("$.data.productionGaps[?(@ == 'gateway trusted context is mounted for ops summaries only; complete business behavior auth coverage is still pending')]").exists())
                 .andExpect(jsonPath("$.data.businessCoreDependency.service").value("business-core"))
                 .andExpect(jsonPath("$.data.businessCoreDependency.port").value(8130))
                 .andExpect(jsonPath("$.data.admissionCoreDependency.service").value("admission-core"))
@@ -130,6 +132,104 @@ class EngagementCoreApiContractTest {
                 .andExpect(jsonPath("$.data.retiredLegacyServices[?(@.service == 'calendar-service' && @.directory == 'backend/calendar-service' && @.testCommand == null)]").exists())
                 .andExpect(jsonPath("$.data.retiredLegacyServices[?(@.service == 'changelog-service' && @.directory == 'backend/changelog-service' && @.testCommand == null)]").exists())
                 .andExpect(jsonPath("$.data.generatedAt").isNotEmpty());
+    }
+
+    @Test
+    void consumesTrustedGatewayContextForOpsSummaries() throws Exception {
+        mockMvc.perform(trusted(get("/api/v1/engagement-core/admin/ops/summary"), "gateway-owner", "OWNER", "NODE_READ"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.authMode").value("TRUSTED_GATEWAY_CONTEXT"))
+                .andExpect(jsonPath("$.data.actorUserId").value("gateway-owner"));
+
+        mockMvc.perform(trusted(get("/api/v1/engagement-core/admin/ops/summary"), "gateway-helper", "HELPER", "NODE_READ"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(42001));
+
+        mockMvc.perform(get("/api/v1/engagement-core/admin/ops/summary")
+                        .header("X-Beiming-Actor-User-Id", "forged-owner")
+                        .header("X-Beiming-Actor-Roles", "OWNER")
+                        .header("Authorization", "Bearer user-token"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(42001));
+
+        mockMvc.perform(get("/api/v1/engagement-core/admin/ops/summary")
+                        .header("X-Gateway-Internal-Request-Id", "req-missing-user")
+                        .header("X-Beiming-Actor-Roles", "OWNER"))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.code").value(53233));
+
+        mockMvc.perform(get("/api/v1/engagement-core/admin/ops/summary")
+                        .header("X-Gateway-Internal-Request-Id", "bad request id")
+                        .header("X-Beiming-Actor-User-Id", "gateway-owner")
+                        .header("X-Beiming-Actor-Roles", "OWNER"))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.code").value(53233));
+    }
+
+    @Test
+    void consumesTrustedGatewayContextForMergedModuleOpsSummaries() throws Exception {
+        mockMvc.perform(trusted(get("/api/v1/community/admin/ops/summary"), "gateway-helper", "HELPER", "NODE_READ"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.authMode").value("TRUSTED_GATEWAY_CONTEXT"))
+                .andExpect(jsonPath("$.data.actorUserId").value("gateway-helper"));
+
+        mockMvc.perform(trusted(get("/api/v1/activity/admin/ops/summary"), "gateway-helper", "HELPER", "NODE_READ"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.authMode").value("TRUSTED_GATEWAY_CONTEXT"))
+                .andExpect(jsonPath("$.data.actorUserId").value("gateway-helper"));
+
+        mockMvc.perform(trusted(get("/api/v1/calendar/admin/ops/summary"), "gateway-helper", "HELPER", "NODE_READ"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.authMode").value("TRUSTED_GATEWAY_CONTEXT"))
+                .andExpect(jsonPath("$.data.actorUserId").value("gateway-helper"));
+
+        mockMvc.perform(trusted(get("/api/v1/changelog/admin/ops/summary"), "gateway-helper", "HELPER", "NODE_READ"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.authMode").value("TRUSTED_GATEWAY_CONTEXT"))
+                .andExpect(jsonPath("$.data.actorUserId").value("gateway-helper"));
+
+        for (String path : List.of(
+                "/api/v1/community/admin/ops/summary",
+                "/api/v1/activity/admin/ops/summary",
+                "/api/v1/calendar/admin/ops/summary",
+                "/api/v1/changelog/admin/ops/summary")) {
+            mockMvc.perform(trusted(get(path), "gateway-user", "USER", "NODE_READ"))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.code").value(42001));
+        }
+    }
+
+    @Test
+    void rejectsMalformedTrustedGatewayContextForMergedModuleOpsSummaries() throws Exception {
+        mockMvc.perform(get("/api/v1/community/admin/ops/summary")
+                        .header("X-Gateway-Internal-Request-Id", "req-community-bad-role")
+                        .header("X-Beiming-Actor-User-Id", "gateway-helper")
+                        .header("X-Beiming-Actor-Roles", "ROOT"))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.code").value(49202));
+
+        mockMvc.perform(get("/api/v1/activity/admin/ops/summary")
+                        .header("X-Gateway-Internal-Request-Id", "req-activity-bad-permission")
+                        .header("X-Beiming-Actor-User-Id", "gateway-helper")
+                        .header("X-Beiming-Actor-Roles", "HELPER")
+                        .header("X-Beiming-Actor-Permissions", "BAD_PERMISSION"))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.code").value(49402));
+
+        mockMvc.perform(get("/api/v1/calendar/admin/ops/summary")
+                        .header("X-Gateway-Internal-Request-Id", "req-calendar-bad-uuid")
+                        .header("X-Beiming-Actor-User-Id", "gateway-helper")
+                        .header("X-Beiming-Actor-Roles", "HELPER")
+                        .header("X-Beiming-Actor-Minecraft-Id", "GatewayMc")
+                        .header("X-Beiming-Actor-Minecraft-Uuid", "bad-uuid"))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.code").value(49802));
+
+        mockMvc.perform(get("/api/v1/changelog/admin/ops/summary")
+                        .header("X-Gateway-Internal-Request-Id", "req-changelog-missing-user")
+                        .header("X-Beiming-Actor-Roles", "HELPER"))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.code").value(49102));
     }
 
     @Test
@@ -263,6 +363,14 @@ class EngagementCoreApiContractTest {
                 Path.of("../changelog-service/pom.xml"),
                 Path.of("../changelog-service/src/main/java/cn/beiming/changelog/ChangelogServiceApplication.java")
         )).allSatisfy(path -> assertThat(Files.exists(path)).isFalse());
+    }
+
+    private MockHttpServletRequestBuilder trusted(MockHttpServletRequestBuilder request, String userId, String roles, String permissions) {
+        return request
+                .header("X-Gateway-Internal-Request-Id", "req-gateway-context")
+                .header("X-Beiming-Actor-User-Id", userId)
+                .header("X-Beiming-Actor-Roles", roles)
+                .header("X-Beiming-Actor-Permissions", permissions);
     }
 
     private long countByPrefix(Set<String> routes, String prefix) {

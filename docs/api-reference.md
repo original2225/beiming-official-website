@@ -10038,7 +10038,9 @@ notification 是辅助依赖。发布、下架和安全修复通知失败不得�
 
 `moduleRoutes` 中每个模块必须返回 `port=8132`、对应 `legacyPort`、`contractRoutesTotal`、`routeContractRoutesVerifiedTotal`、`routeContractCoverageStatus` 和 `behaviorContractCoverageStatus`。当前四个模块路由签名覆盖数为 community `64`、activity `41`、calendar `21`、changelog `23`。
 
-`productionGaps` 当前必须保留 `complete inherited behavior contract tests are not all mounted in engagement-core`。这表示 149 个业务 `METHOD path` 路由签名已经装配验证，但完整行为契约仍未全部覆盖。后续仍要逐接口覆盖成功、字段校验、认证、权限、资源不存在、状态冲突、幂等并发、降级、审计和生产硬化。
+`productionGaps` 当前必须保留 `complete inherited behavior contract tests are not all mounted in engagement-core`。这表示 149 个业务 `METHOD path` 路由签名已经装配验证，但完整行为契约仍未全部覆盖。五个后台自检摘要入口已经支持可信网关上下文，摘要缺口必须改为 `gateway trusted context is mounted for ops summaries only; complete business behavior auth coverage is still pending`，不得继续暴露 `real auth and gateway trusted context adapters are not connected`。后续仍要逐接口覆盖成功、字段校验、认证、权限、资源不存在、状态冲突、幂等并发、降级、审计和生产硬化。
+
+可信网关上下文规则继承 `docs/contracts-engagement-core.md`。只有存在 `X-Gateway-Internal-Request-Id` 时，`engagement-core` 才解析 `X-Beiming-Actor-*`；缺少该内部请求编号时，直连伪造 actor 头必须被忽略并回退 Bearer 兼容路径。当前已覆盖 `/api/v1/engagement-core/admin/ops/summary`、`/api/v1/community/admin/ops/summary`、`/api/v1/activity/admin/ops/summary`、`/api/v1/calendar/admin/ops/summary` 和 `/api/v1/changelog/admin/ops/summary`。字段缺失、requestId 格式非法、角色或能力点不兼容、Minecraft UUID 不兼容必须失败，不得当成匿名或本地 token 成功。
 
 `legacyBaselines` 不得包含 `community-service`、`activity-service`、`calendar-service` 或 `changelog-service`。`retiredLegacyServices` 必须返回这四个旧服务的退役摘要，且 `testCommand=null`。
 

@@ -1,5 +1,6 @@
 package cn.beiming.community;
 
+import cn.beiming.engagement.TrustedGatewayAuth;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -580,8 +581,8 @@ class CommunityController {
 
     @GetMapping("/admin/ops/summary")
     Map<String, Object> opsSummary(@RequestHeader(value = "Authorization", required = false) String authorization) {
-        auth.requireAny(authorization, "HELPER", "ADMIN", "OWNER");
-        return ok(store.opsSummary());
+        CommunityUser actor = auth.requireAny(authorization, "HELPER", "ADMIN", "OWNER");
+        return ok(store.opsSummary(actor));
     }
 
     static Map<String, Object> ok(Object data) {
@@ -1416,13 +1417,14 @@ class CommunityStore {
         return pageRows(rows, page, pageSize);
     }
 
-    Map<String, Object> opsSummary() {
+    Map<String, Object> opsSummary(CommunityUser actor) {
         return linkedMap(
                 "service", "community",
                 "port", 8132,
                 "legacyPort", 8112,
                 "storageMode", "IN_MEMORY",
-                "authMode", "TEST_STUB",
+                "authMode", actor.authMode(),
+                "actorUserId", actor.userId(),
                 "profileMode", "TEST_STUB",
                 "notificationMode", "TEST_STUB",
                 "contentMode", "TEST_STUB",
@@ -2130,6 +2132,15 @@ class CommunityStore {
 
 class TestCommunityAuthProvider {
     CommunityUser requireUser(String authorization) {
+        try {
+            var trusted = TrustedGatewayAuth.from(currentRequest());
+            if (trusted.isPresent()) {
+                TrustedGatewayAuth.Actor actor = trusted.get();
+                return new CommunityUser(actor.userId(), actor.userId(), actor.roles(), "ACTIVE", actor.authMode());
+            }
+        } catch (TrustedGatewayAuth.MalformedContextException exception) {
+            throw new CommunityException(502, 49202, "auth incompatible");
+        }
         if (authorization == null || authorization.isBlank()) throw new CommunityException(401, 41000, "not logged in");
         if (!authorization.startsWith("Bearer ")) throw new CommunityException(401, 41003, "bad token format");
         String token = authorization.substring("Bearer ".length());
@@ -2137,14 +2148,14 @@ class TestCommunityAuthProvider {
             case "auth-unavailable-token", "disabled-token", "banned-token", "deleted-token" -> throw new CommunityException(502, 49200, "auth unavailable");
             case "auth-timeout-token" -> throw new CommunityException(504, 49201, "auth timeout");
             case "auth-bad-token" -> throw new CommunityException(502, 49202, "auth incompatible");
-            case "owner-token" -> new CommunityUser("owner", "Owner", Set.of("OWNER"), "ACTIVE");
-            case "admin-token" -> new CommunityUser("admin", "Admin", Set.of("ADMIN"), "ACTIVE");
-            case "helper-token" -> new CommunityUser("helper", "Helper", Set.of("HELPER"), "ACTIVE");
-            case "user-token" -> new CommunityUser("user", "User", Set.of("USER"), "ACTIVE");
-            case "member-user-1-token" -> new CommunityUser("member-user-1", "Member One", Set.of("USER"), "ACTIVE");
-            case "member-user-2-token" -> new CommunityUser("member-user-2", "Member Two", Set.of("USER"), "ACTIVE");
-            case "pending-profile-token" -> new CommunityUser("pending-profile", "Pending Profile", Set.of("USER"), "PENDING_PROFILE");
-            case "other-token" -> new CommunityUser("other", "Other", Set.of("USER"), "ACTIVE");
+            case "owner-token" -> local("owner", "Owner", Set.of("OWNER"), "ACTIVE");
+            case "admin-token" -> local("admin", "Admin", Set.of("ADMIN"), "ACTIVE");
+            case "helper-token" -> local("helper", "Helper", Set.of("HELPER"), "ACTIVE");
+            case "user-token" -> local("user", "User", Set.of("USER"), "ACTIVE");
+            case "member-user-1-token" -> local("member-user-1", "Member One", Set.of("USER"), "ACTIVE");
+            case "member-user-2-token" -> local("member-user-2", "Member Two", Set.of("USER"), "ACTIVE");
+            case "pending-profile-token" -> local("pending-profile", "Pending Profile", Set.of("USER"), "PENDING_PROFILE");
+            case "other-token" -> local("other", "Other", Set.of("USER"), "ACTIVE");
             default -> throw new CommunityException(401, 41001, "invalid session");
         };
     }
@@ -2155,9 +2166,18 @@ class TestCommunityAuthProvider {
         if (user.roles().stream().noneMatch(allowed::contains)) throw new CommunityException(403, 42001, "role permission denied");
         return user;
     }
+
+    private CommunityUser local(String userId, String displayName, Set<String> roles, String status) {
+        return new CommunityUser(userId, displayName, roles, status, "TEST_STUB");
+    }
+
+    private HttpServletRequest currentRequest() {
+        ServletRequestAttributes attrs = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+        return attrs == null ? null : attrs.getRequest();
+    }
 }
 
-record CommunityUser(String userId, String displayName, Set<String> roles, String status) {
+record CommunityUser(String userId, String displayName, Set<String> roles, String status, String authMode) {
 }
 
 record CommunityTestControls(boolean enabled) {
@@ -2352,7 +2372,7 @@ class CommunityException extends RuntimeException {
     }
 }
 
-@RestControllerAdvice
+@RestControllerAdvice(basePackageClasses = CommunityController.class)
 class CommunityExceptionHandler {
     @ExceptionHandler(CommunityException.class)
     ResponseEntity<Map<String, Object>> handleCommunity(CommunityException ex) {

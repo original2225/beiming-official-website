@@ -1,5 +1,6 @@
 package cn.beiming.changelog;
 
+import cn.beiming.engagement.TrustedGatewayAuth;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import jakarta.servlet.FilterChain;
@@ -568,10 +569,9 @@ class ChangelogController {
 
     @GetMapping("/admin/ops/summary")
     ResponseEntity<Map<String, Object>> opsSummary(HttpServletRequest request) {
-        auth.requireStaff(request);
-        Actor actor = auth.current(request);
+        Actor actor = auth.requireStaff(request);
         store.audit("CHANGELOG_OPS_SUMMARY_READ", "changelog", "changelog", "CHANGELOG_SERVICE", actor, request, Map.of(), "SUCCESS", null, null);
-        return ok(request, store.ops(properties.enabled()));
+        return ok(request, store.ops(properties.enabled(), actor));
     }
 
     private ResponseEntity<Map<String, Object>> transitionStaff(HttpServletRequest request,
@@ -1214,13 +1214,14 @@ class ChangelogStore {
         return summary;
     }
 
-    Map<String, Object> ops(boolean testControlsEnabled) {
+    Map<String, Object> ops(boolean testControlsEnabled, Actor actor) {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("service", "changelog");
         data.put("port", 8132);
         data.put("legacyPort", 8115);
         data.put("storageMode", "IN_MEMORY");
-        data.put("authMode", "TEST_STUB");
+        data.put("authMode", actor.authMode);
+        data.put("actorUserId", actor.userId);
         data.put("resourceMode", "TEST_STUB");
         data.put("serverStatusMode", "TEST_STUB");
         data.put("contentMode", "TEST_STUB");
@@ -1607,6 +1608,15 @@ class ChangelogAuth {
 
     Actor current(HttpServletRequest request) {
         failIfRequested(request);
+        try {
+            var trusted = TrustedGatewayAuth.from(request);
+            if (trusted.isPresent()) {
+                TrustedGatewayAuth.Actor actor = trusted.get();
+                return new Actor(actor.userId(), actor.primaryRole(), actor.userId(), actor.authMode());
+            }
+        } catch (TrustedGatewayAuth.MalformedContextException exception) {
+            throw new ChangelogException(HttpStatus.BAD_GATEWAY, 49102, "auth incompatible");
+        }
         String header = request.getHeader("Authorization");
         if (header == null || header.isBlank()) {
             throw new ChangelogException(HttpStatus.UNAUTHORIZED, 41000, "unauthenticated");
@@ -1616,12 +1626,12 @@ class ChangelogAuth {
         }
         String token = header.substring("Bearer ".length());
         return switch (token) {
-            case "owner-token" -> new Actor("owner-user", "OWNER", "Owner");
-            case "admin-token" -> new Actor("admin-user", "ADMIN", "Admin");
-            case "helper-token" -> new Actor("helper-user", "HELPER", "Helper");
-            case "user-token" -> new Actor("plain-user", "USER", "PlainUser");
-            case "member-user-1-token" -> new Actor("member-user-1", "USER", "MemberOne");
-            case "member-user-2-token" -> new Actor("member-user-2", "USER", "MemberTwo");
+            case "owner-token" -> local("owner-user", "OWNER", "Owner");
+            case "admin-token" -> local("admin-user", "ADMIN", "Admin");
+            case "helper-token" -> local("helper-user", "HELPER", "Helper");
+            case "user-token" -> local("plain-user", "USER", "PlainUser");
+            case "member-user-1-token" -> local("member-user-1", "USER", "MemberOne");
+            case "member-user-2-token" -> local("member-user-2", "USER", "MemberTwo");
             default -> throw new ChangelogException(HttpStatus.UNAUTHORIZED, 41003, "bad token");
         };
     }
@@ -1647,17 +1657,23 @@ class ChangelogAuth {
         }
         return actor;
     }
+
+    private Actor local(String userId, String role, String displayName) {
+        return new Actor(userId, role, displayName, "TEST_STUB");
+    }
 }
 
 class Actor {
     final String userId;
     final String role;
     final String displayName;
+    final String authMode;
 
-    Actor(String userId, String role, String displayName) {
+    Actor(String userId, String role, String displayName, String authMode) {
         this.userId = userId;
         this.role = role;
         this.displayName = displayName;
+        this.authMode = authMode;
     }
 }
 
@@ -1689,7 +1705,7 @@ class ChangelogRequestIdFilter extends OncePerRequestFilter {
     }
 }
 
-@RestControllerAdvice
+@RestControllerAdvice(basePackageClasses = ChangelogController.class)
 class ChangelogExceptionHandler {
     @ExceptionHandler(ChangelogException.class)
     ResponseEntity<Map<String, Object>> api(ChangelogException exception, HttpServletRequest request) {

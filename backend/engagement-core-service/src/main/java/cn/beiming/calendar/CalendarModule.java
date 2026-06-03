@@ -1,5 +1,6 @@
 package cn.beiming.calendar;
 
+import cn.beiming.engagement.TrustedGatewayAuth;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import jakarta.servlet.FilterChain;
@@ -510,9 +511,9 @@ class CalendarController {
 
     @GetMapping("/admin/ops/summary")
     ResponseEntity<Map<String, Object>> ops(HttpServletRequest request) {
-        auth.requireStaff(request);
-        store.audit("CALENDAR_OPS_READ", "calendar", "ops", auth.current(request).userId, "SUCCESS");
-        return ok(request, store.ops(properties.enabled()));
+        Actor actor = auth.requireStaff(request);
+        store.audit("CALENDAR_OPS_READ", "calendar", "ops", actor.userId, "SUCCESS");
+        return ok(request, store.ops(properties.enabled(), actor));
     }
 
     private ResponseEntity<Map<String, Object>> transitionStaff(HttpServletRequest request,
@@ -986,13 +987,14 @@ class CalendarStore {
         return event == null ? "MANUAL" : event.sourceType;
     }
 
-    Map<String, Object> ops(boolean testControlsEnabled) {
+    Map<String, Object> ops(boolean testControlsEnabled, Actor actor) {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("service", "calendar");
         data.put("port", 8132);
         data.put("legacyPort", 8114);
         data.put("storageMode", "IN_MEMORY");
-        data.put("authMode", "TEST_STUB");
+        data.put("authMode", actor.authMode);
+        data.put("actorUserId", actor.userId);
         data.put("activityMode", "TEST_STUB");
         data.put("notificationMode", "SKIPPED");
         data.put("changelogMode", "NOT_CONNECTED");
@@ -1258,6 +1260,15 @@ class CalendarAuth {
 
     Actor current(HttpServletRequest request) {
         failIfRequested(request);
+        try {
+            var trusted = TrustedGatewayAuth.from(request);
+            if (trusted.isPresent()) {
+                TrustedGatewayAuth.Actor actor = trusted.get();
+                return new Actor(actor.userId(), actor.primaryRole(), actor.userId(), actor.authMode());
+            }
+        } catch (TrustedGatewayAuth.MalformedContextException exception) {
+            throw new ApiException(HttpStatus.BAD_GATEWAY, 49802, "auth incompatible");
+        }
         String header = request.getHeader("Authorization");
         if (header == null || header.isBlank()) {
             throw new ApiException(HttpStatus.UNAUTHORIZED, 41000, "unauthenticated");
@@ -1267,12 +1278,12 @@ class CalendarAuth {
         }
         String token = header.substring("Bearer ".length());
         return switch (token) {
-            case "owner-token" -> new Actor("owner-user", "OWNER", "Owner");
-            case "admin-token" -> new Actor("admin-user", "ADMIN", "Admin");
-            case "helper-token" -> new Actor("helper-user", "HELPER", "Helper");
-            case "user-token" -> new Actor("plain-user", "USER", "PlainUser");
-            case "member-user-1-token" -> new Actor("member-user-1", "USER", "MemberOne");
-            case "member-user-2-token" -> new Actor("member-user-2", "USER", "MemberTwo");
+            case "owner-token" -> local("owner-user", "OWNER", "Owner");
+            case "admin-token" -> local("admin-user", "ADMIN", "Admin");
+            case "helper-token" -> local("helper-user", "HELPER", "Helper");
+            case "user-token" -> local("plain-user", "USER", "PlainUser");
+            case "member-user-1-token" -> local("member-user-1", "USER", "MemberOne");
+            case "member-user-2-token" -> local("member-user-2", "USER", "MemberTwo");
             default -> throw new ApiException(HttpStatus.UNAUTHORIZED, 41003, "bad token");
         };
     }
@@ -1298,17 +1309,23 @@ class CalendarAuth {
         }
         return actor;
     }
+
+    private Actor local(String userId, String role, String displayName) {
+        return new Actor(userId, role, displayName, "TEST_STUB");
+    }
 }
 
 class Actor {
     final String userId;
     final String role;
     final String displayName;
+    final String authMode;
 
-    Actor(String userId, String role, String displayName) {
+    Actor(String userId, String role, String displayName, String authMode) {
         this.userId = userId;
         this.role = role;
         this.displayName = displayName;
+        this.authMode = authMode;
     }
 }
 
@@ -1339,7 +1356,7 @@ class CalendarRequestIdFilter extends OncePerRequestFilter {
     }
 }
 
-@RestControllerAdvice
+@RestControllerAdvice(basePackageClasses = CalendarController.class)
 class CalendarExceptionHandler {
     @ExceptionHandler(ApiException.class)
     ResponseEntity<Map<String, Object>> api(ApiException exception, HttpServletRequest request) {

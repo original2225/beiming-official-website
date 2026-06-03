@@ -280,7 +280,7 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
     ],
     "productionGaps": [
       "complete inherited behavior contract tests are not all mounted in engagement-core",
-      "real auth and gateway trusted context adapters are not connected",
+      "gateway trusted context is mounted for ops summaries only; complete business behavior auth coverage is still pending",
       "real database persistence is still module dependent",
       "persistent audit storage is not connected",
       "real cross-service adapters are still represented by local test stubs",
@@ -320,7 +320,9 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
 | `X-Beiming-Actor-Minecraft-Uuid` | 已绑定的 Minecraft UUID。 |
 | `X-Gateway-Internal-Request-Id` | 网关注入的内部请求编号。 |
 
-`X-Gateway-Internal-Request-Id` 存在时，各模块按自身契约优先解析可信认证上下文。字段缺失、格式非法、角色或能力点不兼容时，不得静默降级成匿名用户。生产入口必须由 `api-gateway` 或反向代理剥离客户端伪造的同名可信头；直连本地测试必须覆盖伪造头不能绕过权限的场景。
+`X-Gateway-Internal-Request-Id` 存在时，各模块按自身契约优先解析可信认证上下文。字段缺失、格式非法、角色或能力点不兼容时，不得静默降级成匿名用户。若该头缺失，即使请求带有 `X-Beiming-Actor-*`，也必须忽略这些 actor 头并继续走 `Authorization: Bearer <token>` 本地兼容路径，防止直连伪造头绕过权限。生产入口必须由 `api-gateway` 或反向代理剥离客户端伪造的同名可信头；直连本地测试必须覆盖伪造头不能绕过权限、网关注入上下文可用、字段缺失失败和字段不兼容失败。
+
+当前阶段 `engagement-core` 已在五个后台自检摘要入口接入可信认证上下文，包括 `/api/v1/engagement-core/admin/ops/summary`、`/api/v1/community/admin/ops/summary`、`/api/v1/activity/admin/ops/summary`、`/api/v1/calendar/admin/ops/summary` 和 `/api/v1/changelog/admin/ops/summary`。这些接口缺少网关上下文时继续兼容本地固定 Bearer token；存在网关上下文时必须优先使用网关注入的 `userId`、`roles`、`permissions`、Minecraft 绑定和内部请求编号。四个业务模块完整 149 个业务方法路由的写入 actor、当前用户隔离和审计 actor 仍属于后续完整行为契约测试范围。
 
 ## 内部适配规则
 
@@ -375,7 +377,7 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
 | --- | --- | --- | --- |
 | 1 | 完整继承契约测试 | 把 community、activity、calendar 和 changelog 的全部 API 行为纳入 `engagement-core-service` 测试，不只保留代表路由。 | 第一层先逐条验证 149 个业务 `METHOD path` 路由签名已经装配；第二层继续新增模块级 behavior contract cases，覆盖成功、字段校验、认证、权限、资源不存在、状态冲突、幂等并发、降级、审计和生产硬化。 |
 | 2 | 合并后自检端口口径 | 四个业务模块自检摘要返回 `port=8132` 和 `legacyPort`，旧端口只用于历史追溯。 | 已新增红灯测试先断言旧端口失败，再实现并复测。 |
-| 3 | 真实认证与可信网关上下文 | 固定 token 只能用于本地测试 profile；生产路径必须消费 `auth` 或网关注入的可信身份上下文。 | 覆盖直连伪造 `X-Beiming-Actor-*` 不能绕过权限、网关注入上下文可用、字段缺失失败。 |
+| 3 | 真实认证与可信网关上下文 | 固定 token 只能用于本地测试 profile；生产路径必须消费 `auth` 或网关注入的可信身份上下文。本轮先覆盖五个后台自检摘要入口，完整业务方法路由认证行为仍进入完整行为契约测试。 | 覆盖直连伪造 `X-Beiming-Actor-*` 不能绕过权限、网关注入上下文可用、字段缺失失败、字段不兼容失败，以及自检摘要暴露 `TRUSTED_GATEWAY_CONTEXT`。 |
 | 4 | 持久化与审计持久化 | 社区、活动、日程、更新日志、互动、报名、收藏、工单、处罚、幂等和审计迁入数据库事务或等效持久层。 | 覆盖重启后数据仍在、审计失败回滚、唯一约束、并发幂等和分页过滤。 |
 | 5 | 真实跨服务 adapter | profile、content、resource、server-status、notification、attendance 和内部 calendar/changelog 适配通过正式接口或受控 adapter。 | 覆盖不可用、超时、字段不兼容、旧快照降级、通知失败不伪造成功。 |
 | 6 | 真实 HTTP 联调 | `api-gateway-service` 到 `engagement-core-service:8132` 做真实进程 smoke，验证路径、认证、请求编号和错误透传。 | 启动当前入口后执行真实 HTTP smoke，记录到 `.local-docs/tests-engagement-core.md` 和 `.local-docs/tests-api-gateway.md`。 |
