@@ -1,6 +1,0 @@
-server:
-  port: 8115
-
-changelog:
-  test-controls:
-    enabled: false

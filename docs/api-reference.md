@@ -14071,7 +14071,7 @@ P0 `api-gateway` 是本地契约实现，必须在自检摘要中明确以下生
 
 本文档列出的每个网关自有接口都有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、分页排序、状态刷新、失败降级、日志脱敏和验收口径。业务转发测试必须覆盖 26 个已接入微服务的路径前缀，确认路由表端口准确、请求编号透传、请求编号非法拒绝、认证头透传、可信身份头剥离、`auth` 会话校验成功后的可信身份注入、`auth` 校验失败后的不注入降级、查询参数透传、JSON body 透传、请求体大小限制、响应头白名单、上游 2xx 透传、上游 4xx 透传、上游 5xx 透传、未知路径、非法方法、CORS 预检、上游不可用、上游超时和敏感字段不落日志。
 
-开发完成后必须执行 `mvn -f backend/api-gateway-service/pom.xml test`、`mvn -f backend/business-core-service/pom.xml test`、`mvn -f backend/admission-core-service/pom.xml test` 和 `mvn -f backend/engagement-core-service/pom.xml test`。第三批旧四服务未清理前，还必须执行 `mvn -f backend/community-service/pom.xml test`、`mvn -f backend/activity-service/pom.xml test`、`mvn -f backend/calendar-service/pom.xml test` 和 `mvn -f backend/changelog-service/pom.xml test` 作为回归基线。第一批和第二批旧服务清理后，不得为了网关回归恢复对应旧服务目录、旧 Maven 入口、旧启动类或旧测试命令。测试过程必须写入 `.local-docs/tests-api-gateway.md`。
+开发完成后必须执行 `mvn -f backend/api-gateway-service/pom.xml test`、`mvn -f backend/business-core-service/pom.xml test`、`mvn -f backend/admission-core-service/pom.xml test` 和 `mvn -f backend/engagement-core-service/pom.xml test`。第一批、第二批和第三批旧服务清理后，不得为了网关回归恢复对应旧服务目录、旧 Maven 入口、旧启动类或旧测试命令。测试过程必须写入 `.local-docs/tests-api-gateway.md`。
 
 ## 北冥官网 material API 契约
 

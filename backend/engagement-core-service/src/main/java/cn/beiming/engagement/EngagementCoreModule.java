@@ -69,6 +69,7 @@ class EngagementCoreController {
         data.put("gatewaySwitchReady", true);
         data.put("gatewaySwitchStatus", "COMPLETED");
         data.put("legacyBaselines", registry.legacyBaselines());
+        data.put("retiredLegacyServices", registry.retiredLegacyServices());
         data.put("productionGaps", registry.productionGaps());
         data.put("generatedAt", Instant.now().toString());
         return data;
@@ -185,13 +186,18 @@ class EngagementCoreRegistry {
 
     List<Map<String, Object>> legacyBaselines() {
         return List.of(
-                baseline("community-service", 8112, "docs/contracts-community.md", "mvn -f backend/community-service/pom.xml test"),
-                baseline("activity-service", 8113, "docs/contracts-activity.md", "mvn -f backend/activity-service/pom.xml test"),
-                baseline("calendar-service", 8114, "docs/contracts-calendar.md", "mvn -f backend/calendar-service/pom.xml test"),
-                baseline("changelog-service", 8115, "docs/contracts-changelog.md", "mvn -f backend/changelog-service/pom.xml test"),
                 baseline("business-core-service", 8130, "docs/contracts-business-core.md", "mvn -f backend/business-core-service/pom.xml test"),
                 baseline("admission-core-service", 8131, "docs/contracts-admission-core.md", "mvn -f backend/admission-core-service/pom.xml test"),
                 baseline("api-gateway-service", 8125, "docs/contracts-api-gateway.md", "mvn -f backend/api-gateway-service/pom.xml test")
+        );
+    }
+
+    List<Map<String, Object>> retiredLegacyServices() {
+        return List.of(
+                retired("community-service", 8112, "backend/community-service", "docs/contracts-community.md"),
+                retired("activity-service", 8113, "backend/activity-service", "docs/contracts-activity.md"),
+                retired("calendar-service", 8114, "backend/calendar-service", "docs/contracts-calendar.md"),
+                retired("changelog-service", 8115, "backend/changelog-service", "docs/contracts-changelog.md")
         );
     }
 
@@ -225,6 +231,18 @@ class EngagementCoreRegistry {
         data.put("contract", contract);
         data.put("testCommand", testCommand);
         data.put("lastVerifiedAt", THIRD_BATCH_BASELINE_VERIFIED_AT);
+        return data;
+    }
+
+    private Map<String, Object> retired(String service, int port, String directory, String contract) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("service", service);
+        data.put("port", port);
+        data.put("directory", directory);
+        data.put("contract", contract);
+        data.put("status", "RETIRED");
+        data.put("testCommand", null);
+        data.put("retiredAt", THIRD_BATCH_BASELINE_VERIFIED_AT);
         return data;
     }
 }

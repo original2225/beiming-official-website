@@ -108,13 +108,17 @@ class EngagementCoreApiContractTest {
                 .andExpect(jsonPath("$.data.adapterChain[?(@.from == 'activity' && @.to == 'community' && @.mutable == false)]").exists())
                 .andExpect(jsonPath("$.data.adapterChain[?(@.from == 'calendar' && @.to == 'activity' && @.mutable == false)]").exists())
                 .andExpect(jsonPath("$.data.adapterChain[?(@.from == 'changelog' && @.to == 'calendar' && @.mutable == false)]").exists())
-                .andExpect(jsonPath("$.data.legacyBaselines[?(@.service == 'community-service' && @.port == 8112)]").exists())
-                .andExpect(jsonPath("$.data.legacyBaselines[?(@.service == 'activity-service' && @.port == 8113)]").exists())
-                .andExpect(jsonPath("$.data.legacyBaselines[?(@.service == 'calendar-service' && @.port == 8114)]").exists())
-                .andExpect(jsonPath("$.data.legacyBaselines[?(@.service == 'changelog-service' && @.port == 8115)]").exists())
+                .andExpect(jsonPath("$.data.legacyBaselines[?(@.service == 'community-service')]").doesNotExist())
+                .andExpect(jsonPath("$.data.legacyBaselines[?(@.service == 'activity-service')]").doesNotExist())
+                .andExpect(jsonPath("$.data.legacyBaselines[?(@.service == 'calendar-service')]").doesNotExist())
+                .andExpect(jsonPath("$.data.legacyBaselines[?(@.service == 'changelog-service')]").doesNotExist())
                 .andExpect(jsonPath("$.data.legacyBaselines[?(@.service == 'business-core-service' && @.port == 8130)]").exists())
                 .andExpect(jsonPath("$.data.legacyBaselines[?(@.service == 'admission-core-service' && @.port == 8131)]").exists())
                 .andExpect(jsonPath("$.data.legacyBaselines[?(@.service == 'api-gateway-service' && @.port == 8125)]").exists())
+                .andExpect(jsonPath("$.data.retiredLegacyServices[?(@.service == 'community-service' && @.directory == 'backend/community-service' && @.testCommand == null)]").exists())
+                .andExpect(jsonPath("$.data.retiredLegacyServices[?(@.service == 'activity-service' && @.directory == 'backend/activity-service' && @.testCommand == null)]").exists())
+                .andExpect(jsonPath("$.data.retiredLegacyServices[?(@.service == 'calendar-service' && @.directory == 'backend/calendar-service' && @.testCommand == null)]").exists())
+                .andExpect(jsonPath("$.data.retiredLegacyServices[?(@.service == 'changelog-service' && @.directory == 'backend/changelog-service' && @.testCommand == null)]").exists())
                 .andExpect(jsonPath("$.data.generatedAt").isNotEmpty());
     }
 
@@ -176,19 +180,27 @@ class EngagementCoreApiContractTest {
     }
 
     @Test
-    void doesNotRestoreFirstOrSecondBatchLegacyServices() {
+    void doesNotRestoreMergedLegacyServiceEntrypoints() {
         assertThat(List.of(
-                Path.of("../auth-service"),
-                Path.of("../profile-service"),
-                Path.of("../notification-service"),
-                Path.of("../content-service"),
-                Path.of("../server-status-service"),
-                Path.of("../resource-service"),
-                Path.of("../admin-service"),
-                Path.of("../onboarding-service"),
-                Path.of("../exam-service"),
-                Path.of("../whitelist-service"),
-                Path.of("../attendance-service")
+                Path.of("../auth-service/pom.xml"),
+                Path.of("../profile-service/pom.xml"),
+                Path.of("../notification-service/pom.xml"),
+                Path.of("../content-service/pom.xml"),
+                Path.of("../server-status-service/pom.xml"),
+                Path.of("../resource-service/pom.xml"),
+                Path.of("../admin-service/pom.xml"),
+                Path.of("../onboarding-service/pom.xml"),
+                Path.of("../exam-service/pom.xml"),
+                Path.of("../whitelist-service/pom.xml"),
+                Path.of("../attendance-service/pom.xml"),
+                Path.of("../community-service/pom.xml"),
+                Path.of("../community-service/src/main/java/cn/beiming/community/CommunityServiceApplication.java"),
+                Path.of("../activity-service/pom.xml"),
+                Path.of("../activity-service/src/main/java/cn/beiming/activity/ActivityServiceApplication.java"),
+                Path.of("../calendar-service/pom.xml"),
+                Path.of("../calendar-service/src/main/java/cn/beiming/calendar/CalendarServiceApplication.java"),
+                Path.of("../changelog-service/pom.xml"),
+                Path.of("../changelog-service/src/main/java/cn/beiming/changelog/ChangelogServiceApplication.java")
         )).allSatisfy(path -> assertThat(Files.exists(path)).isFalse());
     }
 }

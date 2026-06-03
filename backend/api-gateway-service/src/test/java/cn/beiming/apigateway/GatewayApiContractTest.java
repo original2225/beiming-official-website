@@ -20,6 +20,8 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -82,6 +84,27 @@ class GatewayApiContractTest {
 
         assertThat(mapped).hasSize(214);
         assertThat(mapped).contains("GATE-COM-001", "GATE-PFX-026", "GATE-BCORE-010", "GATE-ACORE-010", "GATE-ECORE-010", "GATE-UP-020", "GATE-PROXY-049", "GATE-SEC-011");
+    }
+
+    @Test
+    void doesNotRestoreMergedLegacyServiceMavenEntrypoints() {
+        assertThat(List.of(
+                Path.of("../auth-service/pom.xml"),
+                Path.of("../profile-service/pom.xml"),
+                Path.of("../notification-service/pom.xml"),
+                Path.of("../content-service/pom.xml"),
+                Path.of("../server-status-service/pom.xml"),
+                Path.of("../resource-service/pom.xml"),
+                Path.of("../admin-service/pom.xml"),
+                Path.of("../onboarding-service/pom.xml"),
+                Path.of("../exam-service/pom.xml"),
+                Path.of("../whitelist-service/pom.xml"),
+                Path.of("../attendance-service/pom.xml"),
+                Path.of("../community-service/pom.xml"),
+                Path.of("../activity-service/pom.xml"),
+                Path.of("../calendar-service/pom.xml"),
+                Path.of("../changelog-service/pom.xml")
+        )).allSatisfy(path -> assertThat(Files.exists(path)).isFalse());
     }
 
     @Test
