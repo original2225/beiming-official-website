@@ -720,10 +720,10 @@ class GatewayState {
         items.add(route("server-status", "SERVER_STATUS", "server-status", "/api/v1/server-status", 8130, "/api/v1/server-status/overview"));
         items.add(route("resource", "RESOURCE", "resource", "/api/v1/resources", 8130, "/api/v1/resources"));
         items.add(route("admin", "ADMIN", "admin", "/api/v1/admin", 8130, "/api/v1/admin/overview"));
-        items.add(route("onboarding", "ONBOARDING", "onboarding", "/api/v1/onboarding", 8108, "/api/v1/onboarding/me/progress"));
-        items.add(route("exam", "EXAM", "exam", "/api/v1/exams", 8109, "/api/v1/exams/me/sessions"));
-        items.add(route("whitelist", "WHITELIST", "whitelist", "/api/v1/whitelist", 8110, "/api/v1/whitelist/me/applications/current"));
-        items.add(route("attendance", "ATTENDANCE", "attendance", "/api/v1/attendance", 8111, "/api/v1/attendance/me/summary"));
+        items.add(route("onboarding", "ONBOARDING", "onboarding", "/api/v1/onboarding", 8131, "/api/v1/onboarding/me/progress"));
+        items.add(route("exam", "EXAM", "exam", "/api/v1/exams", 8131, "/api/v1/exams/me/sessions"));
+        items.add(route("whitelist", "WHITELIST", "whitelist", "/api/v1/whitelist", 8131, "/api/v1/whitelist/me/applications/current"));
+        items.add(route("attendance", "ATTENDANCE", "attendance", "/api/v1/attendance", 8131, "/api/v1/attendance/me/summary"));
         items.add(route("community", "COMMUNITY", "community", "/api/v1/community", 8112, "/api/v1/community/boards"));
         items.add(route("activity", "ACTIVITY", "activity", "/api/v1/activity", 8113, "/api/v1/activity/events"));
         items.add(route("calendar", "CALENDAR", "calendar", "/api/v1/calendar", 8114, "/api/v1/calendar/upcoming"));

@@ -232,7 +232,7 @@ Cloudreve 第一阶段可以作为外部分享链接存在。后续接入 API �
 
 后续如果采用微服务，网关负责路由、跨域、基础鉴权、限流和请求日志。业务服务负责自己的业务规则。网关不直接访问数据库。
 
-本地开发端口必须固定，避免 IDEA、命令行、前端代理和后续网关联调互相抢占默认端口。P0 阶段端口段从 `8101` 开始，已实现服务必须在自己的 `application.yml` 或等价配置中固定端口。当前规划为 `auth` 使用 `8101`，`profile` 使用 `8102`，`notification` 使用 `8103`，`content` 使用 `8104`，`server-status` 使用 `8105`，`resource` 使用 `8106`，`admin` 使用 `8107`，`onboarding` 使用 `8108`，`exam` 使用 `8109`，`whitelist` 使用 `8110`，`attendance` 使用 `8111`，`community` 使用 `8112`，`activity` 使用 `8113`，`calendar` 使用 `8114`，`changelog` 使用 `8115`，`ops-control` 使用 `8116`，`node-daemon` 使用 `8117`，`cloudreve-sync` 使用 `8118`，`backup-recovery` 使用 `8119`，`alerting` 使用 `8120`，`online-map` 使用 `8121`，后续模块按开发顺序递增。新增或调整端口时，必须同步更新正式文档和对应自动化测试。
+本地开发端口必须固定，避免 IDEA、命令行、前端代理和后续网关联调互相抢占默认端口。当前已合并运行单元中，`auth`、`profile`、`notification`、`content`、`server-status`、`resource` 和 `admin` 由 `business-core-service` 承载，端口固定为 `8130`；`onboarding`、`exam`、`whitelist` 和 `attendance` 由 `admission-core-service` 承载，端口固定为 `8131`。历史端口 `8101` 到 `8111` 只保留为模块原端口记录，不作为当前运行入口或测试入口。尚未合并的后续服务继续使用既定端口：`community` 使用 `8112`，`activity` 使用 `8113`，`calendar` 使用 `8114`，`changelog` 使用 `8115`，`ops-control` 使用 `8116`，`node-daemon` 使用 `8117`，`cloudreve-sync` 使用 `8118`，`backup-recovery` 使用 `8119`，`alerting` 使用 `8120`，`online-map` 使用 `8121`。新增或调整端口时，必须同步更新正式文档和对应自动化测试。
 
 ## 技术选型原则
 

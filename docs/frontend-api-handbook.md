@@ -99,17 +99,17 @@
 
 | 模块 | 端口 | 前端用途 | 契约 |
 | --- | ---: | --- | --- |
-| `auth` | 8101 | 登录、注册、当前用户、会话、密码、邀请码、角色和 Minecraft 账号绑定。 | `docs/contracts-auth.md` |
-| `profile` | 8102 | 成员公开档案、成员详情、当前用户档案和后台成员维护。 | `docs/contracts-profile.md` |
-| `notification` | 8103 | 站内通知、未读数、已读、归档和通知模板后台维护。 | `docs/contracts-notification.md` |
-| `content` | 8104 | 官网首页、公告文章、专题、SEO、分类标签和首页配置后台。 | `docs/contracts-content.md` |
-| `server-status` | 8105 | 玩家可见服务器状态、线路、历史快照和后台线路配置。 | `docs/contracts-server-status.md` |
-| `resource` | 8106 | 公开资源、资源版本、下载票据、Cloudreve 分享和资源后台管理。 | `docs/contracts-resource.md` |
-| `admin` | 8107 | 后台首页、待办、配置、审计、数据看板和系统摘要。 | `docs/contracts-admin.md` |
-| `onboarding` | 8108 | 入服流程进度、步骤完成、规则确认和后台流程配置。 | `docs/contracts-onboarding.md` |
-| `exam` | 8109 | 考试方向、题库、试卷、答题、阅卷和考试后台管理。 | `docs/contracts-exam.md` |
-| `whitelist` | 8110 | 白名单申请、补充、撤回、审核、移除和重新申请。 | `docs/contracts-whitelist.md` |
-| `attendance` | 8111 | 考勤积分、积分流水、榜单、月度任务和后台调整。 | `docs/contracts-attendance.md` |
+| `auth` | 8130 | 登录、注册、当前用户、会话、密码、邀请码、角色和 Minecraft 账号绑定。 | `docs/contracts-auth.md` |
+| `profile` | 8130 | 成员公开档案、成员详情、当前用户档案和后台成员维护。 | `docs/contracts-profile.md` |
+| `notification` | 8130 | 站内通知、未读数、已读、归档和通知模板后台维护。 | `docs/contracts-notification.md` |
+| `content` | 8130 | 官网首页、公告文章、专题、SEO、分类标签和首页配置后台。 | `docs/contracts-content.md` |
+| `server-status` | 8130 | 玩家可见服务器状态、线路、历史快照和后台线路配置。 | `docs/contracts-server-status.md` |
+| `resource` | 8130 | 公开资源、资源版本、下载票据、Cloudreve 分享和资源后台管理。 | `docs/contracts-resource.md` |
+| `admin` | 8130 | 后台首页、待办、配置、审计、数据看板和系统摘要。 | `docs/contracts-admin.md` |
+| `onboarding` | 8131 | 入服流程进度、步骤完成、规则确认和后台流程配置。 | `docs/contracts-onboarding.md` |
+| `exam` | 8131 | 考试方向、题库、试卷、答题、阅卷和考试后台管理。 | `docs/contracts-exam.md` |
+| `whitelist` | 8131 | 白名单申请、补充、撤回、审核、移除和重新申请。 | `docs/contracts-whitelist.md` |
+| `attendance` | 8131 | 考勤积分、积分流水、榜单、月度任务和后台调整。 | `docs/contracts-attendance.md` |
 | `community` | 8112 | 板块、帖子、评论、点赞、收藏、投票、举报、工单和处罚。 | `docs/contracts-community.md` |
 | `activity` | 8113 | 活动列表、报名、签到、结果、奖励和活动后台管理。 | `docs/contracts-activity.md` |
 | `calendar` | 8114 | 公开日程、维护窗口、工程节点、提醒和日历后台维护。 | `docs/contracts-calendar.md` |
@@ -372,7 +372,7 @@
 
 用途：入服流程进度、步骤完成、规则确认和后台流程配置。
 
-端口：`8108`。来源：`docs/contracts-onboarding.md`。详情合并稿：`docs/api-reference.md`。
+端口：`8131`，由 `admission-core-service` 承载。来源：`docs/contracts-onboarding.md`。详情合并稿：`docs/api-reference.md`。
 
 | 接口 | 方法 | 路径 | 认证 | 权限 | 风险 |
 | --- | --- | --- | --- | --- | --- |
@@ -396,7 +396,7 @@
 
 用途：考试方向、题库、试卷、答题、阅卷和考试后台管理。
 
-端口：`8109`。来源：`docs/contracts-exam.md`。详情合并稿：`docs/api-reference.md`。
+端口：`8131`，由 `admission-core-service` 承载。来源：`docs/contracts-exam.md`。详情合并稿：`docs/api-reference.md`。
 
 | 接口 | 方法 | 路径 | 认证 | 权限 | 风险 |
 | --- | --- | --- | --- | --- | --- |
@@ -433,7 +433,7 @@
 
 用途：白名单申请、补充、撤回、审核、移除和重新申请。
 
-端口：`8110`。来源：`docs/contracts-whitelist.md`。详情合并稿：`docs/api-reference.md`。
+端口：`8131`，由 `admission-core-service` 承载。来源：`docs/contracts-whitelist.md`。详情合并稿：`docs/api-reference.md`。
 
 | 接口 | 方法 | 路径 | 认证 | 权限 | 风险 |
 | --- | --- | --- | --- | --- | --- |
@@ -462,7 +462,7 @@
 
 用途：考勤积分、积分流水、榜单、月度任务和后台调整。
 
-端口：`8111`。来源：`docs/contracts-attendance.md`。详情合并稿：`docs/api-reference.md`。
+端口：`8131`，由 `admission-core-service` 承载。来源：`docs/contracts-attendance.md`。详情合并稿：`docs/api-reference.md`。
 
 | 接口 | 方法 | 路径 | 认证 | 权限 | 风险 |
 | --- | --- | --- | --- | --- | --- |

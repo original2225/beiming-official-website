@@ -13721,17 +13721,17 @@ endpoint、repository、tag、namespace 和 URL 摘要必须拒绝 `file:`、`da
 
 | 路由 ID | 服务键 | 路径前缀 | 上游端口 | 健康探测路径 |
 | --- | --- | --- | --- | --- |
-| `auth` | `AUTH` | `/api/v1/auth` | `8101` | `/api/v1/auth/session/verify` |
-| `profile` | `PROFILE` | `/api/v1/profile` | `8102` | `/api/v1/profile/members` |
-| `notification` | `NOTIFICATION` | `/api/v1/notifications` | `8103` | `/api/v1/notifications/me/unread-count` |
-| `content` | `CONTENT` | `/api/v1/content` | `8104` | `/api/v1/content/homepage` |
-| `server-status` | `SERVER_STATUS` | `/api/v1/server-status` | `8105` | `/api/v1/server-status/overview` |
-| `resource` | `RESOURCE` | `/api/v1/resources` | `8106` | `/api/v1/resources` |
-| `admin` | `ADMIN` | `/api/v1/admin` | `8107` | `/api/v1/admin/overview` |
-| `onboarding` | `ONBOARDING` | `/api/v1/onboarding` | `8108` | `/api/v1/onboarding/me/progress` |
-| `exam` | `EXAM` | `/api/v1/exams` | `8109` | `/api/v1/exams/me/sessions` |
-| `whitelist` | `WHITELIST` | `/api/v1/whitelist` | `8110` | `/api/v1/whitelist/me/applications/current` |
-| `attendance` | `ATTENDANCE` | `/api/v1/attendance` | `8111` | `/api/v1/attendance/me/summary` |
+| `auth` | `AUTH` | `/api/v1/auth` | `8130` | `/api/v1/auth/session/verify` |
+| `profile` | `PROFILE` | `/api/v1/profile` | `8130` | `/api/v1/profile/members` |
+| `notification` | `NOTIFICATION` | `/api/v1/notifications` | `8130` | `/api/v1/notifications/me/unread-count` |
+| `content` | `CONTENT` | `/api/v1/content` | `8130` | `/api/v1/content/home` |
+| `server-status` | `SERVER_STATUS` | `/api/v1/server-status` | `8130` | `/api/v1/server-status/overview` |
+| `resource` | `RESOURCE` | `/api/v1/resources` | `8130` | `/api/v1/resources` |
+| `admin` | `ADMIN` | `/api/v1/admin` | `8130` | `/api/v1/admin/overview` |
+| `onboarding` | `ONBOARDING` | `/api/v1/onboarding` | `8131` | `/api/v1/onboarding/me/progress` |
+| `exam` | `EXAM` | `/api/v1/exams` | `8131` | `/api/v1/exams/me/sessions` |
+| `whitelist` | `WHITELIST` | `/api/v1/whitelist` | `8131` | `/api/v1/whitelist/me/applications/current` |
+| `attendance` | `ATTENDANCE` | `/api/v1/attendance` | `8131` | `/api/v1/attendance/me/summary` |
 | `community` | `COMMUNITY` | `/api/v1/community` | `8112` | `/api/v1/community/boards` |
 | `activity` | `ACTIVITY` | `/api/v1/activity` | `8113` | `/api/v1/activity/events` |
 | `calendar` | `CALENDAR` | `/api/v1/calendar` | `8114` | `/api/v1/calendar/upcoming` |

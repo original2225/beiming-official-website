@@ -98,20 +98,20 @@ class AdmissionCoreApiContractTest {
                 .andExpect(jsonPath("$.data.admissionRoutesTotal").value(84))
                 .andExpect(jsonPath("$.data.selfRoutesTotal").value(2))
                 .andExpect(jsonPath("$.data.gatewaySwitchReady").value(true))
-                .andExpect(jsonPath("$.data.gatewaySwitchStatus").value("READY"))
+                .andExpect(jsonPath("$.data.gatewaySwitchStatus").value("COMPLETED"))
                 .andExpect(jsonPath("$.data.businessCoreDependency.service").value("business-core"))
                 .andExpect(jsonPath("$.data.businessCoreDependency.port").value(8130))
                 .andExpect(jsonPath("$.data.businessCoreDependency.status").value("REQUIRED_BASELINE"))
                 .andExpect(jsonPath("$.data.handoffChain[?(@.from == 'onboarding' && @.to == 'exam' && @.handoff == 'OnboardingExamHandoffSnapshot' && @.mutable == false)]").exists())
                 .andExpect(jsonPath("$.data.handoffChain[?(@.from == 'exam' && @.to == 'whitelist' && @.handoff == 'ExamWhitelistHandoffSnapshot' && @.mutable == false)]").exists())
                 .andExpect(jsonPath("$.data.handoffChain[?(@.from == 'whitelist' && @.to == 'attendance' && @.handoff == 'WhitelistAttendanceHandoffSnapshot' && @.mutable == false)]").exists())
-                .andExpect(jsonPath("$.data.legacyBaselines[?(@.service == 'onboarding-service' && @.port == 8108)]").exists())
-                .andExpect(jsonPath("$.data.legacyBaselines[?(@.service == 'exam-service' && @.port == 8109)]").exists())
-                .andExpect(jsonPath("$.data.legacyBaselines[?(@.service == 'whitelist-service' && @.port == 8110)]").exists())
-                .andExpect(jsonPath("$.data.legacyBaselines[?(@.service == 'attendance-service' && @.port == 8111)]").exists())
+                .andExpect(jsonPath("$.data.legacyBaselines[?(@.service == 'onboarding-service')]").doesNotExist())
+                .andExpect(jsonPath("$.data.legacyBaselines[?(@.service == 'exam-service')]").doesNotExist())
+                .andExpect(jsonPath("$.data.legacyBaselines[?(@.service == 'whitelist-service')]").doesNotExist())
+                .andExpect(jsonPath("$.data.legacyBaselines[?(@.service == 'attendance-service')]").doesNotExist())
                 .andExpect(jsonPath("$.data.legacyBaselines[?(@.service == 'business-core-service' && @.port == 8130)]").exists())
                 .andExpect(jsonPath("$.data.legacyBaselines[?(@.service == 'api-gateway-service' && @.port == 8125)]").exists())
-                .andExpect(jsonPath("$.data.productionGaps[?(@ == 'gateway route switch is not complete')]").exists())
+                .andExpect(jsonPath("$.data.productionGaps[?(@ == 'gateway route switch is not complete')]").doesNotExist())
                 .andExpect(jsonPath("$.data.generatedAt").isNotEmpty());
     }
 
@@ -214,6 +214,6 @@ class AdmissionCoreApiContractTest {
                 Path.of("../exam-service/src/main/java/cn/beiming/exam/ExamServiceApplication.java"),
                 Path.of("../whitelist-service/src/main/java/cn/beiming/whitelist/WhitelistServiceApplication.java"),
                 Path.of("../attendance-service/src/main/java/cn/beiming/attendance/AttendanceServiceApplication.java")
-        )).allSatisfy(path -> assertThat(Files.exists(path)).isTrue());
+        )).allSatisfy(path -> assertThat(Files.exists(path)).isFalse());
     }
 }

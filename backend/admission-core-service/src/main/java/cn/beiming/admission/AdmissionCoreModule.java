@@ -65,7 +65,7 @@ class AdmissionCoreController {
         data.put("handoffChain", registry.handoffChain());
         data.put("businessCoreDependency", registry.businessCoreDependency());
         data.put("gatewaySwitchReady", true);
-        data.put("gatewaySwitchStatus", "READY");
+        data.put("gatewaySwitchStatus", "COMPLETED");
         data.put("legacyBaselines", registry.legacyBaselines());
         data.put("productionGaps", registry.productionGaps());
         data.put("generatedAt", Instant.now().toString());
@@ -173,10 +173,6 @@ class AdmissionCoreRegistry {
 
     List<Map<String, Object>> legacyBaselines() {
         return List.of(
-                baseline("onboarding-service", 8108, "docs/contracts-onboarding.md", "mvn -f backend/onboarding-service/pom.xml test"),
-                baseline("exam-service", 8109, "docs/contracts-exam.md", "mvn -f backend/exam-service/pom.xml test"),
-                baseline("whitelist-service", 8110, "docs/contracts-whitelist.md", "mvn -f backend/whitelist-service/pom.xml test"),
-                baseline("attendance-service", 8111, "docs/contracts-attendance.md", "mvn -f backend/attendance-service/pom.xml test"),
                 baseline("business-core-service", 8130, "docs/contracts-business-core.md", "mvn -f backend/business-core-service/pom.xml test"),
                 baseline("api-gateway-service", 8125, "docs/contracts-api-gateway.md", "mvn -f backend/api-gateway-service/pom.xml test")
         );
@@ -184,7 +180,6 @@ class AdmissionCoreRegistry {
 
     List<String> productionGaps() {
         return List.of(
-                "gateway route switch is not complete",
                 "real database persistence is still module dependent",
                 "persistent audit storage is not connected",
                 "real cross-service HTTP adapters are still represented by local test stubs",

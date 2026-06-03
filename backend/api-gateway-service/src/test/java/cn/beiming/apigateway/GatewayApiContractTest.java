@@ -72,14 +72,15 @@ class GatewayApiContractTest {
         addRange(mapped, "GATE-ROUTE", 1, 16);
         addRange(mapped, "GATE-PFX", 1, 26);
         addRange(mapped, "GATE-BCORE", 1, 10);
+        addRange(mapped, "GATE-ACORE", 1, 10);
         addRange(mapped, "GATE-UP", 1, 20);
         addRange(mapped, "GATE-LOG", 1, 20);
         addRange(mapped, "GATE-PROXY", 1, 49);
         addRange(mapped, "GATE-CORS", 1, 10);
         addRange(mapped, "GATE-SEC", 1, 11);
 
-        assertThat(mapped).hasSize(194);
-        assertThat(mapped).contains("GATE-COM-001", "GATE-PFX-026", "GATE-BCORE-010", "GATE-UP-020", "GATE-PROXY-049", "GATE-SEC-011");
+        assertThat(mapped).hasSize(204);
+        assertThat(mapped).contains("GATE-COM-001", "GATE-PFX-026", "GATE-BCORE-010", "GATE-ACORE-010", "GATE-UP-020", "GATE-PROXY-049", "GATE-SEC-011");
     }
 
     @Test
@@ -158,10 +159,10 @@ class GatewayApiContractTest {
         assertRoute(routes, "server-status", "SERVER_STATUS", "/api/v1/server-status", 8130);
         assertRoute(routes, "resource", "RESOURCE", "/api/v1/resources", 8130);
         assertRoute(routes, "admin", "ADMIN", "/api/v1/admin", 8130);
-        assertRoute(routes, "onboarding", "ONBOARDING", "/api/v1/onboarding", 8108);
-        assertRoute(routes, "exam", "EXAM", "/api/v1/exams", 8109);
-        assertRoute(routes, "whitelist", "WHITELIST", "/api/v1/whitelist", 8110);
-        assertRoute(routes, "attendance", "ATTENDANCE", "/api/v1/attendance", 8111);
+        assertRoute(routes, "onboarding", "ONBOARDING", "/api/v1/onboarding", 8131);
+        assertRoute(routes, "exam", "EXAM", "/api/v1/exams", 8131);
+        assertRoute(routes, "whitelist", "WHITELIST", "/api/v1/whitelist", 8131);
+        assertRoute(routes, "attendance", "ATTENDANCE", "/api/v1/attendance", 8131);
         assertRoute(routes, "community", "COMMUNITY", "/api/v1/community", 8112);
         assertRoute(routes, "activity", "ACTIVITY", "/api/v1/activity", 8113);
         assertRoute(routes, "calendar", "CALENDAR", "/api/v1/calendar", 8114);
@@ -178,6 +179,7 @@ class GatewayApiContractTest {
         assertRoute(routes, "material", "MATERIAL", "/api/v1/materials", 8126);
         assertRoute(routes, "guide", "GUIDE", "/api/v1/guides", 8127);
         assertFirstBatchBusinessCoreRoutes(routes);
+        assertSecondBatchAdmissionCoreRoutes(routes);
 
         JsonNode filtered = performJson(get("/api/v1/gateway/admin/routes")
                 .header("Authorization", bearer("helper-token"))
@@ -656,9 +658,24 @@ class GatewayApiContractTest {
             assertThat(route.path("pathPrefix").asText()).doesNotStartWith("/api/v1/business-core");
             assertThat(legacyPorts).doesNotContain(route.path("upstreamPort").asInt());
         }
-        assertThat(findRoute(routes, "onboarding").path("upstreamPort").asInt()).isEqualTo(8108);
         assertThat(findRoute(routes, "guide").path("upstreamPort").asInt()).isEqualTo(8127);
         assertThat(findRoute(routes, "content").path("healthCheckPath").asText()).isEqualTo("/api/v1/content/home");
+    }
+
+    private void assertSecondBatchAdmissionCoreRoutes(JsonNode routes) {
+        Set<String> secondBatch = Set.of("onboarding", "exam", "whitelist", "attendance");
+        Set<Integer> retiredPorts = Set.of(8108, 8109, 8110, 8111);
+        for (String routeId : secondBatch) {
+            JsonNode route = findRoute(routes, routeId);
+            assertThat(route.path("upstreamPort").asInt()).isEqualTo(8131);
+            assertThat(route.path("upstreamBaseUrl").asText()).isEqualTo("http://127.0.0.1:8131");
+            assertThat(route.path("pathPrefix").asText()).doesNotStartWith("/api/v1/admission-core");
+            assertThat(retiredPorts).doesNotContain(route.path("upstreamPort").asInt());
+        }
+        assertThat(findRoute(routes, "onboarding").path("healthCheckPath").asText()).isEqualTo("/api/v1/onboarding/me/progress");
+        assertThat(findRoute(routes, "exam").path("healthCheckPath").asText()).isEqualTo("/api/v1/exams/me/sessions");
+        assertThat(findRoute(routes, "whitelist").path("healthCheckPath").asText()).isEqualTo("/api/v1/whitelist/me/applications/current");
+        assertThat(findRoute(routes, "attendance").path("healthCheckPath").asText()).isEqualTo("/api/v1/attendance/me/summary");
     }
 
     private String bearer(String token) {
