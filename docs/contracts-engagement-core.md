@@ -100,7 +100,7 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
 | `selfRoutesTotal` | integer | 是 | `engagement-core` 自有路由总数，固定为 `3`。 |
 | `routeContractRoutesVerifiedTotal` | integer | 是 | 已由 `engagement-core-service` 自动化验证的四个业务模块 `METHOD path` 路由签名总数，当前应为 `149`。 |
 | `routeContractCoverageStatus` | string | 是 | 路由签名契约覆盖状态，当前应为 `ROUTE_CONTRACT_VERIFIED`。 |
-| `behaviorContractCoverageStatus` | string | 是 | 业务行为契约覆盖状态。当前仍为 `PARTIAL_BEHAVIOR_CONTRACT_TESTS`，直到成功、字段校验、认证、权限、资源不存在、状态冲突、幂等并发、降级、审计和生产硬化全部继承验证。 |
+| `behaviorContractCoverageStatus` | string | 是 | 业务行为契约覆盖状态。当前为 `COMPLETE_BEHAVIOR_CONTRACT_TESTS`，表示四个业务模块的成功、字段校验、认证、权限、资源不存在、状态冲突、幂等并发、降级、审计和生产硬化已迁入当前入口自动化验证。 |
 | `moduleRoutes` | `EngagementCoreModuleStatus[]` | 是 | 四个模块装配状态。 |
 | `adapterChain` | object[] | 是 | community、activity、calendar 和 changelog 的只读适配链摘要。 |
 | `businessCoreDependency` | object | 是 | 第一批 `business-core` 前序依赖摘要。 |
@@ -118,18 +118,18 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
 | --- | --- | --- | --- |
 | `service` | string | 是 | 固定为 `engagement-core`。 |
 | `port` | integer | 是 | 本地验证固定为 `8132`。 |
-| `readyForProduction` | boolean | 是 | 当前是否达到生产发布口径。第三批完整行为契约、持久化审计、真实 adapter 和真实 HTTP smoke 未完成前固定为 `false`。 |
+| `readyForProduction` | boolean | 是 | 当前是否达到生产发布口径。持久化审计、真实 adapter、真实通知投递和真实 HTTP smoke 未完成前固定为 `false`。 |
 | `readinessStatus` | string | 是 | 允许 `READY`、`NOT_READY` 或 `DEGRADED`。当前为 `NOT_READY`。 |
 | `routesTotal` | integer | 是 | 当前运行单元登记路由总数，当前为 `152`。 |
 | `engagementRoutesTotal` | integer | 是 | 四个业务模块方法路由总数，当前为 `149`。 |
 | `selfRoutesTotal` | integer | 是 | `engagement-core` 自有路由总数，当前为 `3`。 |
 | `routeContractCoverageStatus` | string | 是 | 路由签名契约覆盖状态，当前为 `ROUTE_CONTRACT_VERIFIED`。 |
-| `behaviorContractCoverageStatus` | string | 是 | 业务行为契约覆盖状态，当前为 `PARTIAL_BEHAVIOR_CONTRACT_TESTS`。 |
+| `behaviorContractCoverageStatus` | string | 是 | 业务行为契约覆盖状态，当前为 `COMPLETE_BEHAVIOR_CONTRACT_TESTS`。 |
 | `trustedGatewayCoverageStatus` | string | 是 | 可信网关上下文覆盖状态，当前为 `OPS_SUMMARIES_ONLY`。 |
 | `routeDriftStatus` | string | 是 | 路由快照漂移状态，当前为 `NO_DRIFT`。 |
 | `legacyServiceRestoreStatus` | string | 是 | 已清理旧服务状态，当前为 `NOT_RESTORED`。 |
-| `completeBehaviorContractRoutesVerifiedTotal` | integer | 是 | 已完成全部行为契约验证的业务路由总数。当前为 `128`，代表路由和路由签名测试不得计入完整行为契约。 |
-| `pendingBehaviorContractRoutesTotal` | integer | 是 | 仍需补齐完整行为契约验证的业务路由总数。当前为 `21`。 |
+| `completeBehaviorContractRoutesVerifiedTotal` | integer | 是 | 已完成全部行为契约验证的业务路由总数。当前为 `149`，代表路由和路由签名测试不得计入完整行为契约。 |
+| `pendingBehaviorContractRoutesTotal` | integer | 是 | 仍需补齐完整行为契约验证的业务路由总数。当前为 `0`。 |
 | `behaviorCoverageByModule` | object[] | 是 | 按模块拆分的行为契约覆盖进度。每项包含 `moduleKey`、`moduleName`、`contract`、`routesTotal`、`routeSignatureRoutesVerifiedTotal`、`completeBehaviorContractRoutesVerifiedTotal`、`pendingBehaviorContractRoutesTotal`、`behaviorCoverageStatus` 和 `pendingBehaviorCategories`。 |
 | `checks` | object[] | 是 | 生产就绪检查项。每项包含 `checkKey`、`status`、`summary`、`required` 和可选计数字段。 |
 | `productionBlockers` | string[] | 是 | 阻止生产发布的缺口摘要。必须与 `productionGaps` 语义一致。 |
@@ -168,7 +168,7 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
     "selfRoutesTotal": 3,
     "routeContractRoutesVerifiedTotal": 149,
     "routeContractCoverageStatus": "ROUTE_CONTRACT_VERIFIED",
-    "behaviorContractCoverageStatus": "PARTIAL_BEHAVIOR_CONTRACT_TESTS",
+    "behaviorContractCoverageStatus": "COMPLETE_BEHAVIOR_CONTRACT_TESTS",
     "moduleRoutes": [
       {
         "moduleKey": "COMMUNITY",
@@ -197,7 +197,7 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
 | `selfRoutesTotal` | integer | 是 | `engagement-core` 自有路由数，固定为 `3`。 |
 | `routeContractRoutesVerifiedTotal` | integer | 是 | 已由 `engagement-core-service` 自动化验证的四个业务模块 `METHOD path` 路由签名总数，当前应为 `149`。 |
 | `routeContractCoverageStatus` | string | 是 | 路由签名契约覆盖状态，当前应为 `ROUTE_CONTRACT_VERIFIED`。 |
-| `behaviorContractCoverageStatus` | string | 是 | 业务行为契约覆盖状态，当前仍为 `PARTIAL_BEHAVIOR_CONTRACT_TESTS`。 |
+| `behaviorContractCoverageStatus` | string | 是 | 业务行为契约覆盖状态，当前为 `COMPLETE_BEHAVIOR_CONTRACT_TESTS`。 |
 | `moduleRoutes` | object[] | 是 | 低敏模块路由摘要，只返回 `moduleKey`、`pathPrefix`、`mounted`、`routesTotal` 和 `status`。 |
 | `generatedAt` | string | 是 | ISO 8601 时间。 |
 
@@ -234,7 +234,7 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
     "selfRoutesTotal": 3,
     "routeContractRoutesVerifiedTotal": 149,
     "routeContractCoverageStatus": "ROUTE_CONTRACT_VERIFIED",
-    "behaviorContractCoverageStatus": "PARTIAL_BEHAVIOR_CONTRACT_TESTS",
+    "behaviorContractCoverageStatus": "COMPLETE_BEHAVIOR_CONTRACT_TESTS",
     "moduleRoutes": [],
     "adapterChain": [
       {
@@ -303,7 +303,6 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
       }
     ],
     "productionGaps": [
-      "complete inherited behavior contract tests are not all mounted in engagement-core",
       "gateway trusted context is mounted for ops summaries only; complete business behavior auth coverage is still pending",
       "real database persistence is still module dependent",
       "persistent audit storage is not connected",
@@ -317,7 +316,7 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
 }
 ```
 
-业务规则：该接口只读取 `engagement-core` 内部装配状态和最近测试摘要，不主动执行四个模块的业务写操作，不调用旧服务进行实时健康探测，不把未完成模块伪装成 `READY`。第三批旧四服务清理后，`gatewaySwitchReady` 的判定只依赖四个模块在 `engagement-core` 中的继承契约测试、`business-core-service` 基线、`admission-core-service` 基线和 `api-gateway-service` 基线。只有当 `api-gateway` 契约、测试文档、自动化红灯、网关实现和全量后端回归均完成后，`gatewaySwitchStatus` 才能为 `COMPLETED`。四个业务模块自己的后台自检摘要必须同步合并后入口，返回 `port=8132` 和历史 `legacyPort`，不得继续把 `8112` 到 `8115` 暴露成当前运行端口。路由签名契约验证只证明 149 个业务 `METHOD path` 已在当前运行单元装配，不等于完整业务行为契约验证；完整行为契约必须继续逐接口覆盖成功、字段校验、认证、权限、资源不存在、状态冲突、幂等并发、降级、审计和生产硬化。
+业务规则：该接口只读取 `engagement-core` 内部装配状态和最近测试摘要，不主动执行四个模块的业务写操作，不调用旧服务进行实时健康探测，不把未完成模块伪装成 `READY`。第三批旧四服务清理后，`gatewaySwitchReady` 的判定只依赖四个模块在 `engagement-core` 中的继承契约测试、`business-core-service` 基线、`admission-core-service` 基线和 `api-gateway-service` 基线。只有当 `api-gateway` 契约、测试文档、自动化红灯、网关实现和全量后端回归均完成后，`gatewaySwitchStatus` 才能为 `COMPLETED`。四个业务模块自己的后台自检摘要必须同步合并后入口，返回 `port=8132` 和历史 `legacyPort`，不得继续把 `8112` 到 `8115` 暴露成当前运行端口。路由签名契约验证证明 149 个业务 `METHOD path` 已在当前运行单元装配；完整行为契约验证证明这些业务路由已覆盖成功、字段校验、认证、权限、资源不存在、状态冲突、幂等并发、降级、审计和生产硬化。该摘要仍必须暴露真实持久化、审计持久化、真实 adapter、真实通知投递和真实 HTTP smoke 缺口。
 
 失败规则：运行单元内部异常返回 `53230`。模块装配信息缺失返回 `53231`。当前登记路由与本文档或四个模块契约期望不一致时返回 `53232` 或在 `status=DEGRADED` 的成功摘要中列入 `gaps`，由实现按是否影响接口可用性决定。认证上下文解析失败返回原模块契约或公共认证错误，可信网关上下文字段缺失或格式不兼容时返回 `53233`。内部 adapter 链装配错误返回 `53234`。
 
@@ -352,12 +351,12 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
     "engagementRoutesTotal": 149,
     "selfRoutesTotal": 3,
     "routeContractCoverageStatus": "ROUTE_CONTRACT_VERIFIED",
-    "behaviorContractCoverageStatus": "PARTIAL_BEHAVIOR_CONTRACT_TESTS",
+    "behaviorContractCoverageStatus": "COMPLETE_BEHAVIOR_CONTRACT_TESTS",
     "trustedGatewayCoverageStatus": "OPS_SUMMARIES_ONLY",
     "routeDriftStatus": "NO_DRIFT",
     "legacyServiceRestoreStatus": "NOT_RESTORED",
-    "completeBehaviorContractRoutesVerifiedTotal": 128,
-    "pendingBehaviorContractRoutesTotal": 21,
+    "completeBehaviorContractRoutesVerifiedTotal": 149,
+    "pendingBehaviorContractRoutesTotal": 0,
     "behaviorCoverageByModule": [
       {
         "moduleKey": "COMMUNITY",
@@ -387,22 +386,10 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
         "contract": "docs/contracts-calendar.md",
         "routesTotal": 21,
         "routeSignatureRoutesVerifiedTotal": 21,
-        "completeBehaviorContractRoutesVerifiedTotal": 0,
-        "pendingBehaviorContractRoutesTotal": 21,
-        "behaviorCoverageStatus": "PENDING_COMPLETE_BEHAVIOR_CONTRACTS",
-        "pendingBehaviorCategories": [
-          "SUCCESS_PATH",
-          "FIELD_VALIDATION",
-          "AUTHENTICATION",
-          "AUTHORIZATION",
-          "RESOURCE_NOT_FOUND",
-          "STATE_CONFLICT",
-          "IDEMPOTENCY_OR_CONCURRENCY",
-          "STATE_TRANSITION",
-          "FAILURE_DEGRADATION",
-          "AUDIT",
-          "PRODUCTION_HARDENING"
-        ]
+        "completeBehaviorContractRoutesVerifiedTotal": 21,
+        "pendingBehaviorContractRoutesTotal": 0,
+        "behaviorCoverageStatus": "COMPLETE_BEHAVIOR_CONTRACTS",
+        "pendingBehaviorCategories": []
       },
       {
         "moduleKey": "CHANGELOG",
@@ -426,16 +413,15 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
       },
       {
         "checkKey": "BEHAVIOR_CONTRACTS",
-        "status": "BLOCKED",
-        "summary": "complete inherited behavior contract tests are still pending",
+        "status": "PASS",
+        "summary": "complete inherited behavior contract tests are mounted in engagement-core",
         "required": true,
         "requiredBusinessRoutesTotal": 149,
-        "completeBehaviorContractRoutesVerifiedTotal": 128,
-        "pendingBehaviorContractRoutesTotal": 21
+        "completeBehaviorContractRoutesVerifiedTotal": 149,
+        "pendingBehaviorContractRoutesTotal": 0
       }
     ],
     "productionBlockers": [
-      "complete inherited behavior contract tests are not all mounted in engagement-core",
       "gateway trusted context is mounted for ops summaries only; complete business behavior auth coverage is still pending",
       "real database persistence is still module dependent",
       "persistent audit storage is not connected",
@@ -449,9 +435,9 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
 }
 ```
 
-业务规则：该接口只读当前运行单元诊断摘要，不主动连接第三批旧服务，不主动调用真实前序服务，不执行数据库迁移，不执行外部通知，不执行真实 HTTP smoke，不触发四个业务模块写操作。当前 `readyForProduction` 必须为 `false`，直到 149 个业务方法路由完整行为契约、业务认证行为、持久化审计、真实跨服务 adapter、真实通知交付和真实 HTTP smoke 都完成独立闭环。代表路由测试、后台自检测试和 149 个 `METHOD path` 路由签名测试只能计入路由签名覆盖，不得计入 `completeBehaviorContractRoutesVerifiedTotal`。该接口不得返回 token、Cookie、完整请求头、真实数据库连接串、内部 URL、异常栈、节点凭据、服务器命令、举报证据、工单内部备注、通知正文或 Cloudreve token。
+业务规则：该接口只读当前运行单元诊断摘要，不主动连接第三批旧服务，不主动调用真实前序服务，不执行数据库迁移，不执行外部通知，不执行真实 HTTP smoke，不触发四个业务模块写操作。当前 `readyForProduction` 必须为 `false`，直到真实业务认证行为、持久化审计、真实跨服务 adapter、真实通知交付和真实 HTTP smoke 都完成独立闭环。代表路由测试、后台自检测试和 149 个 `METHOD path` 路由签名测试只能计入路由签名覆盖，不得计入 `completeBehaviorContractRoutesVerifiedTotal`；只有四个模块完整行为契约迁入测试可以计入完整行为契约覆盖。该接口不得返回 token、Cookie、完整请求头、真实数据库连接串、内部 URL、异常栈、节点凭据、服务器命令、举报证据、工单内部备注、通知正文或 Cloudreve token。
 
-检查项状态允许 `PASS`、`PARTIAL`、`BLOCKED` 和 `UNKNOWN`。路由签名已验证可为 `PASS`；只覆盖五个后台自检摘要的可信网关上下文必须为 `PARTIAL`；完整行为契约、真实持久化、审计持久化、真实跨服务 adapter、真实通知交付和真实 HTTP smoke 未完成时必须为 `BLOCKED`。`behaviorCoverageByModule` 必须按 community、activity、calendar 和 changelog 四个模块分别返回剩余完整行为契约路由数和待补测试类别。当前 community 64 个、activity 41 个和 changelog 23 个业务方法路由已迁入 `engagement-core-service` 完整行为契约测试，calendar 仍待补。已清理旧服务不得恢复，`legacyServiceRestoreStatus` 必须保持 `NOT_RESTORED`。
+检查项状态允许 `PASS`、`PARTIAL`、`BLOCKED` 和 `UNKNOWN`。路由签名和完整行为契约已验证可为 `PASS`；只覆盖五个后台自检摘要的可信网关上下文必须为 `PARTIAL`；真实持久化、审计持久化、真实跨服务 adapter、真实通知交付和真实 HTTP smoke 未完成时必须为 `BLOCKED`。`behaviorCoverageByModule` 必须按 community、activity、calendar 和 changelog 四个模块分别返回剩余完整行为契约路由数和待补测试类别。当前 community 64 个、activity 41 个、calendar 21 个和 changelog 23 个业务方法路由已迁入 `engagement-core-service` 完整行为契约测试。已清理旧服务不得恢复，`legacyServiceRestoreStatus` 必须保持 `NOT_RESTORED`。
 
 分页规则：无分页。
 
@@ -476,7 +462,7 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
 
 `X-Gateway-Internal-Request-Id` 存在时，各模块按自身契约优先解析可信认证上下文。字段缺失、格式非法、角色或能力点不兼容时，不得静默降级成匿名用户。若该头缺失，即使请求带有 `X-Beiming-Actor-*`，也必须忽略这些 actor 头并继续走 `Authorization: Bearer <token>` 本地兼容路径，防止直连伪造头绕过权限。生产入口必须由 `api-gateway` 或反向代理剥离客户端伪造的同名可信头；直连本地测试必须覆盖伪造头不能绕过权限、网关注入上下文可用、字段缺失失败和字段不兼容失败。
 
-当前阶段 `engagement-core` 已在五个后台自检摘要入口接入可信认证上下文，包括 `/api/v1/engagement-core/admin/ops/summary`、`/api/v1/community/admin/ops/summary`、`/api/v1/activity/admin/ops/summary`、`/api/v1/calendar/admin/ops/summary` 和 `/api/v1/changelog/admin/ops/summary`。这些接口缺少网关上下文时继续兼容本地固定 Bearer token；存在网关上下文时必须优先使用网关注入的 `userId`、`roles`、`permissions`、Minecraft 绑定和内部请求编号。四个业务模块完整 149 个业务方法路由的写入 actor、当前用户隔离和审计 actor 仍属于后续完整行为契约测试范围。
+当前阶段 `engagement-core` 已在五个后台自检摘要入口接入可信认证上下文，包括 `/api/v1/engagement-core/admin/ops/summary`、`/api/v1/community/admin/ops/summary`、`/api/v1/activity/admin/ops/summary`、`/api/v1/calendar/admin/ops/summary` 和 `/api/v1/changelog/admin/ops/summary`。这些接口缺少网关上下文时继续兼容本地固定 Bearer token；存在网关上下文时必须优先使用网关注入的 `userId`、`roles`、`permissions`、Minecraft 绑定和内部请求编号。四个业务模块 149 个业务方法路由的完整行为契约已经迁入当前入口；真实业务认证上下文替换本地固定 token 仍属于后续独立闭环。
 
 ## 内部适配规则
 
@@ -525,16 +511,14 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
 
 ## 后续完善顺序
 
-第三批合并后的后续完善按以下优先级进入闭环。每一项都必须单独完成 API 契约、测试文档、红灯、实现、复测和记录。合并后自检端口口径已经纳入当前小步；完整继承契约测试仍是后续最高优先级，不能因为自检测试通过就视为业务契约完成。
+第三批合并后的后续完善按以下优先级进入闭环。每一项都必须单独完成 API 契约、测试文档、红灯、实现、复测和记录。合并后自检端口口径和完整继承契约测试已经纳入当前入口；后续重点转向真实业务认证、持久化审计、真实跨服务 adapter、真实通知交付和真实 HTTP smoke。
 
 | 顺序 | 完善项 | 契约要求 | 自动化测试要求 |
 | --- | --- | --- | --- |
-| 1 | 完整继承契约测试 | 把 community、activity、calendar 和 changelog 的全部 API 行为纳入 `engagement-core-service` 测试，不只保留代表路由。 | 第一层先逐条验证 149 个业务 `METHOD path` 路由签名已经装配；第二层继续新增模块级 behavior contract cases，覆盖成功、字段校验、认证、权限、资源不存在、状态冲突、幂等并发、降级、审计和生产硬化。 |
-| 2 | 合并后自检端口口径 | 四个业务模块自检摘要返回 `port=8132` 和 `legacyPort`，旧端口只用于历史追溯。 | 已新增红灯测试先断言旧端口失败，再实现并复测。 |
-| 3 | 真实认证与可信网关上下文 | 固定 token 只能用于本地测试 profile；生产路径必须消费 `auth` 或网关注入的可信身份上下文。本轮先覆盖五个后台自检摘要入口，完整业务方法路由认证行为仍进入完整行为契约测试。 | 覆盖直连伪造 `X-Beiming-Actor-*` 不能绕过权限、网关注入上下文可用、字段缺失失败、字段不兼容失败，以及自检摘要暴露 `TRUSTED_GATEWAY_CONTEXT`。 |
-| 4 | 持久化与审计持久化 | 社区、活动、日程、更新日志、互动、报名、收藏、工单、处罚、幂等和审计迁入数据库事务或等效持久层。 | 覆盖重启后数据仍在、审计失败回滚、唯一约束、并发幂等和分页过滤。 |
-| 5 | 真实跨服务 adapter | profile、content、resource、server-status、notification、attendance 和内部 calendar/changelog 适配通过正式接口或受控 adapter。 | 覆盖不可用、超时、字段不兼容、旧快照降级、通知失败不伪造成功。 |
-| 6 | 真实 HTTP 联调 | `api-gateway-service` 到 `engagement-core-service:8132` 做真实进程 smoke，验证路径、认证、请求编号和错误透传。 | 启动当前入口后执行真实 HTTP smoke，记录到 `.local-docs/tests-engagement-core.md` 和 `.local-docs/tests-api-gateway.md`。 |
+| 1 | 真实认证与可信网关上下文 | 固定 token 只能用于本地测试 profile；生产路径必须消费 `auth` 或网关注入的可信身份上下文。五个后台自检摘要入口已覆盖可信网关上下文，业务方法路由需要替换本地固定 token。 | 覆盖直连伪造 `X-Beiming-Actor-*` 不能绕过权限、网关注入上下文可用、字段缺失失败、字段不兼容失败，以及业务写入 actor、当前用户隔离和审计 actor。 |
+| 2 | 持久化与审计持久化 | 社区、活动、日程、更新日志、互动、报名、收藏、工单、处罚、幂等和审计迁入数据库事务或等效持久层。 | 覆盖重启后数据仍在、审计失败回滚、唯一约束、并发幂等和分页过滤。 |
+| 3 | 真实跨服务 adapter | profile、content、resource、server-status、notification、attendance 和内部 calendar/changelog 适配通过正式接口或受控 adapter。 | 覆盖不可用、超时、字段不兼容、旧快照降级、通知失败不伪造成功。 |
+| 4 | 真实 HTTP 联调 | `api-gateway-service` 到 `engagement-core-service:8132` 做真实进程 smoke，验证路径、认证、请求编号和错误透传。 | 启动当前入口后执行真实 HTTP smoke，记录到 `.local-docs/tests-engagement-core.md` 和 `.local-docs/tests-api-gateway.md`。 |
 
 ## 迁移顺序
 

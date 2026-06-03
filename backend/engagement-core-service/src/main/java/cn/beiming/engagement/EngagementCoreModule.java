@@ -97,7 +97,7 @@ class EngagementCoreController {
         data.put("engagementRoutesTotal", registry.engagementRoutesTotal());
         data.put("selfRoutesTotal", SELF_ROUTES_TOTAL);
         data.put("routeContractCoverageStatus", "ROUTE_CONTRACT_VERIFIED");
-        data.put("behaviorContractCoverageStatus", "PARTIAL_BEHAVIOR_CONTRACT_TESTS");
+        data.put("behaviorContractCoverageStatus", registry.behaviorContractCoverageStatus());
         data.put("trustedGatewayCoverageStatus", "OPS_SUMMARIES_ONLY");
         data.put("routeDriftStatus", "NO_DRIFT");
         data.put("legacyServiceRestoreStatus", "NOT_RESTORED");
@@ -121,7 +121,7 @@ class EngagementCoreController {
         data.put("selfRoutesTotal", SELF_ROUTES_TOTAL);
         data.put("routeContractRoutesVerifiedTotal", registry.routeContractRoutesVerifiedTotal());
         data.put("routeContractCoverageStatus", "ROUTE_CONTRACT_VERIFIED");
-        data.put("behaviorContractCoverageStatus", "PARTIAL_BEHAVIOR_CONTRACT_TESTS");
+        data.put("behaviorContractCoverageStatus", registry.behaviorContractCoverageStatus());
         return data;
     }
 
@@ -213,6 +213,13 @@ class EngagementCoreRegistry {
         return engagementRoutesTotal() - completeBehaviorContractRoutesVerifiedTotal();
     }
 
+    String behaviorContractCoverageStatus() {
+        if (pendingBehaviorContractRoutesTotal() == 0) {
+            return "COMPLETE_BEHAVIOR_CONTRACT_TESTS";
+        }
+        return "PARTIAL_BEHAVIOR_CONTRACT_TESTS";
+    }
+
     List<Map<String, Object>> publicModules() {
         return modules.stream().map(EngagementModuleRegistration::toPublicMap).toList();
     }
@@ -272,7 +279,6 @@ class EngagementCoreRegistry {
 
     List<String> productionGaps() {
         return List.of(
-                "complete inherited behavior contract tests are not all mounted in engagement-core",
                 "gateway trusted context is mounted for ops summaries only; complete business behavior auth coverage is still pending",
                 "real database persistence is still module dependent",
                 "persistent audit storage is not connected",
@@ -286,7 +292,7 @@ class EngagementCoreRegistry {
         return List.of(
                 check("ROUTE_SIGNATURES", "PASS", "149 inherited business route signatures are verified", true,
                         Map.of("verifiedRoutesTotal", routeContractRoutesVerifiedTotal())),
-                check("BEHAVIOR_CONTRACTS", "BLOCKED", "complete inherited behavior contract tests are still pending", true,
+                check("BEHAVIOR_CONTRACTS", behaviorContractCheckStatus(), behaviorContractCheckSummary(), true,
                         Map.of(
                                 "requiredBusinessRoutesTotal", engagementRoutesTotal(),
                                 "completeBehaviorContractRoutesVerifiedTotal", completeBehaviorContractRoutesVerifiedTotal(),
@@ -300,6 +306,20 @@ class EngagementCoreRegistry {
                 check("LIVE_HTTP_SMOKE", "BLOCKED", "live gateway-to-engagement-core HTTP smoke is not verified", true, Map.of()),
                 check("LEGACY_SERVICES", "PASS", "merged legacy service Maven entrypoints are not restored", true, Map.of())
         );
+    }
+
+    private String behaviorContractCheckStatus() {
+        if (pendingBehaviorContractRoutesTotal() == 0) {
+            return "PASS";
+        }
+        return "BLOCKED";
+    }
+
+    private String behaviorContractCheckSummary() {
+        if (pendingBehaviorContractRoutesTotal() == 0) {
+            return "complete inherited behavior contract tests are mounted in engagement-core";
+        }
+        return "complete inherited behavior contract tests are still pending";
     }
 
     static String baselineVerifiedAt() {
@@ -376,7 +396,9 @@ record EngagementModuleRegistration(String moduleKey,
         data.put("contractRoutesTotal", routesTotal);
         data.put("routeContractRoutesVerifiedTotal", routeContractRoutesVerifiedTotal());
         data.put("routeContractCoverageStatus", "ROUTE_CONTRACT_VERIFIED");
-        data.put("behaviorContractCoverageStatus", "PARTIAL_BEHAVIOR_CONTRACT_TESTS");
+        data.put("behaviorContractCoverageStatus", pendingBehaviorContractRoutesTotal() == 0
+                ? "COMPLETE_BEHAVIOR_CONTRACT_TESTS"
+                : "PARTIAL_BEHAVIOR_CONTRACT_TESTS");
         data.put("adapters", adapters);
         data.put("downstreamAdapters", downstreamAdapters);
         data.put("upstreamDependencies", upstreamDependencies);
@@ -405,7 +427,7 @@ record EngagementModuleRegistration(String moduleKey,
     }
 
     int completeBehaviorContractRoutesVerifiedTotal() {
-        if ("COMMUNITY".equals(moduleKey) || "ACTIVITY".equals(moduleKey) || "CHANGELOG".equals(moduleKey)) {
+        if ("COMMUNITY".equals(moduleKey) || "ACTIVITY".equals(moduleKey) || "CALENDAR".equals(moduleKey) || "CHANGELOG".equals(moduleKey)) {
             return routesTotal;
         }
         return 0;

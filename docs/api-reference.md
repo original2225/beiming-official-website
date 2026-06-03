@@ -10025,7 +10025,7 @@ notification 是辅助依赖。发布、下架和安全修复通知失败不得�
 
 `GET /api/v1/engagement-core/health`
 
-成功响应 HTTP `200`。响应至少包含 `service=engagement-core`、`status`、`port=8132`、`modulesTotal=4`、`modulesMounted=4`、`engagementRoutesTotal=149`、`selfRoutesTotal=3`、`routeContractRoutesVerifiedTotal=149`、`routeContractCoverageStatus=ROUTE_CONTRACT_VERIFIED`、`behaviorContractCoverageStatus=PARTIAL_BEHAVIOR_CONTRACT_TESTS`、`moduleRoutes` 和 `generatedAt`。
+成功响应 HTTP `200`。响应至少包含 `service=engagement-core`、`status`、`port=8132`、`modulesTotal=4`、`modulesMounted=4`、`engagementRoutesTotal=149`、`selfRoutesTotal=3`、`routeContractRoutesVerifiedTotal=149`、`routeContractCoverageStatus=ROUTE_CONTRACT_VERIFIED`、`behaviorContractCoverageStatus=COMPLETE_BEHAVIOR_CONTRACT_TESTS`、`moduleRoutes` 和 `generatedAt`。
 
 该接口不得返回 token、Cookie、数据库连接串、异常栈、外部凭据、请求头原文、举报证据详情、工单内部备注、通知正文、真实服务器命令、节点凭据或 Cloudreve token。
 
@@ -10035,11 +10035,11 @@ notification 是辅助依赖。发布、下架和安全修复通知失败不得�
 
 未登录返回 `41000`，令牌格式错误返回 `41003`，权限不足返回 `42001`。只有 `ADMIN` 和 `OWNER` 可访问。
 
-成功响应 HTTP `200`，`data` 至少包含 `service`、`port`、`status`、`modulesTotal`、`modulesMounted`、`routesTotal=152`、`engagementRoutesTotal=149`、`selfRoutesTotal=3`、`routeContractRoutesVerifiedTotal=149`、`routeContractCoverageStatus=ROUTE_CONTRACT_VERIFIED`、`behaviorContractCoverageStatus=PARTIAL_BEHAVIOR_CONTRACT_TESTS`、`moduleRoutes`、`adapterChain`、`businessCoreDependency`、`admissionCoreDependency`、`gatewaySwitchReady`、`gatewaySwitchStatus`、`legacyBaselines`、`retiredLegacyServices`、`productionGaps` 和 `generatedAt`。
+成功响应 HTTP `200`，`data` 至少包含 `service`、`port`、`status`、`modulesTotal`、`modulesMounted`、`routesTotal=152`、`engagementRoutesTotal=149`、`selfRoutesTotal=3`、`routeContractRoutesVerifiedTotal=149`、`routeContractCoverageStatus=ROUTE_CONTRACT_VERIFIED`、`behaviorContractCoverageStatus=COMPLETE_BEHAVIOR_CONTRACT_TESTS`、`moduleRoutes`、`adapterChain`、`businessCoreDependency`、`admissionCoreDependency`、`gatewaySwitchReady`、`gatewaySwitchStatus`、`legacyBaselines`、`retiredLegacyServices`、`productionGaps` 和 `generatedAt`。
 
 `moduleRoutes` 中每个模块必须返回 `port=8132`、对应 `legacyPort`、`contractRoutesTotal`、`routeContractRoutesVerifiedTotal`、`routeContractCoverageStatus` 和 `behaviorContractCoverageStatus`。当前四个模块路由签名覆盖数为 community `64`、activity `41`、calendar `21`、changelog `23`。
 
-`productionGaps` 当前必须保留 `complete inherited behavior contract tests are not all mounted in engagement-core`。这表示 149 个业务 `METHOD path` 路由签名已经装配验证，但完整行为契约仍未全部覆盖。五个后台自检摘要入口已经支持可信网关上下文，摘要缺口必须改为 `gateway trusted context is mounted for ops summaries only; complete business behavior auth coverage is still pending`，不得继续暴露 `real auth and gateway trusted context adapters are not connected`。后续仍要逐接口覆盖成功、字段校验、认证、权限、资源不存在、状态冲突、幂等并发、降级、审计和生产硬化。
+`productionGaps` 不得再保留 `complete inherited behavior contract tests are not all mounted in engagement-core`。这表示 149 个业务 `METHOD path` 路由签名和四个模块完整行为契约已经装配验证。五个后台自检摘要入口已经支持可信网关上下文，摘要缺口必须保留 `gateway trusted context is mounted for ops summaries only; complete business behavior auth coverage is still pending`，不得继续暴露 `real auth and gateway trusted context adapters are not connected`。后续仍要补真实持久化、审计持久化、真实跨服务 adapter、真实通知投递和真实 HTTP smoke。
 
 可信网关上下文规则继承 `docs/contracts-engagement-core.md`。只有存在 `X-Gateway-Internal-Request-Id` 时，`engagement-core` 才解析 `X-Beiming-Actor-*`；缺少该内部请求编号时，直连伪造 actor 头必须被忽略并回退 Bearer 兼容路径。当前已覆盖 `/api/v1/engagement-core/admin/ops/summary`、`/api/v1/community/admin/ops/summary`、`/api/v1/activity/admin/ops/summary`、`/api/v1/calendar/admin/ops/summary` 和 `/api/v1/changelog/admin/ops/summary`。字段缺失、requestId 格式非法、角色或能力点不兼容、Minecraft UUID 不兼容必须失败，不得当成匿名或本地 token 成功。
 
@@ -10049,15 +10049,15 @@ notification 是辅助依赖。发布、下架和安全修复通知失败不得�
 
 `GET /api/v1/engagement-core/admin/production-readiness`
 
-该接口需要 `ADMIN` 或 `OWNER`，可使用 Bearer 本地兼容 token 或可信网关上下文。成功响应 HTTP `200`，`data` 至少包含 `service=engagement-core`、`port=8132`、`readyForProduction=false`、`readinessStatus=NOT_READY`、`routesTotal=152`、`engagementRoutesTotal=149`、`selfRoutesTotal=3`、`routeContractCoverageStatus=ROUTE_CONTRACT_VERIFIED`、`behaviorContractCoverageStatus=PARTIAL_BEHAVIOR_CONTRACT_TESTS`、`trustedGatewayCoverageStatus=OPS_SUMMARIES_ONLY`、`routeDriftStatus=NO_DRIFT`、`legacyServiceRestoreStatus=NOT_RESTORED`、`completeBehaviorContractRoutesVerifiedTotal=128`、`pendingBehaviorContractRoutesTotal=21`、`behaviorCoverageByModule`、`checks`、`productionBlockers` 和 `generatedAt`。
+该接口需要 `ADMIN` 或 `OWNER`，可使用 Bearer 本地兼容 token 或可信网关上下文。成功响应 HTTP `200`，`data` 至少包含 `service=engagement-core`、`port=8132`、`readyForProduction=false`、`readinessStatus=NOT_READY`、`routesTotal=152`、`engagementRoutesTotal=149`、`selfRoutesTotal=3`、`routeContractCoverageStatus=ROUTE_CONTRACT_VERIFIED`、`behaviorContractCoverageStatus=COMPLETE_BEHAVIOR_CONTRACT_TESTS`、`trustedGatewayCoverageStatus=OPS_SUMMARIES_ONLY`、`routeDriftStatus=NO_DRIFT`、`legacyServiceRestoreStatus=NOT_RESTORED`、`completeBehaviorContractRoutesVerifiedTotal=149`、`pendingBehaviorContractRoutesTotal=0`、`behaviorCoverageByModule`、`checks`、`productionBlockers` 和 `generatedAt`。
 
-`checks` 必须包含 `ROUTE_SIGNATURES=PASS`、`BEHAVIOR_CONTRACTS=BLOCKED`、`TRUSTED_GATEWAY_CONTEXT=PARTIAL`、`PERSISTENCE=BLOCKED`、`AUDIT_PERSISTENCE=BLOCKED`、`CROSS_SERVICE_ADAPTERS=BLOCKED`、`NOTIFICATION_DELIVERY=BLOCKED`、`LIVE_HTTP_SMOKE=BLOCKED` 和 `LEGACY_SERVICES=PASS`。该接口只读诊断摘要，不调用旧服务，不执行真实 HTTP smoke，不触发业务写操作，不返回 token、Cookie、完整请求头、真实数据库连接串、内部 URL、异常栈、节点凭据、服务器命令、举报证据、工单内部备注、通知正文或 Cloudreve token。
+`checks` 必须包含 `ROUTE_SIGNATURES=PASS`、`BEHAVIOR_CONTRACTS=PASS`、`TRUSTED_GATEWAY_CONTEXT=PARTIAL`、`PERSISTENCE=BLOCKED`、`AUDIT_PERSISTENCE=BLOCKED`、`CROSS_SERVICE_ADAPTERS=BLOCKED`、`NOTIFICATION_DELIVERY=BLOCKED`、`LIVE_HTTP_SMOKE=BLOCKED` 和 `LEGACY_SERVICES=PASS`。该接口只读诊断摘要，不调用旧服务，不执行真实 HTTP smoke，不触发业务写操作，不返回 token、Cookie、完整请求头、真实数据库连接串、内部 URL、异常栈、节点凭据、服务器命令、举报证据、工单内部备注、通知正文或 Cloudreve token。
 
-`behaviorCoverageByModule` 必须按 community、activity、calendar 和 changelog 返回完整行为契约覆盖进度。当前 community 64 个、activity 41 个和 changelog 23 个业务方法路由已迁入 `engagement-core-service` 完整行为契约测试，待补数均为 `0`；calendar 仍待补，待补路由数为 `21`。代表路由测试、后台自检测试和路由签名测试不得计入完整行为契约覆盖。
+`behaviorCoverageByModule` 必须按 community、activity、calendar 和 changelog 返回完整行为契约覆盖进度。当前 community 64 个、activity 41 个、calendar 21 个和 changelog 23 个业务方法路由已迁入 `engagement-core-service` 完整行为契约测试，待补数均为 `0`。代表路由测试、后台自检测试和路由签名测试不得计入完整行为契约覆盖。
 
 ### 验收口径
 
-`engagement-core` API 文档按 `docs/contracts-engagement-core.md` 独立存在，并由 `.local-docs/tests-engagement-core.md` 记录本地测试闭环。`mvn -f backend/engagement-core-service/pom.xml test` 必须覆盖三个自有接口、149 个第三批业务 `METHOD path` 路由签名、community、activity 和 changelog 完整行为契约迁入、旧服务不恢复保护和后续行为契约缺口公开。
+`engagement-core` API 文档按 `docs/contracts-engagement-core.md` 独立存在，并由 `.local-docs/tests-engagement-core.md` 记录本地测试闭环。`mvn -f backend/engagement-core-service/pom.xml test` 必须覆盖三个自有接口、149 个第三批业务 `METHOD path` 路由签名、community、activity、calendar 和 changelog 完整行为契约迁入、旧服务不恢复保护和后续生产化缺口公开。
 
 第三批旧服务已经清理。后续测试不得恢复、重建或执行 `backend/community-service`、`backend/activity-service`、`backend/calendar-service` 和 `backend/changelog-service` 的 Maven 入口。
 
