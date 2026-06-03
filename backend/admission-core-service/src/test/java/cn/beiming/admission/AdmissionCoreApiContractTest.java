@@ -242,5 +242,11 @@ class AdmissionCoreApiContractTest {
                 Path.of("../whitelist-service/src/main/java/cn/beiming/whitelist/WhitelistServiceApplication.java"),
                 Path.of("../attendance-service/src/main/java/cn/beiming/attendance/AttendanceServiceApplication.java")
         )).allSatisfy(path -> assertThat(Files.exists(path)).isFalse());
+        assertThat(List.of(
+                Path.of("../onboarding-service"),
+                Path.of("../exam-service"),
+                Path.of("../whitelist-service"),
+                Path.of("../attendance-service")
+        )).allSatisfy(path -> assertThat(Files.exists(path)).isFalse());
     }
 }

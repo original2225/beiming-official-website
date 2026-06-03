@@ -62,6 +62,8 @@ API 文档必须放在 `docs/`，并按 `docs/contracts-<module>.md` 独立命�
 
 禁止批量删除文件或目录。需要删除文件时，只能一次删除一个明确路径的文件。需要批量删除时，必须停止并请求用户确认。
 
+已合并进 `business-core-service` 的第一批旧服务目录 `backend/auth-service`、`backend/profile-service`、`backend/notification-service`、`backend/content-service`、`backend/server-status-service`、`backend/resource-service` 和 `backend/admin-service` 不得恢复。已合并进 `admission-core-service` 的第二批旧服务目录 `backend/onboarding-service`、`backend/exam-service`、`backend/whitelist-service` 和 `backend/attendance-service` 不得恢复。后续合并只能以当前 core 运行入口和正式契约为基线，不能重新创建这些旧目录、旧 Maven 入口、旧启动类或旧服务测试命令。
+
 清理 `.local-docs/` 时也必须遵守删除规则。只能删除一个明确路径的文件，不能删除整个目录，不能使用递归删除命令。需要清理多个文件时，先列出路径并获得用户确认，再逐个删除。
 
 ## 验收要求

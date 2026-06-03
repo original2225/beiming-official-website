@@ -61,6 +61,13 @@ class BusinessCoreLegacyBaselineTest {
         for (Path retiredFile : retiredLegacyFiles) {
             assertThat(repositoryRoot.resolve(retiredFile)).doesNotExist();
         }
+        assertThat(repositoryRoot.resolve(Path.of("backend", "admin-service"))).doesNotExist();
+        assertThat(repositoryRoot.resolve(Path.of("backend", "auth-service"))).doesNotExist();
+        assertThat(repositoryRoot.resolve(Path.of("backend", "content-service"))).doesNotExist();
+        assertThat(repositoryRoot.resolve(Path.of("backend", "notification-service"))).doesNotExist();
+        assertThat(repositoryRoot.resolve(Path.of("backend", "profile-service"))).doesNotExist();
+        assertThat(repositoryRoot.resolve(Path.of("backend", "resource-service"))).doesNotExist();
+        assertThat(repositoryRoot.resolve(Path.of("backend", "server-status-service"))).doesNotExist();
         assertPathExists(repositoryRoot.resolve(Path.of("docs", "contracts-auth.md")));
         assertPathExists(repositoryRoot.resolve(Path.of("docs", "contracts-profile.md")));
         assertPathExists(repositoryRoot.resolve(Path.of("docs", "contracts-notification.md")));

@@ -56,8 +56,8 @@
 
 | 合并批次 | 运行入口 | 端口 | 承载模块 | 旧端口用途 |
 | --- | --- | ---: | --- | --- |
-| 第一批基础业务 | `backend/business-core-service` | 8130 | `auth`、`profile`、`notification`、`content`、`server-status`、`resource`、`admin` | `8101` 到 `8107` 为历史原端口，旧运行文件已清理 |
-| 第二批入服准入 | `backend/admission-core-service` | 8131 | `onboarding`、`exam`、`whitelist`、`attendance` | `8108` 到 `8111` 为历史原端口，旧运行文件已清理 |
+| 第一批基础业务 | `backend/business-core-service` | 8130 | `auth`、`profile`、`notification`、`content`、`server-status`、`resource`、`admin` | `8101` 到 `8107` 为历史原端口，旧服务目录已清理且不得恢复 |
+| 第二批入服准入 | `backend/admission-core-service` | 8131 | `onboarding`、`exam`、`whitelist`、`attendance` | `8108` 到 `8111` 为历史原端口，旧服务目录已清理且不得恢复 |
 | 第三批社区运营 | `backend/engagement-core-service` 尚未入仓 | 8132 | `community`、`activity`、`calendar`、`changelog` | 当前仍由 `8112` 到 `8115` 旧服务承载网关流量 |
 
 ## 依赖顺序和边界
