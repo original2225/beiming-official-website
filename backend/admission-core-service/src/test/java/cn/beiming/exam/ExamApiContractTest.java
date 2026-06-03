@@ -32,7 +32,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest(classes = AdmissionCoreServiceApplication.class)
+@SpringBootTest(classes = AdmissionCoreServiceApplication.class, properties = "exam.test-controls.enabled=true")
 @AutoConfigureMockMvc
 @DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_EACH_TEST_METHOD)
 class ExamApiContractTest {
@@ -240,7 +240,8 @@ class ExamApiContractTest {
 
         JsonNode opsBefore = performJson(get("/api/v1/exams/admin/ops/summary").header("Authorization", bearer("admin-token")), 200);
         assertThat(opsBefore.at("/data/service").asText()).isEqualTo("exam");
-        assertThat(opsBefore.at("/data/port").asInt()).isEqualTo(8109);
+        assertThat(opsBefore.at("/data/port").asInt()).isEqualTo(8131);
+        assertThat(opsBefore.at("/data/legacyPort").asInt()).isEqualTo(8109);
         assertThat(opsBefore.at("/data/productionGaps").toString()).contains("WHITELIST_NOT_IMPLEMENTED");
 
         Path serviceRoot = Path.of("src/main/java/cn/beiming/exam");

@@ -37,13 +37,21 @@
 
 ## 基础路径与认证
 
-所有接口默认使用 `/api/v1/onboarding` 前缀。
+所有接口默认使用 `/api/v1/onboarding` 前缀。第二批合并后当前运行入口由 `admission-core-service` 承载，端口固定为 `8131`。历史原服务端口 `8108` 只作为 `legacyPort` 返回，不作为当前运行入口、网关上游或测试入口。
 
 当前用户接口使用 `/api/v1/onboarding/me` 前缀，全部要求 `Authorization: Bearer <token>`，只能读取或维护当前认证用户自己的入服流程。浏览器请求体不得传入 `userId`、`roles`、`permissions`、`minecraftId`、`minecraftUuid`、`status`、`currentStep`、`createdBy`、`updatedBy`、`blockedBy` 等服务端可信字段。
 
 后台接口使用 `/api/v1/onboarding/admin` 前缀，全部要求登录。后台读取接口要求 `HELPER`、`ADMIN` 或 `OWNER`。后台写操作要求 `ADMIN` 或 `OWNER`，必须携带 `reason` 并写入审计。`HELPER` 可以查看流程和审计摘要，但不能重置、阻塞或解除阻塞。
 
-P0 端口固定为 `8108`。自检摘要必须返回该端口。
+## 本地测试控制头
+
+`onboarding` 允许在本地自动化测试中使用 `X-Test-Dependency-Mode`、`X-Test-Notification-Mode`、`X-Test-Fail-Audit` 和 `X-Test-Fail-Store` 模拟依赖失败、通知失败、审计失败和状态写入失败。该能力只服务测试闭环，不属于正式业务 API。
+
+生产和默认运行环境必须关闭测试控制头。关闭后这些请求头必须被忽略，不能触发依赖失败、审计失败、状态失败或通知失败。只有 `onboarding.test-controls.enabled=true` 时，自动化测试才能启用这些请求头。
+
+## 网关可信身份上下文
+
+经 `api-gateway` 访问时，`onboarding` 可以优先读取网关注入的可信身份头。只有 `X-Gateway-Internal-Request-Id` 存在时，才进入可信上下文解析；若该头缺失，即使请求带有 `X-Beiming-Actor-*`，也必须忽略这些头并继续走 `Authorization: Bearer <token>` 兼容路径。可信上下文缺少 `X-Beiming-Actor-User-Id`、角色枚举不兼容或字段无法解析时返回 HTTP `502` 和 `46802`，不得静默降级成匿名用户。
 
 ## 前序服务兼容契约
 
@@ -455,7 +463,8 @@ P0 端口固定为 `8108`。自检摘要必须返回该端口。
   "message": "success",
   "data": {
     "service": "onboarding",
-    "port": 8108,
+    "port": 8131,
+    "legacyPort": 8108,
     "storageMode": "IN_MEMORY",
     "authMode": "TEST_STUB",
     "profileMode": "TEST_STUB",
@@ -482,7 +491,7 @@ P0 端口固定为 `8108`。自检摘要必须返回该端口。
 }
 ```
 
-权限规则：只有 `ADMIN` 和 `OWNER` 可访问。`stateMachineMode` 固定为 `EXPLICIT_P0`，表示流程推进集中按契约状态机判定。`handoffSnapshotsTotal` 统计本进程生成过的 exam 交接快照次数。自检摘要不得返回 token、请求头、Minecraft 验证凭据、通知正文、content 正文、后台备注全文、审计参数全文或异常堆栈。
+权限规则：只有 `ADMIN` 和 `OWNER` 可访问。`port` 固定返回当前运行入口 `8131`，`legacyPort` 固定返回历史原服务端口 `8108`。`stateMachineMode` 固定为 `EXPLICIT_P0`，表示流程推进集中按契约状态机判定。`handoffSnapshotsTotal` 统计本进程生成过的 exam 交接快照次数。自检摘要不得返回 token、请求头、Minecraft 验证凭据、通知正文、content 正文、后台备注全文、审计参数全文或异常堆栈。
 
 ## 状态、幂等和并发
 
@@ -516,4 +525,4 @@ exam、whitelist 和 attendance 未实现时，onboarding 只返回下一步占�
 
 `onboarding` API 文档按 `docs/contracts-onboarding.md` 独立存在，并由 `.local-docs/tests-onboarding.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求和模块验收口径。
 
-`onboarding` 完成时必须满足以下条件：全部接口按本文档实现；当前用户接口只能访问当前用户自己的流程；后台接口按角色限制；服务端决定状态和下一步，不信任浏览器传入的可信字段；auth、profile、content 和 notification 适配不直接读取前序服务数据库或内部类；规则确认、资料确认、方向选择、推进、阻塞、重置、幂等、审计、自检摘要、requestId 和端口配置都有自动化测试；`.local-docs/tests-onboarding.md` 中全部测试用例都有对应自动化验证；未实现时自动化测试必须先失败；实现后 onboarding 全部测试通过；auth、profile、notification、content、server-status、resource 和 admin 前序服务回归测试通过；没有修改前序服务稳定接口；没有把考试判分、白名单审核、成员激活、考勤积分、社区、资源下载、服务器状态采集、后台聚合、真实运维、节点、容器、终端、文件管理、备份恢复或 Cloudreve 管理能力塞进 onboarding。
+`onboarding` 完成时必须满足以下条件：全部接口按本文档实现；当前用户接口只能访问当前用户自己的流程；后台接口按角色限制；服务端决定状态和下一步，不信任浏览器传入的可信字段；auth、profile、content 和 notification 适配不直接读取前序服务数据库或内部类；规则确认、资料确认、方向选择、推进、阻塞、重置、幂等、审计、自检摘要、requestId 和端口配置都有自动化测试；当前运行入口为 `admission-core-service:8131`，历史端口只作为 `legacyPort=8108` 返回；默认关闭测试控制头，直连伪造 `X-Beiming-Actor-*` 不能绕过 Bearer，网关注入可信上下文可被识别；`.local-docs/tests-onboarding.md` 中全部测试用例都有对应自动化验证；未实现时自动化测试必须先失败；实现后 onboarding 全部测试通过；auth、profile、notification、content、server-status、resource 和 admin 前序服务回归测试通过；没有修改前序服务稳定接口；没有把考试判分、白名单审核、成员激活、考勤积分、社区、资源下载、服务器状态采集、后台聚合、真实运维、节点、容器、终端、文件管理、备份恢复或 Cloudreve 管理能力塞进 onboarding。

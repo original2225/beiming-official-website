@@ -36,11 +36,21 @@
 
 ## 基础路径与认证
 
-所有接口默认使用 `/api/v1/exams` 前缀。P0 端口固定为 `8109`，自检摘要必须返回该端口。
+所有接口默认使用 `/api/v1/exams` 前缀。第二批合并后当前运行入口由 `admission-core-service` 承载，端口固定为 `8131`。历史原服务端口 `8109` 只作为 `legacyPort` 返回，不作为当前运行入口、网关上游或测试入口。
 
 当前用户接口使用 `/api/v1/exams/me` 前缀，全部要求 `Authorization: Bearer <token>`，只能访问当前认证用户自己的考试。浏览器请求体不得传入 `userId`、`roles`、`permissions`、`minecraftBindingSnapshot`、`score`、`passed`、`reviewerId`、`status`、`createdBy`、`updatedBy` 等服务端可信字段。
 
 后台接口使用 `/api/v1/exams/admin` 前缀，全部要求登录。后台读取考试、题库、模板、审计和自检摘要要求 `HELPER`、`ADMIN` 或 `OWNER`。题库维护、模板维护、人工阅卷、要求补充、取消考试、结果修正和策略更新要求 `ADMIN` 或 `OWNER`。`HELPER` 可读取待阅卷和考试详情，但不能写题库、模板或最终结果。
+
+## 本地测试控制头
+
+`exam` 允许在本地自动化测试中使用 `X-Test-Dependency-Mode`、`X-Test-Notification-Mode`、`X-Test-Fail-Audit` 和 `X-Test-Fail-Store` 模拟依赖失败、通知失败、审计失败和状态写入失败。该能力只服务测试闭环，不属于正式业务 API。
+
+生产和默认运行环境必须关闭测试控制头。关闭后这些请求头必须被忽略，不能触发依赖失败、审计失败、状态失败或通知失败。只有 `exam.test-controls.enabled=true` 时，自动化测试才能启用这些请求头。
+
+## 网关可信身份上下文
+
+经 `api-gateway` 访问时，`exam` 可以优先读取网关注入的可信身份头。只有 `X-Gateway-Internal-Request-Id` 存在时，才进入可信上下文解析；若该头缺失，即使请求带有 `X-Beiming-Actor-*`，也必须忽略这些头并继续走 `Authorization: Bearer <token>` 兼容路径。可信上下文缺少 `X-Beiming-Actor-User-Id`、角色枚举不兼容或字段无法解析时返回 HTTP `502` 和 `46902`，不得静默降级成匿名用户。
 
 ## 前序服务兼容契约
 
@@ -749,7 +759,8 @@
   "message": "success",
   "data": {
     "service": "exam",
-    "port": 8109,
+    "port": 8131,
+    "legacyPort": 8109,
     "storageMode": "IN_MEMORY",
     "authMode": "TEST_STUB",
     "onboardingMode": "TEST_STUB",
@@ -779,7 +790,7 @@
 }
 ```
 
-业务规则：自检摘要用于后台确认 exam 当前运行模式、题库规模、待阅卷规模、交接快照次数和生产化缺口。摘要不得返回 token、请求头、正确答案、参考答案、完整答卷、内部备注、审计参数全文、通知正文、content 正文、Minecraft 验证凭据或异常堆栈。
+业务规则：自检摘要用于后台确认 exam 当前运行模式、题库规模、待阅卷规模、交接快照次数和生产化缺口。`port` 固定返回当前运行入口 `8131`，`legacyPort` 固定返回历史原服务端口 `8109`。摘要不得返回 token、请求头、正确答案、参考答案、完整答卷、内部备注、审计参数全文、通知正文、content 正文、Minecraft 验证凭据或异常堆栈。
 
 ## 状态、判分、幂等和并发
 
@@ -819,4 +830,4 @@ notification 默认是辅助依赖。通知失败不得回滚考试主状态，�
 
 `exam` API 文档按 `docs/contracts-exam.md` 独立存在，并由 `.local-docs/tests-exam.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求和模块验收口径。
 
-`exam` 完成时必须满足以下条件：全部接口按本文档实现；当前用户接口只能访问自己的考试；后台接口按角色限制；考生视图不泄露正确答案、参考答案和内部备注；题库、模板、题目版本、试卷实例和答案快照可追溯；自动判分规则可测试；简答题人工阅卷和补充闭环可测试；创建考试只通过 onboarding handoff 和前序适配读取快照，不直接读前序服务实现；通过结果只暴露 whitelist 只读交接快照，不创建白名单申请；通知失败按辅助降级记录；端口固定为 `8109`；`.local-docs/tests-exam.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 exam 全部测试通过；auth、profile、notification、content、server-status、resource、admin 和 onboarding 前序服务回归测试通过；没有修改前序服务稳定接口；没有把白名单审核、成员激活、考勤积分、社区工单、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复或 Cloudreve 管理能力塞进 exam。
+`exam` 完成时必须满足以下条件：全部接口按本文档实现；当前用户接口只能访问自己的考试；后台接口按角色限制；考生视图不泄露正确答案、参考答案和内部备注；题库、模板、题目版本、试卷实例和答案快照可追溯；自动判分规则可测试；简答题人工阅卷和补充闭环可测试；创建考试只通过 onboarding handoff 和前序适配读取快照，不直接读前序服务实现；通过结果只暴露 whitelist 只读交接快照，不创建白名单申请；通知失败按辅助降级记录；当前运行入口为 `admission-core-service:8131`，历史端口只作为 `legacyPort=8109` 返回；默认关闭测试控制头，直连伪造 `X-Beiming-Actor-*` 不能绕过 Bearer，网关注入可信上下文可被识别；`.local-docs/tests-exam.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 exam 全部测试通过；auth、profile、notification、content、server-status、resource、admin 和 onboarding 前序服务回归测试通过；没有修改前序服务稳定接口；没有把白名单审核、成员激活、考勤积分、社区工单、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复或 Cloudreve 管理能力塞进 exam。

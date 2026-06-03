@@ -5076,7 +5076,15 @@ Cloudreve 分享链接不可用时，下载解析可以在旧快照仍合法时�
 
 后台接口使用 `/api/v1/onboarding/admin` 前缀，全部要求登录。后台读取接口要求 `HELPER`、`ADMIN` 或 `OWNER`。后台写操作要求 `ADMIN` 或 `OWNER`，必须携带 `reason` 并写入审计。`HELPER` 可以查看流程和审计摘要，但不能重置、阻塞或解除阻塞。
 
-P0 端口固定为 `8108`。自检摘要必须返回该端口。
+第二批合并后当前运行入口由 `admission-core-service` 承载，端口固定为 `8131`。历史原服务端口 `8108` 只作为 `legacyPort` 返回，不作为当前运行入口、网关上游或测试入口。
+
+### 本地测试控制头
+
+`onboarding` 允许在本地自动化测试中使用 `X-Test-Dependency-Mode`、`X-Test-Notification-Mode`、`X-Test-Fail-Audit` 和 `X-Test-Fail-Store` 模拟依赖失败、通知失败、审计失败和状态写入失败。生产和默认运行环境必须关闭测试控制头。关闭后这些请求头必须被忽略，不能触发依赖失败、审计失败、状态失败或通知失败。
+
+### 网关可信身份上下文
+
+只有 `X-Gateway-Internal-Request-Id` 存在时，`onboarding` 才进入可信上下文解析；若该头缺失，即使请求带有 `X-Beiming-Actor-*`，也必须忽略这些头并继续走 `Authorization: Bearer <token>` 兼容路径。可信上下文缺少 `X-Beiming-Actor-User-Id`、角色枚举不兼容或字段无法解析时返回 HTTP `502` 和 `46802`。
 
 ### 前序服务兼容契约
 
@@ -5488,7 +5496,8 @@ P0 端口固定为 `8108`。自检摘要必须返回该端口。
   "message": "success",
   "data": {
     "service": "onboarding",
-    "port": 8108,
+    "port": 8131,
+    "legacyPort": 8108,
     "storageMode": "IN_MEMORY",
     "authMode": "TEST_STUB",
     "profileMode": "TEST_STUB",
@@ -5591,7 +5600,15 @@ exam、whitelist 和 attendance 未实现时，onboarding 只返回下一步占�
 
 ### 基础路径与认证
 
-所有接口默认使用 `/api/v1/exams` 前缀。P0 端口固定为 `8109`，自检摘要必须返回该端口。
+所有接口默认使用 `/api/v1/exams` 前缀。第二批合并后当前运行入口由 `admission-core-service` 承载，端口固定为 `8131`。历史原服务端口 `8109` 只作为 `legacyPort` 返回，不作为当前运行入口、网关上游或测试入口。
+
+### 本地测试控制头
+
+`exam` 允许在本地自动化测试中使用 `X-Test-Dependency-Mode`、`X-Test-Notification-Mode`、`X-Test-Fail-Audit` 和 `X-Test-Fail-Store` 模拟依赖失败、通知失败、审计失败和状态写入失败。生产和默认运行环境必须关闭测试控制头。关闭后这些请求头必须被忽略，不能触发依赖失败、审计失败、状态失败或通知失败。
+
+### 网关可信身份上下文
+
+只有 `X-Gateway-Internal-Request-Id` 存在时，`exam` 才进入可信上下文解析；若该头缺失，即使请求带有 `X-Beiming-Actor-*`，也必须忽略这些头并继续走 `Authorization: Bearer <token>` 兼容路径。可信上下文缺少 `X-Beiming-Actor-User-Id`、角色枚举不兼容或字段无法解析时返回 HTTP `502` 和 `46902`。
 
 当前用户接口使用 `/api/v1/exams/me` 前缀，全部要求 `Authorization: Bearer <token>`，只能访问当前认证用户自己的考试。浏览器请求体不得传入 `userId`、`roles`、`permissions`、`minecraftBindingSnapshot`、`score`、`passed`、`reviewerId`、`status`、`createdBy`、`updatedBy` 等服务端可信字段。
 
@@ -6304,7 +6321,8 @@ exam、whitelist 和 attendance 未实现时，onboarding 只返回下一步占�
   "message": "success",
   "data": {
     "service": "exam",
-    "port": 8109,
+    "port": 8131,
+    "legacyPort": 8109,
     "storageMode": "IN_MEMORY",
     "authMode": "TEST_STUB",
     "onboardingMode": "TEST_STUB",
@@ -6374,7 +6392,7 @@ notification 默认是辅助依赖。通知失败不得回滚考试主状态，�
 
 `exam` API 文档按 `docs/contracts-exam.md` 独立存在，并由 `.local-docs/tests-exam.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求和模块验收口径。
 
-`exam` 完成时必须满足以下条件：全部接口按本文档实现；当前用户接口只能访问自己的考试；后台接口按角色限制；考生视图不泄露正确答案、参考答案和内部备注；题库、模板、题目版本、试卷实例和答案快照可追溯；自动判分规则可测试；简答题人工阅卷和补充闭环可测试；创建考试只通过 onboarding handoff 和前序适配读取快照，不直接读前序服务实现；通过结果只暴露 whitelist 只读交接快照，不创建白名单申请；通知失败按辅助降级记录；端口固定为 `8109`；`.local-docs/tests-exam.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 exam 全部测试通过；auth、profile、notification、content、server-status、resource、admin 和 onboarding 前序服务回归测试通过；没有修改前序服务稳定接口；没有把白名单审核、成员激活、考勤积分、社区工单、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复或 Cloudreve 管理能力塞进 exam。
+`exam` 完成时必须满足以下条件：全部接口按本文档实现；当前用户接口只能访问自己的考试；后台接口按角色限制；考生视图不泄露正确答案、参考答案和内部备注；题库、模板、题目版本、试卷实例和答案快照可追溯；自动判分规则可测试；简答题人工阅卷和补充闭环可测试；创建考试只通过 onboarding handoff 和前序适配读取快照，不直接读前序服务实现；通过结果只暴露 whitelist 只读交接快照，不创建白名单申请；通知失败按辅助降级记录；当前运行入口为 `admission-core-service:8131`，历史端口只作为 `legacyPort=8109` 返回；`.local-docs/tests-exam.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 exam 全部测试通过；auth、profile、notification、content、server-status、resource、admin 和 onboarding 前序服务回归测试通过；没有修改前序服务稳定接口；没有把白名单审核、成员激活、考勤积分、社区工单、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复或 Cloudreve 管理能力塞进 exam。
 
 ## 北冥官网 whitelist API 契约
 
@@ -6418,7 +6436,15 @@ notification 默认是辅助依赖。通知失败不得回滚考试主状态，�
 
 ### 基础路径与认证
 
-所有接口默认使用 `/api/v1/whitelist` 前缀。P0 端口固定为 `8110`，自检摘要必须返回该端口。
+所有接口默认使用 `/api/v1/whitelist` 前缀。第二批合并后当前运行入口由 `admission-core-service` 承载，端口固定为 `8131`。历史原服务端口 `8110` 只作为 `legacyPort` 返回，不作为当前运行入口、网关上游或测试入口。
+
+### 本地测试控制头
+
+`whitelist` 允许在本地自动化测试中使用 `X-Test-Profile-Mode`、`X-Test-Notification-Mode`、`X-Test-Fail-Audit`、`X-Test-Fail-Store` 和 `X-Test-Fail-After-Profile` 模拟依赖失败、通知失败、审计失败、状态写入失败和 profile 激活后补偿失败。生产和默认运行环境必须关闭测试控制头。关闭后这些请求头必须被忽略，不能触发依赖失败、审计失败、状态失败、通知失败或补偿失败。
+
+### 网关可信身份上下文
+
+只有 `X-Gateway-Internal-Request-Id` 存在时，`whitelist` 才进入可信上下文解析；若该头缺失，即使请求带有 `X-Beiming-Actor-*`，也必须忽略这些头并继续走 `Authorization: Bearer <token>` 兼容路径。可信上下文缺少 `X-Beiming-Actor-User-Id`、角色枚举不兼容或字段无法解析时返回 HTTP `502` 和 `47002`。
 
 当前用户接口使用 `/api/v1/whitelist/me` 前缀，全部要求 `Authorization: Bearer <token>`，只能访问当前认证用户自己的白名单申请。浏览器请求体不得传入 `userId`、`roles`、`permissions`、`minecraftBindingSnapshot`、`examResult`、`scoreSummary`、`reviewerId`、`reviewerSnapshot`、`status`、`profileStatus`、`attendanceStatus`、`createdBy`、`updatedBy` 等服务端可信字段。
 
@@ -6960,7 +6986,8 @@ profile 移除状态接口不可用、超时或响应字段不兼容时，移除
   "message": "success",
   "data": {
     "service": "whitelist",
-    "port": 8110,
+    "port": 8131,
+    "legacyPort": 8110,
     "storageMode": "IN_MEMORY",
     "authMode": "TEST_STUB",
     "examMode": "TEST_STUB",
@@ -7029,7 +7056,7 @@ attendance 未实现时，审核通过仍可完成 whitelist 和 profile 激活�
 
 `whitelist` API 文档按 `docs/contracts-whitelist.md` 独立存在，并由 `.local-docs/tests-whitelist.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求和模块验收口径。
 
-`whitelist` 完成时必须满足以下条件：全部接口按本文档实现；当前用户接口只能访问自己的申请；后台接口按角色限制；创建申请只通过 exam handoff 和前序适配读取快照，不直接读前序服务实现；审核通过必须通过 profile 正式接口激活成员档案；profile 激活失败不进入通过终态；通知失败按辅助降级记录；attendance 未实现时只生成交接摘要；移除白名单不执行真实服务器命令；端口固定为 `8110`；`.local-docs/tests-whitelist.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 whitelist 全部测试通过；auth、profile、notification、content、server-status、resource、admin、onboarding 和 exam 前序服务回归测试通过；没有修改前序服务稳定接口；没有把考勤积分、社区工单、活动、日历、更新日志、后台聚合、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复或 Cloudreve 管理能力塞进 whitelist。
+`whitelist` 完成时必须满足以下条件：全部接口按本文档实现；当前用户接口只能访问自己的申请；后台接口按角色限制；创建申请只通过 exam handoff 和前序适配读取快照，不直接读前序服务实现；审核通过必须通过 profile 正式接口激活成员档案；profile 激活失败不进入通过终态；通知失败按辅助降级记录；attendance 未实现时只生成交接摘要；移除白名单不执行真实服务器命令；当前运行入口为 `admission-core-service:8131`，历史端口只作为 `legacyPort=8110` 返回；`.local-docs/tests-whitelist.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 whitelist 全部测试通过；auth、profile、notification、content、server-status、resource、admin、onboarding 和 exam 前序服务回归测试通过；没有修改前序服务稳定接口；没有把考勤积分、社区工单、活动、日历、更新日志、后台聚合、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复或 Cloudreve 管理能力塞进 whitelist。
 
 ## 北冥官网 attendance API 契约
 
@@ -7072,7 +7099,7 @@ attendance 未实现时，审核通过仍可完成 whitelist 和 profile 激活�
 
 ### 基础路径与认证
 
-所有接口默认使用 `/api/v1/attendance` 前缀。P0 端口固定为 `8111`，自检摘要必须返回该端口。
+所有接口默认使用 `/api/v1/attendance` 前缀。第二批合并后当前运行入口由 `admission-core-service` 承载，端口固定为 `8131`。历史原服务端口 `8111` 只作为 `legacyPort` 返回，不作为当前运行入口、网关上游或测试入口。
 
 公开接口只包括公开榜单，路径为 `/api/v1/attendance/leaderboard`，允许游客访问，但不得返回内部备注、扣分原因全文、管理员 ID、审计参数、通知失败详情或白名单移除候选详情。
 
@@ -7085,6 +7112,10 @@ attendance 未实现时，审核通过仍可完成 whitelist 和 profile 激活�
 attendance 允许在本地自动化测试中使用 `X-Test-Whitelist-Mode`、`X-Test-Profile-Mode`、`X-Test-Notification-Mode`、`X-Test-Fail-Audit`、`X-Test-Fail-Store` 和 `X-Test-Fail-Ledger` 模拟依赖失败、通知失败和写入失败。该能力只服务测试闭环，不属于正式业务 API。
 
 生产和默认运行环境必须关闭测试控制头。关闭后这些请求头必须被忽略，不能触发依赖失败、审计失败、状态失败、流水失败、通知失败或 profile stale。自检摘要必须返回 `testControlsEnabled`，并在测试控制关闭时把 `TEST_CONTROLS_DISABLED_OUTSIDE_TEST` 视为已满足的生产化硬化项。
+
+### 网关可信身份上下文
+
+只有 `X-Gateway-Internal-Request-Id` 存在时，`attendance` 才进入可信上下文解析；若该头缺失，即使请求带有 `X-Beiming-Actor-*`，也必须忽略这些头并继续走 `Authorization: Bearer <token>` 兼容路径。可信上下文缺少 `X-Beiming-Actor-User-Id`、角色枚举不兼容或字段无法解析时返回 HTTP `502` 和 `48002`。
 
 ### 前序服务兼容契约
 
@@ -7685,7 +7716,8 @@ P0 的正向贡献可以由后台受控写入。未来接入 `activity`、`commu
   "message": "success",
   "data": {
     "service": "attendance",
-    "port": 8111,
+    "port": 8131,
+    "legacyPort": 8111,
     "storageMode": "IN_MEMORY",
     "authMode": "TEST_STUB",
     "whitelistMode": "TEST_STUB",
@@ -7753,7 +7785,7 @@ notification 是辅助依赖。通知失败不得回滚初始化、积分调整�
 
 `attendance` API 文档按 `docs/contracts-attendance.md` 独立存在，并由 `.local-docs/tests-attendance.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求和模块验收口径。
 
-`attendance` 完成时必须满足以下条件：全部接口按本文档实现；当前用户接口只能访问自己的账户、流水、贡献和排名；后台接口按角色限制；初始化只通过 whitelist handoff 和 profile 正式适配读取快照，不直接读前序服务实现；所有积分变化都有流水；月度扣分按 `cycleKey` 幂等；移除候选只生成建议，不执行真实 whitelist 移除或服务器命令；通知失败按辅助降级记录；端口固定为 `8111`；`.local-docs/tests-attendance.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 attendance 全部测试通过；auth、profile、notification、content、server-status、resource、admin、onboarding、exam 和 whitelist 前序服务回归测试通过；没有修改前序服务稳定接口；没有把社区、活动、日历、更新日志、后台聚合、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复或 Cloudreve 管理能力塞进 attendance。
+`attendance` 完成时必须满足以下条件：全部接口按本文档实现；当前用户接口只能访问自己的账户、流水、贡献和排名；后台接口按角色限制；初始化只通过 whitelist handoff 和 profile 正式适配读取快照，不直接读前序服务实现；所有积分变化都有流水；月度扣分按 `cycleKey` 幂等；移除候选只生成建议，不执行真实 whitelist 移除或服务器命令；通知失败按辅助降级记录；当前运行入口为 `admission-core-service:8131`，历史端口只作为 `legacyPort=8111` 返回；`.local-docs/tests-attendance.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 attendance 全部测试通过；auth、profile、notification、content、server-status、resource、admin、onboarding、exam 和 whitelist 前序服务回归测试通过；没有修改前序服务稳定接口；没有把社区、活动、日历、更新日志、后台聚合、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复或 Cloudreve 管理能力塞进 attendance。
 
 生产化硬化验收还必须满足：测试控制头默认关闭，只有本地自动化测试显式启用时才生效；关闭状态下依赖失败模拟头、写入失败模拟头和通知失败模拟头全部被忽略；自检摘要明确返回当前测试控制头开关状态。
 
@@ -13731,7 +13763,7 @@ endpoint、repository、tag、namespace 和 URL 摘要必须拒绝 `file:`、`da
 | `onboarding` | `ONBOARDING` | `/api/v1/onboarding` | `8131` | `/api/v1/onboarding/me/progress` |
 | `exam` | `EXAM` | `/api/v1/exams` | `8131` | `/api/v1/exams/me/sessions` |
 | `whitelist` | `WHITELIST` | `/api/v1/whitelist` | `8131` | `/api/v1/whitelist/me/applications/current` |
-| `attendance` | `ATTENDANCE` | `/api/v1/attendance` | `8131` | `/api/v1/attendance/me/summary` |
+| `attendance` | `ATTENDANCE` | `/api/v1/attendance` | `8131` | `/api/v1/attendance/leaderboard` |
 | `community` | `COMMUNITY` | `/api/v1/community` | `8112` | `/api/v1/community/boards` |
 | `activity` | `ACTIVITY` | `/api/v1/activity` | `8113` | `/api/v1/activity/events` |
 | `calendar` | `CALENDAR` | `/api/v1/calendar` | `8114` | `/api/v1/calendar/upcoming` |

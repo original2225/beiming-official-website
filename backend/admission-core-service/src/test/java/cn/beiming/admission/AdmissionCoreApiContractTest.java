@@ -140,6 +140,33 @@ class AdmissionCoreApiContractTest {
     }
 
     @Test
+    void consumesTrustedGatewayActorContextOnlyWhenInternalRequestIdExists() throws Exception {
+        mockMvc.perform(get("/api/v1/onboarding/me/progress")
+                        .header("X-Gateway-Internal-Request-Id", "req-gateway-actor")
+                        .header("X-Beiming-Actor-User-Id", "gw-user")
+                        .header("X-Beiming-Actor-Roles", "USER")
+                        .header("X-Beiming-Actor-Minecraft-Id", "GwSteve")
+                        .header("X-Beiming-Actor-Minecraft-Uuid", "uuid-gateway"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.userId").value("gw-user"))
+                .andExpect(jsonPath("$.data.displayNameSnapshot").value("Actor gw-user"))
+                .andExpect(jsonPath("$.data.minecraftBindingSnapshot.minecraftId").value("GwSteve"));
+
+        mockMvc.perform(get("/api/v1/onboarding/me/progress")
+                        .header("X-Beiming-Actor-User-Id", "forged-user")
+                        .header("X-Beiming-Actor-Roles", "OWNER"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(41000));
+
+        mockMvc.perform(get("/api/v1/onboarding/me/progress")
+                        .header("X-Gateway-Internal-Request-Id", "req-missing-actor")
+                        .header("X-Beiming-Actor-Roles", "USER"))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.code").value(46802));
+    }
+
+    @Test
     void registersExactlySecondBatchAndSelfApiRoutes() {
         long apiRouteMappings = handlerMapping.getHandlerMethods().keySet().stream()
                 .filter(mapping -> mapping.getPatternValues().stream().anyMatch(pattern -> pattern.startsWith("/api/v1/")))

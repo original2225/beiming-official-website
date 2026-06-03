@@ -167,6 +167,10 @@ abstract class BusinessCoreAdminContractCases {
 
         assertModuleEntry("MATERIAL", "/api/v1/materials/admin", 8126, "/admin/materials");
         assertModuleEntry("GUIDE", "/api/v1/guides/admin", 8127, "/admin/guides");
+        assertModuleEntry("ONBOARDING", "/api/v1/onboarding/admin", 8131, "/admin/onboarding");
+        assertModuleEntry("EXAM", "/api/v1/exams/admin", 8131, "/admin/exams");
+        assertModuleEntry("WHITELIST", "/api/v1/whitelist/admin", 8131, "/admin/whitelist");
+        assertModuleEntry("ATTENDANCE", "/api/v1/attendance/admin", 8131, "/admin/attendance");
         assertModuleEntry("CLOUDREVE_SYNC", "/api/v1/cloudreve-sync", 8118, "/admin/cloudreve-sync");
         assertModuleEntry("ONLINE_MAP", "/api/v1/online-map/admin", 8121, "/admin/online-map");
         assertModuleEntry("PLUGIN_INTEGRATION", "/api/v1/plugin-integration/admin", 8122, "/admin/plugin-integration");

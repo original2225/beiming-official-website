@@ -1,5 +1,6 @@
 package cn.beiming.attendance;
 
+import cn.beiming.admission.AdmissionTrustedActor;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -76,7 +77,7 @@ class AttendanceController {
     @GetMapping("/me/account")
     Map<String, Object> myAccount(@RequestHeader(value = "Authorization", required = false) String authorization,
                                   HttpServletRequest request) {
-        AttendanceUser user = auth.requireUser(authorization);
+        AttendanceUser user = auth.requireUser(authorization, request);
         return ok(store.myAccount(user, request));
     }
 
@@ -84,7 +85,7 @@ class AttendanceController {
     Map<String, Object> myLedger(@RequestHeader(value = "Authorization", required = false) String authorization,
                                  @RequestParam Map<String, String> query,
                                  HttpServletRequest request) {
-        AttendanceUser user = auth.requireUser(authorization);
+        AttendanceUser user = auth.requireUser(authorization, request);
         return ok(store.myLedger(user, query, request));
     }
 
@@ -92,14 +93,14 @@ class AttendanceController {
     Map<String, Object> myContributions(@RequestHeader(value = "Authorization", required = false) String authorization,
                                         @RequestParam Map<String, String> query,
                                         HttpServletRequest request) {
-        AttendanceUser user = auth.requireUser(authorization);
+        AttendanceUser user = auth.requireUser(authorization, request);
         return ok(store.myContributions(user, query, request));
     }
 
     @GetMapping("/me/ranking")
     Map<String, Object> myRanking(@RequestHeader(value = "Authorization", required = false) String authorization,
                                   HttpServletRequest request) {
-        AttendanceUser user = auth.requireUser(authorization);
+        AttendanceUser user = auth.requireUser(authorization, request);
         return ok(store.myRanking(user, request));
     }
 
@@ -107,7 +108,7 @@ class AttendanceController {
     Map<String, Object> adminAccounts(@RequestHeader(value = "Authorization", required = false) String authorization,
                                       @RequestParam Map<String, String> query,
                                       HttpServletRequest request) {
-        AttendanceUser actor = auth.requireAny(authorization, "HELPER", "ADMIN", "OWNER");
+        AttendanceUser actor = auth.requireAny(authorization, request, "HELPER", "ADMIN", "OWNER");
         return ok(store.adminAccounts(actor, query, request));
     }
 
@@ -115,7 +116,7 @@ class AttendanceController {
     Map<String, Object> adminAccount(@RequestHeader(value = "Authorization", required = false) String authorization,
                                      @PathVariable String accountId,
                                      HttpServletRequest request) {
-        AttendanceUser actor = auth.requireAny(authorization, "HELPER", "ADMIN", "OWNER");
+        AttendanceUser actor = auth.requireAny(authorization, request, "HELPER", "ADMIN", "OWNER");
         return ok(store.adminAccount(actor, accountId, request));
     }
 
@@ -123,7 +124,7 @@ class AttendanceController {
     ResponseEntity<Map<String, Object>> initialize(@RequestHeader(value = "Authorization", required = false) String authorization,
                                                    @RequestBody(required = false) Map<String, Object> body,
                                                    HttpServletRequest request) {
-        AttendanceUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
+        AttendanceUser actor = auth.requireAny(authorization, request, "ADMIN", "OWNER");
         MutationResult result = store.initialize(actor, bodyOrEmpty(body), request);
         return ResponseEntity.status(result.created() ? HttpStatus.CREATED : HttpStatus.OK).body(okBody(result.value()));
     }
@@ -133,7 +134,7 @@ class AttendanceController {
                                @PathVariable String accountId,
                                @RequestBody(required = false) Map<String, Object> body,
                                HttpServletRequest request) {
-        AttendanceUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
+        AttendanceUser actor = auth.requireAny(authorization, request, "ADMIN", "OWNER");
         return ok(store.adjust(actor, accountId, bodyOrEmpty(body), request));
     }
 
@@ -142,7 +143,7 @@ class AttendanceController {
                                 @PathVariable String ledgerId,
                                 @RequestBody(required = false) Map<String, Object> body,
                                 HttpServletRequest request) {
-        AttendanceUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
+        AttendanceUser actor = auth.requireAny(authorization, request, "ADMIN", "OWNER");
         return ok(store.reverse(actor, ledgerId, bodyOrEmpty(body), request));
     }
 
@@ -150,7 +151,7 @@ class AttendanceController {
     ResponseEntity<Map<String, Object>> createContribution(@RequestHeader(value = "Authorization", required = false) String authorization,
                                                            @RequestBody(required = false) Map<String, Object> body,
                                                            HttpServletRequest request) {
-        AttendanceUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
+        AttendanceUser actor = auth.requireAny(authorization, request, "ADMIN", "OWNER");
         return ResponseEntity.status(HttpStatus.CREATED).body(okBody(store.createContribution(actor, bodyOrEmpty(body), request)));
     }
 
@@ -159,7 +160,7 @@ class AttendanceController {
                                             @PathVariable String contributionId,
                                             @RequestBody(required = false) Map<String, Object> body,
                                             HttpServletRequest request) {
-        AttendanceUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
+        AttendanceUser actor = auth.requireAny(authorization, request, "ADMIN", "OWNER");
         return ok(store.correctContribution(actor, contributionId, bodyOrEmpty(body), request));
     }
 
@@ -167,7 +168,7 @@ class AttendanceController {
     Map<String, Object> previewMonthly(@RequestHeader(value = "Authorization", required = false) String authorization,
                                        @RequestBody(required = false) Map<String, Object> body,
                                        HttpServletRequest request) {
-        AttendanceUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
+        AttendanceUser actor = auth.requireAny(authorization, request, "ADMIN", "OWNER");
         return ok(store.monthlyPreview(actor, bodyOrEmpty(body), request));
     }
 
@@ -175,7 +176,7 @@ class AttendanceController {
     ResponseEntity<Map<String, Object>> runMonthly(@RequestHeader(value = "Authorization", required = false) String authorization,
                                                    @RequestBody(required = false) Map<String, Object> body,
                                                    HttpServletRequest request) {
-        AttendanceUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
+        AttendanceUser actor = auth.requireAny(authorization, request, "ADMIN", "OWNER");
         MutationResult result = store.runMonthly(actor, bodyOrEmpty(body), request);
         return ResponseEntity.status(result.created() ? HttpStatus.CREATED : HttpStatus.OK).body(okBody(result.value()));
     }
@@ -184,7 +185,7 @@ class AttendanceController {
     Map<String, Object> monthlyRun(@RequestHeader(value = "Authorization", required = false) String authorization,
                                    @PathVariable String runId,
                                    HttpServletRequest request) {
-        auth.requireAny(authorization, "ADMIN", "OWNER");
+        auth.requireAny(authorization, request, "ADMIN", "OWNER");
         return ok(store.monthlyRun(runId, request));
     }
 
@@ -192,7 +193,7 @@ class AttendanceController {
     Map<String, Object> removalCandidates(@RequestHeader(value = "Authorization", required = false) String authorization,
                                           @RequestParam Map<String, String> query,
                                           HttpServletRequest request) {
-        auth.requireAny(authorization, "HELPER", "ADMIN", "OWNER");
+        auth.requireAny(authorization, request, "HELPER", "ADMIN", "OWNER");
         return ok(store.removalCandidates(query, request));
     }
 
@@ -201,7 +202,7 @@ class AttendanceController {
                                          @PathVariable String candidateId,
                                          @RequestBody(required = false) Map<String, Object> body,
                                          HttpServletRequest request) {
-        AttendanceUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
+        AttendanceUser actor = auth.requireAny(authorization, request, "ADMIN", "OWNER");
         return ok(store.confirmCandidate(actor, candidateId, bodyOrEmpty(body), request));
     }
 
@@ -210,7 +211,7 @@ class AttendanceController {
                                          @PathVariable String candidateId,
                                          @RequestBody(required = false) Map<String, Object> body,
                                          HttpServletRequest request) {
-        AttendanceUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
+        AttendanceUser actor = auth.requireAny(authorization, request, "ADMIN", "OWNER");
         return ok(store.dismissCandidate(actor, candidateId, bodyOrEmpty(body), request));
     }
 
@@ -218,7 +219,7 @@ class AttendanceController {
     Map<String, Object> rebuildLeaderboard(@RequestHeader(value = "Authorization", required = false) String authorization,
                                            @RequestBody(required = false) Map<String, Object> body,
                                            HttpServletRequest request) {
-        AttendanceUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
+        AttendanceUser actor = auth.requireAny(authorization, request, "ADMIN", "OWNER");
         return ok(store.rebuildLeaderboard(actor, bodyOrEmpty(body), request));
     }
 
@@ -226,14 +227,14 @@ class AttendanceController {
     Map<String, Object> auditLogs(@RequestHeader(value = "Authorization", required = false) String authorization,
                                   @RequestParam Map<String, String> query,
                                   HttpServletRequest request) {
-        auth.requireAny(authorization, "ADMIN", "OWNER");
+        auth.requireAny(authorization, request, "ADMIN", "OWNER");
         return ok(store.auditLogs(query, request));
     }
 
     @GetMapping("/admin/ops/summary")
     Map<String, Object> opsSummary(@RequestHeader(value = "Authorization", required = false) String authorization,
                                    HttpServletRequest request) {
-        auth.requireAny(authorization, "HELPER", "ADMIN", "OWNER");
+        auth.requireAny(authorization, request, "HELPER", "ADMIN", "OWNER");
         return ok(store.opsSummary(request));
     }
 
@@ -720,7 +721,7 @@ class AttendanceStore {
     Map<String, Object> opsSummary(HttpServletRequest request) {
         long active = accounts.values().stream().filter(account -> "ACTIVE".equals(account.status)).count();
         long openCandidates = candidates.values().stream().filter(candidate -> "OPEN".equals(candidate.status)).count();
-        return linkedMap("service", "attendance", "port", 8111, "storageMode", "IN_MEMORY", "authMode", "TEST_STUB", "whitelistMode", "TEST_STUB", "profileMode", "TEST_STUB", "notificationMode", "TEST_STUB", "testControlsEnabled", testControls.enabled(), "accountsTotal", accounts.size(), "activeAccountsTotal", active, "removalCandidatesOpenTotal", openCandidates, "monthlyRunsTotal", monthlyRuns.size(), "ledgerEntriesTotal", ledgers.size(), "contributionsTotal", contributions.size(), "auditsTotal", audits.size(), "idempotencyRecordsTotal", idempotency.size(), "lastMonthlyRunAt", monthlyRuns.isEmpty() ? null : NOW, "lastAuditAt", audits.isEmpty() ? null : NOW, "productionGaps", List.of("P0_IN_MEMORY_STORAGE", "P0_AUTH_STUB", "P0_WHITELIST_STUB", "P0_PROFILE_STUB", "P0_NOTIFICATION_STUB", testControls.enabled() ? "TEST_CONTROLS_ENABLED_FOR_LOCAL_TEST" : "TEST_CONTROLS_DISABLED_OUTSIDE_TEST", "REAL_ACTIVITY_EVENTS_NOT_CONNECTED", "REAL_ONLINE_TIME_NOT_CONNECTED", "WHITELIST_REMOVAL_NOT_CONNECTED"));
+        return linkedMap("service", "attendance", "port", 8131, "legacyPort", 8111, "storageMode", "IN_MEMORY", "authMode", "TEST_STUB", "whitelistMode", "TEST_STUB", "profileMode", "TEST_STUB", "notificationMode", "TEST_STUB", "testControlsEnabled", testControls.enabled(), "accountsTotal", accounts.size(), "activeAccountsTotal", active, "removalCandidatesOpenTotal", openCandidates, "monthlyRunsTotal", monthlyRuns.size(), "ledgerEntriesTotal", ledgers.size(), "contributionsTotal", contributions.size(), "auditsTotal", audits.size(), "idempotencyRecordsTotal", idempotency.size(), "lastMonthlyRunAt", monthlyRuns.isEmpty() ? null : NOW, "lastAuditAt", audits.isEmpty() ? null : NOW, "productionGaps", List.of("P0_IN_MEMORY_STORAGE", "P0_AUTH_STUB", "P0_WHITELIST_STUB", "P0_PROFILE_STUB", "P0_NOTIFICATION_STUB", testControls.enabled() ? "TEST_CONTROLS_ENABLED_FOR_LOCAL_TEST" : "TEST_CONTROLS_DISABLED_OUTSIDE_TEST", "REAL_ACTIVITY_EVENTS_NOT_CONNECTED", "REAL_ONLINE_TIME_NOT_CONNECTED", "WHITELIST_REMOVAL_NOT_CONNECTED"));
     }
 
     private Handoff handoff(Map<String, Object> body, HttpServletRequest request) {
@@ -1176,6 +1177,13 @@ class AttendanceStore {
 }
 
 class TestAttendanceAuthProvider {
+    AttendanceUser requireUser(String authorization, HttpServletRequest request) {
+        if (AdmissionTrustedActor.hasGatewayContext(request)) {
+            return trustedActor(request);
+        }
+        return requireUser(authorization);
+    }
+
     AttendanceUser requireUser(String authorization) {
         if (authorization == null || authorization.isBlank()) throw new AttendanceException(401, 41000, "not logged in");
         if (!authorization.startsWith("Bearer ")) throw new AttendanceException(401, 41003, "bad token format");
@@ -1195,11 +1203,27 @@ class TestAttendanceAuthProvider {
         };
     }
 
+    AttendanceUser requireAny(String authorization, HttpServletRequest request, String... roles) {
+        AttendanceUser user = requireUser(authorization, request);
+        Set<String> allowed = new LinkedHashSet<>(List.of(roles));
+        if (user.roles().stream().noneMatch(allowed::contains)) throw new AttendanceException(403, 42001, "role permission denied");
+        return user;
+    }
+
     AttendanceUser requireAny(String authorization, String... roles) {
         AttendanceUser user = requireUser(authorization);
         Set<String> allowed = new LinkedHashSet<>(List.of(roles));
         if (user.roles().stream().noneMatch(allowed::contains)) throw new AttendanceException(403, 42001, "role permission denied");
         return user;
+    }
+
+    private AttendanceUser trustedActor(HttpServletRequest request) {
+        try {
+            AdmissionTrustedActor.Actor actor = AdmissionTrustedActor.parse(request);
+            return new AttendanceUser(actor.userId(), actor.displayName(), actor.roles(), "ACTIVE");
+        } catch (IllegalArgumentException exception) {
+            throw new AttendanceException(502, 48002, "auth incompatible");
+        }
     }
 }
 

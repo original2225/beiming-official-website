@@ -272,6 +272,14 @@ Spring Boot 主应用建议放在 `cn.beiming.admission`，组件扫描范围覆
 
 `X-Gateway-Internal-Request-Id` 存在时，各模块按自身契约优先解析可信认证上下文。字段缺失、格式非法、角色或能力点不兼容时，不得静默降级成匿名用户。生产入口必须由 `api-gateway` 或反向代理剥离客户端伪造的同名可信头；直连本地测试必须覆盖伪造头不能绕过权限的场景。
 
+`X-Gateway-Internal-Request-Id` 缺失时，各模块必须忽略所有 `X-Beiming-Actor-*` 头并继续走 Bearer 兼容路径。四个模块的业务接口进入自身处理后，可信上下文解析失败必须返回对应模块契约错误码：`onboarding` 返回 `46802`，`exam` 返回 `46902`，`whitelist` 返回 `47002`，`attendance` 返回 `48002`。`53133` 只用于 `admission-core` 自有接口或装配层在请求进入业务模块前的解析失败。
+
+## 测试控制头
+
+四个业务模块继承各自契约中的本地测试控制头，但生产和默认运行环境必须关闭。默认关闭时，`X-Test-*` 头必须被业务模块忽略，不得触发依赖失败、审计失败、存储失败、通知失败、流水失败或 profile stale。只有对应模块显式启用 `onboarding.test-controls.enabled=true`、`exam.test-controls.enabled=true`、`whitelist.test-controls.enabled=true` 或 `attendance.test-controls.enabled=true` 时，本地自动化测试才可以使用这些头。
+
+`admission-core` 自有健康检查和后台装配摘要不接受业务测试控制头作为真实运行状态输入。测试控制头隔离属于第二批合并后的生产化硬化验收项，必须有默认关闭场景的自动化测试覆盖。
+
 ## 内部适配规则
 
 `onboarding` 仍拥有入服流程实例、步骤状态、资料确认、规则确认、方向选择、阻塞状态和 exam 交接快照主数据。它只能输出 `OnboardingExamHandoffSnapshot`，不能判分，不能创建白名单申请，不能初始化考勤积分。

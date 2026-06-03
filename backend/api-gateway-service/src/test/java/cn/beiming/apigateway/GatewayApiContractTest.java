@@ -675,7 +675,7 @@ class GatewayApiContractTest {
         assertThat(findRoute(routes, "onboarding").path("healthCheckPath").asText()).isEqualTo("/api/v1/onboarding/me/progress");
         assertThat(findRoute(routes, "exam").path("healthCheckPath").asText()).isEqualTo("/api/v1/exams/me/sessions");
         assertThat(findRoute(routes, "whitelist").path("healthCheckPath").asText()).isEqualTo("/api/v1/whitelist/me/applications/current");
-        assertThat(findRoute(routes, "attendance").path("healthCheckPath").asText()).isEqualTo("/api/v1/attendance/me/summary");
+        assertThat(findRoute(routes, "attendance").path("healthCheckPath").asText()).isEqualTo("/api/v1/attendance/leaderboard");
     }
 
     private String bearer(String token) {

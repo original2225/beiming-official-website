@@ -1,9 +1,11 @@
 package cn.beiming.onboarding;
 
+import cn.beiming.admission.AdmissionTrustedActor;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
@@ -41,8 +43,8 @@ import java.util.concurrent.ConcurrentHashMap;
 @Configuration
 class OnboardingModule {
     @Bean
-    OnboardingStore onboardingStore() {
-        OnboardingStore store = new OnboardingStore();
+    OnboardingStore onboardingStore(OnboardingTestControls testControls) {
+        OnboardingStore store = new OnboardingStore(testControls);
         store.seed();
         return store;
     }
@@ -50,6 +52,11 @@ class OnboardingModule {
     @Bean
     TestOnboardingAuthProvider onboardingAuthProvider() {
         return new TestOnboardingAuthProvider();
+    }
+
+    @Bean
+    OnboardingTestControls onboardingTestControls(@Value("${onboarding.test-controls.enabled:false}") boolean enabled) {
+        return new OnboardingTestControls(enabled);
     }
 }
 
@@ -67,7 +74,7 @@ class OnboardingController {
     @GetMapping("/me/progress")
     Map<String, Object> progress(@RequestHeader(value = "Authorization", required = false) String authorization,
                                  HttpServletRequest request) {
-        AuthContext user = auth.requireUser(authorization);
+        AuthContext user = auth.requireUser(authorization, request);
         return ok(store.progress(user, request));
     }
 
@@ -75,7 +82,7 @@ class OnboardingController {
     ResponseEntity<Map<String, Object>> start(@RequestHeader(value = "Authorization", required = false) String authorization,
                                               @RequestBody(required = false) Map<String, Object> body,
                                               HttpServletRequest request) {
-        AuthContext user = auth.requireUser(authorization);
+        AuthContext user = auth.requireUser(authorization, request);
         MutationResult result = store.start(user, bodyOrEmpty(body), request);
         return ResponseEntity.status(result.created() ? HttpStatus.CREATED : HttpStatus.OK).body(okBody(result.application()));
     }
@@ -84,7 +91,7 @@ class OnboardingController {
     Map<String, Object> confirmProfile(@RequestHeader(value = "Authorization", required = false) String authorization,
                                        @RequestBody(required = false) Map<String, Object> body,
                                        HttpServletRequest request) {
-        AuthContext user = auth.requireUser(authorization);
+        AuthContext user = auth.requireUser(authorization, request);
         return ok(store.confirmProfile(user, bodyOrEmpty(body), request));
     }
 
@@ -92,7 +99,7 @@ class OnboardingController {
     Map<String, Object> confirmRules(@RequestHeader(value = "Authorization", required = false) String authorization,
                                      @RequestBody(required = false) Map<String, Object> body,
                                      HttpServletRequest request) {
-        AuthContext user = auth.requireUser(authorization);
+        AuthContext user = auth.requireUser(authorization, request);
         return ok(store.confirmRules(user, bodyOrEmpty(body), request));
     }
 
@@ -100,7 +107,7 @@ class OnboardingController {
     Map<String, Object> direction(@RequestHeader(value = "Authorization", required = false) String authorization,
                                   @RequestBody(required = false) Map<String, Object> body,
                                   HttpServletRequest request) {
-        AuthContext user = auth.requireUser(authorization);
+        AuthContext user = auth.requireUser(authorization, request);
         return ok(store.direction(user, bodyOrEmpty(body), request));
     }
 
@@ -108,14 +115,14 @@ class OnboardingController {
     Map<String, Object> advance(@RequestHeader(value = "Authorization", required = false) String authorization,
                                 @RequestBody(required = false) Map<String, Object> body,
                                 HttpServletRequest request) {
-        AuthContext user = auth.requireUser(authorization);
+        AuthContext user = auth.requireUser(authorization, request);
         return ok(store.advance(user, bodyOrEmpty(body), request));
     }
 
     @GetMapping("/me/next-action")
     Map<String, Object> nextAction(@RequestHeader(value = "Authorization", required = false) String authorization,
                                    HttpServletRequest request) {
-        AuthContext user = auth.requireUser(authorization);
+        AuthContext user = auth.requireUser(authorization, request);
         return ok(store.nextAction(user, request));
     }
 
@@ -123,7 +130,7 @@ class OnboardingController {
     Map<String, Object> applications(@RequestHeader(value = "Authorization", required = false) String authorization,
                                      @RequestParam Map<String, String> query,
                                      HttpServletRequest request) {
-        AuthContext actor = auth.requireAny(authorization, "HELPER", "ADMIN", "OWNER");
+        AuthContext actor = auth.requireAny(authorization, request, "HELPER", "ADMIN", "OWNER");
         return ok(store.applications(actor, query, request));
     }
 
@@ -131,7 +138,7 @@ class OnboardingController {
     Map<String, Object> application(@RequestHeader(value = "Authorization", required = false) String authorization,
                                     @PathVariable String applicationId,
                                     HttpServletRequest request) {
-        AuthContext actor = auth.requireAny(authorization, "HELPER", "ADMIN", "OWNER");
+        AuthContext actor = auth.requireAny(authorization, request, "HELPER", "ADMIN", "OWNER");
         return ok(store.application(actor, applicationId, request));
     }
 
@@ -139,7 +146,7 @@ class OnboardingController {
     Map<String, Object> examHandoff(@RequestHeader(value = "Authorization", required = false) String authorization,
                                     @PathVariable String applicationId,
                                     HttpServletRequest request) {
-        AuthContext actor = auth.requireAny(authorization, "ADMIN", "OWNER");
+        AuthContext actor = auth.requireAny(authorization, request, "ADMIN", "OWNER");
         return ok(store.examHandoff(actor, applicationId, request));
     }
 
@@ -148,7 +155,7 @@ class OnboardingController {
                               @PathVariable String applicationId,
                               @RequestBody(required = false) Map<String, Object> body,
                               HttpServletRequest request) {
-        AuthContext actor = auth.requireAny(authorization, "ADMIN", "OWNER");
+        AuthContext actor = auth.requireAny(authorization, request, "ADMIN", "OWNER");
         return ok(store.reset(actor, applicationId, bodyOrEmpty(body), request));
     }
 
@@ -157,7 +164,7 @@ class OnboardingController {
                               @PathVariable String applicationId,
                               @RequestBody(required = false) Map<String, Object> body,
                               HttpServletRequest request) {
-        AuthContext actor = auth.requireAny(authorization, "ADMIN", "OWNER");
+        AuthContext actor = auth.requireAny(authorization, request, "ADMIN", "OWNER");
         return ok(store.block(actor, applicationId, bodyOrEmpty(body), request));
     }
 
@@ -166,7 +173,7 @@ class OnboardingController {
                                 @PathVariable String applicationId,
                                 @RequestBody(required = false) Map<String, Object> body,
                                 HttpServletRequest request) {
-        AuthContext actor = auth.requireAny(authorization, "ADMIN", "OWNER");
+        AuthContext actor = auth.requireAny(authorization, request, "ADMIN", "OWNER");
         return ok(store.unblock(actor, applicationId, bodyOrEmpty(body), request));
     }
 
@@ -174,14 +181,14 @@ class OnboardingController {
     Map<String, Object> auditLogs(@RequestHeader(value = "Authorization", required = false) String authorization,
                                   @RequestParam Map<String, String> query,
                                   HttpServletRequest request) {
-        AuthContext actor = auth.requireAny(authorization, "ADMIN", "OWNER");
+        AuthContext actor = auth.requireAny(authorization, request, "ADMIN", "OWNER");
         return ok(store.auditLogs(actor, query, request));
     }
 
     @GetMapping("/admin/ops/summary")
     Map<String, Object> opsSummary(@RequestHeader(value = "Authorization", required = false) String authorization,
                                    HttpServletRequest request) {
-        auth.requireAny(authorization, "ADMIN", "OWNER");
+        auth.requireAny(authorization, request, "ADMIN", "OWNER");
         return ok(store.opsSummary(request));
     }
 
@@ -218,8 +225,13 @@ class OnboardingStore {
     private final Map<String, String> currentByUser = new ConcurrentHashMap<>();
     private final Map<String, IdempotencyRecord> idempotency = new ConcurrentHashMap<>();
     private final List<Map<String, Object>> audits = new ArrayList<>();
+    private final OnboardingTestControls testControls;
     private int idSeq = 2000;
     private int handoffSnapshotsTotal;
+
+    OnboardingStore(OnboardingTestControls testControls) {
+        this.testControls = testControls;
+    }
 
     void seed() {
         ApplicationRecord inProgress = newRecord("app-in-progress", "seed-in-progress", "Seed Player", minecraft("SeedSteve", "uuid-seed"));
@@ -561,12 +573,14 @@ class OnboardingStore {
         long ready = applications.values().stream().filter(app -> "READY_FOR_EXAM".equals(app.status)).count();
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("service", "onboarding");
-        data.put("port", 8108);
+        data.put("port", 8131);
+        data.put("legacyPort", 8108);
         data.put("storageMode", "IN_MEMORY");
         data.put("authMode", "TEST_STUB");
         data.put("profileMode", "TEST_STUB");
         data.put("contentMode", "TEST_STUB");
         data.put("notificationMode", "TEST_STUB");
+        data.put("testControlsEnabled", testControls.enabled());
         data.put("applicationsTotal", applications.size());
         data.put("blockedTotal", blocked);
         data.put("readyForExamTotal", ready);
@@ -724,15 +738,15 @@ class OnboardingStore {
     private String profileMode(AuthContext user, HttpServletRequest request) {
         String mode = dependencyMode(user, request, "PROFILE");
         if (!"OK".equals(mode)) return mode;
-        if ("PROFILE_UNAVAILABLE".equals(user.profileStatus())) return "UNAVAILABLE";
-        if ("PROFILE_TIMEOUT".equals(user.profileStatus())) return "TIMEOUT";
-        if ("PROFILE_BAD".equals(user.profileStatus())) return "BAD";
+        if (testControls.enabled() && "PROFILE_UNAVAILABLE".equals(user.profileStatus())) return "UNAVAILABLE";
+        if (testControls.enabled() && "PROFILE_TIMEOUT".equals(user.profileStatus())) return "TIMEOUT";
+        if (testControls.enabled() && "PROFILE_BAD".equals(user.profileStatus())) return "BAD";
         return "OK";
     }
 
     private String dependencyMode(AuthContext user, HttpServletRequest request, String dependency) {
         if (request != null) {
-            String header = request.getHeader("X-Test-Dependency-Mode");
+            String header = testHeader(request, "X-Test-Dependency-Mode");
             if (header != null) {
                 for (String pair : header.split(",")) {
                     String[] parts = pair.split(":");
@@ -740,21 +754,21 @@ class OnboardingStore {
                 }
             }
         }
-        if ("CONTENT".equals(dependency) && user != null && user.userId().contains("content-unavailable")) return "UNAVAILABLE";
+        if (testControls.enabled() && "CONTENT".equals(dependency) && user != null && user.userId().contains("content-unavailable")) return "UNAVAILABLE";
         return "OK";
     }
 
     private void requireNotificationIfNeeded(Map<String, Object> body, HttpServletRequest request) {
         boolean notify = bool(body.getOrDefault("notifyUser", true));
         if (!notify) return;
-        String mode = request.getHeader("X-Test-Notification-Mode");
+        String mode = testHeader(request, "X-Test-Notification-Mode");
         if ("unavailable".equals(mode)) throw new OnboardingException(502, 46830, "notification unavailable");
         if ("timeout".equals(mode)) throw new OnboardingException(504, 46831, "notification timeout");
         if ("bad".equals(mode)) throw new OnboardingException(502, 46832, "notification incompatible");
     }
 
     private void applyAuxNotification(ApplicationRecord app, HttpServletRequest request) {
-        String mode = request.getHeader("X-Test-Notification-Mode");
+        String mode = testHeader(request, "X-Test-Notification-Mode");
         if ("unavailable".equals(mode) || "timeout".equals(mode) || "bad".equals(mode)) {
             app.notificationStatus = "FAILED";
         } else {
@@ -768,11 +782,15 @@ class OnboardingStore {
     }
 
     private boolean auditShouldFail(HttpServletRequest request) {
-        return "true".equals(request.getHeader("X-Test-Fail-Audit"));
+        return "true".equals(testHeader(request, "X-Test-Fail-Audit"));
     }
 
     private boolean storeShouldFail(HttpServletRequest request) {
-        return "true".equals(request.getHeader("X-Test-Fail-Store"));
+        return "true".equals(testHeader(request, "X-Test-Fail-Store"));
+    }
+
+    private String testHeader(HttpServletRequest request, String name) {
+        return testControls.enabled() && request != null ? request.getHeader(name) : null;
     }
 
     private void rejectExistingMember(AuthContext user) {
@@ -1009,6 +1027,13 @@ class OnboardingStore {
 }
 
 class TestOnboardingAuthProvider {
+    AuthContext requireUser(String authorization, HttpServletRequest request) {
+        if (AdmissionTrustedActor.hasGatewayContext(request)) {
+            return trustedActor(request);
+        }
+        return requireUser(authorization);
+    }
+
     AuthContext requireUser(String authorization) {
         if (authorization == null || authorization.isBlank()) throw new OnboardingException(401, 41000, "not logged in");
         if (!authorization.startsWith("Bearer ")) throw new OnboardingException(401, 41003, "bad token format");
@@ -1039,11 +1064,27 @@ class TestOnboardingAuthProvider {
         };
     }
 
+    AuthContext requireAny(String authorization, HttpServletRequest request, String... roles) {
+        AuthContext user = requireUser(authorization, request);
+        Set<String> allowed = new LinkedHashSet<>(List.of(roles));
+        if (user.roles().stream().noneMatch(allowed::contains)) throw new OnboardingException(403, 42001, "role permission denied");
+        return user;
+    }
+
     AuthContext requireAny(String authorization, String... roles) {
         AuthContext user = requireUser(authorization);
         Set<String> allowed = new LinkedHashSet<>(List.of(roles));
         if (user.roles().stream().noneMatch(allowed::contains)) throw new OnboardingException(403, 42001, "role permission denied");
         return user;
+    }
+
+    private AuthContext trustedActor(HttpServletRequest request) {
+        try {
+            AdmissionTrustedActor.Actor actor = AdmissionTrustedActor.parse(request);
+            return new AuthContext(actor.userId(), actor.displayName(), actor.roles(), "ACTIVE", actor.minecraftBinding(), null);
+        } catch (IllegalArgumentException exception) {
+            throw new OnboardingException(502, 46802, "auth incompatible");
+        }
     }
 
     private static Map<String, Object> minecraft(String id, String uuid) {
@@ -1064,6 +1105,9 @@ record IdempotencyRecord(String fingerprint, Map<String, Object> value) {
 }
 
 record MutationResult(boolean created, Map<String, Object> application) {
+}
+
+record OnboardingTestControls(boolean enabled) {
 }
 
 class ApplicationRecord {

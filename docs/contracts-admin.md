@@ -133,7 +133,7 @@
 | `moduleKey` | string | 是 | 模块键。 |
 | `status` | string | 是 | `AdminModuleStatus`。 |
 | `service` | string | 是 | 服务名。 |
-| `port` | integer 或 null | 是 | 固定端口。当前已闭环模块必须为非空，未来未实现模块为 `null`。 |
+| `port` | integer 或 null | 是 | 当前运行入口端口。当前已闭环模块必须为非空，未来未实现模块为 `null`。第二批 `ONBOARDING`、`EXAM`、`WHITELIST` 和 `ATTENDANCE` 已由 `admission-core-service` 承载，必须返回 `8131`，历史原服务端口只保留在各自业务契约的 `legacyPort` 中。 |
 | `storageMode` | string 或 null | 是 | 例如 `IN_MEMORY`。 |
 | `authMode` | string 或 null | 是 | 认证适配模式。 |
 | `lastCheckedAt` | string | 是 | 最近检查时间。 |

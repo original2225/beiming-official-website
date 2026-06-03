@@ -30,7 +30,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest(classes = AdmissionCoreServiceApplication.class)
+@SpringBootTest(classes = AdmissionCoreServiceApplication.class, properties = "whitelist.test-controls.enabled=true")
 @AutoConfigureMockMvc
 @DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_EACH_TEST_METHOD)
 class WhitelistApiContractTest {
@@ -222,7 +222,8 @@ class WhitelistApiContractTest {
 
         JsonNode ops = performJson(get("/api/v1/whitelist/admin/ops/summary").header("Authorization", bearer("admin-token")), 200);
         assertThat(ops.at("/data/service").asText()).isEqualTo("whitelist");
-        assertThat(ops.at("/data/port").asInt()).isEqualTo(8110);
+        assertThat(ops.at("/data/port").asInt()).isEqualTo(8131);
+        assertThat(ops.at("/data/legacyPort").asInt()).isEqualTo(8110);
         assertThat(ops.at("/data/productionGaps").toString()).contains("ATTENDANCE_NOT_IMPLEMENTED", "REAL_SERVER_WHITELIST_NOT_CONNECTED");
     }
 

@@ -73,7 +73,7 @@
 | `onboarding` | `ONBOARDING` | `/api/v1/onboarding` | `8131` | `/api/v1/onboarding/me/progress` |
 | `exam` | `EXAM` | `/api/v1/exams` | `8131` | `/api/v1/exams/me/sessions` |
 | `whitelist` | `WHITELIST` | `/api/v1/whitelist` | `8131` | `/api/v1/whitelist/me/applications/current` |
-| `attendance` | `ATTENDANCE` | `/api/v1/attendance` | `8131` | `/api/v1/attendance/me/summary` |
+| `attendance` | `ATTENDANCE` | `/api/v1/attendance` | `8131` | `/api/v1/attendance/leaderboard` |
 | `community` | `COMMUNITY` | `/api/v1/community` | `8112` | `/api/v1/community/boards` |
 | `activity` | `ACTIVITY` | `/api/v1/activity` | `8113` | `/api/v1/activity/events` |
 | `calendar` | `CALENDAR` | `/api/v1/calendar` | `8114` | `/api/v1/calendar/upcoming` |

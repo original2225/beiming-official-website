@@ -971,10 +971,7 @@ class AdminStore {
             case "SERVER_STATUS" -> 8105;
             case "RESOURCE" -> 8106;
             case "ADMIN" -> 8107;
-            case "ONBOARDING" -> 8108;
-            case "EXAM" -> 8109;
-            case "WHITELIST" -> 8110;
-            case "ATTENDANCE" -> 8111;
+            case "ONBOARDING", "EXAM", "WHITELIST", "ATTENDANCE" -> 8131;
             case "COMMUNITY" -> 8112;
             case "ACTIVITY" -> 8113;
             case "CALENDAR" -> 8114;

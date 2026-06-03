@@ -313,7 +313,8 @@ class AttendanceApiContractTest {
 
         JsonNode ops = performJson(get("/api/v1/attendance/admin/ops/summary").header("Authorization", bearer("helper-token")), 200);
         assertThat(ops.at("/data/service").asText()).isEqualTo("attendance");
-        assertThat(ops.at("/data/port").asInt()).isEqualTo(8111);
+        assertThat(ops.at("/data/port").asInt()).isEqualTo(8131);
+        assertThat(ops.at("/data/legacyPort").asInt()).isEqualTo(8111);
         assertThat(ops.at("/data/testControlsEnabled").asBoolean()).isTrue();
         assertThat(ops.toString()).contains("P0_IN_MEMORY_STORAGE", "REAL_ONLINE_TIME_NOT_CONNECTED", "WHITELIST_REMOVAL_NOT_CONNECTED");
         assertNoSecrets(ops);

@@ -1,9 +1,11 @@
 package cn.beiming.exam;
 
+import cn.beiming.admission.AdmissionTrustedActor;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
@@ -42,8 +44,8 @@ import java.util.concurrent.ConcurrentHashMap;
 @Configuration
 class ExamModule {
     @Bean
-    ExamStore examStore() {
-        ExamStore store = new ExamStore();
+    ExamStore examStore(ExamTestControls testControls) {
+        ExamStore store = new ExamStore(testControls);
         store.seed();
         return store;
     }
@@ -51,6 +53,11 @@ class ExamModule {
     @Bean
     TestExamAuthProvider examAuthProvider() {
         return new TestExamAuthProvider();
+    }
+
+    @Bean
+    ExamTestControls examTestControls(@Value("${exam.test-controls.enabled:false}") boolean enabled) {
+        return new ExamTestControls(enabled);
     }
 }
 
@@ -69,7 +76,7 @@ class ExamController {
     ResponseEntity<Map<String, Object>> createSession(@RequestHeader(value = "Authorization", required = false) String authorization,
                                                       @RequestBody(required = false) Map<String, Object> body,
                                                       HttpServletRequest request) {
-        ExamUser user = auth.requireUser(authorization);
+        ExamUser user = auth.requireUser(authorization, request);
         MutationResult result = store.createSession(user, bodyOrEmpty(body), request);
         return ResponseEntity.status(result.created() ? HttpStatus.CREATED : HttpStatus.OK).body(okBody(result.value()));
     }
@@ -77,7 +84,7 @@ class ExamController {
     @GetMapping("/me/sessions/current")
     Map<String, Object> currentSession(@RequestHeader(value = "Authorization", required = false) String authorization,
                                        HttpServletRequest request) {
-        ExamUser user = auth.requireUser(authorization);
+        ExamUser user = auth.requireUser(authorization, request);
         return ok(store.currentSession(user, request));
     }
 
@@ -85,7 +92,7 @@ class ExamController {
     Map<String, Object> mySessions(@RequestHeader(value = "Authorization", required = false) String authorization,
                                    @RequestParam Map<String, String> query,
                                    HttpServletRequest request) {
-        ExamUser user = auth.requireUser(authorization);
+        ExamUser user = auth.requireUser(authorization, request);
         return ok(store.mySessions(user, query, request));
     }
 
@@ -93,7 +100,7 @@ class ExamController {
     Map<String, Object> paper(@RequestHeader(value = "Authorization", required = false) String authorization,
                               @PathVariable String sessionId,
                               HttpServletRequest request) {
-        ExamUser user = auth.requireUser(authorization);
+        ExamUser user = auth.requireUser(authorization, request);
         return ok(store.paper(user, sessionId, request));
     }
 
@@ -102,7 +109,7 @@ class ExamController {
                                     @PathVariable String sessionId,
                                     @RequestBody(required = false) Map<String, Object> body,
                                     HttpServletRequest request) {
-        ExamUser user = auth.requireUser(authorization);
+        ExamUser user = auth.requireUser(authorization, request);
         return ok(store.saveAnswers(user, sessionId, bodyOrEmpty(body), request));
     }
 
@@ -111,7 +118,7 @@ class ExamController {
                                @PathVariable String sessionId,
                                @RequestBody(required = false) Map<String, Object> body,
                                HttpServletRequest request) {
-        ExamUser user = auth.requireUser(authorization);
+        ExamUser user = auth.requireUser(authorization, request);
         return ok(store.submit(user, sessionId, bodyOrEmpty(body), request));
     }
 
@@ -120,7 +127,7 @@ class ExamController {
                                    @PathVariable String sessionId,
                                    @RequestBody(required = false) Map<String, Object> body,
                                    HttpServletRequest request) {
-        ExamUser user = auth.requireUser(authorization);
+        ExamUser user = auth.requireUser(authorization, request);
         return ok(store.supplement(user, sessionId, bodyOrEmpty(body), request));
     }
 
@@ -128,7 +135,7 @@ class ExamController {
     Map<String, Object> result(@RequestHeader(value = "Authorization", required = false) String authorization,
                                @PathVariable String sessionId,
                                HttpServletRequest request) {
-        ExamUser user = auth.requireUser(authorization);
+        ExamUser user = auth.requireUser(authorization, request);
         return ok(store.result(user, sessionId, request));
     }
 
@@ -136,7 +143,7 @@ class ExamController {
     Map<String, Object> adminSessions(@RequestHeader(value = "Authorization", required = false) String authorization,
                                       @RequestParam Map<String, String> query,
                                       HttpServletRequest request) {
-        ExamUser actor = auth.requireAny(authorization, "HELPER", "ADMIN", "OWNER");
+        ExamUser actor = auth.requireAny(authorization, request, "HELPER", "ADMIN", "OWNER");
         return ok(store.adminSessions(actor, query, request));
     }
 
@@ -144,7 +151,7 @@ class ExamController {
     Map<String, Object> adminSession(@RequestHeader(value = "Authorization", required = false) String authorization,
                                      @PathVariable String sessionId,
                                      HttpServletRequest request) {
-        ExamUser actor = auth.requireAny(authorization, "HELPER", "ADMIN", "OWNER");
+        ExamUser actor = auth.requireAny(authorization, request, "HELPER", "ADMIN", "OWNER");
         return ok(store.adminSession(actor, sessionId, request));
     }
 
@@ -153,7 +160,7 @@ class ExamController {
                                      @PathVariable String sessionId,
                                      @RequestBody(required = false) Map<String, Object> body,
                                      HttpServletRequest request) {
-        ExamUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
+        ExamUser actor = auth.requireAny(authorization, request, "ADMIN", "OWNER");
         return ok(store.manualReview(actor, sessionId, bodyOrEmpty(body), request));
     }
 
@@ -162,7 +169,7 @@ class ExamController {
                                          @PathVariable String sessionId,
                                          @RequestBody(required = false) Map<String, Object> body,
                                          HttpServletRequest request) {
-        ExamUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
+        ExamUser actor = auth.requireAny(authorization, request, "ADMIN", "OWNER");
         return ok(store.resultCorrection(actor, sessionId, bodyOrEmpty(body), request));
     }
 
@@ -171,7 +178,7 @@ class ExamController {
                                           @PathVariable String sessionId,
                                           @RequestBody(required = false) Map<String, Object> body,
                                           HttpServletRequest request) {
-        ExamUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
+        ExamUser actor = auth.requireAny(authorization, request, "ADMIN", "OWNER");
         return ok(store.requestSupplement(actor, sessionId, bodyOrEmpty(body), request));
     }
 
@@ -180,7 +187,7 @@ class ExamController {
                                @PathVariable String sessionId,
                                @RequestBody(required = false) Map<String, Object> body,
                                HttpServletRequest request) {
-        ExamUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
+        ExamUser actor = auth.requireAny(authorization, request, "ADMIN", "OWNER");
         return ok(store.cancel(actor, sessionId, bodyOrEmpty(body), request));
     }
 
@@ -188,7 +195,7 @@ class ExamController {
     Map<String, Object> whitelistHandoff(@RequestHeader(value = "Authorization", required = false) String authorization,
                                          @PathVariable String sessionId,
                                          HttpServletRequest request) {
-        ExamUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
+        ExamUser actor = auth.requireAny(authorization, request, "ADMIN", "OWNER");
         return ok(store.whitelistHandoff(actor, sessionId, request));
     }
 
@@ -196,7 +203,7 @@ class ExamController {
     Map<String, Object> questions(@RequestHeader(value = "Authorization", required = false) String authorization,
                                   @RequestParam Map<String, String> query,
                                   HttpServletRequest request) {
-        ExamUser actor = auth.requireAny(authorization, "HELPER", "ADMIN", "OWNER");
+        ExamUser actor = auth.requireAny(authorization, request, "HELPER", "ADMIN", "OWNER");
         return ok(store.questions(actor, query, request));
     }
 
@@ -205,7 +212,7 @@ class ExamController {
                                          @PathVariable String questionId,
                                          @RequestParam Map<String, String> query,
                                          HttpServletRequest request) {
-        ExamUser actor = auth.requireAny(authorization, "HELPER", "ADMIN", "OWNER");
+        ExamUser actor = auth.requireAny(authorization, request, "HELPER", "ADMIN", "OWNER");
         return ok(store.questionVersions(actor, questionId, query, request));
     }
 
@@ -213,7 +220,7 @@ class ExamController {
     ResponseEntity<Map<String, Object>> createQuestion(@RequestHeader(value = "Authorization", required = false) String authorization,
                                                        @RequestBody(required = false) Map<String, Object> body,
                                                        HttpServletRequest request) {
-        ExamUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
+        ExamUser actor = auth.requireAny(authorization, request, "ADMIN", "OWNER");
         return ResponseEntity.status(HttpStatus.CREATED).body(okBody(store.createQuestion(actor, bodyOrEmpty(body), request)));
     }
 
@@ -222,7 +229,7 @@ class ExamController {
                                        @PathVariable String questionId,
                                        @RequestBody(required = false) Map<String, Object> body,
                                        HttpServletRequest request) {
-        ExamUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
+        ExamUser actor = auth.requireAny(authorization, request, "ADMIN", "OWNER");
         return ok(store.updateQuestion(actor, questionId, bodyOrEmpty(body), request));
     }
 
@@ -231,7 +238,7 @@ class ExamController {
                                         @PathVariable String questionId,
                                         @RequestBody(required = false) Map<String, Object> body,
                                         HttpServletRequest request) {
-        ExamUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
+        ExamUser actor = auth.requireAny(authorization, request, "ADMIN", "OWNER");
         return ok(store.archiveQuestion(actor, questionId, bodyOrEmpty(body), request));
     }
 
@@ -239,7 +246,7 @@ class ExamController {
     Map<String, Object> templates(@RequestHeader(value = "Authorization", required = false) String authorization,
                                   @RequestParam Map<String, String> query,
                                   HttpServletRequest request) {
-        ExamUser actor = auth.requireAny(authorization, "HELPER", "ADMIN", "OWNER");
+        ExamUser actor = auth.requireAny(authorization, request, "HELPER", "ADMIN", "OWNER");
         return ok(store.templates(actor, query, request));
     }
 
@@ -247,7 +254,7 @@ class ExamController {
     ResponseEntity<Map<String, Object>> createTemplate(@RequestHeader(value = "Authorization", required = false) String authorization,
                                                        @RequestBody(required = false) Map<String, Object> body,
                                                        HttpServletRequest request) {
-        ExamUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
+        ExamUser actor = auth.requireAny(authorization, request, "ADMIN", "OWNER");
         return ResponseEntity.status(HttpStatus.CREATED).body(okBody(store.createTemplate(actor, bodyOrEmpty(body), request)));
     }
 
@@ -256,7 +263,7 @@ class ExamController {
                                        @PathVariable String templateId,
                                        @RequestBody(required = false) Map<String, Object> body,
                                        HttpServletRequest request) {
-        ExamUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
+        ExamUser actor = auth.requireAny(authorization, request, "ADMIN", "OWNER");
         return ok(store.updateTemplate(actor, templateId, bodyOrEmpty(body), request));
     }
 
@@ -264,7 +271,7 @@ class ExamController {
     Map<String, Object> publishPreview(@RequestHeader(value = "Authorization", required = false) String authorization,
                                        @PathVariable String templateId,
                                        HttpServletRequest request) {
-        ExamUser actor = auth.requireAny(authorization, "HELPER", "ADMIN", "OWNER");
+        ExamUser actor = auth.requireAny(authorization, request, "HELPER", "ADMIN", "OWNER");
         return ok(store.publishPreview(actor, templateId, request));
     }
 
@@ -273,7 +280,7 @@ class ExamController {
                                         @PathVariable String templateId,
                                         @RequestBody(required = false) Map<String, Object> body,
                                         HttpServletRequest request) {
-        ExamUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
+        ExamUser actor = auth.requireAny(authorization, request, "ADMIN", "OWNER");
         return ok(store.publishTemplate(actor, templateId, bodyOrEmpty(body), request));
     }
 
@@ -282,7 +289,7 @@ class ExamController {
                                         @PathVariable String templateId,
                                         @RequestBody(required = false) Map<String, Object> body,
                                         HttpServletRequest request) {
-        ExamUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
+        ExamUser actor = auth.requireAny(authorization, request, "ADMIN", "OWNER");
         return ok(store.archiveTemplate(actor, templateId, bodyOrEmpty(body), request));
     }
 
@@ -290,14 +297,14 @@ class ExamController {
     Map<String, Object> auditLogs(@RequestHeader(value = "Authorization", required = false) String authorization,
                                   @RequestParam Map<String, String> query,
                                   HttpServletRequest request) {
-        auth.requireAny(authorization, "ADMIN", "OWNER");
+        auth.requireAny(authorization, request, "ADMIN", "OWNER");
         return ok(store.auditLogs(query, request));
     }
 
     @GetMapping("/admin/ops/summary")
     Map<String, Object> opsSummary(@RequestHeader(value = "Authorization", required = false) String authorization,
                                    HttpServletRequest request) {
-        auth.requireAny(authorization, "ADMIN", "OWNER");
+        auth.requireAny(authorization, request, "ADMIN", "OWNER");
         return ok(store.opsSummary(request));
     }
 
@@ -340,8 +347,13 @@ class ExamStore {
     private final Map<String, IdempotencyRecord> idempotency = new ConcurrentHashMap<>();
     private final Set<String> whitelistHandoffGenerated = ConcurrentHashMap.newKeySet();
     private final List<Map<String, Object>> audits = new ArrayList<>();
+    private final ExamTestControls testControls;
     private int idSeq = 3000;
     private int whitelistHandoffSnapshotsTotal;
+
+    ExamStore(ExamTestControls testControls) {
+        this.testControls = testControls;
+    }
 
     void seed() {
         addQuestion(question("q-redstone-single", "SINGLE_CHOICE", "REDSTONE", "NORMAL", "Run a test before enabling a shared machine.", options("A", "B"), List.of("A"), null, 10, List.of("redstone"), "ACTIVE"));
@@ -370,7 +382,7 @@ class ExamStore {
         if ("ACTIVE".equals(user.profileStatus()) || "INACTIVE".equals(user.profileStatus())) {
             throw new ExamException(409, 43911, "member profile exists");
         }
-        if ("CONTENT_UNAVAILABLE".equals(user.profileStatus())) {
+        if (testControls.enabled() && "CONTENT_UNAVAILABLE".equals(user.profileStatus())) {
             throw new ExamException(502, 46930, "content unavailable");
         }
         String currentId = currentByUser.get(user.userId());
@@ -838,7 +850,7 @@ class ExamStore {
         IdempotencyRecord replay = replay(actor.userId(), "PUBLISH_TEMPLATE:" + templateId, body);
         if (replay != null) return replay.value();
         if ("ARCHIVED".equals(template.status)) throw new ExamException(409, 43922, "template archived");
-        if ("CONTENT:UNAVAILABLE".equals(request.getHeader("X-Test-Dependency-Mode"))) throw new ExamException(502, 46930, "content unavailable");
+        if ("CONTENT:UNAVAILABLE".equals(testHeader(request, "X-Test-Dependency-Mode"))) throw new ExamException(502, 46930, "content unavailable");
         if (selectQuestions(template).isEmpty()) throw new ExamException(409, 43915, "question bank not enough");
         failBeforeWrite(request);
         String before = template.status;
@@ -892,12 +904,12 @@ class ExamStore {
         long passed = sessions.values().stream().filter(s -> "PASSED".equals(s.result)).count();
         long failed = sessions.values().stream().filter(s -> "FAILED".equals(s.result)).count();
         long published = templates.values().stream().filter(t -> "PUBLISHED".equals(t.status)).count();
-        return mapOf("service", "exam", "port", 8109, "storageMode", "IN_MEMORY", "authMode", "TEST_STUB", "onboardingMode", "TEST_STUB", "profileMode", "TEST_STUB", "contentMode", "TEST_STUB", "notificationMode", "TEST_STUB", "sessionsTotal", sessions.size(), "pendingManualReviewTotal", (int) pending, "passedTotal", (int) passed, "failedTotal", (int) failed, "questionsTotal", questions.size(), "publishedTemplatesTotal", (int) published, "whitelistHandoffSnapshotsTotal", whitelistHandoffSnapshotsTotal, "auditsTotal", audits.size(), "idempotencyRecordsTotal", idempotency.size(), "lastAuditAt", audits.isEmpty() ? null : audits.getLast().get("createdAt"), "productionGaps", List.of("P0_IN_MEMORY_STORAGE", "P0_AUTH_STUB", "P0_ONBOARDING_STUB", "P0_PROFILE_STUB", "P0_CONTENT_STUB", "P0_NOTIFICATION_STUB", "WHITELIST_NOT_IMPLEMENTED"));
+        return mapOf("service", "exam", "port", 8131, "legacyPort", 8109, "storageMode", "IN_MEMORY", "authMode", "TEST_STUB", "onboardingMode", "TEST_STUB", "profileMode", "TEST_STUB", "contentMode", "TEST_STUB", "notificationMode", "TEST_STUB", "testControlsEnabled", testControls.enabled(), "sessionsTotal", sessions.size(), "pendingManualReviewTotal", (int) pending, "passedTotal", (int) passed, "failedTotal", (int) failed, "questionsTotal", questions.size(), "publishedTemplatesTotal", (int) published, "whitelistHandoffSnapshotsTotal", whitelistHandoffSnapshotsTotal, "auditsTotal", audits.size(), "idempotencyRecordsTotal", idempotency.size(), "lastAuditAt", audits.isEmpty() ? null : audits.getLast().get("createdAt"), "productionGaps", List.of("P0_IN_MEMORY_STORAGE", "P0_AUTH_STUB", "P0_ONBOARDING_STUB", "P0_PROFILE_STUB", "P0_CONTENT_STUB", "P0_NOTIFICATION_STUB", "WHITELIST_NOT_IMPLEMENTED"));
     }
 
     private Handoff handoff(ExamUser user, String applicationId, HttpServletRequest request) {
         if (applicationId.contains("blocked")) throw new ExamException(409, 43910, "onboarding handoff blocked");
-        if ("ONBOARDING:UNAVAILABLE".equals(request.getHeader("X-Test-Dependency-Mode"))) throw new ExamException(502, 46910, "onboarding unavailable");
+        if ("ONBOARDING:UNAVAILABLE".equals(testHeader(request, "X-Test-Dependency-Mode"))) throw new ExamException(502, 46910, "onboarding unavailable");
         if (!applicationId.startsWith("app-")) throw new ExamException(409, 43910, "onboarding not ready");
         String direction = switch (applicationId) {
             case "app-general" -> "GENERAL";
@@ -907,7 +919,7 @@ class ExamStore {
     }
 
     private boolean requiresContent(ExamUser user, PaperTemplateRecord template, HttpServletRequest request) {
-        return "CONTENT_UNAVAILABLE".equals(user.profileStatus()) || "CONTENT:UNAVAILABLE".equals(request.getHeader("X-Test-Dependency-Mode"));
+        return (testControls.enabled() && "CONTENT_UNAVAILABLE".equals(user.profileStatus())) || "CONTENT:UNAVAILABLE".equals(testHeader(request, "X-Test-Dependency-Mode"));
     }
 
     private PaperTemplateRecord latestTemplate(String direction, String difficulty) {
@@ -1109,7 +1121,7 @@ class ExamStore {
     }
 
     private Map<String, Object> publishPreviewView(PaperTemplateRecord template, HttpServletRequest request) {
-        boolean contentUnavailable = template.contentRuleVersion != null && "CONTENT:UNAVAILABLE".equals(request.getHeader("X-Test-Dependency-Mode"));
+        boolean contentUnavailable = template.contentRuleVersion != null && "CONTENT:UNAVAILABLE".equals(testHeader(request, "X-Test-Dependency-Mode"));
         List<String> warnings = new ArrayList<>();
         List<Map<String, Object>> rules = new ArrayList<>();
         List<ExamQuestionRecord> sample = new ArrayList<>();
@@ -1272,16 +1284,20 @@ class ExamStore {
     }
 
     private boolean auditShouldFail(HttpServletRequest request) {
-        return "true".equals(request.getHeader("X-Test-Fail-Audit"));
+        return "true".equals(testHeader(request, "X-Test-Fail-Audit"));
     }
 
     private boolean storeShouldFail(HttpServletRequest request) {
-        return "true".equals(request.getHeader("X-Test-Fail-Store"));
+        return "true".equals(testHeader(request, "X-Test-Fail-Store"));
     }
 
     private String notificationStatus(HttpServletRequest request) {
-        String mode = request.getHeader("X-Test-Notification-Mode");
+        String mode = testHeader(request, "X-Test-Notification-Mode");
         return "unavailable".equals(mode) || "timeout".equals(mode) ? "FAILED" : "DELIVERED";
+    }
+
+    private String testHeader(HttpServletRequest request, String name) {
+        return testControls.enabled() && request != null ? request.getHeader(name) : null;
     }
 
     private IdempotencyRecord replay(String actorId, String operation, Map<String, Object> body) {
@@ -1481,6 +1497,13 @@ class ExamStore {
 }
 
 class TestExamAuthProvider {
+    ExamUser requireUser(String authorization, HttpServletRequest request) {
+        if (AdmissionTrustedActor.hasGatewayContext(request)) {
+            return trustedActor(request);
+        }
+        return requireUser(authorization);
+    }
+
     ExamUser requireUser(String authorization) {
         if (authorization == null || authorization.isBlank()) throw new ExamException(401, 41000, "not logged in");
         if (!authorization.startsWith("Bearer ")) throw new ExamException(401, 41003, "bad token format");
@@ -1504,11 +1527,27 @@ class TestExamAuthProvider {
         };
     }
 
+    ExamUser requireAny(String authorization, HttpServletRequest request, String... roles) {
+        ExamUser user = requireUser(authorization, request);
+        Set<String> allowed = new LinkedHashSet<>(List.of(roles));
+        if (user.roles().stream().noneMatch(allowed::contains)) throw new ExamException(403, 42001, "role permission denied");
+        return user;
+    }
+
     ExamUser requireAny(String authorization, String... roles) {
         ExamUser user = requireUser(authorization);
         Set<String> allowed = new LinkedHashSet<>(List.of(roles));
         if (user.roles().stream().noneMatch(allowed::contains)) throw new ExamException(403, 42001, "role permission denied");
         return user;
+    }
+
+    private ExamUser trustedActor(HttpServletRequest request) {
+        try {
+            AdmissionTrustedActor.Actor actor = AdmissionTrustedActor.parse(request);
+            return new ExamUser(actor.userId(), actor.displayName(), actor.roles(), "ACTIVE", actor.minecraftBinding(), null);
+        } catch (IllegalArgumentException exception) {
+            throw new ExamException(502, 46902, "auth incompatible");
+        }
     }
 
     private static Map<String, Object> minecraft(String id, String uuid) {
@@ -1526,6 +1565,9 @@ record IdempotencyRecord(String fingerprint, Map<String, Object> value) {
 }
 
 record MutationResult(boolean created, Map<String, Object> value) {
+}
+
+record ExamTestControls(boolean enabled) {
 }
 
 class ExamSessionRecord {

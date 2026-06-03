@@ -38,11 +38,21 @@
 
 ## 基础路径与认证
 
-所有接口默认使用 `/api/v1/whitelist` 前缀。P0 端口固定为 `8110`，自检摘要必须返回该端口。
+所有接口默认使用 `/api/v1/whitelist` 前缀。第二批合并后当前运行入口由 `admission-core-service` 承载，端口固定为 `8131`。历史原服务端口 `8110` 只作为 `legacyPort` 返回，不作为当前运行入口、网关上游或测试入口。
 
 当前用户接口使用 `/api/v1/whitelist/me` 前缀，全部要求 `Authorization: Bearer <token>`，只能访问当前认证用户自己的白名单申请。浏览器请求体不得传入 `userId`、`roles`、`permissions`、`minecraftBindingSnapshot`、`examResult`、`scoreSummary`、`reviewerId`、`reviewerSnapshot`、`status`、`profileStatus`、`attendanceStatus`、`createdBy`、`updatedBy` 等服务端可信字段。
 
 后台接口使用 `/api/v1/whitelist/admin` 前缀，全部要求登录。后台读取申请列表和详情要求 `HELPER`、`ADMIN` 或 `OWNER`。审核通过、审核拒绝、要求补充、移除、重开、attendance handoff 读取、审计读取和自检摘要要求 `ADMIN` 或 `OWNER`。`HELPER` 可以查看审核队列和详情，可以领取或分配给自己做初审记录，但不能执行最终通过、拒绝、移除或重开。
+
+## 本地测试控制头
+
+`whitelist` 允许在本地自动化测试中使用 `X-Test-Profile-Mode`、`X-Test-Notification-Mode`、`X-Test-Fail-Audit`、`X-Test-Fail-Store` 和 `X-Test-Fail-After-Profile` 模拟依赖失败、通知失败、审计失败、状态写入失败和 profile 激活后补偿失败。该能力只服务测试闭环，不属于正式业务 API。
+
+生产和默认运行环境必须关闭测试控制头。关闭后这些请求头必须被忽略，不能触发依赖失败、审计失败、状态失败、通知失败或补偿失败。只有 `whitelist.test-controls.enabled=true` 时，自动化测试才能启用这些请求头。
+
+## 网关可信身份上下文
+
+经 `api-gateway` 访问时，`whitelist` 可以优先读取网关注入的可信身份头。只有 `X-Gateway-Internal-Request-Id` 存在时，才进入可信上下文解析；若该头缺失，即使请求带有 `X-Beiming-Actor-*`，也必须忽略这些头并继续走 `Authorization: Bearer <token>` 兼容路径。可信上下文缺少 `X-Beiming-Actor-User-Id`、角色枚举不兼容或字段无法解析时返回 HTTP `502` 和 `47002`，不得静默降级成匿名用户。
 
 ## 前序服务兼容契约
 
@@ -580,7 +590,8 @@ profile 移除状态接口不可用、超时或响应字段不兼容时，移除
   "message": "success",
   "data": {
     "service": "whitelist",
-    "port": 8110,
+    "port": 8131,
+    "legacyPort": 8110,
     "storageMode": "IN_MEMORY",
     "authMode": "TEST_STUB",
     "examMode": "TEST_STUB",
@@ -609,7 +620,7 @@ profile 移除状态接口不可用、超时或响应字段不兼容时，移除
 }
 ```
 
-业务规则：自检摘要用于后台确认 whitelist 当前运行模式、待审核规模、通过规模、移除规模、profile 阻塞规模、attendance 交接规模和生产化缺口。摘要不得返回 token、请求头、Minecraft 验证凭据、考试答案、profile 内部备注、通知正文、审计参数全文、真实服务器命令、节点凭据或异常堆栈。
+业务规则：自检摘要用于后台确认 whitelist 当前运行模式、待审核规模、通过规模、移除规模、profile 阻塞规模、attendance 交接规模和生产化缺口。`port` 固定返回当前运行入口 `8131`，`legacyPort` 固定返回历史原服务端口 `8110`。摘要不得返回 token、请求头、Minecraft 验证凭据、考试答案、profile 内部备注、通知正文、审计参数全文、真实服务器命令、节点凭据或异常堆栈。
 
 ## 状态、幂等和并发
 
@@ -649,4 +660,4 @@ attendance 未实现时，审核通过仍可完成 whitelist 和 profile 激活�
 
 `whitelist` API 文档按 `docs/contracts-whitelist.md` 独立存在，并由 `.local-docs/tests-whitelist.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求和模块验收口径。
 
-`whitelist` 完成时必须满足以下条件：全部接口按本文档实现；当前用户接口只能访问自己的申请；后台接口按角色限制；创建申请只通过 exam handoff 和前序适配读取快照，不直接读前序服务实现；审核通过必须通过 profile 正式接口激活成员档案；profile 激活失败不进入通过终态；通知失败按辅助降级记录；attendance 未实现时只生成交接摘要；移除白名单不执行真实服务器命令；端口固定为 `8110`；`.local-docs/tests-whitelist.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 whitelist 全部测试通过；auth、profile、notification、content、server-status、resource、admin、onboarding 和 exam 前序服务回归测试通过；没有修改前序服务稳定接口；没有把考勤积分、社区工单、活动、日历、更新日志、后台聚合、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复或 Cloudreve 管理能力塞进 whitelist。
+`whitelist` 完成时必须满足以下条件：全部接口按本文档实现；当前用户接口只能访问自己的申请；后台接口按角色限制；创建申请只通过 exam handoff 和前序适配读取快照，不直接读前序服务实现；审核通过必须通过 profile 正式接口激活成员档案；profile 激活失败不进入通过终态；通知失败按辅助降级记录；attendance 未实现时只生成交接摘要；移除白名单不执行真实服务器命令；当前运行入口为 `admission-core-service:8131`，历史端口只作为 `legacyPort=8110` 返回；默认关闭测试控制头，直连伪造 `X-Beiming-Actor-*` 不能绕过 Bearer，网关注入可信上下文可被识别；`.local-docs/tests-whitelist.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 whitelist 全部测试通过；auth、profile、notification、content、server-status、resource、admin、onboarding 和 exam 前序服务回归测试通过；没有修改前序服务稳定接口；没有把考勤积分、社区工单、活动、日历、更新日志、后台聚合、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复或 Cloudreve 管理能力塞进 whitelist。

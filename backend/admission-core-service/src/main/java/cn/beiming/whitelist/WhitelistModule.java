@@ -1,9 +1,11 @@
 package cn.beiming.whitelist;
 
+import cn.beiming.admission.AdmissionTrustedActor;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
@@ -43,13 +45,18 @@ import java.util.concurrent.ConcurrentHashMap;
 @Configuration
 class WhitelistModule {
     @Bean
-    WhitelistStore whitelistStore() {
-        return new WhitelistStore();
+    WhitelistStore whitelistStore(WhitelistTestControls testControls) {
+        return new WhitelistStore(testControls);
     }
 
     @Bean
     TestWhitelistAuthProvider whitelistAuthProvider() {
         return new TestWhitelistAuthProvider();
+    }
+
+    @Bean
+    WhitelistTestControls whitelistTestControls(@Value("${whitelist.test-controls.enabled:false}") boolean enabled) {
+        return new WhitelistTestControls(enabled);
     }
 }
 
@@ -68,7 +75,7 @@ class WhitelistController {
     ResponseEntity<Map<String, Object>> createApplication(@RequestHeader(value = "Authorization", required = false) String authorization,
                                                           @RequestBody(required = false) Map<String, Object> body,
                                                           HttpServletRequest request) {
-        WhitelistUser user = auth.requireUser(authorization);
+        WhitelistUser user = auth.requireUser(authorization, request);
         MutationResult result = store.createApplication(user, bodyOrEmpty(body), request);
         return ResponseEntity.status(result.created() ? HttpStatus.CREATED : HttpStatus.OK).body(okBody(result.value()));
     }
@@ -76,7 +83,7 @@ class WhitelistController {
     @GetMapping("/me/applications/current")
     Map<String, Object> currentApplication(@RequestHeader(value = "Authorization", required = false) String authorization,
                                            HttpServletRequest request) {
-        WhitelistUser user = auth.requireUser(authorization);
+        WhitelistUser user = auth.requireUser(authorization, request);
         return ok(store.currentApplication(user, request));
     }
 
@@ -84,7 +91,7 @@ class WhitelistController {
     Map<String, Object> myApplications(@RequestHeader(value = "Authorization", required = false) String authorization,
                                        @RequestParam Map<String, String> query,
                                        HttpServletRequest request) {
-        WhitelistUser user = auth.requireUser(authorization);
+        WhitelistUser user = auth.requireUser(authorization, request);
         return ok(store.myApplications(user, query, request));
     }
 
@@ -92,7 +99,7 @@ class WhitelistController {
     Map<String, Object> myApplication(@RequestHeader(value = "Authorization", required = false) String authorization,
                                       @PathVariable String applicationId,
                                       HttpServletRequest request) {
-        WhitelistUser user = auth.requireUser(authorization);
+        WhitelistUser user = auth.requireUser(authorization, request);
         return ok(store.myApplication(user, applicationId, request));
     }
 
@@ -101,7 +108,7 @@ class WhitelistController {
                                         @PathVariable String applicationId,
                                         @RequestBody(required = false) Map<String, Object> body,
                                         HttpServletRequest request) {
-        WhitelistUser user = auth.requireUser(authorization);
+        WhitelistUser user = auth.requireUser(authorization, request);
         return ok(store.updateMaterials(user, applicationId, bodyOrEmpty(body), request));
     }
 
@@ -110,7 +117,7 @@ class WhitelistController {
                                @PathVariable String applicationId,
                                @RequestBody(required = false) Map<String, Object> body,
                                HttpServletRequest request) {
-        WhitelistUser user = auth.requireUser(authorization);
+        WhitelistUser user = auth.requireUser(authorization, request);
         return ok(store.submit(user, applicationId, bodyOrEmpty(body), request));
     }
 
@@ -119,7 +126,7 @@ class WhitelistController {
                                    @PathVariable String applicationId,
                                    @RequestBody(required = false) Map<String, Object> body,
                                    HttpServletRequest request) {
-        WhitelistUser user = auth.requireUser(authorization);
+        WhitelistUser user = auth.requireUser(authorization, request);
         return ok(store.supplement(user, applicationId, bodyOrEmpty(body), request));
     }
 
@@ -128,7 +135,7 @@ class WhitelistController {
                                  @PathVariable String applicationId,
                                  @RequestBody(required = false) Map<String, Object> body,
                                  HttpServletRequest request) {
-        WhitelistUser user = auth.requireUser(authorization);
+        WhitelistUser user = auth.requireUser(authorization, request);
         return ok(store.withdraw(user, applicationId, bodyOrEmpty(body), request));
     }
 
@@ -136,7 +143,7 @@ class WhitelistController {
     Map<String, Object> myResult(@RequestHeader(value = "Authorization", required = false) String authorization,
                                  @PathVariable String applicationId,
                                  HttpServletRequest request) {
-        WhitelistUser user = auth.requireUser(authorization);
+        WhitelistUser user = auth.requireUser(authorization, request);
         return ok(store.myResult(user, applicationId, request));
     }
 
@@ -144,7 +151,7 @@ class WhitelistController {
     Map<String, Object> adminApplications(@RequestHeader(value = "Authorization", required = false) String authorization,
                                           @RequestParam Map<String, String> query,
                                           HttpServletRequest request) {
-        WhitelistUser actor = auth.requireAny(authorization, "HELPER", "ADMIN", "OWNER");
+        WhitelistUser actor = auth.requireAny(authorization, request, "HELPER", "ADMIN", "OWNER");
         return ok(store.adminApplications(actor, query, request));
     }
 
@@ -152,7 +159,7 @@ class WhitelistController {
     Map<String, Object> adminApplication(@RequestHeader(value = "Authorization", required = false) String authorization,
                                          @PathVariable String applicationId,
                                          HttpServletRequest request) {
-        WhitelistUser actor = auth.requireAny(authorization, "HELPER", "ADMIN", "OWNER");
+        WhitelistUser actor = auth.requireAny(authorization, request, "HELPER", "ADMIN", "OWNER");
         return ok(store.adminApplication(actor, applicationId, request));
     }
 
@@ -161,7 +168,7 @@ class WhitelistController {
                                @PathVariable String applicationId,
                                @RequestBody(required = false) Map<String, Object> body,
                                HttpServletRequest request) {
-        WhitelistUser actor = auth.requireAny(authorization, "HELPER", "ADMIN", "OWNER");
+        WhitelistUser actor = auth.requireAny(authorization, request, "HELPER", "ADMIN", "OWNER");
         return ok(store.assign(actor, applicationId, bodyOrEmpty(body), request));
     }
 
@@ -170,7 +177,7 @@ class WhitelistController {
                                           @PathVariable String applicationId,
                                           @RequestBody(required = false) Map<String, Object> body,
                                           HttpServletRequest request) {
-        WhitelistUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
+        WhitelistUser actor = auth.requireAny(authorization, request, "ADMIN", "OWNER");
         return ok(store.requestSupplement(actor, applicationId, bodyOrEmpty(body), request));
     }
 
@@ -179,7 +186,7 @@ class WhitelistController {
                                 @PathVariable String applicationId,
                                 @RequestBody(required = false) Map<String, Object> body,
                                 HttpServletRequest request) {
-        WhitelistUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
+        WhitelistUser actor = auth.requireAny(authorization, request, "ADMIN", "OWNER");
         return ok(store.approve(actor, applicationId, bodyOrEmpty(body), request));
     }
 
@@ -188,7 +195,7 @@ class WhitelistController {
                                @PathVariable String applicationId,
                                @RequestBody(required = false) Map<String, Object> body,
                                HttpServletRequest request) {
-        WhitelistUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
+        WhitelistUser actor = auth.requireAny(authorization, request, "ADMIN", "OWNER");
         return ok(store.reject(actor, applicationId, bodyOrEmpty(body), request));
     }
 
@@ -197,7 +204,7 @@ class WhitelistController {
                                @PathVariable String applicationId,
                                @RequestBody(required = false) Map<String, Object> body,
                                HttpServletRequest request) {
-        WhitelistUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
+        WhitelistUser actor = auth.requireAny(authorization, request, "ADMIN", "OWNER");
         return ok(store.remove(actor, applicationId, bodyOrEmpty(body), request));
     }
 
@@ -206,7 +213,7 @@ class WhitelistController {
                                @PathVariable String applicationId,
                                @RequestBody(required = false) Map<String, Object> body,
                                HttpServletRequest request) {
-        WhitelistUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
+        WhitelistUser actor = auth.requireAny(authorization, request, "ADMIN", "OWNER");
         return ok(store.reopen(actor, applicationId, bodyOrEmpty(body), request));
     }
 
@@ -214,7 +221,7 @@ class WhitelistController {
     Map<String, Object> attendanceHandoff(@RequestHeader(value = "Authorization", required = false) String authorization,
                                           @PathVariable String applicationId,
                                           HttpServletRequest request) {
-        WhitelistUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
+        WhitelistUser actor = auth.requireAny(authorization, request, "ADMIN", "OWNER");
         return ok(store.attendanceHandoff(actor, applicationId, request));
     }
 
@@ -222,14 +229,14 @@ class WhitelistController {
     Map<String, Object> auditLogs(@RequestHeader(value = "Authorization", required = false) String authorization,
                                   @RequestParam Map<String, String> query,
                                   HttpServletRequest request) {
-        auth.requireAny(authorization, "ADMIN", "OWNER");
+        auth.requireAny(authorization, request, "ADMIN", "OWNER");
         return ok(store.auditLogs(query, request));
     }
 
     @GetMapping("/admin/ops/summary")
     Map<String, Object> opsSummary(@RequestHeader(value = "Authorization", required = false) String authorization,
                                    HttpServletRequest request) {
-        auth.requireAny(authorization, "ADMIN", "OWNER");
+        auth.requireAny(authorization, request, "ADMIN", "OWNER");
         return ok(store.opsSummary(request));
     }
 
@@ -268,8 +275,13 @@ class WhitelistStore {
     private final Map<String, IdempotencyRecord> idempotency = new ConcurrentHashMap<>();
     private final Set<String> consumedHandoffs = ConcurrentHashMap.newKeySet();
     private final List<Map<String, Object>> audits = Collections.synchronizedList(new ArrayList<>());
+    private final WhitelistTestControls testControls;
     private int idSeq = 1000;
     private int attendanceHandoffReads;
+
+    WhitelistStore(WhitelistTestControls testControls) {
+        this.testControls = testControls;
+    }
 
     synchronized MutationResult createApplication(WhitelistUser user, Map<String, Object> body, HttpServletRequest request) {
         validateIdempotencyKey(body);
@@ -540,7 +552,7 @@ class WhitelistStore {
             app.result = "PENDING";
             app.profileActivation = linkedMap("status", "FAILED", "memberId", null, "profileStatus", null, "calledAt", NOW, "failureCode", "44020", "failureReason", "profile activation conflict");
             audit(actor, app.applicationId, "WHITELIST_PROFILE_ACTIVATION_FAILED", "MEDIUM", before, app.status, "profile failed");
-        } else if ("true".equals(request.getHeader("X-Test-Fail-After-Profile"))) {
+        } else if ("true".equals(testHeader(request, "X-Test-Fail-After-Profile"))) {
             app.status = "APPROVAL_BLOCKED";
             app.result = "PENDING";
             app.profileActivation = linkedMap("status", "ACTIVATED", "memberId", "member-" + app.userId, "profileStatus", "ACTIVE", "calledAt", NOW, "failureCode", "52003", "failureReason", "whitelist state confirmation failed");
@@ -685,11 +697,11 @@ class WhitelistStore {
         long removed = applications.values().stream().filter(app -> "REMOVED".equals(app.status)).count();
         long blocked = applications.values().stream().filter(app -> "APPROVAL_BLOCKED".equals(app.status)).count();
         long handoffs = applications.values().stream().filter(app -> app.attendanceHandoff != null).count();
-        return linkedMap("service", "whitelist", "port", 8110, "storageMode", "IN_MEMORY", "authMode", "TEST_STUB", "examMode", "TEST_STUB", "profileMode", "TEST_STUB", "notificationMode", "TEST_STUB", "applicationsTotal", applications.size(), "pendingReviewTotal", pending, "approvedTotal", approved, "rejectedTotal", rejected, "removedTotal", removed, "approvalBlockedTotal", blocked, "attendanceHandoffsTotal", handoffs, "auditsTotal", audits.size(), "idempotencyRecordsTotal", idempotency.size(), "lastAuditAt", audits.isEmpty() ? null : NOW, "productionGaps", List.of("P0_IN_MEMORY_STORAGE", "P0_AUTH_STUB", "P0_EXAM_STUB", "P0_PROFILE_STUB", "P0_NOTIFICATION_STUB", "ATTENDANCE_NOT_IMPLEMENTED", "REAL_SERVER_WHITELIST_NOT_CONNECTED"));
+        return linkedMap("service", "whitelist", "port", 8131, "legacyPort", 8110, "storageMode", "IN_MEMORY", "authMode", "TEST_STUB", "examMode", "TEST_STUB", "profileMode", "TEST_STUB", "notificationMode", "TEST_STUB", "testControlsEnabled", testControls.enabled(), "applicationsTotal", applications.size(), "pendingReviewTotal", pending, "approvedTotal", approved, "rejectedTotal", rejected, "removedTotal", removed, "approvalBlockedTotal", blocked, "attendanceHandoffsTotal", handoffs, "auditsTotal", audits.size(), "idempotencyRecordsTotal", idempotency.size(), "lastAuditAt", audits.isEmpty() ? null : NOW, "productionGaps", List.of("P0_IN_MEMORY_STORAGE", "P0_AUTH_STUB", "P0_EXAM_STUB", "P0_PROFILE_STUB", "P0_NOTIFICATION_STUB", "ATTENDANCE_NOT_IMPLEMENTED", "REAL_SERVER_WHITELIST_NOT_CONNECTED"));
     }
 
     private Handoff handoff(String sessionId, WhitelistUser user) {
-        if ("EXAM_UNAVAILABLE".equals(user.mode())) throw new WhitelistException(502, 47010, "exam unavailable");
+        if (testControls.enabled() && "EXAM_UNAVAILABLE".equals(user.mode())) throw new WhitelistException(502, 47010, "exam unavailable");
         return switch (sessionId) {
             case "session-passed" -> new Handoff(sessionId, "onb-user", 1, 1, "user", minecraft("UserSteve", "uuid-user"), "REDSTONE", "FIRST_TIME", "PASSED", score(), NOW);
             case "session-user-mismatch" -> new Handoff(sessionId, "onb-other", 1, 1, "not-" + user.userId(), minecraft("MismatchSteve", "uuid-mismatch"), "GENERAL", "FIRST_TIME", "PASSED", score(), NOW);
@@ -808,12 +820,12 @@ class WhitelistStore {
     }
 
     private void failBeforeWrite(HttpServletRequest request) {
-        if ("true".equals(request.getHeader("X-Test-Fail-Audit"))) throw new WhitelistException(500, 52001, "whitelist audit failed");
-        if ("true".equals(request.getHeader("X-Test-Fail-Store"))) throw new WhitelistException(500, 52002, "whitelist state failed");
+        if ("true".equals(testHeader(request, "X-Test-Fail-Audit"))) throw new WhitelistException(500, 52001, "whitelist audit failed");
+        if ("true".equals(testHeader(request, "X-Test-Fail-Store"))) throw new WhitelistException(500, 52002, "whitelist state failed");
     }
 
     private void failProfile(HttpServletRequest request) {
-        switch (Objects.toString(request.getHeader("X-Test-Profile-Mode"), "")) {
+        switch (Objects.toString(testHeader(request, "X-Test-Profile-Mode"), "")) {
             case "unavailable" -> throw new WhitelistException(502, 47020, "profile unavailable");
             case "timeout" -> throw new WhitelistException(504, 47021, "profile timeout");
             case "bad-schema" -> throw new WhitelistException(502, 47022, "profile incompatible");
@@ -823,17 +835,21 @@ class WhitelistStore {
     }
 
     private String notificationStatus(HttpServletRequest request) {
-        String mode = Objects.toString(request.getHeader("X-Test-Notification-Mode"), "");
+        String mode = Objects.toString(testHeader(request, "X-Test-Notification-Mode"), "");
         return Set.of("unavailable", "timeout", "bad-schema").contains(mode) ? "FAILED" : "DELIVERED";
     }
 
     private Map<String, Object> notificationFailure(HttpServletRequest request) {
-        return switch (Objects.toString(request.getHeader("X-Test-Notification-Mode"), "")) {
+        return switch (Objects.toString(testHeader(request, "X-Test-Notification-Mode"), "")) {
             case "unavailable" -> linkedMap("status", "FAILED", "failureCode", "47030", "failureType", "UNAVAILABLE", "failureReason", "notification unavailable", "failedAt", NOW);
             case "timeout" -> linkedMap("status", "FAILED", "failureCode", "47031", "failureType", "TIMEOUT", "failureReason", "notification timeout", "failedAt", NOW);
             case "bad-schema" -> linkedMap("status", "FAILED", "failureCode", "47032", "failureType", "BAD_SCHEMA", "failureReason", "notification response incompatible", "failedAt", NOW);
             default -> null;
         };
+    }
+
+    private String testHeader(HttpServletRequest request, String name) {
+        return testControls.enabled() && request != null ? request.getHeader(name) : null;
     }
 
     private IdempotencyRecord replay(String actorId, String operation, Map<String, Object> body) {
@@ -989,6 +1005,13 @@ class WhitelistStore {
 }
 
 class TestWhitelistAuthProvider {
+    WhitelistUser requireUser(String authorization, HttpServletRequest request) {
+        if (AdmissionTrustedActor.hasGatewayContext(request)) {
+            return trustedActor(request);
+        }
+        return requireUser(authorization);
+    }
+
     WhitelistUser requireUser(String authorization) {
         if (authorization == null || authorization.isBlank()) throw new WhitelistException(401, 41000, "not logged in");
         if (!authorization.startsWith("Bearer ")) throw new WhitelistException(401, 41003, "bad token format");
@@ -1016,11 +1039,27 @@ class TestWhitelistAuthProvider {
         };
     }
 
+    WhitelistUser requireAny(String authorization, HttpServletRequest request, String... roles) {
+        WhitelistUser user = requireUser(authorization, request);
+        Set<String> allowed = new LinkedHashSet<>(List.of(roles));
+        if (user.roles().stream().noneMatch(allowed::contains)) throw new WhitelistException(403, 42001, "role permission denied");
+        return user;
+    }
+
     WhitelistUser requireAny(String authorization, String... roles) {
         WhitelistUser user = requireUser(authorization);
         Set<String> allowed = new LinkedHashSet<>(List.of(roles));
         if (user.roles().stream().noneMatch(allowed::contains)) throw new WhitelistException(403, 42001, "role permission denied");
         return user;
+    }
+
+    private WhitelistUser trustedActor(HttpServletRequest request) {
+        try {
+            AdmissionTrustedActor.Actor actor = AdmissionTrustedActor.parse(request);
+            return new WhitelistUser(actor.userId(), actor.displayName(), actor.roles(), "ACTIVE", "NORMAL");
+        } catch (IllegalArgumentException exception) {
+            throw new WhitelistException(502, 47002, "auth incompatible");
+        }
     }
 }
 
@@ -1036,6 +1075,9 @@ record IdempotencyRecord(String fingerprint, Map<String, Object> value) {
 }
 
 record MutationResult(boolean created, Map<String, Object> value) {
+}
+
+record WhitelistTestControls(boolean enabled) {
 }
 
 class WhitelistApplicationRecord {

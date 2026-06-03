@@ -31,7 +31,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest(classes = AdmissionCoreServiceApplication.class)
+@SpringBootTest(classes = AdmissionCoreServiceApplication.class, properties = "onboarding.test-controls.enabled=true")
 @AutoConfigureMockMvc
 @DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_EACH_TEST_METHOD)
 class OnboardingApiContractTest {
@@ -326,7 +326,8 @@ class OnboardingApiContractTest {
 
         JsonNode ops = performJson(get("/api/v1/onboarding/admin/ops/summary").header("Authorization", bearer("owner-token")), 200);
         assertThat(ops.at("/data/service").asText()).isEqualTo("onboarding");
-        assertThat(ops.at("/data/port").asInt()).isEqualTo(8108);
+        assertThat(ops.at("/data/port").asInt()).isEqualTo(8131);
+        assertThat(ops.at("/data/legacyPort").asInt()).isEqualTo(8108);
         assertThat(ops.at("/data/productionGaps").toString()).contains("EXAM_NOT_IMPLEMENTED", "WHITELIST_NOT_IMPLEMENTED");
         performJson(get("/api/v1/onboarding/admin/ops/summary").header("Authorization", bearer("helper-token")), 403, 42001);
         performJson(get("/api/v1/onboarding/admin/ops/summary").header("Authorization", bearer("admin-token")).header("X-Test-Fail-Store", "true"), 500, 51800);

@@ -723,7 +723,7 @@ class GatewayState {
         items.add(route("onboarding", "ONBOARDING", "onboarding", "/api/v1/onboarding", 8131, "/api/v1/onboarding/me/progress"));
         items.add(route("exam", "EXAM", "exam", "/api/v1/exams", 8131, "/api/v1/exams/me/sessions"));
         items.add(route("whitelist", "WHITELIST", "whitelist", "/api/v1/whitelist", 8131, "/api/v1/whitelist/me/applications/current"));
-        items.add(route("attendance", "ATTENDANCE", "attendance", "/api/v1/attendance", 8131, "/api/v1/attendance/me/summary"));
+        items.add(route("attendance", "ATTENDANCE", "attendance", "/api/v1/attendance", 8131, "/api/v1/attendance/leaderboard"));
         items.add(route("community", "COMMUNITY", "community", "/api/v1/community", 8112, "/api/v1/community/boards"));
         items.add(route("activity", "ACTIVITY", "activity", "/api/v1/activity", 8113, "/api/v1/activity/events"));
         items.add(route("calendar", "CALENDAR", "calendar", "/api/v1/calendar", 8114, "/api/v1/calendar/upcoming"));
