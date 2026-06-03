@@ -30,7 +30,7 @@
 
 ## 运行形态
 
-本地验证运行单元为 `backend/engagement-core-service`，本地验证端口为 `8132`。端口 `8112` 到 `8115` 继续保留给旧四个微服务作为回归基线，端口 `8130` 继续保留给 `business-core-service`，端口 `8131` 继续保留给后续 `admission-core-service`，端口 `8125` 继续保留给 `api-gateway-service`。
+本地验证运行单元为 `backend/engagement-core-service`，本地验证端口为 `8132`。端口 `8112` 到 `8115` 继续保留给旧四个微服务作为回归基线，端口 `8130` 继续保留给已完成第一批合并的 `business-core-service`，端口 `8131` 继续保留给已完成第二批合并的稳定前序运行单元 `admission-core-service`，端口 `8125` 继续保留给 `api-gateway-service`。
 
 Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围覆盖 `cn.beiming`。第三批模块应保留原包名 `cn.beiming.community`、`cn.beiming.activity`、`cn.beiming.calendar` 和 `cn.beiming.changelog`。不得为了合并进行无业务收益的大规模包名迁移。
 
@@ -97,10 +97,10 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
 | `moduleRoutes` | `EngagementCoreModuleStatus[]` | 是 | 四个模块装配状态。 |
 | `adapterChain` | object[] | 是 | community、activity、calendar 和 changelog 的只读适配链摘要。 |
 | `businessCoreDependency` | object | 是 | 第一批 `business-core` 前序依赖摘要。 |
-| `admissionCoreDependency` | object | 是 | 第二批 `admission-core` 或旧准入服务边界摘要。 |
+| `admissionCoreDependency` | object | 是 | 第二批 `admission-core` 稳定前序运行单元摘要。 |
 | `gatewaySwitchReady` | boolean | 是 | 是否已满足网关切换前置条件。 |
 | `gatewaySwitchStatus` | string | 是 | 网关切换状态，允许 `NOT_READY`、`READY` 或 `COMPLETED`。 |
-| `legacyBaselines` | object[] | 是 | 旧四个微服务、`business-core`、第二批前序服务和 `api-gateway` 基线摘要。 |
+| `legacyBaselines` | object[] | 是 | 旧四个第三批微服务、`business-core-service`、`admission-core-service` 和 `api-gateway-service` 基线摘要。 |
 | `productionGaps` | string[] | 是 | 生产化差距摘要。 |
 | `generatedAt` | string | 是 | 摘要生成时间。 |
 
@@ -223,7 +223,7 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
     "admissionCoreDependency": {
       "service": "admission-core",
       "port": 8131,
-      "status": "OPTIONAL_BOUNDARY"
+      "status": "STABLE_BASELINE"
     },
     "gatewaySwitchReady": false,
     "gatewaySwitchStatus": "NOT_READY",
@@ -249,7 +249,7 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
 }
 ```
 
-业务规则：该接口只读取 `engagement-core` 内部装配状态和最近测试摘要，不主动执行四个模块的业务写操作，不调用旧服务进行实时健康探测，不把未完成模块伪装成 `READY`。只有当四个模块全部装配、四个模块在 `engagement-core` 中的继承契约测试通过、旧四个服务回归通过、`business-core-service` 基线通过、第二批前序服务基线通过、`api-gateway-service` 基线通过时，`gatewaySwitchReady` 才能为 `true`。只有当 `api-gateway` 契约、测试文档、自动化红灯、网关实现和全量后端回归均完成后，`gatewaySwitchStatus` 才能为 `COMPLETED`。
+业务规则：该接口只读取 `engagement-core` 内部装配状态和最近测试摘要，不主动执行四个模块的业务写操作，不调用旧服务进行实时健康探测，不把未完成模块伪装成 `READY`。只有当四个模块全部装配、四个模块在 `engagement-core` 中的继承契约测试通过、旧四个第三批服务回归通过、`business-core-service` 基线通过、`admission-core-service` 基线通过、`api-gateway-service` 基线通过时，`gatewaySwitchReady` 才能为 `true`。只有当 `api-gateway` 契约、测试文档、自动化红灯、网关实现和全量后端回归均完成后，`gatewaySwitchStatus` 才能为 `COMPLETED`。
 
 失败规则：运行单元内部异常返回 `53230`。模块装配信息缺失返回 `53231`。当前登记路由与本文档或四个模块契约期望不一致时返回 `53232` 或在 `status=DEGRADED` 的成功摘要中列入 `gaps`，由实现按是否影响接口可用性决定。认证上下文解析失败返回原模块契约或公共认证错误，可信网关上下文字段缺失或格式不兼容时返回 `53233`。内部 adapter 链装配错误返回 `53234`。
 
@@ -290,7 +290,7 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
 
 同 JVM 内部调用可以从 HTTP client 改为 adapter 或 facade，但 adapter 必须保留失败模拟能力，测试必须能覆盖 profile 失败、content 失败、resource 失败、notification 失败、community 快照失败、activity 摘要失败、calendar 同步失败、changelog 来源占位、审计失败、状态写入失败、互动或关注并发失败。
 
-`engagement-core` 适配第一批模块时，应优先通过 `business-core` 已稳定的正式 API、认证上下文或清晰 adapter 读取，不得直接导入第一批模块的内存 store、Repository、实体或测试种子绕开边界。需要 attendance、whitelist 或入服链路信息时，应通过第二批稳定服务或 `admission-core` 边界读取，不得反向修改准入链路状态。确需给前序模块新增能力时，必须按前序服务兼容变更流程先更新对应正式契约、本地测试文档、自动化测试和实现。
+`engagement-core` 适配第一批模块时，应优先通过 `business-core` 已稳定的正式 API、认证上下文或清晰 adapter 读取，不得直接导入第一批模块的内存 store、Repository、实体或测试种子绕开边界。需要 attendance、whitelist 或入服链路信息时，应通过已完成第二批合并的 `admission-core-service` 稳定边界读取，不得反向修改准入链路状态。确需给前序模块新增能力时，必须按前序服务兼容变更流程先更新对应正式契约、本地测试文档、自动化测试和实现。
 
 ## 错误码
 
@@ -335,10 +335,10 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
 
 `engagement-core` 完成的最低标准是，单进程承载第三批四个业务模块的全部既有 API 路径，且响应格式、错误码、认证、权限、请求编号、分页、状态流转、幂等、审计和降级行为与四个模块正式契约一致。
 
-`mvn -f backend/engagement-core-service/pom.xml test` 必须覆盖本文档两个自有接口和四个模块继承过来的全部契约测试。四个旧服务、`business-core-service`、第二批前序服务和 `api-gateway-service` 仍必须保持测试通过，直到用户明确确认旧服务清理。
+`mvn -f backend/engagement-core-service/pom.xml test` 必须覆盖本文档两个自有接口和四个模块继承过来的全部契约测试。四个第三批旧服务、`business-core-service`、`admission-core-service` 和 `api-gateway-service` 仍必须保持测试通过，直到用户明确确认第三批旧服务清理。
 
 `engagement-core` 直连合并全绿前，不得切换网关。网关切换必须先更新 `api-gateway` 正式契约和本地测试文档，再执行红灯验证、实现、网关测试和全量回归。
 
-旧服务目录不得因本契约自动删除。需要清理旧服务时，必须单独列出明确文件路径并取得用户确认，且只能逐个文件处理。
+旧服务目录不得因本契约自动删除。需要清理旧服务时，必须单独列出明确文件路径并取得用户确认，且只能逐个文件处理。第一批旧服务目录 `backend/auth-service`、`backend/profile-service`、`backend/notification-service`、`backend/content-service`、`backend/server-status-service`、`backend/resource-service`、`backend/admin-service` 和第二批旧服务目录 `backend/onboarding-service`、`backend/exam-service`、`backend/whitelist-service`、`backend/attendance-service` 已经完成合并清理，不得通过 Git 恢复、复制目录、重建 Maven 入口、重建启动类或重写旧测试命令。
 
 第三批验收还必须满足社区运营边界不被破坏：community 不吞 activity、calendar 或 changelog 主数据；activity 不改 community 状态、不写 attendance 积分；calendar 不改 activity 状态、不触发真实运维；changelog 不写 calendar 主数据、不创建公告、不生成资源下载票据、不执行真实维护命令。
