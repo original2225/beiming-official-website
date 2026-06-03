@@ -395,7 +395,7 @@ record EngagementModuleRegistration(String moduleKey,
         data.put("routeSignatureRoutesVerifiedTotal", routeContractRoutesVerifiedTotal());
         data.put("completeBehaviorContractRoutesVerifiedTotal", completeBehaviorContractRoutesVerifiedTotal());
         data.put("pendingBehaviorContractRoutesTotal", pendingBehaviorContractRoutesTotal());
-        data.put("behaviorCoverageStatus", "PENDING_COMPLETE_BEHAVIOR_CONTRACTS");
+        data.put("behaviorCoverageStatus", behaviorCoverageStatus());
         data.put("pendingBehaviorCategories", pendingBehaviorCategories());
         return data;
     }
@@ -405,6 +405,9 @@ record EngagementModuleRegistration(String moduleKey,
     }
 
     int completeBehaviorContractRoutesVerifiedTotal() {
+        if ("CHANGELOG".equals(moduleKey)) {
+            return routesTotal;
+        }
         return 0;
     }
 
@@ -413,6 +416,9 @@ record EngagementModuleRegistration(String moduleKey,
     }
 
     private List<String> pendingBehaviorCategories() {
+        if (pendingBehaviorContractRoutesTotal() == 0) {
+            return List.of();
+        }
         return List.of(
                 "SUCCESS_PATH",
                 "FIELD_VALIDATION",
@@ -426,6 +432,13 @@ record EngagementModuleRegistration(String moduleKey,
                 "AUDIT",
                 "PRODUCTION_HARDENING"
         );
+    }
+
+    private String behaviorCoverageStatus() {
+        if (pendingBehaviorContractRoutesTotal() == 0) {
+            return "COMPLETE_BEHAVIOR_CONTRACTS";
+        }
+        return "PENDING_COMPLETE_BEHAVIOR_CONTRACTS";
     }
 }
 
