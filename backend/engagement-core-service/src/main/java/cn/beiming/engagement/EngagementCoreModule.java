@@ -28,7 +28,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/engagement-core")
 class EngagementCoreController {
-    private static final int SELF_ROUTES_TOTAL = 2;
+    private static final int SELF_ROUTES_TOTAL = 3;
 
     private final int port;
     private final EngagementCoreRegistry registry = new EngagementCoreRegistry();
@@ -52,6 +52,16 @@ class EngagementCoreController {
         return ResponseEntity.ok(envelope(0, "success", opsSummary(decision), requestId(request)));
     }
 
+    @GetMapping("/admin/production-readiness")
+    ResponseEntity<Map<String, Object>> productionReadiness(HttpServletRequest request,
+                                                            @RequestHeader(value = "Authorization", required = false) String authorization) {
+        EngagementAuthDecision decision = authorizeAdminOrOwner(request, authorization);
+        if (!decision.allowed()) {
+            return ResponseEntity.status(decision.status()).body(envelope(decision.code(), decision.message(), null, requestId(request)));
+        }
+        return ResponseEntity.ok(envelope(0, "success", productionReadinessSummary(), requestId(request)));
+    }
+
     private Map<String, Object> healthSummary() {
         Map<String, Object> data = baseSummary();
         data.put("moduleRoutes", registry.publicModules());
@@ -73,6 +83,26 @@ class EngagementCoreController {
         data.put("legacyBaselines", registry.legacyBaselines());
         data.put("retiredLegacyServices", registry.retiredLegacyServices());
         data.put("productionGaps", registry.productionGaps());
+        data.put("generatedAt", Instant.now().toString());
+        return data;
+    }
+
+    private Map<String, Object> productionReadinessSummary() {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("service", "engagement-core");
+        data.put("port", port);
+        data.put("readyForProduction", false);
+        data.put("readinessStatus", "NOT_READY");
+        data.put("routesTotal", registry.engagementRoutesTotal() + SELF_ROUTES_TOTAL);
+        data.put("engagementRoutesTotal", registry.engagementRoutesTotal());
+        data.put("selfRoutesTotal", SELF_ROUTES_TOTAL);
+        data.put("routeContractCoverageStatus", "ROUTE_CONTRACT_VERIFIED");
+        data.put("behaviorContractCoverageStatus", "PARTIAL_BEHAVIOR_CONTRACT_TESTS");
+        data.put("trustedGatewayCoverageStatus", "OPS_SUMMARIES_ONLY");
+        data.put("routeDriftStatus", "NO_DRIFT");
+        data.put("legacyServiceRestoreStatus", "NOT_RESTORED");
+        data.put("checks", registry.productionReadinessChecks());
+        data.put("productionBlockers", registry.productionGaps());
         data.put("generatedAt", Instant.now().toString());
         return data;
     }
@@ -237,6 +267,22 @@ class EngagementCoreRegistry {
         );
     }
 
+    List<Map<String, Object>> productionReadinessChecks() {
+        return List.of(
+                check("ROUTE_SIGNATURES", "PASS", "149 inherited business route signatures are verified", true,
+                        Map.of("verifiedRoutesTotal", routeContractRoutesVerifiedTotal())),
+                check("BEHAVIOR_CONTRACTS", "BLOCKED", "complete inherited behavior contract tests are still pending", true,
+                        Map.of("requiredBusinessRoutesTotal", engagementRoutesTotal())),
+                check("TRUSTED_GATEWAY_CONTEXT", "PARTIAL", "trusted gateway context is mounted for ops summaries only", true, Map.of()),
+                check("PERSISTENCE", "BLOCKED", "real database persistence is still module dependent", true, Map.of()),
+                check("AUDIT_PERSISTENCE", "BLOCKED", "persistent audit storage is not connected", true, Map.of()),
+                check("CROSS_SERVICE_ADAPTERS", "BLOCKED", "real cross-service adapters are still represented by local test stubs", true, Map.of()),
+                check("NOTIFICATION_DELIVERY", "BLOCKED", "real notification delivery is not connected", true, Map.of()),
+                check("LIVE_HTTP_SMOKE", "BLOCKED", "live gateway-to-engagement-core HTTP smoke is not verified", true, Map.of()),
+                check("LEGACY_SERVICES", "PASS", "merged legacy service Maven entrypoints are not restored", true, Map.of())
+        );
+    }
+
     static String baselineVerifiedAt() {
         return THIRD_BATCH_BASELINE_VERIFIED_AT;
     }
@@ -269,6 +315,16 @@ class EngagementCoreRegistry {
         data.put("status", "RETIRED");
         data.put("testCommand", null);
         data.put("retiredAt", THIRD_BATCH_BASELINE_VERIFIED_AT);
+        return data;
+    }
+
+    private Map<String, Object> check(String checkKey, String status, String summary, boolean required, Map<String, Object> details) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("checkKey", checkKey);
+        data.put("status", status);
+        data.put("summary", summary);
+        data.put("required", required);
+        data.putAll(details);
         return data;
     }
 }

@@ -8,7 +8,7 @@
 
 各模块独立契约仍是后端实现和变更的源文档。任一接口发生变化时，必须先更新对应 `docs/contracts-<module>.md`，再同步更新本文档。
 
-当前合并范围包含 27 个业务或平台模块，另包含 `engagement-core` 运行合并单元自检契约。唯一 `METHOD path` 总数为 749，其中第三批四个业务模块在 `engagement-core-service:8132` 中承载 149 个业务路由，`engagement-core` 自身提供 2 个运行单元自检路由。
+当前合并范围包含 27 个业务或平台模块，另包含 `engagement-core` 运行合并单元自检契约。唯一 `METHOD path` 总数为 750，其中第三批四个业务模块在 `engagement-core-service:8132` 中承载 149 个业务路由，`engagement-core` 自身提供 3 个运行单元自检和诊断路由。
 
 ## 前端接入要点
 
@@ -10019,12 +10019,13 @@ notification 是辅助依赖。发布、下架和安全修复通知失败不得�
 | --- | --- | --- | --- | --- | --- |
 | 健康检查 | GET | `/api/v1/engagement-core/health` | 否 | 无 | 返回运行单元低敏健康摘要，不代表四个业务模块完整行为契约已全绿。 |
 | 后台装配摘要 | GET | `/api/v1/engagement-core/admin/ops/summary` | 是 | `ADMIN` 或 `OWNER` | 返回第三批模块装配、路由签名覆盖、前序基线、旧服务退役和生产化缺口摘要。 |
+| 生产就绪诊断 | GET | `/api/v1/engagement-core/admin/production-readiness` | 是 | `ADMIN` 或 `OWNER` | 返回生产阻塞项、路由漂移状态、旧服务恢复保护和真实适配缺口摘要。 |
 
 ### 健康检查
 
 `GET /api/v1/engagement-core/health`
 
-成功响应 HTTP `200`。响应至少包含 `service=engagement-core`、`status`、`port=8132`、`modulesTotal=4`、`modulesMounted=4`、`engagementRoutesTotal=149`、`selfRoutesTotal=2`、`routeContractRoutesVerifiedTotal=149`、`routeContractCoverageStatus=ROUTE_CONTRACT_VERIFIED`、`behaviorContractCoverageStatus=PARTIAL_BEHAVIOR_CONTRACT_TESTS`、`moduleRoutes` 和 `generatedAt`。
+成功响应 HTTP `200`。响应至少包含 `service=engagement-core`、`status`、`port=8132`、`modulesTotal=4`、`modulesMounted=4`、`engagementRoutesTotal=149`、`selfRoutesTotal=3`、`routeContractRoutesVerifiedTotal=149`、`routeContractCoverageStatus=ROUTE_CONTRACT_VERIFIED`、`behaviorContractCoverageStatus=PARTIAL_BEHAVIOR_CONTRACT_TESTS`、`moduleRoutes` 和 `generatedAt`。
 
 该接口不得返回 token、Cookie、数据库连接串、异常栈、外部凭据、请求头原文、举报证据详情、工单内部备注、通知正文、真实服务器命令、节点凭据或 Cloudreve token。
 
@@ -10034,7 +10035,7 @@ notification 是辅助依赖。发布、下架和安全修复通知失败不得�
 
 未登录返回 `41000`，令牌格式错误返回 `41003`，权限不足返回 `42001`。只有 `ADMIN` 和 `OWNER` 可访问。
 
-成功响应 HTTP `200`，`data` 至少包含 `service`、`port`、`status`、`modulesTotal`、`modulesMounted`、`routesTotal=151`、`engagementRoutesTotal=149`、`selfRoutesTotal=2`、`routeContractRoutesVerifiedTotal=149`、`routeContractCoverageStatus=ROUTE_CONTRACT_VERIFIED`、`behaviorContractCoverageStatus=PARTIAL_BEHAVIOR_CONTRACT_TESTS`、`moduleRoutes`、`adapterChain`、`businessCoreDependency`、`admissionCoreDependency`、`gatewaySwitchReady`、`gatewaySwitchStatus`、`legacyBaselines`、`retiredLegacyServices`、`productionGaps` 和 `generatedAt`。
+成功响应 HTTP `200`，`data` 至少包含 `service`、`port`、`status`、`modulesTotal`、`modulesMounted`、`routesTotal=152`、`engagementRoutesTotal=149`、`selfRoutesTotal=3`、`routeContractRoutesVerifiedTotal=149`、`routeContractCoverageStatus=ROUTE_CONTRACT_VERIFIED`、`behaviorContractCoverageStatus=PARTIAL_BEHAVIOR_CONTRACT_TESTS`、`moduleRoutes`、`adapterChain`、`businessCoreDependency`、`admissionCoreDependency`、`gatewaySwitchReady`、`gatewaySwitchStatus`、`legacyBaselines`、`retiredLegacyServices`、`productionGaps` 和 `generatedAt`。
 
 `moduleRoutes` 中每个模块必须返回 `port=8132`、对应 `legacyPort`、`contractRoutesTotal`、`routeContractRoutesVerifiedTotal`、`routeContractCoverageStatus` 和 `behaviorContractCoverageStatus`。当前四个模块路由签名覆盖数为 community `64`、activity `41`、calendar `21`、changelog `23`。
 
@@ -10044,9 +10045,17 @@ notification 是辅助依赖。发布、下架和安全修复通知失败不得�
 
 `legacyBaselines` 不得包含 `community-service`、`activity-service`、`calendar-service` 或 `changelog-service`。`retiredLegacyServices` 必须返回这四个旧服务的退役摘要，且 `testCommand=null`。
 
+### 生产就绪诊断
+
+`GET /api/v1/engagement-core/admin/production-readiness`
+
+该接口需要 `ADMIN` 或 `OWNER`，可使用 Bearer 本地兼容 token 或可信网关上下文。成功响应 HTTP `200`，`data` 至少包含 `service=engagement-core`、`port=8132`、`readyForProduction=false`、`readinessStatus=NOT_READY`、`routesTotal=152`、`engagementRoutesTotal=149`、`selfRoutesTotal=3`、`routeContractCoverageStatus=ROUTE_CONTRACT_VERIFIED`、`behaviorContractCoverageStatus=PARTIAL_BEHAVIOR_CONTRACT_TESTS`、`trustedGatewayCoverageStatus=OPS_SUMMARIES_ONLY`、`routeDriftStatus=NO_DRIFT`、`legacyServiceRestoreStatus=NOT_RESTORED`、`checks`、`productionBlockers` 和 `generatedAt`。
+
+`checks` 必须包含 `ROUTE_SIGNATURES=PASS`、`BEHAVIOR_CONTRACTS=BLOCKED`、`TRUSTED_GATEWAY_CONTEXT=PARTIAL`、`PERSISTENCE=BLOCKED`、`AUDIT_PERSISTENCE=BLOCKED`、`CROSS_SERVICE_ADAPTERS=BLOCKED`、`NOTIFICATION_DELIVERY=BLOCKED`、`LIVE_HTTP_SMOKE=BLOCKED` 和 `LEGACY_SERVICES=PASS`。该接口只读诊断摘要，不调用旧服务，不执行真实 HTTP smoke，不触发业务写操作，不返回 token、Cookie、完整请求头、真实数据库连接串、内部 URL、异常栈、节点凭据、服务器命令、举报证据、工单内部备注、通知正文或 Cloudreve token。
+
 ### 验收口径
 
-`engagement-core` API 文档按 `docs/contracts-engagement-core.md` 独立存在，并由 `.local-docs/tests-engagement-core.md` 记录本地测试闭环。`mvn -f backend/engagement-core-service/pom.xml test` 必须覆盖两个自有接口、149 个第三批业务 `METHOD path` 路由签名、旧服务不恢复保护和后续行为契约缺口公开。
+`engagement-core` API 文档按 `docs/contracts-engagement-core.md` 独立存在，并由 `.local-docs/tests-engagement-core.md` 记录本地测试闭环。`mvn -f backend/engagement-core-service/pom.xml test` 必须覆盖三个自有接口、149 个第三批业务 `METHOD path` 路由签名、旧服务不恢复保护和后续行为契约缺口公开。
 
 第三批旧服务已经清理。后续测试不得恢复、重建或执行 `backend/community-service`、`backend/activity-service`、`backend/calendar-service` 和 `backend/changelog-service` 的 Maven 入口。
 

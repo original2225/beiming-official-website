@@ -52,7 +52,7 @@ class EngagementCoreApiContractTest {
                 .andExpect(jsonPath("$.data.modulesTotal").value(4))
                 .andExpect(jsonPath("$.data.modulesMounted").value(4))
                 .andExpect(jsonPath("$.data.engagementRoutesTotal").value(149))
-                .andExpect(jsonPath("$.data.selfRoutesTotal").value(2))
+                .andExpect(jsonPath("$.data.selfRoutesTotal").value(3))
                 .andExpect(jsonPath("$.data.moduleRoutes[?(@.moduleKey == 'COMMUNITY' && @.pathPrefix == '/api/v1/community' && @.routesTotal == 64 && @.status == 'READY')]").exists())
                 .andExpect(jsonPath("$.data.moduleRoutes[?(@.moduleKey == 'ACTIVITY' && @.pathPrefix == '/api/v1/activity' && @.routesTotal == 41 && @.status == 'READY')]").exists())
                 .andExpect(jsonPath("$.data.moduleRoutes[?(@.moduleKey == 'CALENDAR' && @.pathPrefix == '/api/v1/calendar' && @.routesTotal == 21 && @.status == 'READY')]").exists())
@@ -95,9 +95,9 @@ class EngagementCoreApiContractTest {
                 .andExpect(jsonPath("$.data.port").value(8132))
                 .andExpect(jsonPath("$.data.modulesTotal").value(4))
                 .andExpect(jsonPath("$.data.modulesMounted").value(4))
-                .andExpect(jsonPath("$.data.routesTotal").value(151))
+                .andExpect(jsonPath("$.data.routesTotal").value(152))
                 .andExpect(jsonPath("$.data.engagementRoutesTotal").value(149))
-                .andExpect(jsonPath("$.data.selfRoutesTotal").value(2))
+                .andExpect(jsonPath("$.data.selfRoutesTotal").value(3))
                 .andExpect(jsonPath("$.data.routeContractRoutesVerifiedTotal").value(149))
                 .andExpect(jsonPath("$.data.routeContractCoverageStatus").value("ROUTE_CONTRACT_VERIFIED"))
                 .andExpect(jsonPath("$.data.behaviorContractCoverageStatus").value("PARTIAL_BEHAVIOR_CONTRACT_TESTS"))
@@ -132,6 +132,70 @@ class EngagementCoreApiContractTest {
                 .andExpect(jsonPath("$.data.retiredLegacyServices[?(@.service == 'calendar-service' && @.directory == 'backend/calendar-service' && @.testCommand == null)]").exists())
                 .andExpect(jsonPath("$.data.retiredLegacyServices[?(@.service == 'changelog-service' && @.directory == 'backend/changelog-service' && @.testCommand == null)]").exists())
                 .andExpect(jsonPath("$.data.generatedAt").isNotEmpty());
+    }
+
+    @Test
+    void exposesProductionReadinessWithAdminOnlyAccess() throws Exception {
+        mockMvc.perform(get("/api/v1/engagement-core/admin/production-readiness"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(41000));
+
+        mockMvc.perform(get("/api/v1/engagement-core/admin/production-readiness")
+                        .header("Authorization", "Bearer helper-token"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(42001));
+
+        mockMvc.perform(get("/api/v1/engagement-core/admin/production-readiness")
+                        .header("Authorization", "Bearer admin-token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.service").value("engagement-core"))
+                .andExpect(jsonPath("$.data.port").value(8132))
+                .andExpect(jsonPath("$.data.readyForProduction").value(false))
+                .andExpect(jsonPath("$.data.readinessStatus").value("NOT_READY"))
+                .andExpect(jsonPath("$.data.routesTotal").value(152))
+                .andExpect(jsonPath("$.data.engagementRoutesTotal").value(149))
+                .andExpect(jsonPath("$.data.selfRoutesTotal").value(3))
+                .andExpect(jsonPath("$.data.routeContractCoverageStatus").value("ROUTE_CONTRACT_VERIFIED"))
+                .andExpect(jsonPath("$.data.behaviorContractCoverageStatus").value("PARTIAL_BEHAVIOR_CONTRACT_TESTS"))
+                .andExpect(jsonPath("$.data.trustedGatewayCoverageStatus").value("OPS_SUMMARIES_ONLY"))
+                .andExpect(jsonPath("$.data.routeDriftStatus").value("NO_DRIFT"))
+                .andExpect(jsonPath("$.data.legacyServiceRestoreStatus").value("NOT_RESTORED"))
+                .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'ROUTE_SIGNATURES' && @.status == 'PASS' && @.verifiedRoutesTotal == 149)]").exists())
+                .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'BEHAVIOR_CONTRACTS' && @.status == 'BLOCKED' && @.requiredBusinessRoutesTotal == 149)]").exists())
+                .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'TRUSTED_GATEWAY_CONTEXT' && @.status == 'PARTIAL')]").exists())
+                .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'PERSISTENCE' && @.status == 'BLOCKED')]").exists())
+                .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'AUDIT_PERSISTENCE' && @.status == 'BLOCKED')]").exists())
+                .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'CROSS_SERVICE_ADAPTERS' && @.status == 'BLOCKED')]").exists())
+                .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'NOTIFICATION_DELIVERY' && @.status == 'BLOCKED')]").exists())
+                .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'LIVE_HTTP_SMOKE' && @.status == 'BLOCKED')]").exists())
+                .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'LEGACY_SERVICES' && @.status == 'PASS')]").exists())
+                .andExpect(jsonPath("$.data.productionBlockers[?(@ == 'complete inherited behavior contract tests are not all mounted in engagement-core')]").exists())
+                .andExpect(jsonPath("$.data.productionBlockers[?(@ == 'gateway trusted context is mounted for ops summaries only; complete business behavior auth coverage is still pending')]").exists())
+                .andExpect(jsonPath("$.data.productionBlockers[?(@ == 'live gateway-to-engagement-core HTTP smoke is not verified')]").exists())
+                .andExpect(jsonPath("$.data.generatedAt").isNotEmpty());
+    }
+
+    @Test
+    void consumesTrustedGatewayContextForProductionReadiness() throws Exception {
+        mockMvc.perform(trusted(get("/api/v1/engagement-core/admin/production-readiness"), "gateway-owner", "OWNER", "NODE_READ"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.trustedGatewayCoverageStatus").value("OPS_SUMMARIES_ONLY"))
+                .andExpect(jsonPath("$.data.routeDriftStatus").value("NO_DRIFT"))
+                .andExpect(jsonPath("$.data.legacyServiceRestoreStatus").value("NOT_RESTORED"));
+
+        mockMvc.perform(get("/api/v1/engagement-core/admin/production-readiness")
+                        .header("X-Beiming-Actor-User-Id", "forged-owner")
+                        .header("X-Beiming-Actor-Roles", "OWNER")
+                        .header("Authorization", "Bearer user-token"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(42001));
+
+        mockMvc.perform(get("/api/v1/engagement-core/admin/production-readiness")
+                        .header("X-Gateway-Internal-Request-Id", "req-missing-user")
+                        .header("X-Beiming-Actor-Roles", "OWNER"))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.code").value(53233));
     }
 
     @Test
@@ -298,10 +362,11 @@ class EngagementCoreApiContractTest {
                 .filter(pattern -> pattern.startsWith("/api/v1/"))
                 .collect(Collectors.toCollection(java.util.TreeSet::new));
 
-        assertThat(apiRouteMappings).isEqualTo(151);
+        assertThat(apiRouteMappings).isEqualTo(152);
         assertThat(apiRoutes).contains(
                 "/api/v1/engagement-core/health",
                 "/api/v1/engagement-core/admin/ops/summary",
+                "/api/v1/engagement-core/admin/production-readiness",
                 "/api/v1/community/boards",
                 "/api/v1/activity/events",
                 "/api/v1/calendar/upcoming",
