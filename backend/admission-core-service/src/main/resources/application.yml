@@ -1,0 +1,11 @@
+server:
+  port: 8131
+
+attendance:
+  test-controls:
+    enabled: false
+
+beiming:
+  admission-core:
+    test-control-headers:
+      enabled: false
