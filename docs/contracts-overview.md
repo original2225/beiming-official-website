@@ -8,7 +8,7 @@
 
 面向前端开发的一体化 API 全文查阅文档见 `docs/api-reference.md`。该文档由公共契约和全部模块契约合并生成，方便前端统一检索路径、字段和响应格式。
 
-本汇总覆盖当前仓库 `docs/contracts-*.md` 中除 `contracts-common.md` 之外的 27 个后端或平台模块。当前唯一 `METHOD path` 总数为 746。
+本汇总覆盖当前仓库 `docs/contracts-*.md` 中除 `contracts-common.md` 之外的 27 个后端或平台模块。第一批已完成运行合并并入仓，第二批和第三批已有 core 契约及本地合并手册，但当前仓库尚未包含对应运行单元代码。当前唯一 `METHOD path` 总数为 746。
 
 ## 全局接口规则
 
@@ -50,6 +50,16 @@
 | `server-status` | `backend/server-status-service` | 8105 | 25 | `docs/contracts-server-status.md` | `.local-docs/tests-server-status.md` | `mvn -q -f backend/server-status-service/pom.xml test` |
 | `whitelist` | `backend/whitelist-service` | 8110 | 23 | `docs/contracts-whitelist.md` | `.local-docs/tests-whitelist.md` | `mvn -q -f backend/whitelist-service/pom.xml test` |
 
+## 合并后运行入口
+
+当前已入仓的合并运行入口是 `business-core-service`。第二批 `admission-core-service` 和第三批 `engagement-core-service` 仍处于契约与本地计划状态，运行单元代码入仓并完成测试闭环前，网关不得切到 `8131` 或 `8132`。
+
+| 合并批次 | 运行入口 | 端口 | 承载模块 | 旧端口用途 |
+| --- | --- | ---: | --- | --- |
+| 第一批基础业务 | `backend/business-core-service` | 8130 | `auth`、`profile`、`notification`、`content`、`server-status`、`resource`、`admin` | `8101` 到 `8107` 仅保留为旧服务回归基线 |
+| 第二批入服准入 | `backend/admission-core-service` 尚未入仓 | 8131 | `onboarding`、`exam`、`whitelist`、`attendance` | 当前仍由 `8108` 到 `8111` 旧服务承载网关流量 |
+| 第三批社区运营 | `backend/engagement-core-service` 尚未入仓 | 8132 | `community`、`activity`、`calendar`、`changelog` | 当前仍由 `8112` 到 `8115` 旧服务承载网关流量 |
+
 ## 依赖顺序和边界
 
 当前后端服务已经按依赖链路沉淀为独立契约和独立测试。前序服务的契约、测试、响应格式、错误码、认证方式和数据归属默认稳定。后序服务只能通过前序服务正式 API、后端入口认证上下文或受控 stub 适配，不能反向要求前序服务改结构，也不能直接读前序服务数据库。
@@ -60,4 +70,4 @@
 
 任一模块变更时，必须优先更新该模块自己的 `docs/contracts-<module>.md`，再更新 `.local-docs/tests-<module>.md` 和对应自动化测试。只有模块测试和受影响的上游或下游回归测试全部通过，并留下测试过程记录后，才能认为该模块变更完成。
 
-全量后端验收以 27 个 Maven 服务测试全部通过为准。最近一次 `main` 分支全量测试记录见 `.local-docs/backend-main-merge-test-record.md`，该记录不提交到仓库。
+全量后端验收以合并后的 core 服务、未合并服务、api-gateway 和仍保留的旧服务回归测试全部通过为准。最近一次 `main` 分支全量测试记录见 `.local-docs/backend-main-merge-test-record.md`，该记录不提交到仓库。
