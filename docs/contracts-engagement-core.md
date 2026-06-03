@@ -128,8 +128,8 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
 | `trustedGatewayCoverageStatus` | string | 是 | 可信网关上下文覆盖状态，当前为 `OPS_SUMMARIES_ONLY`。 |
 | `routeDriftStatus` | string | 是 | 路由快照漂移状态，当前为 `NO_DRIFT`。 |
 | `legacyServiceRestoreStatus` | string | 是 | 已清理旧服务状态，当前为 `NOT_RESTORED`。 |
-| `completeBehaviorContractRoutesVerifiedTotal` | integer | 是 | 已完成全部行为契约验证的业务路由总数。当前为 `23`，代表路由和路由签名测试不得计入完整行为契约。 |
-| `pendingBehaviorContractRoutesTotal` | integer | 是 | 仍需补齐完整行为契约验证的业务路由总数。当前为 `126`。 |
+| `completeBehaviorContractRoutesVerifiedTotal` | integer | 是 | 已完成全部行为契约验证的业务路由总数。当前为 `87`，代表路由和路由签名测试不得计入完整行为契约。 |
+| `pendingBehaviorContractRoutesTotal` | integer | 是 | 仍需补齐完整行为契约验证的业务路由总数。当前为 `62`。 |
 | `behaviorCoverageByModule` | object[] | 是 | 按模块拆分的行为契约覆盖进度。每项包含 `moduleKey`、`moduleName`、`contract`、`routesTotal`、`routeSignatureRoutesVerifiedTotal`、`completeBehaviorContractRoutesVerifiedTotal`、`pendingBehaviorContractRoutesTotal`、`behaviorCoverageStatus` 和 `pendingBehaviorCategories`。 |
 | `checks` | object[] | 是 | 生产就绪检查项。每项包含 `checkKey`、`status`、`summary`、`required` 和可选计数字段。 |
 | `productionBlockers` | string[] | 是 | 阻止生产发布的缺口摘要。必须与 `productionGaps` 语义一致。 |
@@ -356,8 +356,8 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
     "trustedGatewayCoverageStatus": "OPS_SUMMARIES_ONLY",
     "routeDriftStatus": "NO_DRIFT",
     "legacyServiceRestoreStatus": "NOT_RESTORED",
-    "completeBehaviorContractRoutesVerifiedTotal": 23,
-    "pendingBehaviorContractRoutesTotal": 126,
+    "completeBehaviorContractRoutesVerifiedTotal": 87,
+    "pendingBehaviorContractRoutesTotal": 62,
     "behaviorCoverageByModule": [
       {
         "moduleKey": "COMMUNITY",
@@ -365,8 +365,42 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
         "contract": "docs/contracts-community.md",
         "routesTotal": 64,
         "routeSignatureRoutesVerifiedTotal": 64,
+        "completeBehaviorContractRoutesVerifiedTotal": 64,
+        "pendingBehaviorContractRoutesTotal": 0,
+        "behaviorCoverageStatus": "COMPLETE_BEHAVIOR_CONTRACTS",
+        "pendingBehaviorCategories": []
+      },
+      {
+        "moduleKey": "ACTIVITY",
+        "moduleName": "activity",
+        "contract": "docs/contracts-activity.md",
+        "routesTotal": 41,
+        "routeSignatureRoutesVerifiedTotal": 41,
         "completeBehaviorContractRoutesVerifiedTotal": 0,
-        "pendingBehaviorContractRoutesTotal": 64,
+        "pendingBehaviorContractRoutesTotal": 41,
+        "behaviorCoverageStatus": "PENDING_COMPLETE_BEHAVIOR_CONTRACTS",
+        "pendingBehaviorCategories": [
+          "SUCCESS_PATH",
+          "FIELD_VALIDATION",
+          "AUTHENTICATION",
+          "AUTHORIZATION",
+          "RESOURCE_NOT_FOUND",
+          "STATE_CONFLICT",
+          "IDEMPOTENCY_OR_CONCURRENCY",
+          "STATE_TRANSITION",
+          "FAILURE_DEGRADATION",
+          "AUDIT",
+          "PRODUCTION_HARDENING"
+        ]
+      },
+      {
+        "moduleKey": "CALENDAR",
+        "moduleName": "calendar",
+        "contract": "docs/contracts-calendar.md",
+        "routesTotal": 21,
+        "routeSignatureRoutesVerifiedTotal": 21,
+        "completeBehaviorContractRoutesVerifiedTotal": 0,
+        "pendingBehaviorContractRoutesTotal": 21,
         "behaviorCoverageStatus": "PENDING_COMPLETE_BEHAVIOR_CONTRACTS",
         "pendingBehaviorCategories": [
           "SUCCESS_PATH",
@@ -408,8 +442,8 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
         "summary": "complete inherited behavior contract tests are still pending",
         "required": true,
         "requiredBusinessRoutesTotal": 149,
-        "completeBehaviorContractRoutesVerifiedTotal": 23,
-        "pendingBehaviorContractRoutesTotal": 126
+        "completeBehaviorContractRoutesVerifiedTotal": 87,
+        "pendingBehaviorContractRoutesTotal": 62
       }
     ],
     "productionBlockers": [
@@ -429,7 +463,7 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
 
 业务规则：该接口只读当前运行单元诊断摘要，不主动连接第三批旧服务，不主动调用真实前序服务，不执行数据库迁移，不执行外部通知，不执行真实 HTTP smoke，不触发四个业务模块写操作。当前 `readyForProduction` 必须为 `false`，直到 149 个业务方法路由完整行为契约、业务认证行为、持久化审计、真实跨服务 adapter、真实通知交付和真实 HTTP smoke 都完成独立闭环。代表路由测试、后台自检测试和 149 个 `METHOD path` 路由签名测试只能计入路由签名覆盖，不得计入 `completeBehaviorContractRoutesVerifiedTotal`。该接口不得返回 token、Cookie、完整请求头、真实数据库连接串、内部 URL、异常栈、节点凭据、服务器命令、举报证据、工单内部备注、通知正文或 Cloudreve token。
 
-检查项状态允许 `PASS`、`PARTIAL`、`BLOCKED` 和 `UNKNOWN`。路由签名已验证可为 `PASS`；只覆盖五个后台自检摘要的可信网关上下文必须为 `PARTIAL`；完整行为契约、真实持久化、审计持久化、真实跨服务 adapter、真实通知交付和真实 HTTP smoke 未完成时必须为 `BLOCKED`。`behaviorCoverageByModule` 必须按 community、activity、calendar 和 changelog 四个模块分别返回剩余完整行为契约路由数和待补测试类别。当前 changelog 23 个业务方法路由已迁入 `engagement-core-service` 完整行为契约测试，community、activity 和 calendar 仍待补。已清理旧服务不得恢复，`legacyServiceRestoreStatus` 必须保持 `NOT_RESTORED`。
+检查项状态允许 `PASS`、`PARTIAL`、`BLOCKED` 和 `UNKNOWN`。路由签名已验证可为 `PASS`；只覆盖五个后台自检摘要的可信网关上下文必须为 `PARTIAL`；完整行为契约、真实持久化、审计持久化、真实跨服务 adapter、真实通知交付和真实 HTTP smoke 未完成时必须为 `BLOCKED`。`behaviorCoverageByModule` 必须按 community、activity、calendar 和 changelog 四个模块分别返回剩余完整行为契约路由数和待补测试类别。当前 community 64 个和 changelog 23 个业务方法路由已迁入 `engagement-core-service` 完整行为契约测试，activity 和 calendar 仍待补。已清理旧服务不得恢复，`legacyServiceRestoreStatus` 必须保持 `NOT_RESTORED`。
 
 分页规则：无分页。
 
