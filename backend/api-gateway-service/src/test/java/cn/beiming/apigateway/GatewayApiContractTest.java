@@ -73,14 +73,15 @@ class GatewayApiContractTest {
         addRange(mapped, "GATE-PFX", 1, 26);
         addRange(mapped, "GATE-BCORE", 1, 10);
         addRange(mapped, "GATE-ACORE", 1, 10);
+        addRange(mapped, "GATE-ECORE", 1, 10);
         addRange(mapped, "GATE-UP", 1, 20);
         addRange(mapped, "GATE-LOG", 1, 20);
         addRange(mapped, "GATE-PROXY", 1, 49);
         addRange(mapped, "GATE-CORS", 1, 10);
         addRange(mapped, "GATE-SEC", 1, 11);
 
-        assertThat(mapped).hasSize(204);
-        assertThat(mapped).contains("GATE-COM-001", "GATE-PFX-026", "GATE-BCORE-010", "GATE-ACORE-010", "GATE-UP-020", "GATE-PROXY-049", "GATE-SEC-011");
+        assertThat(mapped).hasSize(214);
+        assertThat(mapped).contains("GATE-COM-001", "GATE-PFX-026", "GATE-BCORE-010", "GATE-ACORE-010", "GATE-ECORE-010", "GATE-UP-020", "GATE-PROXY-049", "GATE-SEC-011");
     }
 
     @Test
@@ -163,10 +164,10 @@ class GatewayApiContractTest {
         assertRoute(routes, "exam", "EXAM", "/api/v1/exams", 8131);
         assertRoute(routes, "whitelist", "WHITELIST", "/api/v1/whitelist", 8131);
         assertRoute(routes, "attendance", "ATTENDANCE", "/api/v1/attendance", 8131);
-        assertRoute(routes, "community", "COMMUNITY", "/api/v1/community", 8112);
-        assertRoute(routes, "activity", "ACTIVITY", "/api/v1/activity", 8113);
-        assertRoute(routes, "calendar", "CALENDAR", "/api/v1/calendar", 8114);
-        assertRoute(routes, "changelog", "CHANGELOG", "/api/v1/changelog", 8115);
+        assertRoute(routes, "community", "COMMUNITY", "/api/v1/community", 8132);
+        assertRoute(routes, "activity", "ACTIVITY", "/api/v1/activity", 8132);
+        assertRoute(routes, "calendar", "CALENDAR", "/api/v1/calendar", 8132);
+        assertRoute(routes, "changelog", "CHANGELOG", "/api/v1/changelog", 8132);
         assertRoute(routes, "ops-control", "OPS_CONTROL", "/api/v1/ops-control", 8116);
         assertRoute(routes, "node-daemon", "NODE_DAEMON", "/api/v1/node-daemon", 8117);
         assertRoute(routes, "cloudreve-sync", "CLOUDREVE_SYNC", "/api/v1/cloudreve-sync", 8118);
@@ -180,6 +181,7 @@ class GatewayApiContractTest {
         assertRoute(routes, "guide", "GUIDE", "/api/v1/guides", 8127);
         assertFirstBatchBusinessCoreRoutes(routes);
         assertSecondBatchAdmissionCoreRoutes(routes);
+        assertThirdBatchEngagementCoreRoutes(routes);
 
         JsonNode filtered = performJson(get("/api/v1/gateway/admin/routes")
                 .header("Authorization", bearer("helper-token"))
@@ -676,6 +678,22 @@ class GatewayApiContractTest {
         assertThat(findRoute(routes, "exam").path("healthCheckPath").asText()).isEqualTo("/api/v1/exams/me/sessions");
         assertThat(findRoute(routes, "whitelist").path("healthCheckPath").asText()).isEqualTo("/api/v1/whitelist/me/applications/current");
         assertThat(findRoute(routes, "attendance").path("healthCheckPath").asText()).isEqualTo("/api/v1/attendance/leaderboard");
+    }
+
+    private void assertThirdBatchEngagementCoreRoutes(JsonNode routes) {
+        Set<String> thirdBatch = Set.of("community", "activity", "calendar", "changelog");
+        Set<Integer> legacyPorts = Set.of(8112, 8113, 8114, 8115);
+        for (String routeId : thirdBatch) {
+            JsonNode route = findRoute(routes, routeId);
+            assertThat(route.path("upstreamPort").asInt()).isEqualTo(8132);
+            assertThat(route.path("upstreamBaseUrl").asText()).isEqualTo("http://127.0.0.1:8132");
+            assertThat(route.path("pathPrefix").asText()).doesNotStartWith("/api/v1/engagement-core");
+            assertThat(legacyPorts).doesNotContain(route.path("upstreamPort").asInt());
+        }
+        assertThat(findRoute(routes, "community").path("healthCheckPath").asText()).isEqualTo("/api/v1/community/boards");
+        assertThat(findRoute(routes, "activity").path("healthCheckPath").asText()).isEqualTo("/api/v1/activity/events");
+        assertThat(findRoute(routes, "calendar").path("healthCheckPath").asText()).isEqualTo("/api/v1/calendar/upcoming");
+        assertThat(findRoute(routes, "changelog").path("healthCheckPath").asText()).isEqualTo("/api/v1/changelog/versions/latest");
     }
 
     private String bearer(String token) {

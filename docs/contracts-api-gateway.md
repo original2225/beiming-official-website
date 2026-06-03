@@ -74,10 +74,10 @@
 | `exam` | `EXAM` | `/api/v1/exams` | `8131` | `/api/v1/exams/me/sessions` |
 | `whitelist` | `WHITELIST` | `/api/v1/whitelist` | `8131` | `/api/v1/whitelist/me/applications/current` |
 | `attendance` | `ATTENDANCE` | `/api/v1/attendance` | `8131` | `/api/v1/attendance/leaderboard` |
-| `community` | `COMMUNITY` | `/api/v1/community` | `8112` | `/api/v1/community/boards` |
-| `activity` | `ACTIVITY` | `/api/v1/activity` | `8113` | `/api/v1/activity/events` |
-| `calendar` | `CALENDAR` | `/api/v1/calendar` | `8114` | `/api/v1/calendar/upcoming` |
-| `changelog` | `CHANGELOG` | `/api/v1/changelog` | `8115` | `/api/v1/changelog/versions/latest` |
+| `community` | `COMMUNITY` | `/api/v1/community` | `8132` | `/api/v1/community/boards` |
+| `activity` | `ACTIVITY` | `/api/v1/activity` | `8132` | `/api/v1/activity/events` |
+| `calendar` | `CALENDAR` | `/api/v1/calendar` | `8132` | `/api/v1/calendar/upcoming` |
+| `changelog` | `CHANGELOG` | `/api/v1/changelog` | `8132` | `/api/v1/changelog/versions/latest` |
 | `ops-control` | `OPS_CONTROL` | `/api/v1/ops-control` | `8116` | `/api/v1/ops-control/overview` |
 | `node-daemon` | `NODE_DAEMON` | `/api/v1/node-daemon` | `8117` | `/api/v1/node-daemon/health` |
 | `cloudreve-sync` | `CLOUDREVE_SYNC` | `/api/v1/cloudreve-sync` | `8118` | `/api/v1/cloudreve-sync/health` |
@@ -94,7 +94,7 @@
 
 `onboarding`、`exam`、`whitelist` 和 `attendance` 已完成第二批运行合并。网关必须把这四个路由的上游统一切到 `admission-core-service` 的 `8131`，但路由 ID、服务键、路径前缀、请求路径、认证透传、可信身份头剥离与注入、请求日志、错误码和响应透传规则都保持原样。端口 `8108` 到 `8111` 只作为第二批模块历史原服务端口记录，不再作为网关第二批业务路由的默认上游，当前仓库也不再保留对应旧服务 Maven 运行入口。
 
-`community`、`activity`、`calendar` 和 `changelog` 的 `engagement-core` 契约已存在，但当前仓库尚未包含 `backend/engagement-core-service` 运行单元代码和测试。网关在该运行单元入仓并完成直连测试、网关红灯验证、切换实现和全量回归前，继续把第三批路由指向旧服务端口 `8112` 到 `8115`。
+`community`、`activity`、`calendar` 和 `changelog` 已完成第三批运行合并。网关必须把这四个路由的上游统一切到 `engagement-core-service` 的 `8132`，但路由 ID、服务键、路径前缀、请求路径、认证透传、可信身份头剥离与注入、请求日志、错误码和响应透传规则都保持原样。端口 `8112` 到 `8115` 只作为第三批模块历史原服务端口和旧服务回归基线记录，不再作为网关第三批业务路由的默认上游。
 
 路径匹配规则为最长前缀优先。`/api/v1/resources` 和 `/api/v1/resources/**` 都必须命中 `resource`。未知路径返回网关错误，不转发到任何上游。
 
@@ -385,6 +385,6 @@ P0 `api-gateway` 是本地契约实现，必须在自检摘要中明确以下生
 
 `api-gateway` API 文档按 `docs/contracts-api-gateway.md` 独立存在，并由 `.local-docs/tests-api-gateway.md` 记录本地测试闭环。
 
-本文档列出的每个网关自有接口都有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、分页排序、状态刷新、失败降级、日志脱敏和验收口径。业务转发测试必须覆盖 26 个已接入路径前缀，确认路由表端口准确、第一批七个路由统一指向 `business-core-service:8130`、第二批四个路由统一指向 `admission-core-service:8131`、第三批路由在 `engagement-core-service` 入仓前继续指向当前旧服务端口、原业务路径不被改写为 core 服务前缀、请求编号透传、请求编号非法拒绝、认证头透传、可信身份头剥离、`auth` 会话校验成功后的可信身份注入、`auth` 校验失败后的不注入降级、查询参数透传、JSON body 透传、请求体大小限制、响应头白名单、上游 2xx 透传、上游 4xx 透传、上游 5xx 透传、未知路径、非法方法、CORS 预检、上游不可用、上游超时和敏感字段不落日志。
+本文档列出的每个网关自有接口都有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、分页排序、状态刷新、失败降级、日志脱敏和验收口径。业务转发测试必须覆盖 26 个已接入路径前缀，确认路由表端口准确、第一批七个路由统一指向 `business-core-service:8130`、第二批四个路由统一指向 `admission-core-service:8131`、第三批四个路由统一指向 `engagement-core-service:8132`、原业务路径不被改写为 core 服务前缀、请求编号透传、请求编号非法拒绝、认证头透传、可信身份头剥离、`auth` 会话校验成功后的可信身份注入、`auth` 校验失败后的不注入降级、查询参数透传、JSON body 透传、请求体大小限制、响应头白名单、上游 2xx 透传、上游 4xx 透传、上游 5xx 透传、未知路径、非法方法、CORS 预检、上游不可用、上游超时和敏感字段不落日志。
 
-开发完成后必须执行 `mvn -f backend/api-gateway-service/pom.xml test`，并执行 `mvn -f backend/business-core-service/pom.xml test` 和 `mvn -f backend/admission-core-service/pom.xml test`。第二批旧四服务清理后，不得为了网关回归恢复 `onboarding-service`、`exam-service`、`whitelist-service` 或 `attendance-service`。测试过程必须写入 `.local-docs/tests-api-gateway.md`。
+开发完成后必须执行 `mvn -f backend/api-gateway-service/pom.xml test`、`mvn -f backend/business-core-service/pom.xml test`、`mvn -f backend/admission-core-service/pom.xml test` 和 `mvn -f backend/engagement-core-service/pom.xml test`。第三批旧四服务未清理前，还必须执行 `mvn -f backend/community-service/pom.xml test`、`mvn -f backend/activity-service/pom.xml test`、`mvn -f backend/calendar-service/pom.xml test` 和 `mvn -f backend/changelog-service/pom.xml test` 作为回归基线。第一批和第二批旧服务清理后，不得为了网关回归恢复对应旧服务目录、旧 Maven 入口、旧启动类或旧测试命令。测试过程必须写入 `.local-docs/tests-api-gateway.md`。

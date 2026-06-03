@@ -66,8 +66,8 @@ class EngagementCoreController {
         data.put("adapterChain", registry.adapterChain());
         data.put("businessCoreDependency", registry.businessCoreDependency());
         data.put("admissionCoreDependency", registry.admissionCoreDependency());
-        data.put("gatewaySwitchReady", false);
-        data.put("gatewaySwitchStatus", "NOT_READY");
+        data.put("gatewaySwitchReady", true);
+        data.put("gatewaySwitchStatus", "COMPLETED");
         data.put("legacyBaselines", registry.legacyBaselines());
         data.put("productionGaps", registry.productionGaps());
         data.put("generatedAt", Instant.now().toString());
@@ -197,7 +197,6 @@ class EngagementCoreRegistry {
 
     List<String> productionGaps() {
         return List.of(
-                "gateway route switch is not complete",
                 "real database persistence is still module dependent",
                 "real cross-service adapters are still represented by local test stubs",
                 "persistent audit storage is not connected",

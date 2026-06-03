@@ -225,8 +225,8 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
       "port": 8131,
       "status": "STABLE_BASELINE"
     },
-    "gatewaySwitchReady": false,
-    "gatewaySwitchStatus": "NOT_READY",
+    "gatewaySwitchReady": true,
+    "gatewaySwitchStatus": "COMPLETED",
     "legacyBaselines": [
       {
         "service": "community-service",
@@ -237,11 +237,11 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
       }
     ],
     "productionGaps": [
-      "engagement-core inherited contract suite is not complete",
-      "gateway route switch is not complete",
       "real database persistence is still module dependent",
-      "real cross-service adapters are still test stubs",
-      "real notification delivery is not connected"
+      "real cross-service adapters are still represented by local test stubs",
+      "persistent audit storage is not connected",
+      "real notification delivery is not connected",
+      "live gateway-to-engagement-core HTTP smoke is not verified"
     ],
     "generatedAt": "2026-06-02T08:26:06Z"
   },
@@ -310,9 +310,9 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
 
 ## 网关策略
 
-当前网关尚未切换第三批路径。`api-gateway-service` 在本文档生成时仍应把 `community`、`activity`、`calendar` 和 `changelog` 路由分别指向旧端口 `8112`、`8113`、`8114` 和 `8115`。`engagement-core` 直连合并全绿前，不得修改网关上游。
+当前网关已完成第三批路径切换。`api-gateway-service` 把 `community`、`activity`、`calendar` 和 `changelog` 路由统一指向 `engagement-core-service` 的 `8132`。旧端口 `8112` 到 `8115` 只作为历史原服务端口和旧服务回归基线，不再作为第三批网关业务路由上游。
 
-`engagement-core` 全绿后，下一步才允许更新 `docs/contracts-api-gateway.md` 和 `.local-docs/tests-api-gateway.md`，把以下第三批路径上游统一切到 `engagement-core-service` 的 `8132`。
+第三批路径上游切换如下。
 
 | 路由 ID | 路径前缀 | 旧端口 | 目标端口 |
 | --- | --- | ---: | ---: |
@@ -337,7 +337,7 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
 
 `mvn -f backend/engagement-core-service/pom.xml test` 必须覆盖本文档两个自有接口和四个模块继承过来的全部契约测试。四个第三批旧服务、`business-core-service`、`admission-core-service` 和 `api-gateway-service` 仍必须保持测试通过，直到用户明确确认第三批旧服务清理。
 
-`engagement-core` 直连合并全绿前，不得切换网关。网关切换必须先更新 `api-gateway` 正式契约和本地测试文档，再执行红灯验证、实现、网关测试和全量回归。
+`engagement-core` 直连合并和第三批网关切换均已完成测试闭环。第三批业务路径经网关访问时仍保持原路径，网关只切换上游端口，不改写业务前缀。
 
 旧服务目录不得因本契约自动删除。需要清理旧服务时，必须单独列出明确文件路径并取得用户确认，且只能逐个文件处理。第一批旧服务目录 `backend/auth-service`、`backend/profile-service`、`backend/notification-service`、`backend/content-service`、`backend/server-status-service`、`backend/resource-service`、`backend/admin-service` 和第二批旧服务目录 `backend/onboarding-service`、`backend/exam-service`、`backend/whitelist-service`、`backend/attendance-service` 已经完成合并清理，不得通过 Git 恢复、复制目录、重建 Maven 入口、重建启动类或重写旧测试命令。
 

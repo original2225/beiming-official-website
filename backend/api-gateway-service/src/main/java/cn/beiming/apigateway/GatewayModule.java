@@ -724,10 +724,10 @@ class GatewayState {
         items.add(route("exam", "EXAM", "exam", "/api/v1/exams", 8131, "/api/v1/exams/me/sessions"));
         items.add(route("whitelist", "WHITELIST", "whitelist", "/api/v1/whitelist", 8131, "/api/v1/whitelist/me/applications/current"));
         items.add(route("attendance", "ATTENDANCE", "attendance", "/api/v1/attendance", 8131, "/api/v1/attendance/leaderboard"));
-        items.add(route("community", "COMMUNITY", "community", "/api/v1/community", 8112, "/api/v1/community/boards"));
-        items.add(route("activity", "ACTIVITY", "activity", "/api/v1/activity", 8113, "/api/v1/activity/events"));
-        items.add(route("calendar", "CALENDAR", "calendar", "/api/v1/calendar", 8114, "/api/v1/calendar/upcoming"));
-        items.add(route("changelog", "CHANGELOG", "changelog", "/api/v1/changelog", 8115, "/api/v1/changelog/versions/latest"));
+        items.add(route("community", "COMMUNITY", "community", "/api/v1/community", 8132, "/api/v1/community/boards"));
+        items.add(route("activity", "ACTIVITY", "activity", "/api/v1/activity", 8132, "/api/v1/activity/events"));
+        items.add(route("calendar", "CALENDAR", "calendar", "/api/v1/calendar", 8132, "/api/v1/calendar/upcoming"));
+        items.add(route("changelog", "CHANGELOG", "changelog", "/api/v1/changelog", 8132, "/api/v1/changelog/versions/latest"));
         items.add(route("ops-control", "OPS_CONTROL", "ops-control", "/api/v1/ops-control", 8116, "/api/v1/ops-control/overview"));
         items.add(route("node-daemon", "NODE_DAEMON", "node-daemon", "/api/v1/node-daemon", 8117, "/api/v1/node-daemon/health"));
         items.add(route("cloudreve-sync", "CLOUDREVE_SYNC", "cloudreve-sync", "/api/v1/cloudreve-sync", 8118, "/api/v1/cloudreve-sync/health"));

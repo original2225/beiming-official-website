@@ -8,7 +8,7 @@
 
 面向前端开发的一体化 API 全文查阅文档见 `docs/api-reference.md`。该文档由公共契约和全部模块契约合并生成，方便前端统一检索路径、字段和响应格式。
 
-本汇总覆盖当前仓库 `docs/contracts-*.md` 中除 `contracts-common.md` 之外的 27 个后端或平台模块。第一批和第二批已完成运行合并并入仓，第三批已有 core 契约及本地合并手册。当前唯一 `METHOD path` 总数为 746。
+本汇总覆盖当前仓库 `docs/contracts-*.md` 中除 `contracts-common.md` 之外的 27 个后端或平台模块。第一批、第二批和第三批已完成运行合并并入仓。当前唯一 `METHOD path` 总数为 746。
 
 ## 全局接口规则
 
@@ -22,17 +22,17 @@
 
 | 模块 | 服务目录 | 端口 | API 数 | 正式契约 | 本地测试文档 | 自动化测试入口 |
 | --- | --- | ---: | ---: | --- | --- | --- |
-| `activity` | `backend/activity-service` | 8113 | 41 | `docs/contracts-activity.md` | `.local-docs/tests-activity.md` | `mvn -q -f backend/activity-service/pom.xml test` |
+| `activity` | `backend/engagement-core-service` | 8132 | 41 | `docs/contracts-activity.md` | `.local-docs/tests-activity.md` | `mvn -q -f backend/engagement-core-service/pom.xml test` |
 | `admin` | `backend/business-core-service` | 8130 | 10 | `docs/contracts-admin.md` | `.local-docs/tests-admin.md` | `mvn -q -f backend/business-core-service/pom.xml test` |
 | `alerting` | `backend/alerting-service` | 8120 | 24 | `docs/contracts-alerting.md` | `.local-docs/tests-alerting.md` | `mvn -q -f backend/alerting-service/pom.xml test` |
 | `api-gateway` | `backend/api-gateway-service` | 8125 | 8 | `docs/contracts-api-gateway.md` | `.local-docs/tests-api-gateway.md` | `mvn -q -f backend/api-gateway-service/pom.xml test` |
 | `attendance` | `backend/admission-core-service` | 8131 | 22 | `docs/contracts-attendance.md` | `.local-docs/tests-attendance.md` | `mvn -q -f backend/admission-core-service/pom.xml test` |
 | `auth` | `backend/business-core-service` | 8130 | 20 | `docs/contracts-auth.md` | `.local-docs/tests-auth.md` | `mvn -q -f backend/business-core-service/pom.xml test` |
 | `backup-recovery` | `backend/backup-recovery-service` | 8119 | 25 | `docs/contracts-backup-recovery.md` | `.local-docs/tests-backup-recovery.md` | `mvn -q -f backend/backup-recovery-service/pom.xml test` |
-| `calendar` | `backend/calendar-service` | 8114 | 22 | `docs/contracts-calendar.md` | `.local-docs/tests-calendar.md` | `mvn -q -f backend/calendar-service/pom.xml test` |
-| `changelog` | `backend/changelog-service` | 8115 | 23 | `docs/contracts-changelog.md` | `.local-docs/tests-changelog.md` | `mvn -q -f backend/changelog-service/pom.xml test` |
+| `calendar` | `backend/engagement-core-service` | 8132 | 22 | `docs/contracts-calendar.md` | `.local-docs/tests-calendar.md` | `mvn -q -f backend/engagement-core-service/pom.xml test` |
+| `changelog` | `backend/engagement-core-service` | 8132 | 23 | `docs/contracts-changelog.md` | `.local-docs/tests-changelog.md` | `mvn -q -f backend/engagement-core-service/pom.xml test` |
 | `cloudreve-sync` | `backend/cloudreve-sync-service` | 8118 | 16 | `docs/contracts-cloudreve-sync.md` | `.local-docs/tests-cloudreve-sync.md` | `mvn -q -f backend/cloudreve-sync-service/pom.xml test` |
-| `community` | `backend/community-service` | 8112 | 62 | `docs/contracts-community.md` | `.local-docs/tests-community.md` | `mvn -q -f backend/community-service/pom.xml test` |
+| `community` | `backend/engagement-core-service` | 8132 | 62 | `docs/contracts-community.md` | `.local-docs/tests-community.md` | `mvn -q -f backend/engagement-core-service/pom.xml test` |
 | `content` | `backend/business-core-service` | 8130 | 55 | `docs/contracts-content.md` | `.local-docs/tests-content.md` | `mvn -q -f backend/business-core-service/pom.xml test` |
 | `cross-platform-notification` | `backend/cross-platform-notification-service` | 8123 | 36 | `docs/contracts-cross-platform-notification.md` | `.local-docs/tests-cross-platform-notification.md` | `mvn -q -f backend/cross-platform-notification-service/pom.xml test` |
 | `exam` | `backend/admission-core-service` | 8131 | 29 | `docs/contracts-exam.md` | `.local-docs/tests-exam.md` | `mvn -q -f backend/admission-core-service/pom.xml test` |
@@ -52,13 +52,13 @@
 
 ## 合并后运行入口
 
-当前已入仓的合并运行入口是 `business-core-service` 和 `admission-core-service`。第三批 `engagement-core-service` 仍处于契约与本地计划状态，运行单元代码入仓并完成测试闭环前，网关不得切到 `8132`。
+当前已入仓的合并运行入口是 `business-core-service`、`admission-core-service` 和 `engagement-core-service`。第三批社区运营路径已经由网关统一切到 `8132`。
 
 | 合并批次 | 运行入口 | 端口 | 承载模块 | 旧端口用途 |
 | --- | --- | ---: | --- | --- |
 | 第一批基础业务 | `backend/business-core-service` | 8130 | `auth`、`profile`、`notification`、`content`、`server-status`、`resource`、`admin` | `8101` 到 `8107` 为历史原端口，旧服务目录已清理且不得恢复 |
 | 第二批入服准入 | `backend/admission-core-service` | 8131 | `onboarding`、`exam`、`whitelist`、`attendance` | `8108` 到 `8111` 为历史原端口，旧服务目录已清理且不得恢复 |
-| 第三批社区运营 | `backend/engagement-core-service` 尚未入仓 | 8132 | `community`、`activity`、`calendar`、`changelog` | 当前仍由 `8112` 到 `8115` 旧服务承载网关流量 |
+| 第三批社区运营 | `backend/engagement-core-service` | 8132 | `community`、`activity`、`calendar`、`changelog` | `8112` 到 `8115` 为历史原端口和旧服务回归基线 |
 
 ## 依赖顺序和边界
 

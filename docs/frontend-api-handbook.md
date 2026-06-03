@@ -110,10 +110,10 @@
 | `exam` | 8131 | 考试方向、题库、试卷、答题、阅卷和考试后台管理。 | `docs/contracts-exam.md` |
 | `whitelist` | 8131 | 白名单申请、补充、撤回、审核、移除和重新申请。 | `docs/contracts-whitelist.md` |
 | `attendance` | 8131 | 考勤积分、积分流水、榜单、月度任务和后台调整。 | `docs/contracts-attendance.md` |
-| `community` | 8112 | 板块、帖子、评论、点赞、收藏、投票、举报、工单和处罚。 | `docs/contracts-community.md` |
-| `activity` | 8113 | 活动列表、报名、签到、结果、奖励和活动后台管理。 | `docs/contracts-activity.md` |
-| `calendar` | 8114 | 公开日程、维护窗口、工程节点、提醒和日历后台维护。 | `docs/contracts-calendar.md` |
-| `changelog` | 8115 | 版本更新、维护日志、插件变更、规则调整和后台发布。 | `docs/contracts-changelog.md` |
+| `community` | 8132 | 板块、帖子、评论、点赞、收藏、投票、举报、工单和处罚。 | `docs/contracts-community.md` |
+| `activity` | 8132 | 活动列表、报名、签到、结果、奖励和活动后台管理。 | `docs/contracts-activity.md` |
+| `calendar` | 8132 | 公开日程、维护窗口、工程节点、提醒和日历后台维护。 | `docs/contracts-calendar.md` |
+| `changelog` | 8132 | 版本更新、维护日志、插件变更、规则调整和后台发布。 | `docs/contracts-changelog.md` |
 | `ops-control` | 8116 | 运维控制台的节点、资产、容器、实例、文件、日志、终端和审批控制面。 | `docs/contracts-ops-control.md` |
 | `node-daemon` | 8117 | 节点侧健康、心跳、任务领取、任务回写和受控执行接口。 | `docs/contracts-node-daemon.md` |
 | `cloudreve-sync` | 8118 | Cloudreve provider、目录同步、文件快照、分享解析和同步审计。 | `docs/contracts-cloudreve-sync.md` |
@@ -492,7 +492,7 @@
 
 用途：板块、帖子、评论、点赞、收藏、投票、举报、工单和处罚。
 
-端口：`8112`。来源：`docs/contracts-community.md`。详情合并稿：`docs/api-reference.md`。
+端口：`8132`，由 `engagement-core-service` 承载。来源：`docs/contracts-community.md`。详情合并稿：`docs/api-reference.md`。
 
 | 接口 | 方法 | 路径 | 认证 | 权限 | 风险 |
 | --- | --- | --- | --- | --- | --- |
@@ -565,7 +565,7 @@
 
 用途：活动列表、报名、签到、结果、奖励和活动后台管理。
 
-端口：`8113`。来源：`docs/contracts-activity.md`。详情合并稿：`docs/api-reference.md`。
+端口：`8132`，由 `engagement-core-service` 承载。来源：`docs/contracts-activity.md`。详情合并稿：`docs/api-reference.md`。
 
 | 接口 | 方法 | 路径 | 认证 | 权限 | 风险 |
 | --- | --- | --- | --- | --- | --- |
@@ -615,7 +615,7 @@
 
 用途：公开日程、维护窗口、工程节点、提醒和日历后台维护。
 
-端口：`8114`。来源：`docs/contracts-calendar.md`。详情合并稿：`docs/api-reference.md`。
+端口：`8132`，由 `engagement-core-service` 承载。来源：`docs/contracts-calendar.md`。详情合并稿：`docs/api-reference.md`。
 
 | 接口 | 方法 | 路径 | 认证 | 权限 | 风险 |
 | --- | --- | --- | --- | --- | --- |
@@ -645,7 +645,7 @@
 
 用途：版本更新、维护日志、插件变更、规则调整和后台发布。
 
-端口：`8115`。来源：`docs/contracts-changelog.md`。详情合并稿：`docs/api-reference.md`。
+端口：`8132`，由 `engagement-core-service` 承载。来源：`docs/contracts-changelog.md`。详情合并稿：`docs/api-reference.md`。
 
 | 接口 | 方法 | 路径 | 认证 | 权限 | 风险 |
 | --- | --- | --- | --- | --- | --- |
