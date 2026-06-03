@@ -76,6 +76,9 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
 | `mounted` | boolean | 是 | 模块是否已装配到 `engagement-core`。 |
 | `routesTotal` | integer | 是 | 该模块在当前运行单元内登记的路由数量。 |
 | `contractRoutesTotal` | integer | 是 | 该模块契约期望路由数量。 |
+| `routeContractRoutesVerifiedTotal` | integer | 是 | 已由 `engagement-core-service` 自动化验证的该模块 `METHOD path` 路由签名数量。 |
+| `routeContractCoverageStatus` | string | 是 | 路由签名契约覆盖状态，允许 `ROUTE_CONTRACT_INCOMPLETE` 或 `ROUTE_CONTRACT_VERIFIED`。 |
+| `behaviorContractCoverageStatus` | string | 是 | 业务行为契约覆盖状态，允许 `PARTIAL_BEHAVIOR_CONTRACT_TESTS` 或 `COMPLETE_BEHAVIOR_CONTRACT_TESTS`。 |
 | `adapters` | string[] | 是 | 当前模块需要的内部 adapter 或 facade 摘要。 |
 | `upstreamDependencies` | string[] | 是 | 该模块依赖的前序模块或运行单元摘要。 |
 | `compatibilityMode` | string | 是 | `LEGACY_BASELINE`、`IN_PROCESS_ADAPTER` 或 `GATEWAY_SWITCH_READY`。 |
@@ -95,6 +98,9 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
 | `routesTotal` | integer | 是 | 当前运行单元登记路由总数。 |
 | `engagementRoutesTotal` | integer | 是 | 四个业务模块方法路由总数，完成后为 `149`。 |
 | `selfRoutesTotal` | integer | 是 | `engagement-core` 自有路由总数，固定为 `2`。 |
+| `routeContractRoutesVerifiedTotal` | integer | 是 | 已由 `engagement-core-service` 自动化验证的四个业务模块 `METHOD path` 路由签名总数，当前应为 `149`。 |
+| `routeContractCoverageStatus` | string | 是 | 路由签名契约覆盖状态，当前应为 `ROUTE_CONTRACT_VERIFIED`。 |
+| `behaviorContractCoverageStatus` | string | 是 | 业务行为契约覆盖状态。当前仍为 `PARTIAL_BEHAVIOR_CONTRACT_TESTS`，直到成功、字段校验、认证、权限、资源不存在、状态冲突、幂等并发、降级、审计和生产硬化全部继承验证。 |
 | `moduleRoutes` | `EngagementCoreModuleStatus[]` | 是 | 四个模块装配状态。 |
 | `adapterChain` | object[] | 是 | community、activity、calendar 和 changelog 的只读适配链摘要。 |
 | `businessCoreDependency` | object | 是 | 第一批 `business-core` 前序依赖摘要。 |
@@ -136,6 +142,9 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
     "modulesMounted": 4,
     "engagementRoutesTotal": 149,
     "selfRoutesTotal": 2,
+    "routeContractRoutesVerifiedTotal": 149,
+    "routeContractCoverageStatus": "ROUTE_CONTRACT_VERIFIED",
+    "behaviorContractCoverageStatus": "PARTIAL_BEHAVIOR_CONTRACT_TESTS",
     "moduleRoutes": [
       {
         "moduleKey": "COMMUNITY",
@@ -162,6 +171,9 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
 | `modulesMounted` | integer | 是 | 已装配模块数量。 |
 | `engagementRoutesTotal` | integer | 是 | 四个业务模块方法路由总数，完成后为 `149`。 |
 | `selfRoutesTotal` | integer | 是 | `engagement-core` 自有路由数，固定为 `2`。 |
+| `routeContractRoutesVerifiedTotal` | integer | 是 | 已由 `engagement-core-service` 自动化验证的四个业务模块 `METHOD path` 路由签名总数，当前应为 `149`。 |
+| `routeContractCoverageStatus` | string | 是 | 路由签名契约覆盖状态，当前应为 `ROUTE_CONTRACT_VERIFIED`。 |
+| `behaviorContractCoverageStatus` | string | 是 | 业务行为契约覆盖状态，当前仍为 `PARTIAL_BEHAVIOR_CONTRACT_TESTS`。 |
 | `moduleRoutes` | object[] | 是 | 低敏模块路由摘要，只返回 `moduleKey`、`pathPrefix`、`mounted`、`routesTotal` 和 `status`。 |
 | `generatedAt` | string | 是 | ISO 8601 时间。 |
 
@@ -196,6 +208,9 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
     "routesTotal": 151,
     "engagementRoutesTotal": 149,
     "selfRoutesTotal": 2,
+    "routeContractRoutesVerifiedTotal": 149,
+    "routeContractCoverageStatus": "ROUTE_CONTRACT_VERIFIED",
+    "behaviorContractCoverageStatus": "PARTIAL_BEHAVIOR_CONTRACT_TESTS",
     "moduleRoutes": [],
     "adapterChain": [
       {
@@ -264,7 +279,7 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
       }
     ],
     "productionGaps": [
-      "complete inherited contract tests are not all mounted in engagement-core",
+      "complete inherited behavior contract tests are not all mounted in engagement-core",
       "real auth and gateway trusted context adapters are not connected",
       "real database persistence is still module dependent",
       "persistent audit storage is not connected",
@@ -278,7 +293,7 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
 }
 ```
 
-业务规则：该接口只读取 `engagement-core` 内部装配状态和最近测试摘要，不主动执行四个模块的业务写操作，不调用旧服务进行实时健康探测，不把未完成模块伪装成 `READY`。第三批旧四服务清理后，`gatewaySwitchReady` 的判定只依赖四个模块在 `engagement-core` 中的继承契约测试、`business-core-service` 基线、`admission-core-service` 基线和 `api-gateway-service` 基线。只有当 `api-gateway` 契约、测试文档、自动化红灯、网关实现和全量后端回归均完成后，`gatewaySwitchStatus` 才能为 `COMPLETED`。四个业务模块自己的后台自检摘要必须同步合并后入口，返回 `port=8132` 和历史 `legacyPort`，不得继续把 `8112` 到 `8115` 暴露成当前运行端口。
+业务规则：该接口只读取 `engagement-core` 内部装配状态和最近测试摘要，不主动执行四个模块的业务写操作，不调用旧服务进行实时健康探测，不把未完成模块伪装成 `READY`。第三批旧四服务清理后，`gatewaySwitchReady` 的判定只依赖四个模块在 `engagement-core` 中的继承契约测试、`business-core-service` 基线、`admission-core-service` 基线和 `api-gateway-service` 基线。只有当 `api-gateway` 契约、测试文档、自动化红灯、网关实现和全量后端回归均完成后，`gatewaySwitchStatus` 才能为 `COMPLETED`。四个业务模块自己的后台自检摘要必须同步合并后入口，返回 `port=8132` 和历史 `legacyPort`，不得继续把 `8112` 到 `8115` 暴露成当前运行端口。路由签名契约验证只证明 149 个业务 `METHOD path` 已在当前运行单元装配，不等于完整业务行为契约验证；完整行为契约必须继续逐接口覆盖成功、字段校验、认证、权限、资源不存在、状态冲突、幂等并发、降级、审计和生产硬化。
 
 失败规则：运行单元内部异常返回 `53230`。模块装配信息缺失返回 `53231`。当前登记路由与本文档或四个模块契约期望不一致时返回 `53232` 或在 `status=DEGRADED` 的成功摘要中列入 `gaps`，由实现按是否影响接口可用性决定。认证上下文解析失败返回原模块契约或公共认证错误，可信网关上下文字段缺失或格式不兼容时返回 `53233`。内部 adapter 链装配错误返回 `53234`。
 
@@ -358,7 +373,7 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
 
 | 顺序 | 完善项 | 契约要求 | 自动化测试要求 |
 | --- | --- | --- | --- |
-| 1 | 完整继承契约测试 | 把 community、activity、calendar 和 changelog 的全部 API 行为纳入 `engagement-core-service` 测试，不只保留代表路由。 | 新增模块级 contract cases，覆盖 149 个业务路由的成功、字段校验、认证、权限、资源不存在、状态冲突、幂等并发、降级、审计和生产硬化。 |
+| 1 | 完整继承契约测试 | 把 community、activity、calendar 和 changelog 的全部 API 行为纳入 `engagement-core-service` 测试，不只保留代表路由。 | 第一层先逐条验证 149 个业务 `METHOD path` 路由签名已经装配；第二层继续新增模块级 behavior contract cases，覆盖成功、字段校验、认证、权限、资源不存在、状态冲突、幂等并发、降级、审计和生产硬化。 |
 | 2 | 合并后自检端口口径 | 四个业务模块自检摘要返回 `port=8132` 和 `legacyPort`，旧端口只用于历史追溯。 | 已新增红灯测试先断言旧端口失败，再实现并复测。 |
 | 3 | 真实认证与可信网关上下文 | 固定 token 只能用于本地测试 profile；生产路径必须消费 `auth` 或网关注入的可信身份上下文。 | 覆盖直连伪造 `X-Beiming-Actor-*` 不能绕过权限、网关注入上下文可用、字段缺失失败。 |
 | 4 | 持久化与审计持久化 | 社区、活动、日程、更新日志、互动、报名、收藏、工单、处罚、幂等和审计迁入数据库事务或等效持久层。 | 覆盖重启后数据仍在、审计失败回滚、唯一约束、并发幂等和分页过滤。 |
@@ -379,7 +394,7 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
 
 `mvn -f backend/engagement-core-service/pom.xml test` 必须覆盖本文档两个自有接口和四个模块继承过来的全部契约测试。第三批旧服务清理后，相关回归基线为 `engagement-core-service`、`business-core-service`、`admission-core-service` 和 `api-gateway-service`，不得为了测试恢复 `community-service`、`activity-service`、`calendar-service` 或 `changelog-service`。
 
-当前阶段不得把 `engagement-core-service` 的 8 个自检与代表路由测试视为第三批业务完成。只有 149 个业务方法路由的继承契约测试和 2 个自有接口测试都进入自动化验证，并且所有当前回归入口全绿，第三批合并后完善闭环才算完成。
+当前阶段不得把 `engagement-core-service` 的自检、代表路由测试或 149 个业务 `METHOD path` 路由签名测试视为第三批业务完成。只有 149 个业务方法路由的行为继承契约测试和 2 个自有接口测试都进入自动化验证，并且所有当前回归入口全绿，第三批合并后完善闭环才算完成。
 
 `engagement-core` 直连合并和第三批网关切换均已完成测试闭环。第三批业务路径经网关访问时仍保持原路径，网关只切换上游端口，不改写业务前缀。
 

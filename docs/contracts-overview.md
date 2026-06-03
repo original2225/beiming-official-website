@@ -8,7 +8,7 @@
 
 面向前端开发的一体化 API 全文查阅文档见 `docs/api-reference.md`。该文档由公共契约和全部模块契约合并生成，方便前端统一检索路径、字段和响应格式。
 
-本汇总覆盖当前仓库 `docs/contracts-*.md` 中除 `contracts-common.md` 之外的 27 个后端或平台模块。第一批、第二批和第三批已完成运行合并并入仓。当前唯一 `METHOD path` 总数为 746。
+本汇总覆盖当前仓库 `docs/contracts-*.md` 中除 `contracts-common.md` 之外的 27 个业务或平台模块，以及 `engagement-core` 运行合并单元。第一批、第二批和第三批已完成运行合并并入仓。当前唯一 `METHOD path` 总数为 749，其中第三批四个业务模块在 `engagement-core-service:8132` 中承载 149 个业务路由，`engagement-core` 自身提供 2 个运行单元自检路由。
 
 ## 全局接口规则
 
@@ -29,12 +29,13 @@
 | `attendance` | `backend/admission-core-service` | 8131 | 22 | `docs/contracts-attendance.md` | `.local-docs/tests-attendance.md` | `mvn -q -f backend/admission-core-service/pom.xml test` |
 | `auth` | `backend/business-core-service` | 8130 | 20 | `docs/contracts-auth.md` | `.local-docs/tests-auth.md` | `mvn -q -f backend/business-core-service/pom.xml test` |
 | `backup-recovery` | `backend/backup-recovery-service` | 8119 | 25 | `docs/contracts-backup-recovery.md` | `.local-docs/tests-backup-recovery.md` | `mvn -q -f backend/backup-recovery-service/pom.xml test` |
-| `calendar` | `backend/engagement-core-service` | 8132 | 22 | `docs/contracts-calendar.md` | `.local-docs/tests-calendar.md` | `mvn -q -f backend/engagement-core-service/pom.xml test` |
+| `calendar` | `backend/engagement-core-service` | 8132 | 21 | `docs/contracts-calendar.md` | `.local-docs/tests-calendar.md` | `mvn -q -f backend/engagement-core-service/pom.xml test` |
 | `changelog` | `backend/engagement-core-service` | 8132 | 23 | `docs/contracts-changelog.md` | `.local-docs/tests-changelog.md` | `mvn -q -f backend/engagement-core-service/pom.xml test` |
 | `cloudreve-sync` | `backend/cloudreve-sync-service` | 8118 | 16 | `docs/contracts-cloudreve-sync.md` | `.local-docs/tests-cloudreve-sync.md` | `mvn -q -f backend/cloudreve-sync-service/pom.xml test` |
-| `community` | `backend/engagement-core-service` | 8132 | 62 | `docs/contracts-community.md` | `.local-docs/tests-community.md` | `mvn -q -f backend/engagement-core-service/pom.xml test` |
+| `community` | `backend/engagement-core-service` | 8132 | 64 | `docs/contracts-community.md` | `.local-docs/tests-community.md` | `mvn -q -f backend/engagement-core-service/pom.xml test` |
 | `content` | `backend/business-core-service` | 8130 | 55 | `docs/contracts-content.md` | `.local-docs/tests-content.md` | `mvn -q -f backend/business-core-service/pom.xml test` |
 | `cross-platform-notification` | `backend/cross-platform-notification-service` | 8123 | 36 | `docs/contracts-cross-platform-notification.md` | `.local-docs/tests-cross-platform-notification.md` | `mvn -q -f backend/cross-platform-notification-service/pom.xml test` |
+| `engagement-core` | `backend/engagement-core-service` | 8132 | 2 | `docs/contracts-engagement-core.md` | `.local-docs/tests-engagement-core.md` | `mvn -q -f backend/engagement-core-service/pom.xml test` |
 | `exam` | `backend/admission-core-service` | 8131 | 29 | `docs/contracts-exam.md` | `.local-docs/tests-exam.md` | `mvn -q -f backend/admission-core-service/pom.xml test` |
 | `guide` | `backend/guide-service` | 8127 | 29 | `docs/contracts-guide.md` | `.local-docs/tests-guide.md` | `mvn -q -f backend/guide-service/pom.xml test` |
 | `material` | `backend/material-service` | 8126 | 33 | `docs/contracts-material.md` | `.local-docs/tests-material.md` | `mvn -q -f backend/material-service/pom.xml test` |
@@ -53,6 +54,8 @@
 ## 合并后运行入口
 
 当前已入仓的合并运行入口是 `business-core-service`、`admission-core-service` 和 `engagement-core-service`。第三批社区运营路径已经由网关统一切到 `8132`。
+
+`engagement-core` 的 2 个自有接口只用于运行单元自检和后台装配摘要。它不新增 community、activity、calendar 或 changelog 的业务语义。第三批 149 个业务路由签名必须在 `engagement-core-service` 中逐条自动化验证；完整业务行为契约仍必须继续覆盖成功、字段校验、认证、权限、资源不存在、状态冲突、幂等并发、降级、审计和生产硬化。
 
 | 合并批次 | 运行入口 | 端口 | 承载模块 | 旧端口用途 |
 | --- | --- | ---: | --- | --- |

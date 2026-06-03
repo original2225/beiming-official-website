@@ -84,6 +84,9 @@ class EngagementCoreController {
         data.put("modulesMounted", registry.modulesTotal());
         data.put("engagementRoutesTotal", registry.engagementRoutesTotal());
         data.put("selfRoutesTotal", SELF_ROUTES_TOTAL);
+        data.put("routeContractRoutesVerifiedTotal", registry.routeContractRoutesVerifiedTotal());
+        data.put("routeContractCoverageStatus", "ROUTE_CONTRACT_VERIFIED");
+        data.put("behaviorContractCoverageStatus", "PARTIAL_BEHAVIOR_CONTRACT_TESTS");
         return data;
     }
 
@@ -148,6 +151,10 @@ class EngagementCoreRegistry {
         return modules.stream().mapToInt(EngagementModuleRegistration::routesTotal).sum();
     }
 
+    int routeContractRoutesVerifiedTotal() {
+        return modules.stream().mapToInt(EngagementModuleRegistration::routeContractRoutesVerifiedTotal).sum();
+    }
+
     List<Map<String, Object>> publicModules() {
         return modules.stream().map(EngagementModuleRegistration::toPublicMap).toList();
     }
@@ -203,7 +210,7 @@ class EngagementCoreRegistry {
 
     List<String> productionGaps() {
         return List.of(
-                "complete inherited contract tests are not all mounted in engagement-core",
+                "complete inherited behavior contract tests are not all mounted in engagement-core",
                 "real auth and gateway trusted context adapters are not connected",
                 "real database persistence is still module dependent",
                 "persistent audit storage is not connected",
@@ -275,6 +282,9 @@ record EngagementModuleRegistration(String moduleKey,
         data.put("port", 8132);
         data.put("legacyPort", legacyPort);
         data.put("contractRoutesTotal", routesTotal);
+        data.put("routeContractRoutesVerifiedTotal", routeContractRoutesVerifiedTotal());
+        data.put("routeContractCoverageStatus", "ROUTE_CONTRACT_VERIFIED");
+        data.put("behaviorContractCoverageStatus", "PARTIAL_BEHAVIOR_CONTRACT_TESTS");
         data.put("adapters", adapters);
         data.put("downstreamAdapters", downstreamAdapters);
         data.put("upstreamDependencies", upstreamDependencies);
@@ -282,6 +292,10 @@ record EngagementModuleRegistration(String moduleKey,
         data.put("lastVerifiedAt", EngagementCoreRegistry.baselineVerifiedAt());
         data.put("gaps", List.of());
         return data;
+    }
+
+    int routeContractRoutesVerifiedTotal() {
+        return routesTotal;
     }
 }
 

@@ -4,11 +4,11 @@
 
 ## 文档定位
 
-本文档是面向前端开发的一体化 API 查阅文档，由 `docs/contracts-common.md` 和 27 个模块独立契约合并生成。它用于前端统一查路径、字段、权限、错误码、状态流转、失败降级和验收口径。
+本文档是面向前端开发的一体化 API 查阅文档，由 `docs/contracts-common.md`、27 个业务或平台模块独立契约，以及 `engagement-core` 运行合并单元契约合并生成。它用于前端统一查路径、字段、权限、错误码、状态流转、失败降级和验收口径。
 
 各模块独立契约仍是后端实现和变更的源文档。任一接口发生变化时，必须先更新对应 `docs/contracts-<module>.md`，再同步更新本文档。
 
-当前合并范围包含 27 个模块，唯一 `METHOD path` 总数为 746。
+当前合并范围包含 27 个业务或平台模块，另包含 `engagement-core` 运行合并单元自检契约。唯一 `METHOD path` 总数为 749，其中第三批四个业务模块在 `engagement-core-service:8132` 中承载 149 个业务路由，`engagement-core` 自身提供 2 个运行单元自检路由。
 
 ## 前端接入要点
 
@@ -18,7 +18,7 @@
 
 ## 合并模块
 
-`auth`、`profile`、`notification`、`content`、`server-status`、`resource`、`admin`、`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、`ops-control`、`node-daemon`、`cloudreve-sync`、`backup-recovery`、`alerting`、`online-map`、`plugin-integration`、`cross-platform-notification`、`ops-image-market`、`api-gateway`、`material`、`guide`
+`auth`、`profile`、`notification`、`content`、`server-status`、`resource`、`admin`、`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、`engagement-core`、`ops-control`、`node-daemon`、`cloudreve-sync`、`backup-recovery`、`alerting`、`online-map`、`plugin-integration`、`cross-platform-notification`、`ops-image-market`、`api-gateway`、`material`、`guide`
 
 ## 正文
 
@@ -9998,6 +9998,55 @@ notification 是辅助依赖。发布、下架和安全修复通知失败不得�
 `changelog` 完成时必须满足以下条件：全部接口按本文档实现；公开接口只返回公开可见发布记录和脱敏变更项；当前用户只能维护自己的收藏；后台接口按角色限制；发布状态机不可非法回退；安全修复公开摘要不泄露敏感信息；资源、server-status、content、calendar 和 notification 都只走正式契约或受控适配层；calendar 同步失败不影响 changelog 主状态；notification 失败记录脱敏摘要；所有写操作有审计；当前运行端口固定为 `8132`，自检摘要返回 `port=8132` 和 `legacyPort=8115`；`.local-docs/tests-changelog.md` 与 `.local-docs/tests-engagement-core.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 changelog 在 `engagement-core-service` 中全部测试通过；auth、profile、notification、content、server-status、resource、admin、onboarding、exam、whitelist、attendance、community、activity 和 calendar 前序服务回归测试通过；不恢复 `backend/changelog-service` 旧入口；没有修改前序服务稳定接口；没有把官网公告、资源下载、日历主数据、活动报名、后台聚合、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复或 Cloudreve 管理能力塞进 changelog。
 
 生产化硬化验收还必须满足：测试控制头默认关闭，只有本地自动化测试显式启用时才生效；关闭状态下依赖失败模拟头、写入失败模拟头、时间模拟头和通知失败模拟头全部被忽略；自检摘要明确返回当前测试控制头开关状态。
+
+## 北冥官网 engagement-core API 契约
+
+来源：`docs/contracts-engagement-core.md`
+
+版本：0.1
+
+### 文档定位
+
+`engagement-core` 是第三批社区运营模块的运行合并单元，承载 `community`、`activity`、`calendar` 和 `changelog`。它不新增社区、活动、日程或更新日志业务语义，只提供运行单元健康检查、后台装配摘要、路由签名覆盖状态和第三批合并边界说明。
+
+四个业务模块的路径、方法、认证、权限、请求字段、响应字段、错误码、分页、幂等、状态流转、降级、审计和验收口径仍以 `docs/contracts-community.md`、`docs/contracts-activity.md`、`docs/contracts-calendar.md` 和 `docs/contracts-changelog.md` 为准。业务路径保持 `/api/v1/community/**`、`/api/v1/activity/**`、`/api/v1/calendar/**` 和 `/api/v1/changelog/**`，不得改成 `/api/v1/engagement-core/<module>/**`。
+
+当前运行入口为 `engagement-core-service:8132`。历史端口 `8112` 到 `8115` 只作为 `legacyPort` 追溯字段，不再作为独立服务入口、网关上游或回归测试命令。
+
+### 自有接口
+
+| 接口 | 方法 | 路径 | 认证 | 权限 | 说明 |
+| --- | --- | --- | --- | --- | --- |
+| 健康检查 | GET | `/api/v1/engagement-core/health` | 否 | 无 | 返回运行单元低敏健康摘要，不代表四个业务模块完整行为契约已全绿。 |
+| 后台装配摘要 | GET | `/api/v1/engagement-core/admin/ops/summary` | 是 | `ADMIN` 或 `OWNER` | 返回第三批模块装配、路由签名覆盖、前序基线、旧服务退役和生产化缺口摘要。 |
+
+### 健康检查
+
+`GET /api/v1/engagement-core/health`
+
+成功响应 HTTP `200`。响应至少包含 `service=engagement-core`、`status`、`port=8132`、`modulesTotal=4`、`modulesMounted=4`、`engagementRoutesTotal=149`、`selfRoutesTotal=2`、`routeContractRoutesVerifiedTotal=149`、`routeContractCoverageStatus=ROUTE_CONTRACT_VERIFIED`、`behaviorContractCoverageStatus=PARTIAL_BEHAVIOR_CONTRACT_TESTS`、`moduleRoutes` 和 `generatedAt`。
+
+该接口不得返回 token、Cookie、数据库连接串、异常栈、外部凭据、请求头原文、举报证据详情、工单内部备注、通知正文、真实服务器命令、节点凭据或 Cloudreve token。
+
+### 后台装配摘要
+
+`GET /api/v1/engagement-core/admin/ops/summary`
+
+未登录返回 `41000`，令牌格式错误返回 `41003`，权限不足返回 `42001`。只有 `ADMIN` 和 `OWNER` 可访问。
+
+成功响应 HTTP `200`，`data` 至少包含 `service`、`port`、`status`、`modulesTotal`、`modulesMounted`、`routesTotal=151`、`engagementRoutesTotal=149`、`selfRoutesTotal=2`、`routeContractRoutesVerifiedTotal=149`、`routeContractCoverageStatus=ROUTE_CONTRACT_VERIFIED`、`behaviorContractCoverageStatus=PARTIAL_BEHAVIOR_CONTRACT_TESTS`、`moduleRoutes`、`adapterChain`、`businessCoreDependency`、`admissionCoreDependency`、`gatewaySwitchReady`、`gatewaySwitchStatus`、`legacyBaselines`、`retiredLegacyServices`、`productionGaps` 和 `generatedAt`。
+
+`moduleRoutes` 中每个模块必须返回 `port=8132`、对应 `legacyPort`、`contractRoutesTotal`、`routeContractRoutesVerifiedTotal`、`routeContractCoverageStatus` 和 `behaviorContractCoverageStatus`。当前四个模块路由签名覆盖数为 community `64`、activity `41`、calendar `21`、changelog `23`。
+
+`productionGaps` 当前必须保留 `complete inherited behavior contract tests are not all mounted in engagement-core`。这表示 149 个业务 `METHOD path` 路由签名已经装配验证，但完整行为契约仍未全部覆盖。后续仍要逐接口覆盖成功、字段校验、认证、权限、资源不存在、状态冲突、幂等并发、降级、审计和生产硬化。
+
+`legacyBaselines` 不得包含 `community-service`、`activity-service`、`calendar-service` 或 `changelog-service`。`retiredLegacyServices` 必须返回这四个旧服务的退役摘要，且 `testCommand=null`。
+
+### 验收口径
+
+`engagement-core` API 文档按 `docs/contracts-engagement-core.md` 独立存在，并由 `.local-docs/tests-engagement-core.md` 记录本地测试闭环。`mvn -f backend/engagement-core-service/pom.xml test` 必须覆盖两个自有接口、149 个第三批业务 `METHOD path` 路由签名、旧服务不恢复保护和后续行为契约缺口公开。
+
+第三批旧服务已经清理。后续测试不得恢复、重建或执行 `backend/community-service`、`backend/activity-service`、`backend/calendar-service` 和 `backend/changelog-service` 的 Maven 入口。
 
 ## 北冥官网 ops-control API 契约
 
