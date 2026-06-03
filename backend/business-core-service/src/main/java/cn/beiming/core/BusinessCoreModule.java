@@ -78,6 +78,7 @@ class BusinessCoreController {
         data.put("gatewaySwitchReady", true);
         data.put("gatewaySwitchStatus", "COMPLETED");
         data.put("legacyBaselines", registry.legacyBaselines());
+        data.put("retiredLegacyServices", registry.retiredLegacyServices());
         data.put("productionGaps", List.of(
                 "real database persistence is still module dependent"
         ));
@@ -108,10 +109,9 @@ class BusinessCoreController {
         data.put("nextDevelopmentOrder", List.of(
                 "LIVE_GATEWAY_HTTP_SMOKE",
                 "PRODUCTION_AUTH_CONTEXT",
-                "PERSISTENCE_AND_AUDIT",
-                "SOURCE_DRIFT_GUARD"
+                "PERSISTENCE_AND_AUDIT"
         ));
-        data.put("legacyBaselinesKept", true);
+        data.put("legacyBaselinesKept", false);
         data.put("generatedAt", Instant.now().toString());
         return data;
     }
@@ -145,11 +145,7 @@ class BusinessCoreController {
                 readinessGap("PRODUCTION_AUTH_CONTEXT_NOT_CONNECTED", "SECURITY", "HIGH", "BUSINESS_CORE",
                         "LOCAL_FIXED_TOKENS_AND_TRUSTED_HEADERS", "REAL_AUTH_SESSION_AND_TRUSTED_GATEWAY_ONLY",
                         "Replace local fixed-token checks for business-core self endpoints with real auth context.",
-                        "Verify forged trusted headers cannot grant access and real gateway context is accepted."),
-                readinessGap("LEGACY_SOURCE_DRIFT_GUARD_REQUIRED", "MAINTENANCE", "MEDIUM", "BUSINESS_CORE",
-                        "DUPLICATED_SOURCE_BASELINES", "EXPLICIT_FREEZE_OR_SHARED_SOURCE_POLICY",
-                        "Define whether old services are frozen or generated from shared sources, then guard drift in tests.",
-                        "Compare business-core module copies with legacy service baselines before every merge.")
+                        "Verify forged trusted headers cannot grant access and real gateway context is accepted.")
         );
     }
 
@@ -176,7 +172,7 @@ class BusinessCoreController {
                 check("PRODUCTION_AUTH_CONTEXT", "REQUIRED", "Business-core self endpoints still accept local fixed test tokens.", true),
                 check("GATEWAY_INTERNAL_SIGNATURE", "REQUIRED", "Gateway internal signature or mTLS is not enabled.", true),
                 check("TEST_CONTROL_GUARD", "PASS", "Business-core rejects X-Test-* headers when test-control headers are disabled.", true),
-                check("SOURCE_DRIFT_GUARD", "REQUIRED", "Legacy services and business-core source copies can drift.", true)
+                check("SOURCE_DRIFT_GUARD", "PASS", "Retired first-batch legacy service source files are removed after business-core replacement.", false)
         );
     }
 
@@ -192,7 +188,7 @@ class BusinessCoreController {
     private Map<String, Object> testScope() {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("mockMvcContractTests", Map.of("status", "PASS", "evidence", "mvn -f backend/business-core-service/pom.xml test"));
-        data.put("legacyBaselineTests", Map.of("status", "PASS", "evidence", "old first-batch service Maven tests remain required"));
+        data.put("legacyBaselineTests", Map.of("status", "RETIRED", "evidence", "old first-batch service sources are removed; inherited business-core contract tests cover runtime behavior"));
         data.put("apiGatewayRouteSwitchTests", Map.of("status", "PASS", "evidence", "api-gateway routes first-batch prefixes to port 8130"));
         data.put("liveHttpSmokeTests", Map.of("status", "NOT_VERIFIED", "evidence", "no live multi-process HTTP smoke record"));
         return data;
@@ -219,18 +215,11 @@ class BusinessCoreController {
 
     private Map<String, Object> sourceDrift() {
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("risk", "DUAL_MAINTENANCE");
-        data.put("legacyServices", List.of(
-                "auth-service",
-                "profile-service",
-                "notification-service",
-                "content-service",
-                "server-status-service",
-                "resource-service",
-                "admin-service"
-        ));
-        data.put("guardRequired", true);
-        data.put("policyNeeded", "FREEZE_LEGACY_OR_SHARE_SOURCE");
+        data.put("risk", "LEGACY_SOURCE_RETIRED");
+        data.put("retiredLegacyServices", registry.retiredLegacyServices());
+        data.put("activeRuntime", "business-core-service");
+        data.put("guardRequired", false);
+        data.put("policy", "BUSINESS_CORE_OWNS_FIRST_BATCH_RUNTIME");
         return data;
     }
 
@@ -275,22 +264,31 @@ class BusinessCoreController {
 
 class BusinessCoreRegistry {
     private static final String FIRST_BATCH_VERIFIED_AT = "2026-06-02T15:34:38+08:00";
+    private static final List<String> RETIRED_LEGACY_SERVICES = List.of(
+            "auth-service",
+            "profile-service",
+            "notification-service",
+            "content-service",
+            "server-status-service",
+            "resource-service",
+            "admin-service"
+    );
 
     private final List<ModuleRegistration> modules = List.of(
             new ModuleRegistration("AUTH", "auth", "/api/v1/auth", "docs/contracts-auth.md", 8101, 20,
-                    List.of("AuthStore", "AuthLocalWebConfig"), "auth-service"),
+                    List.of("AuthStore", "AuthLocalWebConfig")),
             new ModuleRegistration("PROFILE", "profile", "/api/v1/profile", "docs/contracts-profile.md", 8102, 16,
-                    List.of("ProfileAuthContextProvider"), "profile-service"),
+                    List.of("ProfileAuthContextProvider")),
             new ModuleRegistration("NOTIFICATION", "notification", "/api/v1/notifications", "docs/contracts-notification.md", 8103, 19,
-                    List.of("NotificationAuthContextProvider"), "notification-service"),
+                    List.of("NotificationAuthContextProvider")),
             new ModuleRegistration("CONTENT", "content", "/api/v1/content", "docs/contracts-content.md", 8104, 55,
-                    List.of("TestAuthContextProvider", "TestProfileSnapshotProvider", "TestNotificationClient"), "content-service"),
+                    List.of("TestAuthContextProvider", "TestProfileSnapshotProvider", "TestNotificationClient")),
             new ModuleRegistration("SERVER_STATUS", "server-status", "/api/v1/server-status", "docs/contracts-server-status.md", 8105, 25,
-                    List.of("TestAuthContextProvider", "TestStatusCollector"), "server-status-service"),
+                    List.of("TestAuthContextProvider", "TestStatusCollector")),
             new ModuleRegistration("RESOURCE", "resource", "/api/v1/resources", "docs/contracts-resource.md", 8106, 29,
-                    List.of("TestResourceAuthProvider"), "resource-service"),
+                    List.of("TestResourceAuthProvider")),
             new ModuleRegistration("ADMIN", "admin", "/api/v1/admin", "docs/contracts-admin.md", 8107, 10,
-                    List.of("TestAdminAuthProvider"), "admin-service")
+                    List.of("TestAdminAuthProvider"))
     );
 
     int modulesTotal() {
@@ -310,8 +308,7 @@ class BusinessCoreRegistry {
     }
 
     List<Map<String, Object>> legacyBaselines() {
-        List<Map<String, Object>> baselines = new java.util.ArrayList<>(
-                modules.stream().map(ModuleRegistration::toLegacyBaseline).toList());
+        List<Map<String, Object>> baselines = new java.util.ArrayList<>();
         Map<String, Object> gateway = new LinkedHashMap<>();
         gateway.put("service", "api-gateway-service");
         gateway.put("port", 8125);
@@ -320,6 +317,10 @@ class BusinessCoreRegistry {
         gateway.put("lastVerifiedAt", FIRST_BATCH_VERIFIED_AT);
         baselines.add(gateway);
         return baselines;
+    }
+
+    List<String> retiredLegacyServices() {
+        return RETIRED_LEGACY_SERVICES;
     }
 
     static String firstBatchVerifiedAt() {
@@ -333,8 +334,7 @@ record ModuleRegistration(String moduleKey,
                           String contract,
                           int legacyPort,
                           int routesTotal,
-                          List<String> adapters,
-                          String legacyService) {
+                          List<String> adapters) {
     Map<String, Object> toPublicMap() {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("moduleKey", moduleKey);
@@ -358,15 +358,6 @@ record ModuleRegistration(String moduleKey,
         return data;
     }
 
-    Map<String, Object> toLegacyBaseline() {
-        Map<String, Object> data = new LinkedHashMap<>();
-        data.put("service", legacyService);
-        data.put("port", legacyPort);
-        data.put("contract", contract);
-        data.put("testCommand", "mvn -f backend/" + legacyService + "/pom.xml test");
-        data.put("lastVerifiedAt", BusinessCoreRegistry.firstBatchVerifiedAt());
-        return data;
-    }
 }
 
 record AuthDecision(boolean allowed, HttpStatus status, int code, String message) {

@@ -23,31 +23,31 @@
 | 模块 | 服务目录 | 端口 | API 数 | 正式契约 | 本地测试文档 | 自动化测试入口 |
 | --- | --- | ---: | ---: | --- | --- | --- |
 | `activity` | `backend/activity-service` | 8113 | 41 | `docs/contracts-activity.md` | `.local-docs/tests-activity.md` | `mvn -q -f backend/activity-service/pom.xml test` |
-| `admin` | `backend/admin-service` | 8107 | 10 | `docs/contracts-admin.md` | `.local-docs/tests-admin.md` | `mvn -q -f backend/admin-service/pom.xml test` |
+| `admin` | `backend/business-core-service` | 8130 | 10 | `docs/contracts-admin.md` | `.local-docs/tests-admin.md` | `mvn -q -f backend/business-core-service/pom.xml test` |
 | `alerting` | `backend/alerting-service` | 8120 | 24 | `docs/contracts-alerting.md` | `.local-docs/tests-alerting.md` | `mvn -q -f backend/alerting-service/pom.xml test` |
 | `api-gateway` | `backend/api-gateway-service` | 8125 | 8 | `docs/contracts-api-gateway.md` | `.local-docs/tests-api-gateway.md` | `mvn -q -f backend/api-gateway-service/pom.xml test` |
 | `attendance` | `backend/attendance-service` | 8111 | 22 | `docs/contracts-attendance.md` | `.local-docs/tests-attendance.md` | `mvn -q -f backend/attendance-service/pom.xml test` |
-| `auth` | `backend/auth-service` | 8101 | 20 | `docs/contracts-auth.md` | `.local-docs/tests-auth.md` | `mvn -q -f backend/auth-service/pom.xml test` |
+| `auth` | `backend/business-core-service` | 8130 | 20 | `docs/contracts-auth.md` | `.local-docs/tests-auth.md` | `mvn -q -f backend/business-core-service/pom.xml test` |
 | `backup-recovery` | `backend/backup-recovery-service` | 8119 | 25 | `docs/contracts-backup-recovery.md` | `.local-docs/tests-backup-recovery.md` | `mvn -q -f backend/backup-recovery-service/pom.xml test` |
 | `calendar` | `backend/calendar-service` | 8114 | 22 | `docs/contracts-calendar.md` | `.local-docs/tests-calendar.md` | `mvn -q -f backend/calendar-service/pom.xml test` |
 | `changelog` | `backend/changelog-service` | 8115 | 23 | `docs/contracts-changelog.md` | `.local-docs/tests-changelog.md` | `mvn -q -f backend/changelog-service/pom.xml test` |
 | `cloudreve-sync` | `backend/cloudreve-sync-service` | 8118 | 16 | `docs/contracts-cloudreve-sync.md` | `.local-docs/tests-cloudreve-sync.md` | `mvn -q -f backend/cloudreve-sync-service/pom.xml test` |
 | `community` | `backend/community-service` | 8112 | 62 | `docs/contracts-community.md` | `.local-docs/tests-community.md` | `mvn -q -f backend/community-service/pom.xml test` |
-| `content` | `backend/content-service` | 8104 | 55 | `docs/contracts-content.md` | `.local-docs/tests-content.md` | `mvn -q -f backend/content-service/pom.xml test` |
+| `content` | `backend/business-core-service` | 8130 | 55 | `docs/contracts-content.md` | `.local-docs/tests-content.md` | `mvn -q -f backend/business-core-service/pom.xml test` |
 | `cross-platform-notification` | `backend/cross-platform-notification-service` | 8123 | 36 | `docs/contracts-cross-platform-notification.md` | `.local-docs/tests-cross-platform-notification.md` | `mvn -q -f backend/cross-platform-notification-service/pom.xml test` |
 | `exam` | `backend/exam-service` | 8109 | 29 | `docs/contracts-exam.md` | `.local-docs/tests-exam.md` | `mvn -q -f backend/exam-service/pom.xml test` |
 | `guide` | `backend/guide-service` | 8127 | 29 | `docs/contracts-guide.md` | `.local-docs/tests-guide.md` | `mvn -q -f backend/guide-service/pom.xml test` |
 | `material` | `backend/material-service` | 8126 | 33 | `docs/contracts-material.md` | `.local-docs/tests-material.md` | `mvn -q -f backend/material-service/pom.xml test` |
 | `node-daemon` | `backend/node-daemon-service` | 8117 | 17 | `docs/contracts-node-daemon.md` | `.local-docs/tests-node-daemon.md` | `mvn -q -f backend/node-daemon-service/pom.xml test` |
-| `notification` | `backend/notification-service` | 8103 | 19 | `docs/contracts-notification.md` | `.local-docs/tests-notification.md` | `mvn -q -f backend/notification-service/pom.xml test` |
+| `notification` | `backend/business-core-service` | 8130 | 19 | `docs/contracts-notification.md` | `.local-docs/tests-notification.md` | `mvn -q -f backend/business-core-service/pom.xml test` |
 | `onboarding` | `backend/onboarding-service` | 8108 | 15 | `docs/contracts-onboarding.md` | `.local-docs/tests-onboarding.md` | `mvn -q -f backend/onboarding-service/pom.xml test` |
 | `online-map` | `backend/online-map-service` | 8121 | 34 | `docs/contracts-online-map.md` | `.local-docs/tests-online-map.md` | `mvn -q -f backend/online-map-service/pom.xml test` |
 | `ops-control` | `backend/ops-control-service` | 8116 | 27 | `docs/contracts-ops-control.md` | `.local-docs/tests-ops-control.md` | `mvn -q -f backend/ops-control-service/pom.xml test` |
 | `ops-image-market` | `backend/ops-image-market-service` | 8124 | 48 | `docs/contracts-ops-image-market.md` | `.local-docs/tests-ops-image-market.md` | `mvn -q -f backend/ops-image-market-service/pom.xml test` |
 | `plugin-integration` | `backend/plugin-integration-service` | 8122 | 38 | `docs/contracts-plugin-integration.md` | `.local-docs/tests-plugin-integration.md` | `mvn -q -f backend/plugin-integration-service/pom.xml test` |
-| `profile` | `backend/profile-service` | 8102 | 16 | `docs/contracts-profile.md` | `.local-docs/tests-profile.md` | `mvn -q -f backend/profile-service/pom.xml test` |
-| `resource` | `backend/resource-service` | 8106 | 29 | `docs/contracts-resource.md` | `.local-docs/tests-resource.md` | `mvn -q -f backend/resource-service/pom.xml test` |
-| `server-status` | `backend/server-status-service` | 8105 | 25 | `docs/contracts-server-status.md` | `.local-docs/tests-server-status.md` | `mvn -q -f backend/server-status-service/pom.xml test` |
+| `profile` | `backend/business-core-service` | 8130 | 16 | `docs/contracts-profile.md` | `.local-docs/tests-profile.md` | `mvn -q -f backend/business-core-service/pom.xml test` |
+| `resource` | `backend/business-core-service` | 8130 | 29 | `docs/contracts-resource.md` | `.local-docs/tests-resource.md` | `mvn -q -f backend/business-core-service/pom.xml test` |
+| `server-status` | `backend/business-core-service` | 8130 | 25 | `docs/contracts-server-status.md` | `.local-docs/tests-server-status.md` | `mvn -q -f backend/business-core-service/pom.xml test` |
 | `whitelist` | `backend/whitelist-service` | 8110 | 23 | `docs/contracts-whitelist.md` | `.local-docs/tests-whitelist.md` | `mvn -q -f backend/whitelist-service/pom.xml test` |
 
 ## 合并后运行入口
@@ -56,7 +56,7 @@
 
 | 合并批次 | 运行入口 | 端口 | 承载模块 | 旧端口用途 |
 | --- | --- | ---: | --- | --- |
-| 第一批基础业务 | `backend/business-core-service` | 8130 | `auth`、`profile`、`notification`、`content`、`server-status`、`resource`、`admin` | `8101` 到 `8107` 仅保留为旧服务回归基线 |
+| 第一批基础业务 | `backend/business-core-service` | 8130 | `auth`、`profile`、`notification`、`content`、`server-status`、`resource`、`admin` | `8101` 到 `8107` 为历史原端口，旧运行文件已清理 |
 | 第二批入服准入 | `backend/admission-core-service` 尚未入仓 | 8131 | `onboarding`、`exam`、`whitelist`、`attendance` | 当前仍由 `8108` 到 `8111` 旧服务承载网关流量 |
 | 第三批社区运营 | `backend/engagement-core-service` 尚未入仓 | 8132 | `community`、`activity`、`calendar`、`changelog` | 当前仍由 `8112` 到 `8115` 旧服务承载网关流量 |
 
@@ -70,4 +70,4 @@
 
 任一模块变更时，必须优先更新该模块自己的 `docs/contracts-<module>.md`，再更新 `.local-docs/tests-<module>.md` 和对应自动化测试。只有模块测试和受影响的上游或下游回归测试全部通过，并留下测试过程记录后，才能认为该模块变更完成。
 
-全量后端验收以合并后的 core 服务、未合并服务、api-gateway 和仍保留的旧服务回归测试全部通过为准。最近一次 `main` 分支全量测试记录见 `.local-docs/backend-main-merge-test-record.md`，该记录不提交到仓库。
+全量后端验收以合并后的 core 服务、未合并服务和 api-gateway 相关测试全部通过为准。最近一次 `main` 分支全量测试记录见 `.local-docs/backend-main-merge-test-record.md`，该记录不提交到仓库。

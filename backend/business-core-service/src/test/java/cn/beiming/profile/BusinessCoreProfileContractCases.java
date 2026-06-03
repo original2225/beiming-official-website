@@ -745,6 +745,6 @@ abstract class BusinessCoreProfileContractCases {
         if (java.nio.file.Files.exists(localPath)) {
             return localPath;
         }
-        return java.nio.file.Path.of("../profile-service/src/main/java/cn/beiming/profile/ProfileModule.java");
+        return java.nio.file.Path.of("backend/business-core-service/src/main/java/cn/beiming/profile/ProfileModule.java");
     }
 }

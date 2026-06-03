@@ -1060,6 +1060,6 @@ abstract class BusinessCoreNotificationContractCases {
         if (java.nio.file.Files.exists(localPath)) {
             return localPath;
         }
-        return java.nio.file.Path.of("../notification-service/src/main/java/cn/beiming/notification/NotificationModule.java");
+        return java.nio.file.Path.of("backend/business-core-service/src/main/java/cn/beiming/notification/NotificationModule.java");
     }
 }

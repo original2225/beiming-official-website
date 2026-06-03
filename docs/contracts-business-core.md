@@ -29,7 +29,7 @@
 
 ## 运行形态
 
-本地验证运行单元为 `backend/business-core-service`，本地验证端口为 `8130`。端口 `8101` 到 `8107` 继续保留给旧七个微服务作为回归基线，端口 `8125` 继续保留给 `api-gateway-service`。
+本地验证运行单元为 `backend/business-core-service`，本地验证端口为 `8130`。端口 `8101` 到 `8107` 只作为第一批模块历史原服务端口登记，当前仓库不再保留旧七个微服务源码和 Maven 运行入口。端口 `8125` 继续保留给 `api-gateway-service`。
 
 Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `cn.beiming`。第一批模块应保留原包名 `cn.beiming.auth`、`cn.beiming.profile`、`cn.beiming.notification`、`cn.beiming.content`、`cn.beiming.serverstatus`、`cn.beiming.resource` 和 `cn.beiming.admin`。不得为了合并进行无业务收益的大规模包名迁移。
 
@@ -101,7 +101,8 @@ Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `
 | `moduleRoutes` | `BusinessCoreModuleStatus[]` | 是 | 七个模块装配状态。 |
 | `gatewaySwitchReady` | boolean | 是 | 是否已满足网关切换前置条件。网关切换完成后仍为 `true`。 |
 | `gatewaySwitchStatus` | string | 是 | 网关切换状态，允许 `NOT_READY`、`READY` 或 `COMPLETED`。 |
-| `legacyBaselines` | object[] | 是 | 旧七个微服务和网关基线摘要。 |
+| `legacyBaselines` | object[] | 是 | 当前仍保留的外部基线摘要。第一批旧七服务清理后只包含 `api-gateway-service`。 |
+| `retiredLegacyServices` | string[] | 是 | 已由 `business-core` 替代并清理源码的第一批旧服务。 |
 | `productionGaps` | string[] | 是 | 生产化差距摘要。 |
 | `generatedAt` | string | 是 | 摘要生成时间。 |
 
@@ -119,11 +120,11 @@ Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `
 | `criticalGapsTotal` | integer | 是 | 严重缺口数量。 |
 | `highGapsTotal` | integer | 是 | 高风险缺口数量。 |
 | `integrationChecks` | object[] | 是 | 生产联调检查项。每项包含 `checkKey`、`status`、`evidence` 和 `requiredBeforeProduction`。 |
-| `testScope` | object | 是 | 当前测试覆盖摘要，必须区分 MockMvc、本地 Maven、旧服务回归、网关路由切换和真实 HTTP 联调。 |
+| `testScope` | object | 是 | 当前测试覆盖摘要，必须区分 MockMvc、本地 Maven、旧服务退役检查、网关路由切换和真实 HTTP 联调。 |
 | `testControls` | object | 是 | 测试控制头生产隔离摘要，包含 `productionGuardRequired`、`productionGuardStatus`、`knownControlHeaders` 和 `risk`。 |
-| `sourceDrift` | object | 是 | 旧服务源码基线和 `business-core` 副本漂移风险摘要。 |
+| `sourceDrift` | object | 是 | 第一批旧服务源码退役后的漂移风险摘要。 |
 | `nextDevelopmentOrder` | string[] | 是 | 后续生产化建议顺序。 |
-| `legacyBaselinesKept` | boolean | 是 | 旧七服务和独立契约是否仍保留作回归基线。 |
+| `legacyBaselinesKept` | boolean | 是 | 旧七服务源码基线是否仍保留作回归基线。旧源码清理后必须为 `false`。 |
 | `generatedAt` | string | 是 | ISO 8601 时间。 |
 
 ## 接口总览
@@ -222,19 +223,21 @@ Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `
     "gatewaySwitchStatus": "COMPLETED",
     "legacyBaselines": [
       {
-        "service": "auth-service",
-        "port": 8101,
-        "contract": "docs/contracts-auth.md",
-        "testCommand": "mvn -f backend/auth-service/pom.xml test",
-        "lastVerifiedAt": "2026-06-02T15:34:38+08:00"
-      },
-      {
         "service": "api-gateway-service",
         "port": 8125,
         "contract": "docs/contracts-api-gateway.md",
         "testCommand": "mvn -f backend/api-gateway-service/pom.xml test",
         "lastVerifiedAt": "2026-06-02T15:34:38+08:00"
       }
+    ],
+    "retiredLegacyServices": [
+      "auth-service",
+      "profile-service",
+      "notification-service",
+      "content-service",
+      "server-status-service",
+      "resource-service",
+      "admin-service"
     ],
     "productionGaps": [
       "real database persistence is still module dependent"
@@ -245,7 +248,7 @@ Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `
 }
 ```
 
-业务规则：该接口只读取 `business-core` 内部装配状态和最近测试摘要，不主动执行七个模块的业务写操作，不调用旧服务进行实时健康探测，不把未完成模块伪装成 `READY`。只有当七个模块全部装配、七个模块在 `business-core` 中的继承契约测试通过、旧七个服务回归通过、`api-gateway` 基线通过时，`gatewaySwitchReady` 才能为 `true`。只有当 `api-gateway` 契约、测试文档、自动化红灯、网关实现和全量后端回归均完成后，`gatewaySwitchStatus` 才能为 `COMPLETED`。
+业务规则：该接口只读取 `business-core` 内部装配状态和最近测试摘要，不主动执行七个模块的业务写操作，不调用旧服务进行实时健康探测，不把未完成模块伪装成 `READY`。只有当七个模块全部装配、七个模块在 `business-core` 中的继承契约测试通过、第一批旧服务源码已按确认范围清理、`api-gateway` 基线通过时，`gatewaySwitchReady` 才能为 `true`。只有当 `api-gateway` 契约、测试文档、自动化红灯、网关实现和全量后端回归均完成后，`gatewaySwitchStatus` 才能为 `COMPLETED`。
 
 失败规则：运行单元内部异常返回 `51730`。模块装配信息缺失返回 `51731`。当前登记路由与本文档或七个模块契约期望不一致时返回 `51732` 或在 `status=DEGRADED` 的成功摘要中列入 `gaps`，由实现按是否影响接口可用性决定。认证上下文解析失败返回原模块契约或公共认证错误，可信网关上下文字段缺失或格式不兼容时返回 `51733`。
 
@@ -293,7 +296,7 @@ Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `
         "verification": "记录命令、端口、请求路径、响应码、请求编号和失败降级结果到 .local-docs/tests-business-core.md。"
       }
     ],
-    "gapsTotal": 5,
+    "gapsTotal": 4,
     "criticalGapsTotal": 0,
     "highGapsTotal": 4,
     "integrationChecks": [],
@@ -307,28 +310,40 @@ Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `
       ],
       "risk": "TEST_CONTROLS_ARE_REJECTED_WHEN_PRODUCTION_GUARD_IS_DISABLED"
     },
-    "sourceDrift": {},
+    "sourceDrift": {
+      "risk": "LEGACY_SOURCE_RETIRED",
+      "retiredLegacyServices": [
+        "auth-service",
+        "profile-service",
+        "notification-service",
+        "content-service",
+        "server-status-service",
+        "resource-service",
+        "admin-service"
+      ],
+      "activeRuntime": "business-core-service",
+      "guardRequired": false,
+      "policy": "BUSINESS_CORE_OWNS_FIRST_BATCH_RUNTIME"
+    },
     "nextDevelopmentOrder": [
       "LIVE_GATEWAY_HTTP_SMOKE",
       "PRODUCTION_AUTH_CONTEXT",
-      "PERSISTENCE_AND_AUDIT",
-      "TEST_CONTROL_GUARD",
-      "SOURCE_DRIFT_GUARD"
+      "PERSISTENCE_AND_AUDIT"
     ],
-    "legacyBaselinesKept": true,
+    "legacyBaselinesKept": false,
     "generatedAt": "2026-06-03T00:00:00Z"
   },
   "requestId": "req_example"
 }
 ```
 
-业务规则：生产就绪摘要必须诚实暴露 `business-core` 尚未完成的生产化阻塞项，不能因为合并测试全绿就返回 `productionReady=true`。当前至少要列出真实网关到 `business-core` HTTP 联调未验证、真实数据库持久化未接入、真实审计持久化未接入、生产认证上下文或网关内部签名未接入、旧服务和合并副本存在双维护漂移风险。该接口只读，不执行联调，不访问旧服务端口，不连接数据库，不调用真实外部依赖。测试控制头生产隔离完成后，`TEST_CONTROL_GUARD` 集成检查必须返回 `PASS`，且该项不得继续作为阻塞缺口。
+业务规则：生产就绪摘要必须诚实暴露 `business-core` 尚未完成的生产化阻塞项，不能因为合并测试全绿就返回 `productionReady=true`。当前至少要列出真实网关到 `business-core` HTTP 联调未验证、真实数据库持久化未接入、真实审计持久化未接入、生产认证上下文或网关内部签名未接入。该接口只读，不执行联调，不访问旧服务端口，不连接数据库，不调用真实外部依赖。第一批旧服务源码清理后，`SOURCE_DRIFT_GUARD` 集成检查必须返回 `PASS`，且该项不得继续作为阻塞缺口。测试控制头生产隔离完成后，`TEST_CONTROL_GUARD` 集成检查必须返回 `PASS`，且该项不得继续作为阻塞缺口。
 
 `integrationChecks` 至少包含以下检查项：`LIVE_GATEWAY_HTTP_SMOKE`、`PERSISTENT_DATABASE`、`PERSISTENT_AUDIT`、`PRODUCTION_AUTH_CONTEXT`、`GATEWAY_INTERNAL_SIGNATURE`、`TEST_CONTROL_GUARD`、`SOURCE_DRIFT_GUARD`。状态允许 `PASS`、`PARTIAL`、`NOT_VERIFIED`、`NOT_CONNECTED` 或 `REQUIRED`。
 
 `testScope` 必须明确 `mockMvcContractTests`、`legacyBaselineTests`、`apiGatewayRouteSwitchTests` 和 `liveHttpSmokeTests` 的覆盖状态。当前真实 HTTP 联调未执行时，`liveHttpSmokeTests.status` 必须为 `NOT_VERIFIED`。
 
-失败规则：运行单元内部异常返回 `51730`。模块装配信息缺失返回 `51731`。生产就绪摘要生成时发现路由总数与契约不一致，返回 `51732` 或在成功摘要中把 `SOURCE_DRIFT_GUARD` 标为 `REQUIRED` 并列入阻塞项。认证上下文解析失败返回原模块契约或公共认证错误，可信网关上下文字段缺失或格式不兼容时返回 `51733`。
+失败规则：运行单元内部异常返回 `51730`。模块装配信息缺失返回 `51731`。生产就绪摘要生成时发现路由总数与契约不一致，返回 `51732` 或在成功摘要中列入对应阻塞项。认证上下文解析失败返回原模块契约或公共认证错误，可信网关上下文字段缺失或格式不兼容时返回 `51733`。
 
 分页规则：无分页。
 
@@ -412,14 +427,14 @@ Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `
 
 `auth` 必须先迁入，因为其他受保护接口都依赖认证上下文。`admin` 必须最后迁入，因为它依赖前面模块的可见状态、待办、指标和审计摘要。
 
-每迁入一个模块，都必须先根据本文档和该模块正式契约生成或补齐 `business-core` 自动化测试，确认测试因为模块未装配或行为不满足而失败，再迁入实现。迁入后必须运行 `business-core` 对应测试、旧模块测试和该模块前序依赖测试。
+每迁入一个模块，都必须先根据本文档和该模块正式契约生成或补齐 `business-core` 自动化测试，确认测试因为模块未装配或行为不满足而失败，再迁入实现。迁入后必须运行 `business-core` 对应测试和该模块前序依赖测试。
 
 ## 验收口径
 
 `business-core` 完成的最低标准是，单进程承载第一批七个业务模块的全部既有 API 路径，且响应格式、错误码、认证、权限、请求编号、分页、状态流转、幂等、审计和降级行为与七个模块正式契约一致。
 
-`mvn -f backend/business-core-service/pom.xml test` 必须覆盖本文档三个自有接口和七个模块继承过来的全部契约测试。七个旧服务和 `api-gateway-service` 仍必须保持测试通过，直到用户明确确认旧服务清理。
+`mvn -f backend/business-core-service/pom.xml test` 必须覆盖本文档三个自有接口和七个模块继承过来的全部契约测试。第一批旧服务源码清理后，`BusinessCoreLegacyBaselineTest` 必须确认旧服务运行文件不存在，且七个模块正式契约和 `business-core-service` 运行入口仍存在。
 
-`business-core` 直连合并和第一批网关切换均已完成测试闭环。后续不能因此删除旧服务目录；旧服务仍作为回归基线保留，直到用户明确确认清理。
+`business-core` 直连合并和第一批网关切换均已完成测试闭环。用户确认后，第一批旧服务源码和 Maven 运行入口已按明确文件路径逐个清理，后续运行以 `business-core-service` 为准。
 
-旧服务目录不得因本契约自动删除。需要清理旧服务时，必须单独列出明确文件路径并取得用户确认，且只能逐个文件处理。
+旧服务目录不得因本契约自动批量删除。需要继续清理残留空目录或其他批次旧服务时，必须单独确认范围；删除文件只能逐个明确路径处理。

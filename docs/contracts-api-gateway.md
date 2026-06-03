@@ -90,7 +90,7 @@
 | `material` | `MATERIAL` | `/api/v1/materials` | `8126` | `/api/v1/materials/featured` |
 | `guide` | `GUIDE` | `/api/v1/guides` | `8127` | `/api/v1/guides/categories` |
 
-`auth`、`profile`、`notification`、`content`、`server-status`、`resource` 和 `admin` 已完成第一批运行合并。网关必须把这七个路由的上游统一切到 `business-core-service` 的 `8130`，但路由 ID、服务键、路径前缀、请求路径、认证透传、可信身份头剥离与注入、请求日志、错误码和响应透传规则都保持原样。端口 `8101` 到 `8107` 只作为旧服务回归基线保留，不再作为网关第一批业务路由的默认上游。
+`auth`、`profile`、`notification`、`content`、`server-status`、`resource` 和 `admin` 已完成第一批运行合并。网关必须把这七个路由的上游统一切到 `business-core-service` 的 `8130`，但路由 ID、服务键、路径前缀、请求路径、认证透传、可信身份头剥离与注入、请求日志、错误码和响应透传规则都保持原样。端口 `8101` 到 `8107` 只作为第一批模块历史原服务端口记录，不再作为网关第一批业务路由的默认上游，当前仓库也不再保留对应旧服务 Maven 运行入口。
 
 `onboarding`、`exam`、`whitelist` 和 `attendance` 的 `admission-core` 契约已存在，但当前仓库尚未包含 `backend/admission-core-service` 运行单元代码和测试。网关在该运行单元入仓并完成直连测试、网关红灯验证、切换实现和全量回归前，继续把第二批路由指向旧服务端口 `8108` 到 `8111`。
 
