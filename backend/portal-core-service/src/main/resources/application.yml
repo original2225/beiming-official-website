@@ -1,0 +1,14 @@
+server:
+  port: 8134
+
+portal-core:
+  test-controls:
+    enabled: false
+
+guide:
+  test-controls:
+    enabled: ${portal-core.test-controls.enabled:false}
+
+material:
+  test-controls:
+    enabled: ${portal-core.test-controls.enabled:false}
