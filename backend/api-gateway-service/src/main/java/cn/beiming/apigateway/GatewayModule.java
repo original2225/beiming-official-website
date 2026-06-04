@@ -15,6 +15,7 @@ import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -644,11 +645,14 @@ class GatewayController {
 @Component
 class GatewayState {
     private static final Instant REGISTERED_AT = Instant.parse("2026-05-29T00:00:00Z");
-    private final List<GatewayRoute> routes = createRoutes();
+    private final String portalCoreBaseUrl;
+    private final List<GatewayRoute> routes;
     private final Map<String, GatewayUpstreamHealth> health = new LinkedHashMap<>();
     private final ArrayDeque<GatewayRequestLog> logs = new ArrayDeque<>();
 
-    GatewayState() {
+    GatewayState(@Value("${api-gateway.upstreams.portal-core-base-url:http://127.0.0.1:8134}") String portalCoreBaseUrl) {
+        this.portalCoreBaseUrl = normalizeBaseUrl(portalCoreBaseUrl);
+        this.routes = createRoutes();
         resetRuntimeState();
     }
 
@@ -737,14 +741,35 @@ class GatewayState {
         items.add(route("plugin-integration", "PLUGIN_INTEGRATION", "plugin-integration", "/api/v1/plugin-integration", 8133, "/api/v1/plugin-integration/health"));
         items.add(route("cross-platform-notification", "CROSS_PLATFORM_NOTIFICATION", "cross-platform-notification", "/api/v1/cross-platform-notification", 8123, "/api/v1/cross-platform-notification/health"));
         items.add(route("ops-image-market", "OPS_IMAGE_MARKET", "ops-image-market", "/api/v1/ops-image-market", 8133, "/api/v1/ops-image-market/health"));
-        items.add(route("material", "MATERIAL", "material", "/api/v1/materials", 8134, "/api/v1/materials/featured"));
-        items.add(route("guide", "GUIDE", "guide", "/api/v1/guides", 8134, "/api/v1/guides/categories"));
+        items.add(route("material", "MATERIAL", "material", "/api/v1/materials", portalCoreBaseUrl, "/api/v1/materials/featured"));
+        items.add(route("guide", "GUIDE", "guide", "/api/v1/guides", portalCoreBaseUrl, "/api/v1/guides/categories"));
         return List.copyOf(items);
     }
 
     private GatewayRoute route(String routeId, String serviceKey, String serviceName, String pathPrefix, int port, String healthPath) {
         return new GatewayRoute(routeId, serviceKey, serviceName, pathPrefix, "http://127.0.0.1:" + port, port, healthPath, 1500, true,
                 List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"), true, REGISTERED_AT, REGISTERED_AT);
+    }
+
+    private GatewayRoute route(String routeId, String serviceKey, String serviceName, String pathPrefix, String upstreamBaseUrl, String healthPath) {
+        return new GatewayRoute(routeId, serviceKey, serviceName, pathPrefix, upstreamBaseUrl, portOf(upstreamBaseUrl), healthPath, 1500, true,
+                List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"), true, REGISTERED_AT, REGISTERED_AT);
+    }
+
+    private String normalizeBaseUrl(String value) {
+        String normalized = value == null || value.isBlank() ? "http://127.0.0.1:8134" : value.trim();
+        while (normalized.endsWith("/")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        return normalized;
+    }
+
+    private int portOf(String baseUrl) {
+        URI uri = URI.create(baseUrl);
+        if (uri.getPort() > 0) {
+            return uri.getPort();
+        }
+        return "https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80;
     }
 }
 

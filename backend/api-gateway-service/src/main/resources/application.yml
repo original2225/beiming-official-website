@@ -4,3 +4,7 @@ server:
 spring:
   mvc:
     dispatch-trace-request: true
+
+api-gateway:
+  upstreams:
+    portal-core-base-url: http://127.0.0.1:8134

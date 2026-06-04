@@ -40,6 +40,8 @@
 
 跨进程 HTTP smoke 只通过显式后台接口触发，默认不由 `GET /api/v1/portal-core/health` 或 `GET /api/v1/portal-core/admin/readiness` 自动触发，避免一次读取拖慢或污染生产自检。默认目标为通过网关访问 `/api/v1/guides/categories` 和 `/api/v1/materials/featured`，基础地址默认 `http://127.0.0.1:8125`。本地自动化测试可以通过配置覆盖 smoke 目标到临时 HTTP 服务，以验证真实 TCP/HTTP 调用链，不依赖真实网关进程常驻。
 
+真实网关联调验收必须启动真实 `portal-core-service` HTTP 服务和真实 `api-gateway-service` HTTP 服务，并把 `portal-core.http-smoke.gateway-base-url` 指向本次启动的网关地址。网关在本地联调中允许通过 `api-gateway.upstreams.portal-core-base-url` 把 `guide` 和 `material` 两个原业务路由临时指向本次启动的 `portal-core` 地址，从而避免固定端口占用导致测试不稳定。联调必须通过 `POST /api/v1/portal-core/admin/http-smoke/run` 触发真实 HTTP 调用，确认请求路径仍为 `/api/v1/guides/categories` 和 `/api/v1/materials/featured`，请求编号透传，两个目标均返回统一成功响应后 `httpSmokeStatus=PASS`。该联调只证明网关到 `portal-core` 的原路径转发和 smoke 入口可用，不能替代真实持久化、审计持久化、对象存储、文件安全扫描、全文搜索、外部通知投递、动态服务发现或集中配置。
+
 smoke 状态允许 `NOT_RUN`、`PASS`、`DEGRADED` 和 `DISABLED`。未执行时为 `NOT_RUN`，全部目标返回 HTTP 小于 `500` 且统一响应体 `code=0` 时为 `PASS`，任一目标连接失败、超时、返回 HTTP `5xx`、非 JSON 或业务 `code` 非 `0` 时为 `DEGRADED`。`portal-core` 不因为 smoke 失败返回 5xx，失败结果进入响应体和 readiness 诊断。结果只保存在当前进程内存中，不代表审计持久化已经完成。
 
 ## 模块装配表
@@ -148,4 +150,4 @@ smoke 状态允许 `NOT_RUN`、`PASS`、`DEGRADED` 和 `DISABLED`。未执行时
 
 `portal-core` API 文档按 `docs/contracts-portal-core.md` 独立存在，并由 `.local-docs/tests-portal-core.md` 记录本地测试闭环。
 
-完成时必须满足以下条件：`portal-core-service:8134` 单进程承载两个玩家门户内容扩展模块的全部既有 API 路径；两个模块原契约仍有效；`portal-core` 自有五个接口全覆盖；服务发现静态注册表和 HTTP smoke 结果字段全覆盖；`.local-docs/tests-portal-core.md` 中的完备用例都有自动化验证；自动化测试先红灯；实现后 `mvn -q -f backend/portal-core-service/pom.xml test` 通过；旧 `guide-service` 和 `material-service` Maven 入口已退役且不得恢复；`api-gateway-service` 已按契约切换并通过测试；`business-core-service`、`admission-core-service`、`engagement-core-service` 和 `ops-core-service` 回归通过；前三期旧服务目录没有恢复；`online-map`、`cross-platform-notification`、`node-daemon` 和 `api-gateway` 仍保持独立；生产 readiness 明确暴露剩余生产缺口，且不得把静态服务发现或单次 smoke 成功当作真实持久化、审计持久化、对象存储、文件扫描、全文搜索或外部通知投递完成；测试过程完整写入 `.local-docs/tests-portal-core.md` 和 `.local-docs/tests-api-gateway.md`。
+完成时必须满足以下条件：`portal-core-service:8134` 单进程承载两个玩家门户内容扩展模块的全部既有 API 路径；两个模块原契约仍有效；`portal-core` 自有五个接口全覆盖；服务发现静态注册表和 HTTP smoke 结果字段全覆盖；真实 `api-gateway-service` 到真实 `portal-core-service` 的本地 HTTP 联调用例通过；`.local-docs/tests-portal-core.md` 中的完备用例都有自动化验证；自动化测试先红灯；实现后 `mvn -q -f backend/portal-core-service/pom.xml test` 通过；旧 `guide-service` 和 `material-service` Maven 入口已退役且不得恢复；`api-gateway-service` 已按契约切换并通过测试；`business-core-service`、`admission-core-service`、`engagement-core-service` 和 `ops-core-service` 回归通过；前三期旧服务目录没有恢复；`online-map`、`cross-platform-notification`、`node-daemon` 和 `api-gateway` 仍保持独立；生产 readiness 明确暴露剩余生产缺口，且不得把静态服务发现、可配置本地上游或单次 smoke 成功当作真实持久化、审计持久化、对象存储、文件扫描、全文搜索、外部通知投递、动态服务发现或集中配置完成；测试过程完整写入 `.local-docs/tests-portal-core.md` 和 `.local-docs/tests-api-gateway.md`。

@@ -77,15 +77,15 @@ class GatewayApiContractTest {
         addRange(mapped, "GATE-ACORE", 1, 10);
         addRange(mapped, "GATE-ECORE", 1, 10);
         addRange(mapped, "GATE-OCORE", 1, 10);
-        addRange(mapped, "GATE-PCORE", 1, 10);
+        addRange(mapped, "GATE-PCORE", 1, 11);
         addRange(mapped, "GATE-UP", 1, 20);
         addRange(mapped, "GATE-LOG", 1, 20);
         addRange(mapped, "GATE-PROXY", 1, 49);
         addRange(mapped, "GATE-CORS", 1, 10);
         addRange(mapped, "GATE-SEC", 1, 11);
 
-        assertThat(mapped).hasSize(234);
-        assertThat(mapped).contains("GATE-COM-001", "GATE-PFX-026", "GATE-BCORE-010", "GATE-ACORE-010", "GATE-ECORE-010", "GATE-OCORE-010", "GATE-PCORE-010", "GATE-UP-020", "GATE-PROXY-049", "GATE-SEC-011");
+        assertThat(mapped).hasSize(235);
+        assertThat(mapped).contains("GATE-COM-001", "GATE-PFX-026", "GATE-BCORE-010", "GATE-ACORE-010", "GATE-ECORE-010", "GATE-OCORE-010", "GATE-PCORE-010", "GATE-PCORE-011", "GATE-UP-020", "GATE-PROXY-049", "GATE-SEC-011");
     }
 
     @Test
