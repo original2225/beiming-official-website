@@ -284,7 +284,7 @@ record PortalCoreModuleRegistration(String moduleKey,
         data.put("currentServiceDirectory", "backend/portal-core-service");
         data.put("contract", contract);
         data.put("localTestDocument", localTestDocument);
-        data.put("legacyTestCommand", "mvn -q -f " + legacyServiceDirectory + "/pom.xml test");
+        data.put("legacyTestCommand", "RETIRED_NO_MAVEN_ENTRY");
         data.put("currentTestCommand", "mvn -q -f backend/portal-core-service/pom.xml test");
         data.put("contractRoutesTotal", routesTotal);
         data.put("routeDriftStatus", "NO_DRIFT");

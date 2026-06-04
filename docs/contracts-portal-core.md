@@ -34,10 +34,10 @@
 
 ## 模块装配表
 
-| 模块 | 原服务目录 | 原端口 | 当前服务目录 | 当前端口 | API 数 | 正式契约 | 原测试入口 | 当前测试入口 |
+| 模块 | 历史服务目录 | 历史端口 | 当前服务目录 | 当前端口 | API 数 | 正式契约 | 历史测试入口状态 | 当前测试入口 |
 | --- | --- | ---: | --- | ---: | ---: | --- | --- | --- |
-| `guide` | `backend/guide-service` | 8127 | `backend/portal-core-service` | 8134 | 41 | `docs/contracts-guide.md` | `mvn -q -f backend/guide-service/pom.xml test` | `mvn -q -f backend/portal-core-service/pom.xml test` |
-| `material` | `backend/material-service` | 8126 | `backend/portal-core-service` | 8134 | 33 | `docs/contracts-material.md` | `mvn -q -f backend/material-service/pom.xml test` | `mvn -q -f backend/portal-core-service/pom.xml test` |
+| `guide` | `backend/guide-service` | 8127 | `backend/portal-core-service` | 8134 | 41 | `docs/contracts-guide.md` | 已退役，不得恢复旧 Maven 入口 | `mvn -q -f backend/portal-core-service/pom.xml test` |
+| `material` | `backend/material-service` | 8126 | `backend/portal-core-service` | 8134 | 33 | `docs/contracts-material.md` | 已退役，不得恢复旧 Maven 入口 | `mvn -q -f backend/portal-core-service/pom.xml test` |
 
 两个继承模块合计 74 个业务 API 路由。`portal-core` 自有接口为 4 个。`portal-core-service` 当前进程应注册 78 个 `/api/v1/**` 方法路由。
 
@@ -126,4 +126,4 @@
 
 `portal-core` API 文档按 `docs/contracts-portal-core.md` 独立存在，并由 `.local-docs/tests-portal-core.md` 记录本地测试闭环。
 
-完成时必须满足以下条件：`portal-core-service:8134` 单进程承载两个玩家门户内容扩展模块的全部既有 API 路径；两个模块原契约仍有效；`portal-core` 自有四个接口全覆盖；`.local-docs/tests-portal-core.md` 中的完备用例都有自动化验证；自动化测试先红灯；实现后 `mvn -q -f backend/portal-core-service/pom.xml test` 通过；两个旧服务测试作为对照组通过；`api-gateway-service` 已按契约切换并通过测试；`business-core-service`、`admission-core-service`、`engagement-core-service` 和 `ops-core-service` 回归通过；前三期旧服务目录没有恢复；`online-map`、`cross-platform-notification`、`node-daemon` 和 `api-gateway` 仍保持独立；生产 readiness 明确暴露剩余生产缺口；测试过程完整写入 `.local-docs/tests-portal-core.md` 和 `.local-docs/tests-api-gateway.md`。
+完成时必须满足以下条件：`portal-core-service:8134` 单进程承载两个玩家门户内容扩展模块的全部既有 API 路径；两个模块原契约仍有效；`portal-core` 自有四个接口全覆盖；`.local-docs/tests-portal-core.md` 中的完备用例都有自动化验证；自动化测试先红灯；实现后 `mvn -q -f backend/portal-core-service/pom.xml test` 通过；旧 `guide-service` 和 `material-service` Maven 入口已退役且不得恢复；`api-gateway-service` 已按契约切换并通过测试；`business-core-service`、`admission-core-service`、`engagement-core-service` 和 `ops-core-service` 回归通过；前三期旧服务目录没有恢复；`online-map`、`cross-platform-notification`、`node-daemon` 和 `api-gateway` 仍保持独立；生产 readiness 明确暴露剩余生产缺口；测试过程完整写入 `.local-docs/tests-portal-core.md` 和 `.local-docs/tests-api-gateway.md`。

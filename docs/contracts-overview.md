@@ -71,7 +71,7 @@
 | 第二批入服准入 | `backend/admission-core-service` | 8131 | `onboarding`、`exam`、`whitelist`、`attendance` | `8108` 到 `8111` 为历史原端口，旧服务目录已清理且不得恢复 |
 | 第三批社区运营 | `backend/engagement-core-service` | 8132 | `community`、`activity`、`calendar`、`changelog` | `8112` 到 `8115` 为历史原端口，旧服务目录已清理且不得恢复 |
 | 第四批运维控制面 | `backend/ops-core-service` | 8133 | `ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`ops-image-market` | `8116`、`8118`、`8119`、`8120`、`8122` 和 `8124` 为历史原端口，旧服务目录本期保留为对照组且不得恢复前三期旧目录 |
-| 第五批玩家门户内容 | `backend/portal-core-service` | 8134 | `guide`、`material` | `8127` 和 `8126` 为历史原端口，旧服务目录本期保留为对照组且不得恢复前三期旧目录 |
+| 第五批玩家门户内容 | `backend/portal-core-service` | 8134 | `guide`、`material` | `8127` 和 `8126` 为历史原端口，旧服务目录已退役且不得恢复 |
 
 ## 依赖顺序和边界
 

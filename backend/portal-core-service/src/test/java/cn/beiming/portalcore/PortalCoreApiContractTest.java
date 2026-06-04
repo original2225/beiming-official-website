@@ -140,8 +140,8 @@ class PortalCoreApiContractTest {
         mockMvc.perform(get("/api/v1/portal-core/admin/modules").header("Authorization", "Bearer owner-token"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.items.length()").value(2))
-                .andExpect(jsonPath("$.data.items[?(@.moduleName == 'guide' && @.legacyServiceDirectory == 'backend/guide-service' && @.currentServiceDirectory == 'backend/portal-core-service' && @.legacyPort == 8127 && @.currentPort == 8134 && @.pathPrefix == '/api/v1/guides' && @.routeDriftStatus == 'NO_DRIFT')]").exists())
-                .andExpect(jsonPath("$.data.items[?(@.moduleName == 'material' && @.legacyServiceDirectory == 'backend/material-service' && @.currentServiceDirectory == 'backend/portal-core-service' && @.legacyPort == 8126 && @.currentPort == 8134 && @.pathPrefix == '/api/v1/materials' && @.routeDriftStatus == 'NO_DRIFT')]").exists())
+                .andExpect(jsonPath("$.data.items[?(@.moduleName == 'guide' && @.legacyServiceDirectory == 'backend/guide-service' && @.legacyTestCommand == 'RETIRED_NO_MAVEN_ENTRY' && @.currentServiceDirectory == 'backend/portal-core-service' && @.legacyPort == 8127 && @.currentPort == 8134 && @.pathPrefix == '/api/v1/guides' && @.routeDriftStatus == 'NO_DRIFT')]").exists())
+                .andExpect(jsonPath("$.data.items[?(@.moduleName == 'material' && @.legacyServiceDirectory == 'backend/material-service' && @.legacyTestCommand == 'RETIRED_NO_MAVEN_ENTRY' && @.currentServiceDirectory == 'backend/portal-core-service' && @.legacyPort == 8126 && @.currentPort == 8134 && @.pathPrefix == '/api/v1/materials' && @.routeDriftStatus == 'NO_DRIFT')]").exists())
                 .andExpect(jsonPath("$.data.items[?(@.pathPrefix == '/api/v1/portal-core/guides')]").doesNotExist())
                 .andExpect(jsonPath("$.data.items[?(@.pathPrefix == '/api/v1/portal-core/materials')]").doesNotExist());
     }
@@ -248,24 +248,28 @@ class PortalCoreApiContractTest {
     }
 
     @Test
-    void doesNotRestoreFirstThreeBatchLegacyServiceEntrypoints() {
+    void doesNotRestoreRetiredLegacyServiceEntrypoints() {
         assertThat(List.of(
-                pathFromProject("../auth-service/pom.xml"),
-                pathFromProject("../profile-service/pom.xml"),
-                pathFromProject("../notification-service/pom.xml"),
-                pathFromProject("../content-service/pom.xml"),
-                pathFromProject("../server-status-service/pom.xml"),
-                pathFromProject("../resource-service/pom.xml"),
-                pathFromProject("../admin-service/pom.xml"),
-                pathFromProject("../onboarding-service/pom.xml"),
-                pathFromProject("../exam-service/pom.xml"),
-                pathFromProject("../whitelist-service/pom.xml"),
-                pathFromProject("../attendance-service/pom.xml"),
-                pathFromProject("../community-service/pom.xml"),
-                pathFromProject("../activity-service/pom.xml"),
-                pathFromProject("../calendar-service/pom.xml"),
-                pathFromProject("../changelog-service/pom.xml")
-        )).allSatisfy(path -> assertThat(Files.exists(path)).isFalse());
+                "auth-service",
+                "profile-service",
+                "notification-service",
+                "content-service",
+                "server-status-service",
+                "resource-service",
+                "admin-service",
+                "onboarding-service",
+                "exam-service",
+                "whitelist-service",
+                "attendance-service",
+                "community-service",
+                "activity-service",
+                "calendar-service",
+                "changelog-service",
+                "guide-service",
+                "material-service"
+        )).allSatisfy(serviceDirectory ->
+                assertThat(retiredServicePomCandidates(serviceDirectory))
+                        .allSatisfy(path -> assertThat(Files.exists(path)).isFalse()));
     }
 
     @Test
@@ -341,11 +345,10 @@ class PortalCoreApiContractTest {
         return Path.of("docs", file);
     }
 
-    private Path pathFromProject(String value) {
-        Path path = Path.of(value);
-        if (Files.exists(path) || value.startsWith("../")) {
-            return path;
-        }
-        return Path.of("backend/portal-core-service").resolve(value);
+    private List<Path> retiredServicePomCandidates(String serviceDirectory) {
+        return List.of(
+                Path.of("backend", serviceDirectory, "pom.xml"),
+                Path.of("..", serviceDirectory, "pom.xml")
+        );
     }
 }
