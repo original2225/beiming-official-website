@@ -10,7 +10,11 @@ import org.springframework.context.annotation.FullyQualifiedAnnotationBeanNameGe
 @SpringBootConfiguration
 @EnableAutoConfiguration
 @ComponentScan(
-        basePackages = "cn.beiming.portalcore",
+        basePackages = {
+                "cn.beiming.portalcore",
+                "cn.beiming.guide",
+                "cn.beiming.material"
+        },
         nameGenerator = FullyQualifiedAnnotationBeanNameGenerator.class,
         excludeFilters = @ComponentScan.Filter(
                 type = FilterType.REGEX,
