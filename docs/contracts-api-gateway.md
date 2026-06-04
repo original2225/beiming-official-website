@@ -78,15 +78,15 @@
 | `activity` | `ACTIVITY` | `/api/v1/activity` | `8132` | `/api/v1/activity/events` |
 | `calendar` | `CALENDAR` | `/api/v1/calendar` | `8132` | `/api/v1/calendar/upcoming` |
 | `changelog` | `CHANGELOG` | `/api/v1/changelog` | `8132` | `/api/v1/changelog/versions/latest` |
-| `ops-control` | `OPS_CONTROL` | `/api/v1/ops-control` | `8116` | `/api/v1/ops-control/overview` |
+| `ops-control` | `OPS_CONTROL` | `/api/v1/ops-control` | `8133` | `/api/v1/ops-control/overview` |
 | `node-daemon` | `NODE_DAEMON` | `/api/v1/node-daemon` | `8117` | `/api/v1/node-daemon/health` |
-| `cloudreve-sync` | `CLOUDREVE_SYNC` | `/api/v1/cloudreve-sync` | `8118` | `/api/v1/cloudreve-sync/health` |
-| `backup-recovery` | `BACKUP_RECOVERY` | `/api/v1/backup-recovery` | `8119` | `/api/v1/backup-recovery/health` |
-| `alerting` | `ALERTING` | `/api/v1/alerting` | `8120` | `/api/v1/alerting/health` |
+| `cloudreve-sync` | `CLOUDREVE_SYNC` | `/api/v1/cloudreve-sync` | `8133` | `/api/v1/cloudreve-sync/health` |
+| `backup-recovery` | `BACKUP_RECOVERY` | `/api/v1/backup-recovery` | `8133` | `/api/v1/backup-recovery/health` |
+| `alerting` | `ALERTING` | `/api/v1/alerting` | `8133` | `/api/v1/alerting/health` |
 | `online-map` | `ONLINE_MAP` | `/api/v1/online-map` | `8121` | `/api/v1/online-map/health` |
-| `plugin-integration` | `PLUGIN_INTEGRATION` | `/api/v1/plugin-integration` | `8122` | `/api/v1/plugin-integration/health` |
+| `plugin-integration` | `PLUGIN_INTEGRATION` | `/api/v1/plugin-integration` | `8133` | `/api/v1/plugin-integration/health` |
 | `cross-platform-notification` | `CROSS_PLATFORM_NOTIFICATION` | `/api/v1/cross-platform-notification` | `8123` | `/api/v1/cross-platform-notification/health` |
-| `ops-image-market` | `OPS_IMAGE_MARKET` | `/api/v1/ops-image-market` | `8124` | `/api/v1/ops-image-market/health` |
+| `ops-image-market` | `OPS_IMAGE_MARKET` | `/api/v1/ops-image-market` | `8133` | `/api/v1/ops-image-market/health` |
 | `material` | `MATERIAL` | `/api/v1/materials` | `8126` | `/api/v1/materials/featured` |
 | `guide` | `GUIDE` | `/api/v1/guides` | `8127` | `/api/v1/guides/categories` |
 
@@ -95,6 +95,8 @@
 `onboarding`、`exam`、`whitelist` 和 `attendance` 已完成第二批运行合并。网关必须把这四个路由的上游统一切到 `admission-core-service` 的 `8131`，但路由 ID、服务键、路径前缀、请求路径、认证透传、可信身份头剥离与注入、请求日志、错误码和响应透传规则都保持原样。端口 `8108` 到 `8111` 只作为第二批模块历史原服务端口记录，不再作为网关第二批业务路由的默认上游，当前仓库也不再保留对应旧服务 Maven 运行入口。
 
 `community`、`activity`、`calendar` 和 `changelog` 已完成第三批运行合并。网关必须把这四个路由的上游统一切到 `engagement-core-service` 的 `8132`，但路由 ID、服务键、路径前缀、请求路径、认证透传、可信身份头剥离与注入、请求日志、错误码和响应透传规则都保持原样。端口 `8112` 到 `8115` 只作为第三批模块历史原服务端口记录，不再作为网关第三批业务路由的默认上游，当前仓库也不再保留对应旧服务 Maven 运行入口。
+
+`ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration` 和 `ops-image-market` 已完成第四批运行合并。网关必须把这六个路由的上游统一切到 `ops-core-service` 的 `8133`，但路由 ID、服务键、路径前缀、请求路径、认证透传、可信身份头剥离与注入、请求日志、错误码和响应透传规则都保持原样。端口 `8116`、`8118`、`8119`、`8120`、`8122` 和 `8124` 只作为第四批模块历史原服务端口记录，不再作为网关第四批控制面路由的默认上游。`node-daemon` 继续保持独立，不并入 `ops-core`。
 
 路径匹配规则为最长前缀优先。`/api/v1/resources` 和 `/api/v1/resources/**` 都必须命中 `resource`。未知路径返回网关错误，不转发到任何上游。
 
@@ -385,6 +387,6 @@ P0 `api-gateway` 是本地契约实现，必须在自检摘要中明确以下生
 
 `api-gateway` API 文档按 `docs/contracts-api-gateway.md` 独立存在，并由 `.local-docs/tests-api-gateway.md` 记录本地测试闭环。
 
-本文档列出的每个网关自有接口都有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、分页排序、状态刷新、失败降级、日志脱敏和验收口径。业务转发测试必须覆盖 26 个已接入路径前缀，确认路由表端口准确、第一批七个路由统一指向 `business-core-service:8130`、第二批四个路由统一指向 `admission-core-service:8131`、第三批四个路由统一指向 `engagement-core-service:8132`、原业务路径不被改写为 core 服务前缀、请求编号透传、请求编号非法拒绝、认证头透传、可信身份头剥离、`auth` 会话校验成功后的可信身份注入、`auth` 校验失败后的不注入降级、查询参数透传、JSON body 透传、请求体大小限制、响应头白名单、上游 2xx 透传、上游 4xx 透传、上游 5xx 透传、未知路径、非法方法、CORS 预检、上游不可用、上游超时和敏感字段不落日志。
+本文档列出的每个网关自有接口都有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、分页排序、状态刷新、失败降级、日志脱敏和验收口径。业务转发测试必须覆盖 26 个已接入路径前缀，确认路由表端口准确、第一批七个路由统一指向 `business-core-service:8130`、第二批四个路由统一指向 `admission-core-service:8131`、第三批四个路由统一指向 `engagement-core-service:8132`、第四批六个路由统一指向 `ops-core-service:8133`、原业务路径不被改写为 core 服务前缀、请求编号透传、请求编号非法拒绝、认证头透传、可信身份头剥离、`auth` 会话校验成功后的可信身份注入、`auth` 校验失败后的不注入降级、查询参数透传、JSON body 透传、请求体大小限制、响应头白名单、上游 2xx 透传、上游 4xx 透传、上游 5xx 透传、未知路径、非法方法、CORS 预检、上游不可用、上游超时和敏感字段不落日志。
 
-开发完成后必须执行 `mvn -f backend/api-gateway-service/pom.xml test`、`mvn -f backend/business-core-service/pom.xml test`、`mvn -f backend/admission-core-service/pom.xml test` 和 `mvn -f backend/engagement-core-service/pom.xml test`。第一批、第二批和第三批旧服务清理后，不得为了网关回归恢复对应旧服务目录、旧 Maven 入口、旧启动类或旧测试命令。测试过程必须写入 `.local-docs/tests-api-gateway.md`。
+开发完成后必须执行 `mvn -f backend/api-gateway-service/pom.xml test`、`mvn -f backend/business-core-service/pom.xml test`、`mvn -f backend/admission-core-service/pom.xml test`、`mvn -f backend/engagement-core-service/pom.xml test`、`mvn -f backend/ops-core-service/pom.xml test` 和 `mvn -f backend/node-daemon-service/pom.xml test`。第一批、第二批和第三批旧服务清理后，不得为了网关回归恢复对应旧服务目录、旧 Maven 入口、旧启动类或旧测试命令。第四批旧服务目录本期保留为对照组，不能因为 `ops-core` 已接管路径就跳过旧服务基线测试。测试过程必须写入 `.local-docs/tests-api-gateway.md`。

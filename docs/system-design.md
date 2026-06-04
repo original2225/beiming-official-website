@@ -48,6 +48,7 @@ API 网关或后端入口
   |-- changelog       版本更新与维护记录
   |-- online-map      在线地图接入控制面和公开展示快照
   |-- admin           后台聚合、配置、审计
+  |-- ops-core        运维控制面合并运行单元，承载 ops-control、cloudreve-sync、backup-recovery、alerting、plugin-integration 和 ops-image-market
   |-- ops-control     服务器与资源运维控制面
   |-- cloudreve-sync  Cloudreve API 深度接入与同步快照
   |-- backup-recovery 备份策略、备份点、校验、恢复演练和恢复申请
@@ -102,6 +103,8 @@ API 网关或后端入口
 `cloudreve-sync` 负责 Cloudreve API 深度接入、provider 配置摘要、目录同步任务、文件元数据快照、分享链接解析、失效降级和同步审计。它不拥有玩家资源主数据，不执行后台服务器文件操作，只向后续 resource 兼容适配提供安全快照。
 
 `backup-recovery` 负责备份域、备份策略、备份任务、备份点索引、备份校验、恢复演练、恢复申请、审批摘要、保留策略、依赖健康摘要和风险审计。它不执行真实数据库导出、真实文件复制、真实恢复写入或节点守护进程调用；真实执行必须通过后续 `ops-control` 审批和 `node-daemon` 授权任务独立闭环。
+
+`ops-core` 是第四批运行合并单元，承载 `ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration` 和 `ops-image-market` 的现有业务路径。它只收敛运行入口，不改变六个模块的数据归属、正式契约、路径前缀、权限、状态机、错误码、审计对象或失败降级规则。
 
 ## 公共基础契约
 
@@ -226,13 +229,13 @@ Cloudreve 第一阶段可以作为外部分享链接存在。后续接入 API �
 
 ## 部署原则
 
-官网前端、后端业务服务、数据库、缓存、Cloudreve、Minecraft 服务器和节点守护进程应分开部署。开发阶段可以先用较少进程模拟模块边界，但接口、权限和数据归属不能混乱。
+官网前端、后端业务服务、数据库、缓存、Cloudreve、Minecraft 服务器和节点守护进程应分开部署。开发阶段可以先用较少进程模拟模块边界，但接口、权限和数据归属不能混乱。当前第四批运维控制面已收敛到 `ops-core-service:8133`，但 `api-gateway-service:8125` 和 `node-daemon-service:8117` 仍保持独立运行边界。
 
 节点守护进程部署在被管理服务器上。它只开放必要管理端口，优先由控制面主动连接或通过受控通道通信，不暴露无鉴权的系统操作接口。
 
 后续如果采用微服务，网关负责路由、跨域、基础鉴权、限流和请求日志。业务服务负责自己的业务规则。网关不直接访问数据库。
 
-本地开发端口必须固定，避免 IDEA、命令行、前端代理和后续网关联调互相抢占默认端口。当前已合并运行单元中，`auth`、`profile`、`notification`、`content`、`server-status`、`resource` 和 `admin` 由 `business-core-service` 承载，端口固定为 `8130`；`onboarding`、`exam`、`whitelist` 和 `attendance` 由 `admission-core-service` 承载，端口固定为 `8131`；`community`、`activity`、`calendar` 和 `changelog` 由 `engagement-core-service` 承载，端口固定为 `8132`。历史端口 `8101` 到 `8115` 只保留为模块原端口记录，不作为当前网关上游或旧服务回归入口。尚未合并的后续服务继续使用既定端口：`ops-control` 使用 `8116`，`node-daemon` 使用 `8117`，`cloudreve-sync` 使用 `8118`，`backup-recovery` 使用 `8119`，`alerting` 使用 `8120`，`online-map` 使用 `8121`。新增或调整端口时，必须同步更新正式文档和对应自动化测试。
+本地开发端口必须固定，避免 IDEA、命令行、前端代理和后续网关联调互相抢占默认端口。当前已合并运行单元中，`auth`、`profile`、`notification`、`content`、`server-status`、`resource` 和 `admin` 由 `business-core-service` 承载，端口固定为 `8130`；`onboarding`、`exam`、`whitelist` 和 `attendance` 由 `admission-core-service` 承载，端口固定为 `8131`；`community`、`activity`、`calendar` 和 `changelog` 由 `engagement-core-service` 承载，端口固定为 `8132`；`ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration` 和 `ops-image-market` 由 `ops-core-service` 承载，端口固定为 `8133`。历史端口 `8101` 到 `8116`、`8118` 到 `8120`、`8122` 和 `8124` 只保留为模块原端口记录，不作为当前网关上游。`node-daemon` 继续使用 `8117`，`online-map` 继续使用 `8121`，`cross-platform-notification` 继续使用 `8123`，`material` 继续使用 `8126`，`guide` 继续使用 `8127`。新增或调整端口时，必须同步更新正式文档和对应自动化测试。
 
 ## 技术选型原则
 
