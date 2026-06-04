@@ -36,10 +36,10 @@
 
 | 模块 | 原服务目录 | 原端口 | 当前服务目录 | 当前端口 | API 数 | 正式契约 | 原测试入口 | 当前测试入口 |
 | --- | --- | ---: | --- | ---: | ---: | --- | --- | --- |
-| `guide` | `backend/guide-service` | 8127 | `backend/portal-core-service` | 8134 | 29 | `docs/contracts-guide.md` | `mvn -q -f backend/guide-service/pom.xml test` | `mvn -q -f backend/portal-core-service/pom.xml test` |
+| `guide` | `backend/guide-service` | 8127 | `backend/portal-core-service` | 8134 | 41 | `docs/contracts-guide.md` | `mvn -q -f backend/guide-service/pom.xml test` | `mvn -q -f backend/portal-core-service/pom.xml test` |
 | `material` | `backend/material-service` | 8126 | `backend/portal-core-service` | 8134 | 33 | `docs/contracts-material.md` | `mvn -q -f backend/material-service/pom.xml test` | `mvn -q -f backend/portal-core-service/pom.xml test` |
 
-两个继承模块合计 62 个业务 API 路由。`portal-core` 自有接口为 4 个。`portal-core-service` 当前进程应注册 66 个 `/api/v1/**` 方法路由。
+两个继承模块合计 74 个业务 API 路由。`portal-core` 自有接口为 4 个。`portal-core-service` 当前进程应注册 78 个 `/api/v1/**` 方法路由。
 
 ## 生产就绪能力状态
 
@@ -75,7 +75,7 @@
 
 成功响应 HTTP `200`。
 
-响应 `data` 必须包含 `service=portal-core`、`status=UP`、`version`、`port=8134`、`modulesTotal=2`、`inheritedRoutesTotal=62`、`selfRoutesTotal=4` 和 `routesTotal=66`。该接口不得返回上传票据、内部路径、后台备注、审核意见、通知摘要、外部 URL 管理凭据、异常栈或依赖错误细节。
+响应 `data` 必须包含 `service=portal-core`、`status=UP`、`version`、`port=8134`、`modulesTotal=2`、`inheritedRoutesTotal=74`、`selfRoutesTotal=4` 和 `routesTotal=78`。该接口不得返回上传票据、内部路径、后台备注、审核意见、通知摘要、外部 URL 管理凭据、异常栈或依赖错误细节。
 
 ## 运行摘要
 
@@ -83,7 +83,7 @@
 
 成功响应 HTTP `200`。
 
-响应 `data` 必须包含 `service=portal-core`、`port=8134`、`modulesTotal=2`、`modulesMounted=2`、`inheritedRoutesTotal=62`、`selfRoutesTotal=4`、`routesTotal=66`、`testControlsEnabled`、`storageMode`、`authMode`、`dependencyAdapterMode`、`routeDriftStatus`、`gatewaySwitchStatus`、`moduleRoutes`、`productionGaps`、`recentAuditSummary` 和 `generatedAt`。
+响应 `data` 必须包含 `service=portal-core`、`port=8134`、`modulesTotal=2`、`modulesMounted=2`、`inheritedRoutesTotal=74`、`selfRoutesTotal=4`、`routesTotal=78`、`testControlsEnabled`、`storageMode`、`authMode`、`dependencyAdapterMode`、`routeDriftStatus`、`gatewaySwitchStatus`、`moduleRoutes`、`productionGaps`、`recentAuditSummary` 和 `generatedAt`。
 
 `storageMode` 第一版固定说明为 `IN_MEMORY_CONTRACT_STUBS`。`dependencyAdapterMode` 第一版固定说明为 `SAFE_SNAPSHOT_AND_TEST_ADAPTERS`。`routeDriftStatus` 必须为 `NO_DRIFT` 才能进入完成验收。`gatewaySwitchStatus` 必须为 `COMPLETED` 才能进入完成验收。
 
@@ -101,7 +101,7 @@
 
 成功响应 HTTP `200`。
 
-响应 `data` 必须包含 `service=portal-core`、`port=8134`、`readyForProduction=false`、`readinessStatus=NOT_READY`、`routesTotal=66`、`inheritedRoutesTotal=62`、`selfRoutesTotal=4`、`routeDriftStatus`、`legacyServiceRestoreStatus`、`gatewaySwitchStatus`、`testControlHeadersStatus`、`sensitiveFieldScanStatus`、`checks`、`moduleReadiness`、`productionBlockers` 和 `generatedAt`。
+响应 `data` 必须包含 `service=portal-core`、`port=8134`、`readyForProduction=false`、`readinessStatus=NOT_READY`、`routesTotal=78`、`inheritedRoutesTotal=74`、`selfRoutesTotal=4`、`routeDriftStatus`、`legacyServiceRestoreStatus`、`gatewaySwitchStatus`、`testControlHeadersStatus`、`sensitiveFieldScanStatus`、`checks`、`moduleReadiness`、`productionBlockers` 和 `generatedAt`。
 
 `checks` 必须至少包含真实持久化、真实跨服务 HTTP、真实审计持久化、真实对象存储、真实文件安全扫描、真实全文搜索、真实外部通知投递、真实 HTTP smoke、测试控制头默认关闭、继承路由漂移防线、敏感字段扫描和网关路由切换。未完成真实生产能力必须以 `BLOCKED` 或 `NOT_CONNECTED` 暴露，不能返回 `PASS`。
 
