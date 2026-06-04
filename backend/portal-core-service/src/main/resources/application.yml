@@ -4,6 +4,9 @@ server:
 portal-core:
   test-controls:
     enabled: false
+  http-smoke:
+    gateway-base-url: http://127.0.0.1:8125
+    timeout-ms: 1500
 
 guide:
   test-controls:

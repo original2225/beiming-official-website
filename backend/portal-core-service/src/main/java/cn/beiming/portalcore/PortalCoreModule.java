@@ -1,5 +1,7 @@
 package cn.beiming.portalcore;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -15,13 +17,22 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -38,13 +49,16 @@ class PortalCoreController {
     private final int port;
     private final boolean testControlsEnabled;
     private final PortalCoreRegistry registry;
+    private final PortalCoreSmokeCoordinator smoke;
 
     PortalCoreController(@Value("${server.port}") int port,
                          @Value("${portal-core.test-controls.enabled:false}") boolean testControlsEnabled,
-                         PortalCoreRegistry registry) {
+                         PortalCoreRegistry registry,
+                         PortalCoreSmokeCoordinator smoke) {
         this.port = port;
         this.testControlsEnabled = testControlsEnabled;
         this.registry = registry;
+        this.smoke = smoke;
     }
 
     @GetMapping("/health")
@@ -66,10 +80,11 @@ class PortalCoreController {
         data.put("authMode", actor.authMode());
         data.put("actorUserId", actor.userId());
         data.put("dependencyAdapterMode", "SAFE_SNAPSHOT_AND_TEST_ADAPTERS");
+        addProductionDiagnostics(data);
         data.put("routeDriftStatus", "NO_DRIFT");
         data.put("gatewaySwitchStatus", "COMPLETED");
         data.put("moduleRoutes", registry.portalModules(port));
-        data.put("productionGaps", registry.productionGaps());
+        data.put("productionGaps", registry.productionGaps(smoke.currentStatus()));
         data.put("recentAuditSummary", registry.recentAuditSummary());
         data.put("generatedAt", Instant.now().toString());
         return ok(request, data);
@@ -101,11 +116,19 @@ class PortalCoreController {
         data.put("gatewaySwitchStatus", "COMPLETED");
         data.put("testControlHeadersStatus", testControlsEnabled ? "ENABLED_FOR_LOCAL_TEST" : "DISABLED_BY_DEFAULT");
         data.put("sensitiveFieldScanStatus", "PASS");
-        data.put("checks", registry.readinessChecks());
+        addProductionDiagnostics(data);
+        data.put("checks", registry.readinessChecks(smoke.currentStatus()));
         data.put("moduleReadiness", registry.moduleReadiness(port));
-        data.put("productionBlockers", registry.productionGaps());
+        data.put("productionBlockers", registry.productionGaps(smoke.currentStatus()));
         data.put("generatedAt", Instant.now().toString());
         return ok(request, data);
+    }
+
+    @PostMapping("/admin/http-smoke/run")
+    ResponseEntity<Map<String, Object>> runHttpSmoke(HttpServletRequest request) {
+        requireAdminOrOwner(request);
+        PortalHttpSmokeReport report = smoke.run(requestId(request));
+        return ok(request, report.toMap(smoke.serviceDiscoveryMode(), smoke.registeredUpstreams(), smoke.targets()));
     }
 
     private Map<String, Object> baseSummary() {
@@ -118,6 +141,15 @@ class PortalCoreController {
         data.put("selfRoutesTotal", registry.selfRoutesTotal());
         data.put("routesTotal", registry.routesTotal());
         return data;
+    }
+
+    private void addProductionDiagnostics(Map<String, Object> data) {
+        data.put("serviceDiscoveryMode", smoke.serviceDiscoveryMode());
+        data.put("registeredUpstreams", smoke.registeredUpstreams());
+        data.put("httpSmokeStatus", smoke.currentStatus());
+        data.put("httpSmokeTargets", smoke.targets());
+        data.put("lastHttpSmokeAt", smoke.lastCheckedAt());
+        data.put("lastHttpSmokeResults", smoke.lastResults());
     }
 
     private ResponseEntity<Map<String, Object>> ok(HttpServletRequest request, Object data) {
@@ -173,7 +205,7 @@ class PortalCoreController {
 @Component
 class PortalCoreRegistry {
     private static final int CURRENT_PORT = 8134;
-    private static final int SELF_ROUTES_TOTAL = 4;
+    private static final int SELF_ROUTES_TOTAL = 5;
 
     private final List<PortalCoreModuleRegistration> modules = List.of(
             new PortalCoreModuleRegistration("GUIDE", "guide", "/api/v1/guides", "backend/guide-service", 8127, 41, "docs/contracts-guide.md", ".local-docs/tests-guide.md"),
@@ -216,8 +248,8 @@ class PortalCoreRegistry {
         return data;
     }
 
-    List<String> productionGaps() {
-        return List.of(
+    List<String> productionGaps(String httpSmokeStatus) {
+        List<String> gaps = new ArrayList<>(List.of(
                 "real persistence is not connected",
                 "real cross-service HTTP adapters are not connected",
                 "real audit persistence is not connected",
@@ -225,11 +257,15 @@ class PortalCoreRegistry {
                 "real file security scanner is not connected",
                 "real fulltext search is not connected",
                 "real notification delivery is not connected",
-                "real HTTP smoke is not connected"
-        );
+                "dynamic service discovery is not connected"
+        ));
+        if (!"PASS".equals(httpSmokeStatus)) {
+            gaps.add("real HTTP smoke is not passing");
+        }
+        return List.copyOf(gaps);
     }
 
-    List<Map<String, Object>> readinessChecks() {
+    List<Map<String, Object>> readinessChecks(String httpSmokeStatus) {
         return List.of(
                 check("REAL_PERSISTENCE", "BLOCKED", "real persistence is not connected"),
                 check("REAL_CROSS_SERVICE_HTTP", "BLOCKED", "real cross-service HTTP adapters are not connected"),
@@ -238,7 +274,8 @@ class PortalCoreRegistry {
                 check("REAL_FILE_SECURITY_SCANNER", "BLOCKED", "real file security scanner is not connected"),
                 check("REAL_FULLTEXT_SEARCH", "BLOCKED", "real fulltext search is not connected"),
                 check("REAL_NOTIFICATION_DELIVERY", "BLOCKED", "real notification delivery is not connected"),
-                check("REAL_HTTP_SMOKE", "BLOCKED", "real HTTP smoke is not connected"),
+                check("SERVICE_DISCOVERY", "PARTIAL", "static local service discovery registry is mounted"),
+                check("REAL_HTTP_SMOKE", httpSmokeStatus, "gateway to portal-core HTTP smoke status is " + httpSmokeStatus),
                 check("TEST_CONTROL_HEADERS", "PASS", "test control headers are disabled by default"),
                 check("INHERITED_ROUTE_DRIFT", "PASS", "inherited route signatures match formal contracts"),
                 check("SENSITIVE_FIELD_SCAN", "PASS", "sensitive field scan is covered by automated tests"),
@@ -252,6 +289,252 @@ class PortalCoreRegistry {
         data.put("status", status);
         data.put("summary", summary);
         data.put("required", true);
+        return data;
+    }
+}
+
+@Component
+class PortalCoreSmokeCoordinator {
+    private static final String DISCOVERY_MODE = "STATIC_LOCAL_REGISTRY";
+
+    private final String gatewayBaseUrl;
+    private final int gatewayPort;
+    private final int currentPort;
+    private final int timeoutMs;
+    private final ObjectMapper objectMapper;
+    private final HttpClient httpClient;
+    private final List<PortalHttpSmokeTarget> targets;
+    private volatile PortalHttpSmokeReport lastReport;
+
+    PortalCoreSmokeCoordinator(@Value("${server.port}") int currentPort,
+                               @Value("${portal-core.http-smoke.gateway-base-url:http://127.0.0.1:8125}") String gatewayBaseUrl,
+                               @Value("${portal-core.http-smoke.timeout-ms:1500}") int timeoutMs,
+                               ObjectMapper objectMapper) {
+        this.currentPort = currentPort;
+        this.gatewayBaseUrl = normalizeBaseUrl(gatewayBaseUrl);
+        this.gatewayPort = portOf(this.gatewayBaseUrl);
+        this.timeoutMs = timeoutMs;
+        this.objectMapper = objectMapper;
+        this.httpClient = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofMillis(timeoutMs))
+                .build();
+        this.targets = List.of(
+                new PortalHttpSmokeTarget("GATEWAY_GUIDE_CATEGORIES", "GUIDE", "GET", this.gatewayBaseUrl, "/api/v1/guides/categories", 499, 0, timeoutMs),
+                new PortalHttpSmokeTarget("GATEWAY_MATERIAL_FEATURED", "MATERIAL", "GET", this.gatewayBaseUrl, "/api/v1/materials/featured", 499, 0, timeoutMs)
+        );
+    }
+
+    String serviceDiscoveryMode() {
+        return DISCOVERY_MODE;
+    }
+
+    List<Map<String, Object>> registeredUpstreams() {
+        return List.of(
+                upstream("API_GATEWAY", "api-gateway", gatewayBaseUrl, gatewayPort, "/api/v1", "/api/v1/gateway/health"),
+                upstream("PORTAL_CORE", "portal-core", "http://127.0.0.1:" + currentPort, currentPort, "/api/v1/portal-core", "/api/v1/portal-core/health"),
+                upstream("GUIDE", "guide", gatewayBaseUrl, gatewayPort, "/api/v1/guides", "/api/v1/guides/categories"),
+                upstream("MATERIAL", "material", gatewayBaseUrl, gatewayPort, "/api/v1/materials", "/api/v1/materials/featured")
+        );
+    }
+
+    List<Map<String, Object>> targets() {
+        return targets.stream().map(PortalHttpSmokeTarget::toMap).toList();
+    }
+
+    String currentStatus() {
+        PortalHttpSmokeReport report = lastReport;
+        return report == null ? "NOT_RUN" : report.status();
+    }
+
+    String lastCheckedAt() {
+        PortalHttpSmokeReport report = lastReport;
+        return report == null ? null : report.finishedAt().toString();
+    }
+
+    List<Map<String, Object>> lastResults() {
+        PortalHttpSmokeReport report = lastReport;
+        return report == null ? List.of() : report.results().stream().map(PortalHttpSmokeResult::toMap).toList();
+    }
+
+    synchronized PortalHttpSmokeReport run(String requestId) {
+        if (targets.isEmpty() || timeoutMs <= 0 || targets.stream().map(PortalHttpSmokeTarget::url).anyMatch(this::notHttpUrl)) {
+            throw new PortalCoreException(HttpStatus.INTERNAL_SERVER_ERROR, 50000, "http smoke configuration invalid");
+        }
+        Instant startedAt = Instant.now();
+        List<PortalHttpSmokeResult> results = targets.stream()
+                .map(target -> probe(target, requestId))
+                .toList();
+        String status = results.stream().allMatch(result -> "PASS".equals(result.status())) ? "PASS" : "DEGRADED";
+        PortalHttpSmokeReport report = new PortalHttpSmokeReport(status, startedAt, Instant.now(), results);
+        lastReport = report;
+        return report;
+    }
+
+    private PortalHttpSmokeResult probe(PortalHttpSmokeTarget target, String requestId) {
+        Instant startedAt = Instant.now();
+        Instant checkedAt;
+        try {
+            HttpRequest request = HttpRequest.newBuilder(URI.create(target.url()))
+                    .timeout(Duration.ofMillis(target.timeoutMs()))
+                    .header("X-Request-Id", requestId)
+                    .GET()
+                    .build();
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            checkedAt = Instant.now();
+            Integer businessCode = businessCode(response.body());
+            String failureReason = failureReason(response.statusCode(), businessCode, target.expectedStatusMax(), target.expectedBusinessCode());
+            String status = failureReason == null ? "PASS" : "FAILED";
+            return new PortalHttpSmokeResult(target.targetKey(), target.serviceKey(), target.method(), target.url(), status,
+                    response.statusCode(), businessCode, durationMs(startedAt, checkedAt), checkedAt, failureReason);
+        } catch (HttpTimeoutException ex) {
+            checkedAt = Instant.now();
+            return failed(target, startedAt, checkedAt, "timeout");
+        } catch (IllegalArgumentException ex) {
+            checkedAt = Instant.now();
+            return failed(target, startedAt, checkedAt, "invalid target url");
+        } catch (IOException ex) {
+            checkedAt = Instant.now();
+            return failed(target, startedAt, checkedAt, "connection failed");
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            checkedAt = Instant.now();
+            return failed(target, startedAt, checkedAt, "interrupted");
+        }
+    }
+
+    private boolean notHttpUrl(String url) {
+        URI uri = URI.create(url);
+        return !("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme()));
+    }
+
+    private PortalHttpSmokeResult failed(PortalHttpSmokeTarget target, Instant startedAt, Instant checkedAt, String reason) {
+        return new PortalHttpSmokeResult(target.targetKey(), target.serviceKey(), target.method(), target.url(), "FAILED",
+                null, null, durationMs(startedAt, checkedAt), checkedAt, reason);
+    }
+
+    private String failureReason(int httpStatus, Integer businessCode, int expectedStatusMax, int expectedBusinessCode) {
+        if (httpStatus > expectedStatusMax) {
+            return "http status " + httpStatus;
+        }
+        if (businessCode == null) {
+            return "business code missing";
+        }
+        if (businessCode != expectedBusinessCode) {
+            return "business code " + businessCode;
+        }
+        return null;
+    }
+
+    private Integer businessCode(String body) {
+        try {
+            JsonNode node = objectMapper.readTree(body);
+            JsonNode code = node.get("code");
+            return code == null || !code.canConvertToInt() ? null : code.asInt();
+        } catch (IOException ex) {
+            return null;
+        }
+    }
+
+    private Map<String, Object> upstream(String serviceKey, String serviceName, String baseUrl, int port, String pathPrefix, String healthPath) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("serviceKey", serviceKey);
+        data.put("serviceName", serviceName);
+        data.put("baseUrl", baseUrl);
+        data.put("port", port);
+        data.put("pathPrefix", pathPrefix);
+        data.put("healthPath", healthPath);
+        data.put("discoverySource", DISCOVERY_MODE);
+        data.put("enabled", true);
+        data.put("lastObservedStatus", "UNKNOWN");
+        return data;
+    }
+
+    private String normalizeBaseUrl(String value) {
+        String normalized = value == null || value.isBlank() ? "http://127.0.0.1:8125" : value.trim();
+        while (normalized.endsWith("/")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        return normalized;
+    }
+
+    private int portOf(String baseUrl) {
+        URI uri = URI.create(baseUrl);
+        if (uri.getPort() > 0) {
+            return uri.getPort();
+        }
+        return "https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80;
+    }
+
+    private int durationMs(Instant startedAt, Instant finishedAt) {
+        return Math.max(0, (int) Duration.between(startedAt, finishedAt).toMillis());
+    }
+}
+
+record PortalHttpSmokeTarget(String targetKey,
+                             String serviceKey,
+                             String method,
+                             String baseUrl,
+                             String path,
+                             int expectedStatusMax,
+                             int expectedBusinessCode,
+                             int timeoutMs) {
+    String url() {
+        return baseUrl + path;
+    }
+
+    Map<String, Object> toMap() {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("targetKey", targetKey);
+        data.put("serviceKey", serviceKey);
+        data.put("method", method);
+        data.put("url", url());
+        data.put("expectedStatusMax", expectedStatusMax);
+        data.put("expectedBusinessCode", expectedBusinessCode);
+        data.put("timeoutMs", timeoutMs);
+        return data;
+    }
+}
+
+record PortalHttpSmokeResult(String targetKey,
+                             String serviceKey,
+                             String method,
+                             String url,
+                             String status,
+                             Integer httpStatus,
+                             Integer businessCode,
+                             int durationMs,
+                             Instant checkedAt,
+                             String failureReason) {
+    Map<String, Object> toMap() {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("targetKey", targetKey);
+        data.put("serviceKey", serviceKey);
+        data.put("method", method);
+        data.put("url", url);
+        data.put("status", status);
+        data.put("httpStatus", httpStatus);
+        data.put("businessCode", businessCode);
+        data.put("durationMs", durationMs);
+        data.put("checkedAt", checkedAt.toString());
+        data.put("failureReason", failureReason);
+        return data;
+    }
+}
+
+record PortalHttpSmokeReport(String status,
+                             Instant startedAt,
+                             Instant finishedAt,
+                             List<PortalHttpSmokeResult> results) {
+    Map<String, Object> toMap(String discoveryMode, List<Map<String, Object>> upstreams, List<Map<String, Object>> targets) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("service", "portal-core");
+        data.put("serviceDiscoveryMode", discoveryMode);
+        data.put("registeredUpstreams", upstreams);
+        data.put("httpSmokeStatus", status);
+        data.put("startedAt", startedAt.toString());
+        data.put("finishedAt", finishedAt.toString());
+        data.put("targets", targets);
+        data.put("results", results.stream().map(PortalHttpSmokeResult::toMap).toList());
         return data;
     }
 }

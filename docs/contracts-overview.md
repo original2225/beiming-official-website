@@ -8,7 +8,7 @@
 
 面向前端开发的一体化 API 全文查阅文档见 `docs/api-reference.md`。该文档由公共契约和全部模块契约合并生成，方便前端统一检索路径、字段和响应格式。
 
-本汇总覆盖当前仓库 `docs/contracts-*.md` 中除 `contracts-common.md` 和本文档之外的 27 个业务或平台模块，以及 `business-core`、`admission-core`、`engagement-core`、`ops-core` 和 `portal-core` 五个运行合并单元。第一批、第二批、第三批、第四批和第五批已完成运行合并并入仓。当前契约表中的 `METHOD path` 记录总数为 772，其中第三批四个业务模块在 `engagement-core-service:8132` 中承载 149 个业务路由，第四批六个后台运维控制面模块在 `ops-core-service:8133` 中承载 183 个业务路由，第五批两个玩家门户内容模块在 `portal-core-service:8134` 中承载 74 个业务路由，`engagement-core` 自身提供 3 个运行单元自检和诊断路由，`ops-core` 自身提供 4 个运行单元自检和诊断路由，`portal-core` 自身提供 4 个运行单元自检和诊断路由。
+本汇总覆盖当前仓库 `docs/contracts-*.md` 中除 `contracts-common.md` 和本文档之外的 27 个业务或平台模块，以及 `business-core`、`admission-core`、`engagement-core`、`ops-core` 和 `portal-core` 五个运行合并单元。第一批、第二批、第三批、第四批和第五批已完成运行合并并入仓。当前契约表中的 `METHOD path` 记录总数为 773，其中第三批四个业务模块在 `engagement-core-service:8132` 中承载 149 个业务路由，第四批六个后台运维控制面模块在 `ops-core-service:8133` 中承载 183 个业务路由，第五批两个玩家门户内容模块在 `portal-core-service:8134` 中承载 74 个业务路由，`engagement-core` 自身提供 3 个运行单元自检和诊断路由，`ops-core` 自身提供 4 个运行单元自检和诊断路由，`portal-core` 自身提供 5 个运行单元自检、诊断和 HTTP smoke 路由。
 
 ## 全局接口规则
 
@@ -49,7 +49,7 @@
 | `ops-core` | `backend/ops-core-service` | 8133 | 4 | `docs/contracts-ops-core.md` | `.local-docs/tests-ops-core.md` | `mvn -q -f backend/ops-core-service/pom.xml test` |
 | `ops-image-market` | `backend/ops-core-service` | 8133 | 49 | `docs/contracts-ops-image-market.md` | `.local-docs/tests-ops-image-market.md` | `mvn -q -f backend/ops-core-service/pom.xml test` |
 | `plugin-integration` | `backend/ops-core-service` | 8133 | 38 | `docs/contracts-plugin-integration.md` | `.local-docs/tests-plugin-integration.md` | `mvn -q -f backend/ops-core-service/pom.xml test` |
-| `portal-core` | `backend/portal-core-service` | 8134 | 4 | `docs/contracts-portal-core.md` | `.local-docs/tests-portal-core.md` | `mvn -q -f backend/portal-core-service/pom.xml test` |
+| `portal-core` | `backend/portal-core-service` | 8134 | 5 | `docs/contracts-portal-core.md` | `.local-docs/tests-portal-core.md` | `mvn -q -f backend/portal-core-service/pom.xml test` |
 | `profile` | `backend/business-core-service` | 8130 | 16 | `docs/contracts-profile.md` | `.local-docs/tests-profile.md` | `mvn -q -f backend/business-core-service/pom.xml test` |
 | `resource` | `backend/business-core-service` | 8130 | 29 | `docs/contracts-resource.md` | `.local-docs/tests-resource.md` | `mvn -q -f backend/business-core-service/pom.xml test` |
 | `server-status` | `backend/business-core-service` | 8130 | 25 | `docs/contracts-server-status.md` | `.local-docs/tests-server-status.md` | `mvn -q -f backend/business-core-service/pom.xml test` |
@@ -63,7 +63,7 @@
 
 `ops-core` 的 4 个自有接口只用于运行单元健康检查、运行摘要、模块装配摘要和生产就绪诊断。它不新增 ops-control、cloudreve-sync、backup-recovery、alerting、plugin-integration 或 ops-image-market 的业务语义。第四批 183 个业务路由签名和六个模块完整行为契约必须在 `ops-core-service` 中自动化验证；生产就绪诊断仍必须公开真实持久化、审计持久化、真实跨服务 HTTP、真实节点执行、真实 Cloudreve API、真实 registry、真实 scanner、真实插件事件入口、真实通知投递和真实 HTTP smoke 缺口。
 
-`portal-core` 的 4 个自有接口只用于运行单元健康检查、运行摘要、模块装配摘要和生产就绪诊断。它不新增 guide 或 material 的业务语义。第五批 74 个业务路由签名和两个模块完整行为契约必须在 `portal-core-service` 中自动化验证；生产就绪诊断仍必须公开真实持久化、真实跨服务 HTTP、真实审计持久化、真实对象存储、真实文件安全扫描、真实全文搜索、真实外部通知投递和真实 HTTP smoke 缺口。
+`portal-core` 的 5 个自有接口只用于运行单元健康检查、运行摘要、模块装配摘要、生产就绪诊断和显式 HTTP smoke。它不新增 guide 或 material 的业务语义。第五批 74 个业务路由签名和两个模块完整行为契约必须在 `portal-core-service` 中自动化验证；生产就绪诊断必须公开真实持久化、真实跨服务 HTTP、真实审计持久化、真实对象存储、真实文件安全扫描、真实全文搜索、真实外部通知投递、静态服务发现和 HTTP smoke 状态。
 
 | 合并批次 | 运行入口 | 端口 | 承载模块 | 旧端口用途 |
 | --- | --- | ---: | --- | --- |

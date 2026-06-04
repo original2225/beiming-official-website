@@ -1,10 +1,10 @@
 # 北冥官网 portal-core API 契约
 
-版本：0.1
+版本：0.2
 
 ## 文档定位
 
-本文档是 `portal-core-service` 运行合并单元的正式 API 契约。`portal-core` 只负责承载第五期玩家门户内容扩展合并后的运行入口、自检摘要、模块装配摘要、生产就绪诊断、继承路由漂移防线、测试控制头总开关和网关切换验收口径。
+本文档是 `portal-core-service` 运行合并单元的正式 API 契约。`portal-core` 只负责承载第五期玩家门户内容扩展合并后的运行入口、自检摘要、模块装配摘要、生产就绪诊断、服务发现快照、跨进程 HTTP smoke、继承路由漂移防线、测试控制头总开关和网关切换验收口径。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、能力点、审计字段、风险等级和通用错误码均以公共契约为准。被承载业务模块的业务接口仍分别以 `docs/contracts-guide.md` 和 `docs/contracts-material.md` 为准。本文档不得混写两个模块的业务 API 字段、状态机或错误码。
 
@@ -14,7 +14,7 @@
 
 `portal-core` 不新增两个业务模块的业务语义，不把指南文章、外部交流入口、素材投稿、上传会话、文件安全摘要、状态机、错误码、审计对象或主数据揉成一个大模块，不直接读取前序服务数据库，不绕过正式 API 适配前序服务，也不执行真实对象存储、Cloudreve、服务器文件、节点、地图瓦片或外部通知发送能力。
 
-`api-gateway-service` 仍保持独立。`online-map-service`、`cross-platform-notification-service`、`node-daemon-service` 和 `ops-core-service` 仍保持独立。`portal-core` 可以展示真实能力未接入的缺口，但不能把内存、stub、fake 或 blocked 状态伪造成生产完成。
+`api-gateway-service` 仍保持独立。`online-map-service`、`cross-platform-notification-service`、`node-daemon-service` 和 `ops-core-service` 仍保持独立。`portal-core` 可以展示真实能力未接入的缺口，也可以通过显式 smoke 入口验证网关到 `guide` 和 `material` 原路径的真实 HTTP 可达性，但不能把内存、stub、fake、静态服务发现或单次 smoke 成功伪造成完整生产完成。
 
 ## 基础路径、端口和认证
 
@@ -32,6 +32,16 @@
 
 自有摘要必须返回 `testControlsEnabled`。默认值为 `false`。生产 readiness 必须明确暴露测试控制头总开关状态和默认关闭口径。
 
+## 服务发现和 HTTP smoke
+
+本轮生产化增强参考 Kubernetes readiness/liveness probes、Spring Boot Actuator readiness/liveness probes 和 Consul service health checks 的边界做法：存活检查只证明进程活着，生产 readiness 必须单独暴露外部依赖状态，HTTP smoke 必须有可追溯结果，单次失败不能被伪造成业务成功。参考来源为 Kubernetes 官方探针文档、Spring Boot Actuator Kubernetes probes 官方文档和 Consul service checks 官方文档。
+
+`portal-core` 第一版服务发现模式为 `STATIC_LOCAL_REGISTRY`。该注册表只保存本地固定上游和 smoke 目标，不接入 Eureka、Consul、Kubernetes API、Nacos、DNS SRV 或集中配置中心。注册表至少包含 `API_GATEWAY`、`PORTAL_CORE`、`GUIDE` 和 `MATERIAL` 四个条目，并暴露 `serviceKey`、`serviceName`、`baseUrl`、`port`、`pathPrefix`、`healthPath`、`discoverySource`、`enabled` 和 `lastObservedStatus`。
+
+跨进程 HTTP smoke 只通过显式后台接口触发，默认不由 `GET /api/v1/portal-core/health` 或 `GET /api/v1/portal-core/admin/readiness` 自动触发，避免一次读取拖慢或污染生产自检。默认目标为通过网关访问 `/api/v1/guides/categories` 和 `/api/v1/materials/featured`，基础地址默认 `http://127.0.0.1:8125`。本地自动化测试可以通过配置覆盖 smoke 目标到临时 HTTP 服务，以验证真实 TCP/HTTP 调用链，不依赖真实网关进程常驻。
+
+smoke 状态允许 `NOT_RUN`、`PASS`、`DEGRADED` 和 `DISABLED`。未执行时为 `NOT_RUN`，全部目标返回 HTTP 小于 `500` 且统一响应体 `code=0` 时为 `PASS`，任一目标连接失败、超时、返回 HTTP `5xx`、非 JSON 或业务 `code` 非 `0` 时为 `DEGRADED`。`portal-core` 不因为 smoke 失败返回 5xx，失败结果进入响应体和 readiness 诊断。结果只保存在当前进程内存中，不代表审计持久化已经完成。
+
 ## 模块装配表
 
 | 模块 | 历史服务目录 | 历史端口 | 当前服务目录 | 当前端口 | API 数 | 正式契约 | 历史测试入口状态 | 当前测试入口 |
@@ -39,7 +49,7 @@
 | `guide` | `backend/guide-service` | 8127 | `backend/portal-core-service` | 8134 | 41 | `docs/contracts-guide.md` | 已退役，不得恢复旧 Maven 入口 | `mvn -q -f backend/portal-core-service/pom.xml test` |
 | `material` | `backend/material-service` | 8126 | `backend/portal-core-service` | 8134 | 33 | `docs/contracts-material.md` | 已退役，不得恢复旧 Maven 入口 | `mvn -q -f backend/portal-core-service/pom.xml test` |
 
-两个继承模块合计 74 个业务 API 路由。`portal-core` 自有接口为 4 个。`portal-core-service` 当前进程应注册 78 个 `/api/v1/**` 方法路由。
+两个继承模块合计 74 个业务 API 路由。`portal-core` 自有接口为 5 个。`portal-core-service` 当前进程应注册 79 个 `/api/v1/**` 方法路由。
 
 ## 生产就绪能力状态
 
@@ -54,7 +64,8 @@
 | 真实文件安全扫描 | `BLOCKED` | 素材文件安全状态只保存安全摘要和测试模拟，不运行真实 scanner。 |
 | 真实全文搜索 | `BLOCKED` | `guide` 搜索第一版仍为本地摘要搜索，不接外部搜索服务。 |
 | 真实外部通知投递 | `BLOCKED` | `guide` 和 `material` 只保留通知适配摘要，不执行真实外部发送。 |
-| 真实 HTTP smoke | `BLOCKED` | 尚未接入真实跨进程网关到 `portal-core` 的 smoke。 |
+| 服务发现快照 | `PARTIAL` | 已提供静态本地注册表，不接入动态服务发现或集中配置。 |
+| 真实 HTTP smoke | `NOT_RUN` | 已提供显式 smoke 入口；未执行时为 `NOT_RUN`，执行失败为 `DEGRADED`，执行成功为 `PASS`。 |
 | 测试控制头默认关闭 | `PASS` | 默认和生产环境必须忽略所有 `X-Test-*` 头。 |
 | 继承路由漂移防线 | `PASS` | 自动比对两个继承模块契约表和当前 Controller 路由。 |
 | 敏感字段扫描 | `PASS` | 自动扫描请求、响应和生产源码中的 token、secret、真实路径、上传票据长期副本、真实命令和禁止删除命令。 |
@@ -68,6 +79,7 @@
 | 运行摘要 | GET | `/api/v1/portal-core/ops/summary` | 是 | `ADMIN` 或 `OWNER` | LOW |
 | 模块装配摘要 | GET | `/api/v1/portal-core/admin/modules` | 是 | `ADMIN` 或 `OWNER` | LOW |
 | 生产就绪诊断 | GET | `/api/v1/portal-core/admin/readiness` | 是 | `ADMIN` 或 `OWNER` | LOW |
+| 执行 HTTP smoke | POST | `/api/v1/portal-core/admin/http-smoke/run` | 是 | `ADMIN` 或 `OWNER` | LOW |
 
 ## 健康检查
 
@@ -75,7 +87,7 @@
 
 成功响应 HTTP `200`。
 
-响应 `data` 必须包含 `service=portal-core`、`status=UP`、`version`、`port=8134`、`modulesTotal=2`、`inheritedRoutesTotal=74`、`selfRoutesTotal=4` 和 `routesTotal=78`。该接口不得返回上传票据、内部路径、后台备注、审核意见、通知摘要、外部 URL 管理凭据、异常栈或依赖错误细节。
+响应 `data` 必须包含 `service=portal-core`、`status=UP`、`version`、`port=8134`、`modulesTotal=2`、`inheritedRoutesTotal=74`、`selfRoutesTotal=5` 和 `routesTotal=79`。该接口不得返回上传票据、内部路径、后台备注、审核意见、通知摘要、外部 URL 管理凭据、异常栈或依赖错误细节。
 
 ## 运行摘要
 
@@ -83,7 +95,7 @@
 
 成功响应 HTTP `200`。
 
-响应 `data` 必须包含 `service=portal-core`、`port=8134`、`modulesTotal=2`、`modulesMounted=2`、`inheritedRoutesTotal=74`、`selfRoutesTotal=4`、`routesTotal=78`、`testControlsEnabled`、`storageMode`、`authMode`、`dependencyAdapterMode`、`routeDriftStatus`、`gatewaySwitchStatus`、`moduleRoutes`、`productionGaps`、`recentAuditSummary` 和 `generatedAt`。
+响应 `data` 必须包含 `service=portal-core`、`port=8134`、`modulesTotal=2`、`modulesMounted=2`、`inheritedRoutesTotal=74`、`selfRoutesTotal=5`、`routesTotal=79`、`testControlsEnabled`、`storageMode`、`authMode`、`dependencyAdapterMode`、`serviceDiscoveryMode`、`registeredUpstreams`、`httpSmokeStatus`、`httpSmokeTargets`、`lastHttpSmokeAt`、`lastHttpSmokeResults`、`routeDriftStatus`、`gatewaySwitchStatus`、`moduleRoutes`、`productionGaps`、`recentAuditSummary` 和 `generatedAt`。
 
 `storageMode` 第一版固定说明为 `IN_MEMORY_CONTRACT_STUBS`。`dependencyAdapterMode` 第一版固定说明为 `SAFE_SNAPSHOT_AND_TEST_ADAPTERS`。`routeDriftStatus` 必须为 `NO_DRIFT` 才能进入完成验收。`gatewaySwitchStatus` 必须为 `COMPLETED` 才能进入完成验收。
 
@@ -101,9 +113,19 @@
 
 成功响应 HTTP `200`。
 
-响应 `data` 必须包含 `service=portal-core`、`port=8134`、`readyForProduction=false`、`readinessStatus=NOT_READY`、`routesTotal=78`、`inheritedRoutesTotal=74`、`selfRoutesTotal=4`、`routeDriftStatus`、`legacyServiceRestoreStatus`、`gatewaySwitchStatus`、`testControlHeadersStatus`、`sensitiveFieldScanStatus`、`checks`、`moduleReadiness`、`productionBlockers` 和 `generatedAt`。
+响应 `data` 必须包含 `service=portal-core`、`port=8134`、`readyForProduction=false`、`readinessStatus=NOT_READY`、`routesTotal=79`、`inheritedRoutesTotal=74`、`selfRoutesTotal=5`、`routeDriftStatus`、`legacyServiceRestoreStatus`、`gatewaySwitchStatus`、`testControlHeadersStatus`、`sensitiveFieldScanStatus`、`serviceDiscoveryMode`、`registeredUpstreams`、`httpSmokeStatus`、`httpSmokeTargets`、`lastHttpSmokeAt`、`lastHttpSmokeResults`、`checks`、`moduleReadiness`、`productionBlockers` 和 `generatedAt`。
 
-`checks` 必须至少包含真实持久化、真实跨服务 HTTP、真实审计持久化、真实对象存储、真实文件安全扫描、真实全文搜索、真实外部通知投递、真实 HTTP smoke、测试控制头默认关闭、继承路由漂移防线、敏感字段扫描和网关路由切换。未完成真实生产能力必须以 `BLOCKED` 或 `NOT_CONNECTED` 暴露，不能返回 `PASS`。
+`checks` 必须至少包含真实持久化、真实跨服务 HTTP、真实审计持久化、真实对象存储、真实文件安全扫描、真实全文搜索、真实外部通知投递、服务发现快照、真实 HTTP smoke、测试控制头默认关闭、继承路由漂移防线、敏感字段扫描和网关路由切换。未完成真实生产能力必须以 `BLOCKED`、`PARTIAL`、`NOT_RUN` 或 `NOT_CONNECTED` 暴露，不能返回 `PASS`。真实 HTTP smoke 只有在本进程内最近一次显式执行全部目标成功后才允许返回 `PASS`。
+
+## 执行 HTTP smoke
+
+`POST /api/v1/portal-core/admin/http-smoke/run`
+
+请求体为空。成功响应 HTTP `200`，无论目标成功或失败，接口自身都返回统一成功响应；目标失败通过 `data.httpSmokeStatus=DEGRADED`、`data.results[*].status`、`data.results[*].failureReason` 和 readiness 检查项暴露。接口自身只有在认证、权限、配置非法或内部状态不可用时返回错误。
+
+响应 `data` 必须包含 `service=portal-core`、`serviceDiscoveryMode`、`registeredUpstreams`、`httpSmokeStatus`、`startedAt`、`finishedAt`、`targets` 和 `results`。每个 target 必须包含 `targetKey`、`serviceKey`、`method`、`url`、`expectedStatusMax`、`expectedBusinessCode` 和 `timeoutMs`。每个 result 必须包含 `targetKey`、`serviceKey`、`method`、`url`、`status`、`httpStatus`、`businessCode`、`durationMs`、`checkedAt` 和 `failureReason`。响应不得返回完整请求头、认证 token、Cookie、异常栈、内部绝对路径或外部凭据。
+
+服务发现注册表为空、目标 URL 非 HTTP(S)、目标数量为 0 或 timeout 非法时返回 `50000`，不得执行半套 smoke。连接失败、超时、HTTP `5xx`、业务码非 `0` 和响应体不可解析时只标记目标 `FAILED`，不伪造成功。
 
 ## 路由漂移、脱敏和禁止能力
 
@@ -126,4 +148,4 @@
 
 `portal-core` API 文档按 `docs/contracts-portal-core.md` 独立存在，并由 `.local-docs/tests-portal-core.md` 记录本地测试闭环。
 
-完成时必须满足以下条件：`portal-core-service:8134` 单进程承载两个玩家门户内容扩展模块的全部既有 API 路径；两个模块原契约仍有效；`portal-core` 自有四个接口全覆盖；`.local-docs/tests-portal-core.md` 中的完备用例都有自动化验证；自动化测试先红灯；实现后 `mvn -q -f backend/portal-core-service/pom.xml test` 通过；旧 `guide-service` 和 `material-service` Maven 入口已退役且不得恢复；`api-gateway-service` 已按契约切换并通过测试；`business-core-service`、`admission-core-service`、`engagement-core-service` 和 `ops-core-service` 回归通过；前三期旧服务目录没有恢复；`online-map`、`cross-platform-notification`、`node-daemon` 和 `api-gateway` 仍保持独立；生产 readiness 明确暴露剩余生产缺口；测试过程完整写入 `.local-docs/tests-portal-core.md` 和 `.local-docs/tests-api-gateway.md`。
+完成时必须满足以下条件：`portal-core-service:8134` 单进程承载两个玩家门户内容扩展模块的全部既有 API 路径；两个模块原契约仍有效；`portal-core` 自有五个接口全覆盖；服务发现静态注册表和 HTTP smoke 结果字段全覆盖；`.local-docs/tests-portal-core.md` 中的完备用例都有自动化验证；自动化测试先红灯；实现后 `mvn -q -f backend/portal-core-service/pom.xml test` 通过；旧 `guide-service` 和 `material-service` Maven 入口已退役且不得恢复；`api-gateway-service` 已按契约切换并通过测试；`business-core-service`、`admission-core-service`、`engagement-core-service` 和 `ops-core-service` 回归通过；前三期旧服务目录没有恢复；`online-map`、`cross-platform-notification`、`node-daemon` 和 `api-gateway` 仍保持独立；生产 readiness 明确暴露剩余生产缺口，且不得把静态服务发现或单次 smoke 成功当作真实持久化、审计持久化、对象存储、文件扫描、全文搜索或外部通知投递完成；测试过程完整写入 `.local-docs/tests-portal-core.md` 和 `.local-docs/tests-api-gateway.md`。

@@ -8,7 +8,7 @@
 
 各模块独立契约仍是后端实现和变更的源文档。任一接口发生变化时，必须先更新对应 `docs/contracts-<module>.md`，再同步更新本文档。
 
-当前合并范围包含 27 个业务或平台模块，另包含五个运行合并单元自检契约。第三批四个业务模块在 `engagement-core-service:8132` 中承载 149 个业务路由，第四批六个后台运维控制面模块在 `ops-core-service:8133` 中承载 183 个业务路由，第五批两个玩家门户内容模块在 `portal-core-service:8134` 中承载 74 个业务路由。
+当前合并范围包含 27 个业务或平台模块，另包含五个运行合并单元自检契约。第三批四个业务模块在 `engagement-core-service:8132` 中承载 149 个业务路由，第四批六个后台运维控制面模块在 `ops-core-service:8133` 中承载 183 个业务路由，第五批两个玩家门户内容模块在 `portal-core-service:8134` 中承载 74 个业务路由。`portal-core` 自身当前提供 5 个运行单元自检、诊断和 HTTP smoke 路由。
 
 ## 前端接入要点
 
@@ -14147,7 +14147,7 @@ P0 `api-gateway` 是本地契约实现，必须在自检摘要中明确以下生
 
 `portal-core-service` 是第五批玩家门户内容扩展运行合并单元，端口固定为 `8134`，承载 `guide` 和 `material` 两个模块的既有业务路径。它不新增两个业务模块的业务语义，不改变 `/api/v1/guides/**` 和 `/api/v1/materials/**` 的路径、权限、状态机、错误码、审计对象或失败降级规则。
 
-`portal-core` 自有接口只用于运行单元健康检查、运行摘要、模块装配摘要和生产就绪诊断。被承载业务模块的业务接口仍分别以 `docs/contracts-guide.md` 和 `docs/contracts-material.md` 为准。
+`portal-core` 自有接口只用于运行单元健康检查、运行摘要、模块装配摘要、生产就绪诊断和显式 HTTP smoke。被承载业务模块的业务接口仍分别以 `docs/contracts-guide.md` 和 `docs/contracts-material.md` 为准。
 
 | 接口 | 方法 | 路径 | 认证 | 权限 | 风险 |
 | --- | --- | --- | --- | --- | --- |
@@ -14155,10 +14155,11 @@ P0 `api-gateway` 是本地契约实现，必须在自检摘要中明确以下生
 | 运行摘要 | GET | `/api/v1/portal-core/ops/summary` | 是 | `ADMIN` 或 `OWNER` | LOW |
 | 模块装配摘要 | GET | `/api/v1/portal-core/admin/modules` | 是 | `ADMIN` 或 `OWNER` | LOW |
 | 生产就绪诊断 | GET | `/api/v1/portal-core/admin/readiness` | 是 | `ADMIN` 或 `OWNER` | LOW |
+| 执行 HTTP smoke | POST | `/api/v1/portal-core/admin/http-smoke/run` | 是 | `ADMIN` 或 `OWNER` | LOW |
 
 网关切换后，`material` 和 `guide` 的上游端口均为 `8134`，历史端口 `8126` 和 `8127` 只作记录。`online-map`、`cross-platform-notification`、`node-daemon`、`api-gateway` 和 `ops-core` 继续保持独立，不并入 `portal-core`。
 
-验收时必须确认 `portal-core-service:8134` 单进程承载两个模块全部既有 API 路径，两个模块原契约仍有效，`portal-core` 自有四个接口全覆盖，`api-gateway-service` 已按契约切换并通过测试，旧 `guide-service` 和 `material-service` Maven 入口已退役且不得恢复，生产 readiness 明确暴露真实持久化、真实对象存储、真实扫描、真实搜索、真实外部通知和真实 HTTP smoke 等剩余缺口。
+验收时必须确认 `portal-core-service:8134` 单进程承载两个模块全部既有 API 路径，两个模块原契约仍有效，`portal-core` 自有五个接口全覆盖，`api-gateway-service` 已按契约切换并通过测试，旧 `guide-service` 和 `material-service` Maven 入口已退役且不得恢复，生产 readiness 明确暴露真实持久化、真实对象存储、真实扫描、真实搜索、真实外部通知、静态服务发现和 HTTP smoke 状态等剩余缺口。
 
 ## 北冥官网 material API 契约
 
