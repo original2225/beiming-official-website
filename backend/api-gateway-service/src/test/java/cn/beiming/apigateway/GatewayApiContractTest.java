@@ -77,14 +77,15 @@ class GatewayApiContractTest {
         addRange(mapped, "GATE-ACORE", 1, 10);
         addRange(mapped, "GATE-ECORE", 1, 10);
         addRange(mapped, "GATE-OCORE", 1, 10);
+        addRange(mapped, "GATE-PCORE", 1, 10);
         addRange(mapped, "GATE-UP", 1, 20);
         addRange(mapped, "GATE-LOG", 1, 20);
         addRange(mapped, "GATE-PROXY", 1, 49);
         addRange(mapped, "GATE-CORS", 1, 10);
         addRange(mapped, "GATE-SEC", 1, 11);
 
-        assertThat(mapped).hasSize(224);
-        assertThat(mapped).contains("GATE-COM-001", "GATE-PFX-026", "GATE-BCORE-010", "GATE-ACORE-010", "GATE-ECORE-010", "GATE-OCORE-010", "GATE-UP-020", "GATE-PROXY-049", "GATE-SEC-011");
+        assertThat(mapped).hasSize(234);
+        assertThat(mapped).contains("GATE-COM-001", "GATE-PFX-026", "GATE-BCORE-010", "GATE-ACORE-010", "GATE-ECORE-010", "GATE-OCORE-010", "GATE-PCORE-010", "GATE-UP-020", "GATE-PROXY-049", "GATE-SEC-011");
     }
 
     @Test
@@ -201,12 +202,13 @@ class GatewayApiContractTest {
         assertRoute(routes, "plugin-integration", "PLUGIN_INTEGRATION", "/api/v1/plugin-integration", 8133);
         assertRoute(routes, "cross-platform-notification", "CROSS_PLATFORM_NOTIFICATION", "/api/v1/cross-platform-notification", 8123);
         assertRoute(routes, "ops-image-market", "OPS_IMAGE_MARKET", "/api/v1/ops-image-market", 8133);
-        assertRoute(routes, "material", "MATERIAL", "/api/v1/materials", 8126);
-        assertRoute(routes, "guide", "GUIDE", "/api/v1/guides", 8127);
+        assertRoute(routes, "material", "MATERIAL", "/api/v1/materials", 8134);
+        assertRoute(routes, "guide", "GUIDE", "/api/v1/guides", 8134);
         assertFirstBatchBusinessCoreRoutes(routes);
         assertSecondBatchAdmissionCoreRoutes(routes);
         assertThirdBatchEngagementCoreRoutes(routes);
         assertFourthBatchOpsCoreRoutes(routes);
+        assertFifthBatchPortalCoreRoutes(routes);
 
         JsonNode filtered = performJson(get("/api/v1/gateway/admin/routes")
                 .header("Authorization", bearer("helper-token"))
@@ -685,7 +687,6 @@ class GatewayApiContractTest {
             assertThat(route.path("pathPrefix").asText()).doesNotStartWith("/api/v1/business-core");
             assertThat(legacyPorts).doesNotContain(route.path("upstreamPort").asInt());
         }
-        assertThat(findRoute(routes, "guide").path("upstreamPort").asInt()).isEqualTo(8127);
         assertThat(findRoute(routes, "content").path("healthCheckPath").asText()).isEqualTo("/api/v1/content/home");
     }
 
@@ -737,6 +738,24 @@ class GatewayApiContractTest {
         assertThat(findRoute(routes, "alerting").path("healthCheckPath").asText()).isEqualTo("/api/v1/alerting/health");
         assertThat(findRoute(routes, "plugin-integration").path("healthCheckPath").asText()).isEqualTo("/api/v1/plugin-integration/health");
         assertThat(findRoute(routes, "ops-image-market").path("healthCheckPath").asText()).isEqualTo("/api/v1/ops-image-market/health");
+    }
+
+    private void assertFifthBatchPortalCoreRoutes(JsonNode routes) {
+        Set<String> fifthBatch = Set.of("material", "guide");
+        Set<Integer> legacyPorts = Set.of(8126, 8127);
+        for (String routeId : fifthBatch) {
+            JsonNode route = findRoute(routes, routeId);
+            assertThat(route.path("upstreamPort").asInt()).isEqualTo(8134);
+            assertThat(route.path("upstreamBaseUrl").asText()).isEqualTo("http://127.0.0.1:8134");
+            assertThat(route.path("pathPrefix").asText()).doesNotStartWith("/api/v1/portal-core");
+            assertThat(legacyPorts).doesNotContain(route.path("upstreamPort").asInt());
+        }
+        assertThat(findRoute(routes, "material").path("healthCheckPath").asText()).isEqualTo("/api/v1/materials/featured");
+        assertThat(findRoute(routes, "guide").path("healthCheckPath").asText()).isEqualTo("/api/v1/guides/categories");
+        assertThat(findRoute(routes, "online-map").path("upstreamPort").asInt()).isEqualTo(8121);
+        assertThat(findRoute(routes, "cross-platform-notification").path("upstreamPort").asInt()).isEqualTo(8123);
+        assertThat(findRoute(routes, "node-daemon").path("upstreamPort").asInt()).isEqualTo(8117);
+        assertThat(findRoute(routes, "ops-control").path("upstreamPort").asInt()).isEqualTo(8133);
     }
 
     private String bearer(String token) {
