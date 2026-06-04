@@ -13834,15 +13834,15 @@ endpoint、repository、tag、namespace 和 URL 摘要必须拒绝 `file:`、`da
 | `activity` | `ACTIVITY` | `/api/v1/activity` | `8132` | `/api/v1/activity/events` |
 | `calendar` | `CALENDAR` | `/api/v1/calendar` | `8132` | `/api/v1/calendar/upcoming` |
 | `changelog` | `CHANGELOG` | `/api/v1/changelog` | `8132` | `/api/v1/changelog/versions/latest` |
-| `ops-control` | `OPS_CONTROL` | `/api/v1/ops-control` | `8116` | `/api/v1/ops-control/overview` |
+| `ops-control` | `OPS_CONTROL` | `/api/v1/ops-control` | `8133` | `/api/v1/ops-control/overview` |
 | `node-daemon` | `NODE_DAEMON` | `/api/v1/node-daemon` | `8117` | `/api/v1/node-daemon/health` |
-| `cloudreve-sync` | `CLOUDREVE_SYNC` | `/api/v1/cloudreve-sync` | `8118` | `/api/v1/cloudreve-sync/health` |
-| `backup-recovery` | `BACKUP_RECOVERY` | `/api/v1/backup-recovery` | `8119` | `/api/v1/backup-recovery/health` |
-| `alerting` | `ALERTING` | `/api/v1/alerting` | `8120` | `/api/v1/alerting/health` |
+| `cloudreve-sync` | `CLOUDREVE_SYNC` | `/api/v1/cloudreve-sync` | `8133` | `/api/v1/cloudreve-sync/health` |
+| `backup-recovery` | `BACKUP_RECOVERY` | `/api/v1/backup-recovery` | `8133` | `/api/v1/backup-recovery/health` |
+| `alerting` | `ALERTING` | `/api/v1/alerting` | `8133` | `/api/v1/alerting/health` |
 | `online-map` | `ONLINE_MAP` | `/api/v1/online-map` | `8121` | `/api/v1/online-map/health` |
-| `plugin-integration` | `PLUGIN_INTEGRATION` | `/api/v1/plugin-integration` | `8122` | `/api/v1/plugin-integration/health` |
+| `plugin-integration` | `PLUGIN_INTEGRATION` | `/api/v1/plugin-integration` | `8133` | `/api/v1/plugin-integration/health` |
 | `cross-platform-notification` | `CROSS_PLATFORM_NOTIFICATION` | `/api/v1/cross-platform-notification` | `8123` | `/api/v1/cross-platform-notification/health` |
-| `ops-image-market` | `OPS_IMAGE_MARKET` | `/api/v1/ops-image-market` | `8124` | `/api/v1/ops-image-market/health` |
+| `ops-image-market` | `OPS_IMAGE_MARKET` | `/api/v1/ops-image-market` | `8133` | `/api/v1/ops-image-market/health` |
 | `material` | `MATERIAL` | `/api/v1/materials` | `8126` | `/api/v1/materials/featured` |
 | `guide` | `GUIDE` | `/api/v1/guides` | `8127` | `/api/v1/guides/categories` |
 

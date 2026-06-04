@@ -114,15 +114,15 @@
 | `activity` | 8132 | 活动列表、报名、签到、结果、奖励和活动后台管理。 | `docs/contracts-activity.md` |
 | `calendar` | 8132 | 公开日程、维护窗口、工程节点、提醒和日历后台维护。 | `docs/contracts-calendar.md` |
 | `changelog` | 8132 | 版本更新、维护日志、插件变更、规则调整和后台发布。 | `docs/contracts-changelog.md` |
-| `ops-control` | 8116 | 运维控制台的节点、资产、容器、实例、文件、日志、终端和审批控制面。 | `docs/contracts-ops-control.md` |
+| `ops-control` | 8133 | 运维控制台的节点、资产、容器、实例、文件、日志、终端和审批控制面，由 `ops-core-service` 承载。 | `docs/contracts-ops-control.md` |
 | `node-daemon` | 8117 | 节点侧健康、心跳、任务领取、任务回写和受控执行接口。 | `docs/contracts-node-daemon.md` |
-| `cloudreve-sync` | 8118 | Cloudreve provider、目录同步、文件快照、分享解析和同步审计。 | `docs/contracts-cloudreve-sync.md` |
-| `backup-recovery` | 8119 | 备份域、策略、任务、备份点、校验、演练、恢复申请和审批摘要。 | `docs/contracts-backup-recovery.md` |
-| `alerting` | 8120 | 告警规则、事件、静默、订阅、通知演练和告警后台管理。 | `docs/contracts-alerting.md` |
+| `cloudreve-sync` | 8133 | Cloudreve provider、目录同步、文件快照、分享解析和同步审计，由 `ops-core-service` 承载。 | `docs/contracts-cloudreve-sync.md` |
+| `backup-recovery` | 8133 | 备份域、策略、任务、备份点、校验、演练、恢复申请和审批摘要，由 `ops-core-service` 承载。 | `docs/contracts-backup-recovery.md` |
+| `alerting` | 8133 | 告警规则、事件、静默、订阅、通知演练和告警后台管理，由 `ops-core-service` 承载。 | `docs/contracts-alerting.md` |
 | `online-map` | 8121 | 在线地图 provider、世界、图层、marker、区域、公开入口和后台维护。 | `docs/contracts-online-map.md` |
-| `plugin-integration` | 8122 | 插件源、实例、事件、命令、同步任务和插件联动后台。 | `docs/contracts-plugin-integration.md` |
+| `plugin-integration` | 8133 | 插件源、实例、事件、命令、同步任务和插件联动后台，由 `ops-core-service` 承载。 | `docs/contracts-plugin-integration.md` |
 | `cross-platform-notification` | 8123 | 跨平台通知渠道、模板、投递任务、回执和后台演练。 | `docs/contracts-cross-platform-notification.md` |
-| `ops-image-market` | 8124 | 运维镜像、仓库、版本、拉取任务、漏洞摘要和镜像后台管理。 | `docs/contracts-ops-image-market.md` |
+| `ops-image-market` | 8133 | 运维镜像、仓库、版本、拉取任务、漏洞摘要和镜像后台管理，由 `ops-core-service` 承载。 | `docs/contracts-ops-image-market.md` |
 | `api-gateway` | 8125 | 统一入口、路由表、上游健康、请求日志和业务请求转发。 | `docs/contracts-api-gateway.md` |
 | `material` | 8126 | 素材投稿、素材展示、精选、审核、授权、文件摘要和素材后台管理。 | `docs/contracts-material.md` |
 | `guide` | 8127 | 指南、规则、指令、外部交流入口、反馈和指南后台维护。 | `docs/contracts-guide.md` |
@@ -677,7 +677,7 @@
 
 用途：运维控制台的节点、资产、容器、实例、文件、日志、终端和审批控制面。
 
-端口：`8116`。来源：`docs/contracts-ops-control.md`。详情合并稿：`docs/api-reference.md`。
+当前入口端口：`8133`。历史原端口：`8116`。来源：`docs/contracts-ops-control.md`。详情合并稿：`docs/api-reference.md`。
 
 | 接口 | 方法 | 路径 | 认证 | 权限 | 风险 |
 | --- | --- | --- | --- | --- | --- |
@@ -741,7 +741,7 @@
 
 用途：Cloudreve provider、目录同步、文件快照、分享解析和同步审计。
 
-端口：`8118`。来源：`docs/contracts-cloudreve-sync.md`。详情合并稿：`docs/api-reference.md`。
+当前入口端口：`8133`。历史原端口：`8118`。来源：`docs/contracts-cloudreve-sync.md`。详情合并稿：`docs/api-reference.md`。
 
 | 接口 | 方法 | 路径 | 认证 | 权限 | 风险 |
 | --- | --- | --- | --- | --- | --- |
@@ -766,7 +766,7 @@
 
 用途：备份域、策略、任务、备份点、校验、演练、恢复申请和审批摘要。
 
-端口：`8119`。来源：`docs/contracts-backup-recovery.md`。详情合并稿：`docs/api-reference.md`。
+当前入口端口：`8133`。历史原端口：`8119`。来源：`docs/contracts-backup-recovery.md`。详情合并稿：`docs/api-reference.md`。
 
 | 接口 | 方法 | 路径 | 认证 | 权限 | 风险 |
 | --- | --- | --- | --- | --- | --- |
@@ -800,7 +800,7 @@
 
 用途：告警规则、事件、静默、订阅、通知演练和告警后台管理。
 
-端口：`8120`。来源：`docs/contracts-alerting.md`。详情合并稿：`docs/api-reference.md`。
+当前入口端口：`8133`。历史原端口：`8120`。来源：`docs/contracts-alerting.md`。详情合并稿：`docs/api-reference.md`。
 
 | 接口 | 方法 | 路径 | 认证 | 权限 | 风险 |
 | --- | --- | --- | --- | --- | --- |
@@ -876,7 +876,7 @@
 
 用途：插件源、实例、事件、命令、同步任务和插件联动后台。
 
-端口：`8122`。来源：`docs/contracts-plugin-integration.md`。详情合并稿：`docs/api-reference.md`。
+当前入口端口：`8133`。历史原端口：`8122`。来源：`docs/contracts-plugin-integration.md`。详情合并稿：`docs/api-reference.md`。
 
 | 接口 | 方法 | 路径 | 认证 | 权限 | 风险 |
 | --- | --- | --- | --- | --- | --- |
@@ -968,7 +968,7 @@
 
 用途：运维镜像、仓库、版本、拉取任务、漏洞摘要和镜像后台管理。
 
-端口：`8124`。来源：`docs/contracts-ops-image-market.md`。详情合并稿：`docs/api-reference.md`。
+当前入口端口：`8133`。历史原端口：`8124`。来源：`docs/contracts-ops-image-market.md`。详情合并稿：`docs/api-reference.md`。
 
 | 接口 | 方法 | 路径 | 认证 | 权限 | 风险 |
 | --- | --- | --- | --- | --- | --- |

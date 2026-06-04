@@ -45,15 +45,15 @@ Zustand 更适合本项目第一版，因为登录态、当前用户、权限、
 | activity | 8132 | 活动列表、报名、签到、结果、奖励 |
 | calendar | 8132 | 日程、维护窗口、工程节点、提醒 |
 | changelog | 8132 | 更新日志、维护日志、插件变更、规则调整 |
-| ops-control | 8116 | 运维控制台控制面 |
+| ops-control | 8133 | 运维控制台控制面，由 `ops-core-service` 承载 |
 | node-daemon | 8117 | 节点侧健康、心跳、任务领取和回写 |
-| cloudreve-sync | 8118 | Cloudreve provider、目录同步、文件快照、分享解析 |
-| backup-recovery | 8119 | 备份域、策略、任务、备份点、恢复申请 |
-| alerting | 8120 | 告警规则、事件、静默、订阅 |
+| cloudreve-sync | 8133 | Cloudreve provider、目录同步、文件快照、分享解析，由 `ops-core-service` 承载 |
+| backup-recovery | 8133 | 备份域、策略、任务、备份点、恢复申请，由 `ops-core-service` 承载 |
+| alerting | 8133 | 告警规则、事件、静默、订阅，由 `ops-core-service` 承载 |
 | online-map | 8121 | 在线地图 provider、世界、图层、marker、区域 |
-| plugin-integration | 8122 | 插件源、实例、事件、命令、同步任务 |
+| plugin-integration | 8133 | 插件源、实例、事件、命令、同步任务，由 `ops-core-service` 承载 |
 | cross-platform-notification | 8123 | 跨平台通知渠道、模板、投递任务 |
-| ops-image-market | 8124 | 运维镜像、仓库、版本、拉取任务 |
+| ops-image-market | 8133 | 运维镜像、仓库、版本、拉取任务，由 `ops-core-service` 承载 |
 | api-gateway | 8125 | 统一入口、路由表、上游健康、请求日志 |
 | material | 8126 | 素材投稿、素材展示、精选、审核、授权 |
 | guide | 8127 | 指南、规则、指令、外部交流入口、反馈 |

@@ -76,14 +76,15 @@ class GatewayApiContractTest {
         addRange(mapped, "GATE-BCORE", 1, 10);
         addRange(mapped, "GATE-ACORE", 1, 10);
         addRange(mapped, "GATE-ECORE", 1, 10);
+        addRange(mapped, "GATE-OCORE", 1, 10);
         addRange(mapped, "GATE-UP", 1, 20);
         addRange(mapped, "GATE-LOG", 1, 20);
         addRange(mapped, "GATE-PROXY", 1, 49);
         addRange(mapped, "GATE-CORS", 1, 10);
         addRange(mapped, "GATE-SEC", 1, 11);
 
-        assertThat(mapped).hasSize(214);
-        assertThat(mapped).contains("GATE-COM-001", "GATE-PFX-026", "GATE-BCORE-010", "GATE-ACORE-010", "GATE-ECORE-010", "GATE-UP-020", "GATE-PROXY-049", "GATE-SEC-011");
+        assertThat(mapped).hasSize(224);
+        assertThat(mapped).contains("GATE-COM-001", "GATE-PFX-026", "GATE-BCORE-010", "GATE-ACORE-010", "GATE-ECORE-010", "GATE-OCORE-010", "GATE-UP-020", "GATE-PROXY-049", "GATE-SEC-011");
     }
 
     @Test
@@ -191,20 +192,21 @@ class GatewayApiContractTest {
         assertRoute(routes, "activity", "ACTIVITY", "/api/v1/activity", 8132);
         assertRoute(routes, "calendar", "CALENDAR", "/api/v1/calendar", 8132);
         assertRoute(routes, "changelog", "CHANGELOG", "/api/v1/changelog", 8132);
-        assertRoute(routes, "ops-control", "OPS_CONTROL", "/api/v1/ops-control", 8116);
+        assertRoute(routes, "ops-control", "OPS_CONTROL", "/api/v1/ops-control", 8133);
         assertRoute(routes, "node-daemon", "NODE_DAEMON", "/api/v1/node-daemon", 8117);
-        assertRoute(routes, "cloudreve-sync", "CLOUDREVE_SYNC", "/api/v1/cloudreve-sync", 8118);
-        assertRoute(routes, "backup-recovery", "BACKUP_RECOVERY", "/api/v1/backup-recovery", 8119);
-        assertRoute(routes, "alerting", "ALERTING", "/api/v1/alerting", 8120);
+        assertRoute(routes, "cloudreve-sync", "CLOUDREVE_SYNC", "/api/v1/cloudreve-sync", 8133);
+        assertRoute(routes, "backup-recovery", "BACKUP_RECOVERY", "/api/v1/backup-recovery", 8133);
+        assertRoute(routes, "alerting", "ALERTING", "/api/v1/alerting", 8133);
         assertRoute(routes, "online-map", "ONLINE_MAP", "/api/v1/online-map", 8121);
-        assertRoute(routes, "plugin-integration", "PLUGIN_INTEGRATION", "/api/v1/plugin-integration", 8122);
+        assertRoute(routes, "plugin-integration", "PLUGIN_INTEGRATION", "/api/v1/plugin-integration", 8133);
         assertRoute(routes, "cross-platform-notification", "CROSS_PLATFORM_NOTIFICATION", "/api/v1/cross-platform-notification", 8123);
-        assertRoute(routes, "ops-image-market", "OPS_IMAGE_MARKET", "/api/v1/ops-image-market", 8124);
+        assertRoute(routes, "ops-image-market", "OPS_IMAGE_MARKET", "/api/v1/ops-image-market", 8133);
         assertRoute(routes, "material", "MATERIAL", "/api/v1/materials", 8126);
         assertRoute(routes, "guide", "GUIDE", "/api/v1/guides", 8127);
         assertFirstBatchBusinessCoreRoutes(routes);
         assertSecondBatchAdmissionCoreRoutes(routes);
         assertThirdBatchEngagementCoreRoutes(routes);
+        assertFourthBatchOpsCoreRoutes(routes);
 
         JsonNode filtered = performJson(get("/api/v1/gateway/admin/routes")
                 .header("Authorization", bearer("helper-token"))
@@ -717,6 +719,24 @@ class GatewayApiContractTest {
         assertThat(findRoute(routes, "activity").path("healthCheckPath").asText()).isEqualTo("/api/v1/activity/events");
         assertThat(findRoute(routes, "calendar").path("healthCheckPath").asText()).isEqualTo("/api/v1/calendar/upcoming");
         assertThat(findRoute(routes, "changelog").path("healthCheckPath").asText()).isEqualTo("/api/v1/changelog/versions/latest");
+    }
+
+    private void assertFourthBatchOpsCoreRoutes(JsonNode routes) {
+        Set<String> fourthBatch = Set.of("ops-control", "cloudreve-sync", "backup-recovery", "alerting", "plugin-integration", "ops-image-market");
+        Set<Integer> legacyPorts = Set.of(8116, 8118, 8119, 8120, 8122, 8124);
+        for (String routeId : fourthBatch) {
+            JsonNode route = findRoute(routes, routeId);
+            assertThat(route.path("upstreamPort").asInt()).isEqualTo(8133);
+            assertThat(route.path("upstreamBaseUrl").asText()).isEqualTo("http://127.0.0.1:8133");
+            assertThat(route.path("pathPrefix").asText()).doesNotStartWith("/api/v1/ops-core");
+            assertThat(legacyPorts).doesNotContain(route.path("upstreamPort").asInt());
+        }
+        assertThat(findRoute(routes, "ops-control").path("healthCheckPath").asText()).isEqualTo("/api/v1/ops-control/overview");
+        assertThat(findRoute(routes, "cloudreve-sync").path("healthCheckPath").asText()).isEqualTo("/api/v1/cloudreve-sync/health");
+        assertThat(findRoute(routes, "backup-recovery").path("healthCheckPath").asText()).isEqualTo("/api/v1/backup-recovery/health");
+        assertThat(findRoute(routes, "alerting").path("healthCheckPath").asText()).isEqualTo("/api/v1/alerting/health");
+        assertThat(findRoute(routes, "plugin-integration").path("healthCheckPath").asText()).isEqualTo("/api/v1/plugin-integration/health");
+        assertThat(findRoute(routes, "ops-image-market").path("healthCheckPath").asText()).isEqualTo("/api/v1/ops-image-market/health");
     }
 
     private String bearer(String token) {
