@@ -1,6 +1,0 @@
-server:
-  port: 8116
-
-ops-control:
-  test-controls:
-    enabled: false

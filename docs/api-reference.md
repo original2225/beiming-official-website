@@ -10102,7 +10102,7 @@ notification 是辅助依赖。发布、下架和安全修复通知失败不得�
 
 ### 基础路径与认证
 
-所有接口默认使用 `/api/v1/ops-control` 前缀。P1 本地端口固定为 `8116`，自检摘要必须返回该端口。
+所有接口默认使用 `/api/v1/ops-control` 前缀。第四批合并后当前运行入口为 `ops-core-service:8133`。历史原服务端口 `8116` 只作为 `legacyPort` 返回，不再作为独立服务入口、网关上游或测试入口。
 
 全部接口都要求 `Authorization: Bearer <token>`。读取类接口要求基础角色为 `HELPER`、`ADMIN` 或 `OWNER`，且具备对应读取能力点。写入或操作类接口要求 `ADMIN` 或 `OWNER`，并按目标能力点校验。高风险操作必须携带二次确认。严重风险操作必须由 `OWNER` 或具备 `HIGH_RISK_APPROVE` 的审批记录授权。
 
@@ -10462,9 +10462,9 @@ notification 是辅助依赖。发布、下架和安全修复通知失败不得�
 
 ### 验收口径
 
-`ops-control` API 文档按 `docs/contracts-ops-control.md` 独立存在，并由 `.local-docs/tests-ops-control.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、能力点不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求和模块验收口径。
+`ops-control` API 文档按 `docs/contracts-ops-control.md` 独立存在，并由 `.local-docs/tests-ops-core.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、能力点不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求和模块验收口径。
 
-`ops-control` 完成时必须满足以下条件：全部接口按本文档实现；端口固定为 `8116`；所有接口要求登录；读取接口校验 `NODE_READ` 或对应能力；操作接口按任务类型校验能力点；高风险操作要求二次确认；严重风险操作要求审批或 `OWNER` 授权；节点 token、内部路径、命令参数、异常堆栈和凭据脱敏；节点离线时不假装成功；路径穿越被拦截；任务幂等和并发边界可复现；审计失败能回滚状态；自检摘要暴露存储模式、节点适配模式、测试控制状态和生产化缺口；`.local-docs/tests-ops-control.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 ops-control 全部测试通过；前序 15 个稳定服务回归测试通过；没有修改前序服务稳定接口；没有把真实服务器操作、Docker、Proxmox、MCSManager、文件删除、终端命令、备份恢复、Cloudreve 管理 token 或 `node-daemon` 执行能力塞进控制面。
+`ops-control` 完成时必须满足以下条件：全部接口按本文档实现；当前运行入口为 `ops-core-service:8133`，历史端口 `8116` 只作为 `legacyPort` 返回；所有接口要求登录；读取接口校验 `NODE_READ` 或对应能力；操作接口按任务类型校验能力点；高风险操作要求二次确认；严重风险操作要求审批或 `OWNER` 授权；节点 token、内部路径、命令参数、异常堆栈和凭据脱敏；节点离线时不假装成功；路径穿越被拦截；任务幂等和并发边界可复现；审计失败能回滚状态；自检摘要暴露存储模式、节点适配模式、测试控制状态和生产化缺口；`.local-docs/tests-ops-core.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 `ops-control` 在 `ops-core-service` 中全部测试通过；当前后端运行入口回归测试通过；没有修改前序服务稳定接口；没有把真实服务器操作、Docker、Proxmox、MCSManager、文件删除、终端命令、备份恢复、Cloudreve 管理 token 或 `node-daemon` 执行能力塞进控制面。
 
 ## 北冥官网 node-daemon API 契约
 
@@ -10783,7 +10783,7 @@ Cloudreve 真实凭据只能通过环境变量、启动参数或受控配置注�
 
 ### 基础路径、端口和认证
 
-所有接口默认使用 `/api/v1/cloudreve-sync` 前缀。第一版本地端口固定为 `8118`，自检摘要必须返回该端口。
+所有接口默认使用 `/api/v1/cloudreve-sync` 前缀。第四批合并后当前运行入口为 `ops-core-service:8133`。历史原服务端口 `8118` 只作为 `legacyPort` 返回，不再作为独立服务入口、网关上游或测试入口。
 
 健康检查 `GET /api/v1/cloudreve-sync/health` 不要求认证，但只能返回存活、版本、服务名和请求编号，不返回 provider ID、Cloudreve 地址、token 摘要、内部路径、能力明细、任务数量或上游错误。
 
@@ -10991,7 +10991,7 @@ Cloudreve 真实凭据只能通过环境变量、启动参数或受控配置注�
 
 `GET /api/v1/cloudreve-sync/health` 成功返回 `service=cloudreve-sync`、`status`、`version` 和 `requestId`。进程存活但上游不可用时仍可返回 HTTP `200`，并用 `status=DEGRADED` 标记。该接口不得泄露 provider、Cloudreve 地址、凭据摘要、文件数量或任务数量。
 
-`GET /api/v1/cloudreve-sync/ops/summary` 成功返回 `CloudreveOpsSummary`。第一版必须返回 `port=8118`、`storageMode=IN_MEMORY`、`providerAdapterMode=TEST_FAKE`、`resourceAdapterMode=TEST_STUB`、`opsAssetAdapterMode=TEST_STUB` 和生产化缺口。读取失败返回 `55300`，不得伪造健康。摘要不得返回 token、cookie、分享密码、完整 URL 查询串、后台备注、内部路径或审计原因全文。
+`GET /api/v1/cloudreve-sync/ops/summary` 成功返回 `CloudreveOpsSummary`。合并后必须返回 `port=8133`、`legacyPort=8118`、`storageMode=IN_MEMORY`、`providerAdapterMode=TEST_FAKE`、`resourceAdapterMode=TEST_STUB`、`opsAssetAdapterMode=TEST_STUB` 和生产化缺口。读取失败返回 `55300`，不得伪造健康。摘要不得返回 token、cookie、分享密码、完整 URL 查询串、后台备注、内部路径或审计原因全文。
 
 自检摘要必须提供配额和成本估算摘要。第一版只根据 provider 快照计算 `quotaUsagePercent`、告警数量和 `estimatedMonthlyCostCents`，不连接真实账单、不生成扣费、不保存支付信息。配额达到告警阈值时 provider 返回 `quotaStatus=WARNING`，已用容量大于总容量时返回 `EXCEEDED`。同步读取旧快照仍允许，但写入类接口不得把超额状态伪装为健康。
 
@@ -11067,9 +11067,9 @@ Cloudreve 不可用时，读取类接口可以返回旧快照并标记 `degraded
 
 ### 验收口径
 
-`cloudreve-sync` API 文档必须按 `docs/contracts-cloudreve-sync.md` 独立存在，并由 `.local-docs/tests-cloudreve-sync.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、能力点不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求、敏感字段脱敏、测试控制头默认关闭和模块验收口径。
+`cloudreve-sync` API 文档必须按 `docs/contracts-cloudreve-sync.md` 独立存在，并由 `.local-docs/tests-ops-core.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、能力点不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求、敏感字段脱敏、测试控制头默认关闭和模块验收口径。
 
-`cloudreve-sync` 完成时必须满足以下条件：端口固定为 `8118`；健康检查不泄露敏感信息；除健康检查外全部接口要求后台认证；provider、文件快照、分享快照、同步任务、幂等、状态流转、上游失败降级、旧快照降级、配额成本摘要、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；不修改前序服务稳定接口；不把玩家资源主数据、后台文件管理、节点守护进程或真实宿主机操作塞进本模块；自动化测试必须先红灯；实现后 `cloudreve-sync` 全量测试通过；前序 17 个稳定服务回归通过；边界扫描无违规命中；测试过程记录完整。
+`cloudreve-sync` 完成时必须满足以下条件：当前运行入口为 `ops-core-service:8133`，历史端口 `8118` 只作为 `legacyPort` 返回；健康检查不泄露敏感信息；除健康检查外全部接口要求后台认证；provider、文件快照、分享快照、同步任务、幂等、状态流转、上游失败降级、旧快照降级、配额成本摘要、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；不修改前序服务稳定接口；不把玩家资源主数据、后台文件管理、节点守护进程或真实宿主机操作塞进本模块；自动化测试必须先红灯；实现后 `cloudreve-sync` 在 `ops-core-service` 中全部测试通过；当前后端运行入口回归测试通过；边界扫描无违规命中；测试过程记录完整。
 
 ## 北冥官网 backup-recovery API 契约
 
@@ -11116,7 +11116,7 @@ Cloudreve 不可用时，读取类接口可以返回旧快照并标记 `degraded
 
 ### 基础路径、端口和认证
 
-所有接口默认使用 `/api/v1/backup-recovery` 前缀。第一版本地端口固定为 `8119`，自检摘要必须返回该端口。
+所有接口默认使用 `/api/v1/backup-recovery` 前缀。第四批合并后当前运行入口为 `ops-core-service:8133`。历史原服务端口 `8119` 只作为 `legacyPort` 返回，不再作为独立服务入口、网关上游或测试入口。
 
 健康检查 `GET /api/v1/backup-recovery/health` 不要求认证，但只能返回存活、版本、服务名和请求编号，不返回策略数量、备份点数量、存储摘要、节点摘要、内部路径或依赖错误细节。
 
@@ -11332,7 +11332,7 @@ Cloudreve 不可用时，读取类接口可以返回旧快照并标记 `degraded
 
 `GET /api/v1/backup-recovery/health` 成功返回 `service=backup-recovery`、`status`、`version` 和 `requestId`。进程存活但依赖不可用时仍可返回 HTTP `200`，并用 `status=DEGRADED` 标记。该接口不得泄露策略、备份点、存储引用、节点、内部路径或依赖错误细节。
 
-`GET /api/v1/backup-recovery/ops/summary` 成功返回 `BackupRecoveryOpsSummary`。第一版必须返回 `port=8119`、`storageMode=IN_MEMORY`、`backupAdapterMode=SIMULATED`、`opsControlAdapterMode=TEST_STUB`、`notificationAdapterMode=TEST_STUB` 和生产化缺口。读取失败返回 `55400`，不得伪造健康。
+`GET /api/v1/backup-recovery/ops/summary` 成功返回 `BackupRecoveryOpsSummary`。合并后必须返回 `port=8133`、`legacyPort=8119`、`storageMode=IN_MEMORY`、`backupAdapterMode=SIMULATED`、`opsControlAdapterMode=TEST_STUB`、`notificationAdapterMode=TEST_STUB` 和生产化缺口。读取失败返回 `55400`，不得伪造健康。
 
 自检摘要必须暴露正式系统设计同步状态。`productionGaps` 在第一版至少包含真实持久化未接入、真实备份介质未接入、真实跨服务 HTTP 未接入、真实恢复执行被阻断、admin 只读入口未适配和 node-daemon 直连禁止等项。该摘要用于提醒后续闭环，不允许前端把这些缺口当作可执行能力。
 
@@ -11418,9 +11418,9 @@ Cloudreve 不可用时，读取类接口可以返回旧快照并标记 `degraded
 
 ### 验收口径
 
-`backup-recovery` API 文档必须按 `docs/contracts-backup-recovery.md` 独立存在，并由 `.local-docs/tests-backup-recovery.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、能力点不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求、敏感字段脱敏、测试控制头默认关闭和模块验收口径。
+`backup-recovery` API 文档必须按 `docs/contracts-backup-recovery.md` 独立存在，并由 `.local-docs/tests-ops-core.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、能力点不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求、敏感字段脱敏、测试控制头默认关闭和模块验收口径。
 
-`backup-recovery` 完成时必须满足以下条件：端口固定为 `8119`；健康检查不泄露敏感信息；除健康检查外全部接口要求后台认证；备份域、策略、任务、备份点、校验、恢复演练、恢复申请、审批、审计、幂等、状态流转、依赖失败降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；不修改前序服务稳定接口；不直接调用 `node-daemon`；不执行真实恢复；不把备份恢复能力塞回 `ops-control`、`admin`、`resource` 或 `cloudreve-sync`；自动化测试必须先红灯；实现后 `backup-recovery` 全量测试通过；前序 18 个稳定服务回归通过；边界扫描无违规命中；测试过程记录完整。
+`backup-recovery` 完成时必须满足以下条件：当前运行入口为 `ops-core-service:8133`，历史端口 `8119` 只作为 `legacyPort` 返回；健康检查不泄露敏感信息；除健康检查外全部接口要求后台认证；备份域、策略、任务、备份点、校验、恢复演练、恢复申请、审批、审计、幂等、状态流转、依赖失败降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；不修改前序服务稳定接口；不直接调用 `node-daemon`；不执行真实恢复；不把备份恢复能力塞回 `ops-control`、`admin`、`resource` 或 `cloudreve-sync`；自动化测试必须先红灯；实现后 `backup-recovery` 在 `ops-core-service` 中全部测试通过；当前后端运行入口回归测试通过；边界扫描无违规命中；测试过程记录完整。
 
 ## 北冥官网 alerting API 契约
 
@@ -11463,7 +11463,7 @@ Cloudreve 不可用时，读取类接口可以返回旧快照并标记 `degraded
 
 ### 基础路径、端口和认证
 
-所有接口默认使用 `/api/v1/alerting` 前缀。第一版本地端口固定为 `8120`，自检摘要必须返回该端口。
+所有接口默认使用 `/api/v1/alerting` 前缀。第四批合并后当前运行入口为 `ops-core-service:8133`。历史原服务端口 `8120` 只作为 `legacyPort` 返回，不再作为独立服务入口、网关上游或测试入口。
 
 健康检查 `GET /api/v1/alerting/health` 不要求认证，但只能返回存活、版本、服务名、状态和请求编号，不返回告警数量、路由详情、来源摘要、依赖错误细节或任何敏感字段。
 
@@ -11691,7 +11691,7 @@ Cloudreve 不可用时，读取类接口可以返回旧快照并标记 `degraded
 
 `GET /api/v1/alerting/health` 成功返回 `service=alerting`、`status`、`version` 和 `requestId`。进程存活但依赖不可用时仍可返回 HTTP `200`，并用 `status=DEGRADED` 标记。该接口不得泄露来源详情、规则数量、告警数量、通知路由、token 或依赖错误细节。
 
-`GET /api/v1/alerting/ops/summary` 成功返回 `AlertingOpsSummary`。第一版必须返回 `port=8120`、`storageMode=IN_MEMORY`、`sourceAdapterMode=TEST_STUB`、`notificationAdapterMode=TEST_STUB` 和生产化缺口。读取失败返回 `55500`，不得伪造健康。
+`GET /api/v1/alerting/ops/summary` 成功返回 `AlertingOpsSummary`。合并后必须返回 `port=8133`、`legacyPort=8120`、`storageMode=IN_MEMORY`、`sourceAdapterMode=TEST_STUB`、`notificationAdapterMode=TEST_STUB` 和生产化缺口。读取失败返回 `55500`，不得伪造健康。
 
 `GET /api/v1/alerting/sources` 支持 `page`、`pageSize`、`keyword`、`sourceService`、`sourceType`、`healthStatus`、`enabled` 和 `sort`。`sort` 允许 `lastEventAt_desc`、`lastSnapshotAt_desc`、`displayName_asc`。成功响应分页 `items` 为 `AlertSource[]`。
 
@@ -11769,9 +11769,9 @@ Cloudreve 不可用时，读取类接口可以返回旧快照并标记 `degraded
 
 ### 验收口径
 
-`alerting` API 文档必须按 `docs/contracts-alerting.md` 独立存在，并由 `.local-docs/tests-alerting.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、能力点不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求、敏感字段脱敏、测试控制头默认关闭和模块验收口径。
+`alerting` API 文档必须按 `docs/contracts-alerting.md` 独立存在，并由 `.local-docs/tests-ops-core.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、能力点不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求、敏感字段脱敏、测试控制头默认关闭和模块验收口径。
 
-`alerting` 完成时必须满足以下条件：端口固定为 `8120`；健康检查不泄露敏感信息；除健康检查外全部接口要求后台认证；告警源、规则、评估、实例、确认关闭、静默、通知路由、投递摘要、审计、幂等、状态流转、去重分组、通知失败降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；不修改前序服务稳定接口；不直接调用 `node-daemon`；不执行真实外部通知发送；不把告警规则塞进 `notification`、`admin`、`ops-control`、`server-status`、`cloudreve-sync` 或 `backup-recovery`；自动化测试必须先红灯；实现后 `alerting` 全量测试通过；前序 19 个稳定服务回归通过；边界扫描无违规命中；测试过程记录完整。
+`alerting` 完成时必须满足以下条件：当前运行入口为 `ops-core-service:8133`，历史端口 `8120` 只作为 `legacyPort` 返回；健康检查不泄露敏感信息；除健康检查外全部接口要求后台认证；告警源、规则、评估、实例、确认关闭、静默、通知路由、投递摘要、审计、幂等、状态流转、去重分组、通知失败降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；不修改前序服务稳定接口；不直接调用 `node-daemon`；不执行真实外部通知发送；不把告警规则塞进 `notification`、`admin`、`ops-control`、`server-status`、`cloudreve-sync` 或 `backup-recovery`；自动化测试必须先红灯；实现后 `alerting` 在 `ops-core-service` 中全部测试通过；当前后端运行入口回归测试通过；边界扫描无违规命中；测试过程记录完整。
 
 ## 北冥官网 online-map API 契约
 
@@ -12312,7 +12312,7 @@ provider 探测失败时不清空旧公开入口。公开接口可以返回最�
 
 ### 基础路径、端口和认证
 
-所有接口默认使用 `/api/v1/plugin-integration` 前缀。第一版本地端口固定为 `8122`，自检摘要必须返回该端口。
+所有接口默认使用 `/api/v1/plugin-integration` 前缀。第四批合并后当前运行入口为 `ops-core-service:8133`。历史原服务端口 `8122` 只作为 `legacyPort` 返回，不再作为独立服务入口、网关上游或测试入口。
 
 健康检查 `GET /api/v1/plugin-integration/health` 不要求认证，只返回 `service`、`version`、`status` 和 `requestId`，不得返回 provider 数量、插件 endpoint、内部依赖错误、事件 payload、内部 URL 或敏感字段。
 
@@ -12762,9 +12762,9 @@ schema 状态流转为 `DRAFT` 可到 `ENABLED`、`DISABLED` 或 `ARCHIVED`；`E
 
 ### 验收口径
 
-`plugin-integration` API 文档必须按 `docs/contracts-plugin-integration.md` 独立存在，并由 `.local-docs/tests-plugin-integration.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、能力点不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求、敏感字段脱敏、测试控制头默认关闭和模块验收口径。
+`plugin-integration` API 文档必须按 `docs/contracts-plugin-integration.md` 独立存在，并由 `.local-docs/tests-ops-core.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、能力点不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求、敏感字段脱敏、测试控制头默认关闭和模块验收口径。
 
-`plugin-integration` 完成时必须满足以下条件：端口固定为 `8122`；健康检查公开且不泄露敏感信息；后台接口按角色和能力点限制；provider、实例、能力、schema、事件、路由规则、同步任务、健康快照、对象映射、审计、幂等、状态流转、来源 allowlist、payload 脱敏、依赖降级、通知失败摘要、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；自动化测试必须先红灯；实现后 `plugin-integration` 全量测试通过；前序 21 个稳定服务回归通过；边界扫描无违规命中；不修改前序服务稳定接口；不直接读取前序服务数据库；不导入前序服务 Java package；不调用真实 `node-daemon`；不执行真实插件命令；不写真实插件配置；不保存真实插件 token、webhook secret 或外部平台密钥；不把地图主数据、告警规则、通知渠道、资源下载、节点文件管理、终端、备份恢复或跨平台通知主数据塞进 `plugin-integration`。
+`plugin-integration` 完成时必须满足以下条件：当前运行入口为 `ops-core-service:8133`，历史端口 `8122` 只作为 `legacyPort` 返回；健康检查公开且不泄露敏感信息；后台接口按角色和能力点限制；provider、实例、能力、schema、事件、路由规则、同步任务、健康快照、对象映射、审计、幂等、状态流转、来源 allowlist、payload 脱敏、依赖降级、通知失败摘要、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；自动化测试必须先红灯；实现后 `plugin-integration` 在 `ops-core-service` 中全部测试通过；当前后端运行入口回归测试通过；边界扫描无违规命中；不修改前序服务稳定接口；不直接读取前序服务数据库；不导入前序服务 Java package；不调用真实 `node-daemon`；不执行真实插件命令；不写真实插件配置；不保存真实插件 token、webhook secret 或外部平台密钥；不把地图主数据、告警规则、通知渠道、资源下载、节点文件管理、终端、备份恢复或跨平台通知主数据塞进 `plugin-integration`。
 
 ## 北冥官网 cross-platform-notification API 契约
 
@@ -13271,7 +13271,7 @@ receiver 摘要必须按类型脱敏。邮箱最多显示域名和首尾字符�
 
 ### 基础路径、端口和认证
 
-所有接口默认使用 `/api/v1/ops-image-market` 前缀。第一版本地端口固定为 `8124`，自检摘要必须返回该端口。
+所有接口默认使用 `/api/v1/ops-image-market` 前缀。第四批合并后当前运行入口为 `ops-core-service:8133`。历史原服务端口 `8124` 只作为 `legacyPort` 返回，不再作为独立服务入口、网关上游或测试入口。
 
 健康检查 `GET /api/v1/ops-image-market/health` 不要求认证，只能返回 `service`、`version`、`status` 和 `requestId`，不得返回 provider 数量、registry 地址、镜像 digest、扫描结果、节点摘要、依赖错误详情或任何敏感字段。
 
@@ -13748,9 +13748,9 @@ endpoint、repository、tag、namespace 和 URL 摘要必须拒绝 `file:`、`da
 
 ### 验收口径
 
-`ops-image-market` API 文档必须按 `docs/contracts-ops-image-market.md` 独立存在，并由 `.local-docs/tests-ops-image-market.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、能力点不足、高风险确认缺失、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求、敏感字段脱敏、测试控制头默认关闭和模块验收口径。
+`ops-image-market` API 文档必须按 `docs/contracts-ops-image-market.md` 独立存在，并由 `.local-docs/tests-ops-core.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、能力点不足、高风险确认缺失、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求、敏感字段脱敏、测试控制头默认关闭和模块验收口径。
 
-`ops-image-market` 完成时必须满足以下条件：端口固定为 `8124`；健康检查公开且不泄露敏感信息；后台接口按角色、能力点、风险等级和确认文本限制；provider、镜像目录、镜像版本、兼容配置、模板、风险扫描、拉取计划、节点缓存快照、审计、幂等、状态流转、依赖降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；自动化测试必须先红灯；实现后本服务全量测试通过；前序 23 个稳定服务回归通过；边界扫描无违规命中；不修改前序服务稳定接口；不直接读取前序服务数据库；不导入前序服务 Java package；不调用真实 `node-daemon`；不执行真实 Docker、containerd、registry、scanner、镜像拉取、镜像删除或容器创建；不保存真实 registry token、完整 manifest、layer URL、内部地址、宿主路径、节点凭据、完整请求头或前序服务私有数据；不把玩家资源下载、Cloudreve 文件同步、运维任务执行、节点文件管理、终端能力、告警规则、外部通知发送或插件安装塞进本服务。
+`ops-image-market` 完成时必须满足以下条件：当前运行入口为 `ops-core-service:8133`，历史端口 `8124` 只作为 `legacyPort` 返回；健康检查公开且不泄露敏感信息；后台接口按角色、能力点、风险等级和确认文本限制；provider、镜像目录、镜像版本、兼容配置、模板、风险扫描、拉取计划、节点缓存快照、审计、幂等、状态流转、依赖降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；自动化测试必须先红灯；实现后本模块在 `ops-core-service` 中全量测试通过；当前后端运行入口回归测试通过；边界扫描无违规命中；不修改前序服务稳定接口；不直接读取前序服务数据库；不导入前序服务 Java package；不调用真实 `node-daemon`；不执行真实 Docker、containerd、registry、scanner、镜像拉取、镜像删除或容器创建；不保存真实 registry token、完整 manifest、layer URL、内部地址、宿主路径、节点凭据、完整请求头或前序服务私有数据；不把玩家资源下载、Cloudreve 文件同步、运维任务执行、节点文件管理、终端能力、告警规则、外部通知发送或插件安装塞进本服务。
 
 ## 北冥官网 api-gateway API 契约
 
@@ -14137,7 +14137,7 @@ P0 `api-gateway` 是本地契约实现，必须在自检摘要中明确以下生
 
 本文档列出的每个网关自有接口都有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、分页排序、状态刷新、失败降级、日志脱敏和验收口径。业务转发测试必须覆盖 26 个已接入微服务的路径前缀，确认路由表端口准确、请求编号透传、请求编号非法拒绝、认证头透传、可信身份头剥离、`auth` 会话校验成功后的可信身份注入、`auth` 校验失败后的不注入降级、查询参数透传、JSON body 透传、请求体大小限制、响应头白名单、上游 2xx 透传、上游 4xx 透传、上游 5xx 透传、未知路径、非法方法、CORS 预检、上游不可用、上游超时和敏感字段不落日志。
 
-开发完成后必须执行 `mvn -f backend/api-gateway-service/pom.xml test`、`mvn -f backend/business-core-service/pom.xml test`、`mvn -f backend/admission-core-service/pom.xml test`、`mvn -f backend/engagement-core-service/pom.xml test`、`mvn -f backend/ops-core-service/pom.xml test`、`mvn -f backend/portal-core-service/pom.xml test` 和 `mvn -f backend/node-daemon-service/pom.xml test`。第一批、第二批和第三批旧服务清理后，不得为了网关回归恢复对应旧服务目录、旧 Maven 入口、旧启动类或旧测试命令。第四批和第五批旧服务目录本期保留为对照组，不能因为 `ops-core` 或 `portal-core` 已接管路径就跳过旧服务基线测试。测试过程必须写入 `.local-docs/tests-api-gateway.md`。
+开发完成后必须执行 `mvn -f backend/api-gateway-service/pom.xml test`、`mvn -f backend/business-core-service/pom.xml test`、`mvn -f backend/admission-core-service/pom.xml test`、`mvn -f backend/engagement-core-service/pom.xml test`、`mvn -f backend/ops-core-service/pom.xml test`、`mvn -f backend/portal-core-service/pom.xml test` 和 `mvn -f backend/node-daemon-service/pom.xml test`。第一批到第五批旧服务清理后，不得为了网关回归恢复对应旧服务目录、旧 Maven 入口、旧启动类或旧测试命令。第四批和第五批业务路径必须继续由 `ops-core` 和 `portal-core` 当前入口覆盖测试。测试过程必须写入 `.local-docs/tests-api-gateway.md`。
 
 ## 北冥官网 portal-core API 契约
 

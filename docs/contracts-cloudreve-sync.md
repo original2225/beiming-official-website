@@ -47,7 +47,7 @@ Cloudreve 真实凭据只能通过环境变量、启动参数或受控配置注�
 
 ## 基础路径、端口和认证
 
-所有接口默认使用 `/api/v1/cloudreve-sync` 前缀。第一版本地端口固定为 `8118`，自检摘要必须返回该端口。
+所有接口默认使用 `/api/v1/cloudreve-sync` 前缀。第四批合并后当前运行入口为 `ops-core-service:8133`。历史原服务端口 `8118` 只作为 `legacyPort` 返回，不再作为独立服务入口、网关上游或测试入口。
 
 健康检查 `GET /api/v1/cloudreve-sync/health` 不要求认证，但只能返回存活、版本、服务名和请求编号，不返回 provider ID、Cloudreve 地址、token 摘要、内部路径、能力明细、任务数量或上游错误。
 
@@ -255,7 +255,7 @@ Cloudreve 真实凭据只能通过环境变量、启动参数或受控配置注�
 
 `GET /api/v1/cloudreve-sync/health` 成功返回 `service=cloudreve-sync`、`status`、`version` 和 `requestId`。进程存活但上游不可用时仍可返回 HTTP `200`，并用 `status=DEGRADED` 标记。该接口不得泄露 provider、Cloudreve 地址、凭据摘要、文件数量或任务数量。
 
-`GET /api/v1/cloudreve-sync/ops/summary` 成功返回 `CloudreveOpsSummary`。第一版必须返回 `port=8118`、`storageMode=IN_MEMORY`、`providerAdapterMode=TEST_FAKE`、`resourceAdapterMode=TEST_STUB`、`opsAssetAdapterMode=TEST_STUB` 和生产化缺口。读取失败返回 `55300`，不得伪造健康。摘要不得返回 token、cookie、分享密码、完整 URL 查询串、后台备注、内部路径或审计原因全文。
+`GET /api/v1/cloudreve-sync/ops/summary` 成功返回 `CloudreveOpsSummary`。合并后必须返回 `port=8133`、`legacyPort=8118`、`storageMode=IN_MEMORY`、`providerAdapterMode=TEST_FAKE`、`resourceAdapterMode=TEST_STUB`、`opsAssetAdapterMode=TEST_STUB` 和生产化缺口。读取失败返回 `55300`，不得伪造健康。摘要不得返回 token、cookie、分享密码、完整 URL 查询串、后台备注、内部路径或审计原因全文。
 
 自检摘要必须提供配额和成本估算摘要。第一版只根据 provider 快照计算 `quotaUsagePercent`、告警数量和 `estimatedMonthlyCostCents`，不连接真实账单、不生成扣费、不保存支付信息。配额达到告警阈值时 provider 返回 `quotaStatus=WARNING`，已用容量大于总容量时返回 `EXCEEDED`。同步读取旧快照仍允许，但写入类接口不得把超额状态伪装为健康。
 
@@ -331,6 +331,6 @@ Cloudreve 不可用时，读取类接口可以返回旧快照并标记 `degraded
 
 ## 验收口径
 
-`cloudreve-sync` API 文档必须按 `docs/contracts-cloudreve-sync.md` 独立存在，并由 `.local-docs/tests-cloudreve-sync.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、能力点不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求、敏感字段脱敏、测试控制头默认关闭和模块验收口径。
+`cloudreve-sync` API 文档必须按 `docs/contracts-cloudreve-sync.md` 独立存在，并由 `.local-docs/tests-ops-core.md` 记录合并后的本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、能力点不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求、敏感字段脱敏、测试控制头默认关闭和模块验收口径。
 
-`cloudreve-sync` 完成时必须满足以下条件：端口固定为 `8118`；健康检查不泄露敏感信息；除健康检查外全部接口要求后台认证；provider、文件快照、分享快照、同步任务、幂等、状态流转、上游失败降级、旧快照降级、配额成本摘要、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；不修改前序服务稳定接口；不把玩家资源主数据、后台文件管理、节点守护进程或真实宿主机操作塞进本模块；自动化测试必须先红灯；实现后 `cloudreve-sync` 全量测试通过；前序 17 个稳定服务回归通过；边界扫描无违规命中；测试过程记录完整。
+`cloudreve-sync` 完成时必须满足以下条件：当前运行入口为 `ops-core-service:8133`，历史端口 `8118` 只作为 `legacyPort` 返回；健康检查不泄露敏感信息；除健康检查外全部接口要求后台认证；provider、文件快照、分享快照、同步任务、幂等、状态流转、上游失败降级、旧快照降级、配额成本摘要、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；不修改前序服务稳定接口；不把玩家资源主数据、后台文件管理、节点守护进程或真实宿主机操作塞进本模块；自动化测试必须先红灯；实现后 `cloudreve-sync` 在 `ops-core-service` 中全部测试通过；当前后端运行入口回归测试通过；边界扫描无违规命中；测试过程记录完整。

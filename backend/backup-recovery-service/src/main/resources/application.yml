@@ -1,7 +1,0 @@
-server:
-  port: 8119
-
-backup-recovery:
-  service: backup-recovery
-  test-controls:
-    enabled: false

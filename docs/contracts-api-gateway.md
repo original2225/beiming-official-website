@@ -96,7 +96,7 @@
 
 `community`、`activity`、`calendar` 和 `changelog` 已完成第三批运行合并。网关必须把这四个路由的上游统一切到 `engagement-core-service` 的 `8132`，但路由 ID、服务键、路径前缀、请求路径、认证透传、可信身份头剥离与注入、请求日志、错误码和响应透传规则都保持原样。端口 `8112` 到 `8115` 只作为第三批模块历史原服务端口记录，不再作为网关第三批业务路由的默认上游，当前仓库也不再保留对应旧服务 Maven 运行入口。
 
-`ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration` 和 `ops-image-market` 已完成第四批运行合并。网关必须把这六个路由的上游统一切到 `ops-core-service` 的 `8133`，但路由 ID、服务键、路径前缀、请求路径、认证透传、可信身份头剥离与注入、请求日志、错误码和响应透传规则都保持原样。端口 `8116`、`8118`、`8119`、`8120`、`8122` 和 `8124` 只作为第四批模块历史原服务端口记录，不再作为网关第四批控制面路由的默认上游。`node-daemon` 继续保持独立，不并入 `ops-core`。
+`ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration` 和 `ops-image-market` 已完成第四批运行合并。网关必须把这六个路由的上游统一切到 `ops-core-service` 的 `8133`，但路由 ID、服务键、路径前缀、请求路径、认证透传、可信身份头剥离与注入、请求日志、错误码和响应透传规则都保持原样。端口 `8116`、`8118`、`8119`、`8120`、`8122` 和 `8124` 只作为第四批模块历史原服务端口记录，不再作为网关第四批控制面路由的默认上游，当前仓库也不再保留对应旧服务 Maven 运行入口。`node-daemon` 继续保持独立，不并入 `ops-core`。
 
 `guide` 和 `material` 已完成第五批运行合并。网关必须把这两个路由的上游统一切到 `portal-core-service` 的 `8134`，但路由 ID、服务键、路径前缀、请求路径、认证透传、可信身份头剥离与注入、请求日志、错误码和响应透传规则都保持原样。端口 `8127` 和 `8126` 只作为第五批模块历史原服务端口记录，不再作为网关第五批玩家门户内容路由的默认上游。`online-map`、`cross-platform-notification`、`node-daemon`、`api-gateway` 和 `ops-core` 继续保持独立，不并入 `portal-core`。
 

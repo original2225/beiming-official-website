@@ -34,14 +34,14 @@
 
 ## 模块装配表
 
-| 模块 | 原服务目录 | 原端口 | 当前服务目录 | 当前端口 | API 数 | 正式契约 | 原测试入口 | 当前测试入口 |
+| 模块 | 原服务目录 | 原端口 | 当前服务目录 | 当前端口 | API 数 | 正式契约 | 旧测试入口状态 | 当前测试入口 |
 | --- | --- | ---: | --- | ---: | ---: | --- | --- | --- |
-| `ops-control` | `backend/ops-control-service` | 8116 | `backend/ops-core-service` | 8133 | 31 | `docs/contracts-ops-control.md` | `mvn -q -f backend/ops-control-service/pom.xml test` | `mvn -q -f backend/ops-core-service/pom.xml test` |
-| `cloudreve-sync` | `backend/cloudreve-sync-service` | 8118 | `backend/ops-core-service` | 8133 | 16 | `docs/contracts-cloudreve-sync.md` | `mvn -q -f backend/cloudreve-sync-service/pom.xml test` | `mvn -q -f backend/ops-core-service/pom.xml test` |
-| `backup-recovery` | `backend/backup-recovery-service` | 8119 | `backend/ops-core-service` | 8133 | 25 | `docs/contracts-backup-recovery.md` | `mvn -q -f backend/backup-recovery-service/pom.xml test` | `mvn -q -f backend/ops-core-service/pom.xml test` |
-| `alerting` | `backend/alerting-service` | 8120 | `backend/ops-core-service` | 8133 | 24 | `docs/contracts-alerting.md` | `mvn -q -f backend/alerting-service/pom.xml test` | `mvn -q -f backend/ops-core-service/pom.xml test` |
-| `plugin-integration` | `backend/plugin-integration-service` | 8122 | `backend/ops-core-service` | 8133 | 38 | `docs/contracts-plugin-integration.md` | `mvn -q -f backend/plugin-integration-service/pom.xml test` | `mvn -q -f backend/ops-core-service/pom.xml test` |
-| `ops-image-market` | `backend/ops-image-market-service` | 8124 | `backend/ops-core-service` | 8133 | 49 | `docs/contracts-ops-image-market.md` | `mvn -q -f backend/ops-image-market-service/pom.xml test` | `mvn -q -f backend/ops-core-service/pom.xml test` |
+| `ops-control` | `backend/ops-control-service` | 8116 | `backend/ops-core-service` | 8133 | 31 | `docs/contracts-ops-control.md` | 已退役，`legacyTestCommand=null` | `mvn -q -f backend/ops-core-service/pom.xml test` |
+| `cloudreve-sync` | `backend/cloudreve-sync-service` | 8118 | `backend/ops-core-service` | 8133 | 16 | `docs/contracts-cloudreve-sync.md` | 已退役，`legacyTestCommand=null` | `mvn -q -f backend/ops-core-service/pom.xml test` |
+| `backup-recovery` | `backend/backup-recovery-service` | 8119 | `backend/ops-core-service` | 8133 | 25 | `docs/contracts-backup-recovery.md` | 已退役，`legacyTestCommand=null` | `mvn -q -f backend/ops-core-service/pom.xml test` |
+| `alerting` | `backend/alerting-service` | 8120 | `backend/ops-core-service` | 8133 | 24 | `docs/contracts-alerting.md` | 已退役，`legacyTestCommand=null` | `mvn -q -f backend/ops-core-service/pom.xml test` |
+| `plugin-integration` | `backend/plugin-integration-service` | 8122 | `backend/ops-core-service` | 8133 | 38 | `docs/contracts-plugin-integration.md` | 已退役，`legacyTestCommand=null` | `mvn -q -f backend/ops-core-service/pom.xml test` |
+| `ops-image-market` | `backend/ops-image-market-service` | 8124 | `backend/ops-core-service` | 8133 | 49 | `docs/contracts-ops-image-market.md` | 已退役，`legacyTestCommand=null` | `mvn -q -f backend/ops-core-service/pom.xml test` |
 
 六个继承模块合计 183 个业务 API 路由。`ops-core` 自有接口为 4 个。`ops-core-service` 当前进程应注册 187 个 `/api/v1/**` 方法路由。
 
@@ -96,7 +96,9 @@
 
 `GET /api/v1/ops-core/admin/modules`
 
-成功响应 HTTP `200`，`data.items` 为模块装配数组。每个元素必须包含 `moduleKey`、`moduleName`、`pathPrefix`、`legacyServiceDirectory`、`legacyPort`、`currentServiceDirectory`、`currentPort`、`contract`、`localTestDocument`、`legacyTestCommand`、`currentTestCommand`、`routesTotal`、`contractRoutesTotal`、`routeDriftStatus`、`enabled`、`mounted`、`businessContractOwnedByModule`、`compatibilityMode` 和 `productionGaps`。
+成功响应 HTTP `200`，`data.items` 为模块装配数组。每个元素必须包含 `moduleKey`、`moduleName`、`pathPrefix`、`legacyServiceDirectory`、`legacyPort`、`legacyServiceRetired`、`currentServiceDirectory`、`currentPort`、`contract`、`localTestDocument`、`legacyTestCommand`、`currentTestCommand`、`routesTotal`、`contractRoutesTotal`、`routeDriftStatus`、`enabled`、`mounted`、`businessContractOwnedByModule`、`compatibilityMode` 和 `productionGaps`。
+
+第四批旧服务 Maven 入口退役后，`legacyServiceRetired` 必须为 `true`，`legacyTestCommand` 必须为 `null`。历史目录字段只用于追溯，不表示当前仓库仍保留或允许恢复旧服务入口。
 
 装配摘要中的六个业务模块路径必须保持原样，不得出现 `/api/v1/ops-core/ops-control`、`/api/v1/ops-core/cloudreve-sync`、`/api/v1/ops-core/backup-recovery`、`/api/v1/ops-core/alerting`、`/api/v1/ops-core/plugin-integration` 或 `/api/v1/ops-core/ops-image-market`。
 
@@ -135,4 +137,4 @@
 
 `ops-core` API 文档按 `docs/contracts-ops-core.md` 独立存在，并由 `.local-docs/tests-ops-core.md` 记录本地测试闭环。
 
-完成时必须满足以下条件：`ops-core-service:8133` 单进程承载六个控制面模块的全部既有 API 路径；六个模块原契约仍有效；`ops-core` 自有四个接口全覆盖；`.local-docs/tests-ops-core.md` 中的完备用例都有自动化验证；自动化测试先红灯；实现后 `mvn -q -f backend/ops-core-service/pom.xml test` 通过；六个旧服务测试作为对照组通过；`api-gateway-service` 已按契约切换并通过测试；`business-core-service`、`admission-core-service`、`engagement-core-service` 和 `node-daemon-service` 回归通过；旧服务目录没有恢复；`node-daemon` 和 `api-gateway` 仍保持独立；生产 readiness 明确暴露剩余生产缺口；测试过程完整写入 `.local-docs/tests-ops-core.md` 和 `.local-docs/tests-api-gateway.md`。
+完成时必须满足以下条件：`ops-core-service:8133` 单进程承载六个控制面模块的全部既有 API 路径；六个模块原契约仍有效；`ops-core` 自有四个接口全覆盖；`.local-docs/tests-ops-core.md` 中的完备用例都有自动化验证；自动化测试先红灯；实现后 `mvn -q -f backend/ops-core-service/pom.xml test` 通过；第四批旧服务 Maven 入口已退役且不得恢复；`api-gateway-service` 已按契约切换并通过测试；`business-core-service`、`admission-core-service`、`engagement-core-service` 和 `node-daemon-service` 回归通过；旧服务目录没有恢复；`node-daemon` 和 `api-gateway` 仍保持独立；生产 readiness 明确暴露剩余生产缺口；测试过程完整写入 `.local-docs/tests-ops-core.md` 和 `.local-docs/tests-api-gateway.md`。

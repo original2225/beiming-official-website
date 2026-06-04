@@ -37,7 +37,7 @@
 
 ## 基础路径、端口和认证
 
-所有接口默认使用 `/api/v1/alerting` 前缀。第一版本地端口固定为 `8120`，自检摘要必须返回该端口。
+所有接口默认使用 `/api/v1/alerting` 前缀。第四批合并后当前运行入口为 `ops-core-service:8133`。历史原服务端口 `8120` 只作为 `legacyPort` 返回，不再作为独立服务入口、网关上游或测试入口。
 
 健康检查 `GET /api/v1/alerting/health` 不要求认证，但只能返回存活、版本、服务名、状态和请求编号，不返回告警数量、路由详情、来源摘要、依赖错误细节或任何敏感字段。
 
@@ -265,7 +265,7 @@
 
 `GET /api/v1/alerting/health` 成功返回 `service=alerting`、`status`、`version` 和 `requestId`。进程存活但依赖不可用时仍可返回 HTTP `200`，并用 `status=DEGRADED` 标记。该接口不得泄露来源详情、规则数量、告警数量、通知路由、token 或依赖错误细节。
 
-`GET /api/v1/alerting/ops/summary` 成功返回 `AlertingOpsSummary`。第一版必须返回 `port=8120`、`storageMode=IN_MEMORY`、`sourceAdapterMode=TEST_STUB`、`notificationAdapterMode=TEST_STUB` 和生产化缺口。读取失败返回 `55500`，不得伪造健康。
+`GET /api/v1/alerting/ops/summary` 成功返回 `AlertingOpsSummary`。合并后必须返回 `port=8133`、`legacyPort=8120`、`storageMode=IN_MEMORY`、`sourceAdapterMode=TEST_STUB`、`notificationAdapterMode=TEST_STUB` 和生产化缺口。读取失败返回 `55500`，不得伪造健康。
 
 `GET /api/v1/alerting/sources` 支持 `page`、`pageSize`、`keyword`、`sourceService`、`sourceType`、`healthStatus`、`enabled` 和 `sort`。`sort` 允许 `lastEventAt_desc`、`lastSnapshotAt_desc`、`displayName_asc`。成功响应分页 `items` 为 `AlertSource[]`。
 
@@ -343,6 +343,6 @@
 
 ## 验收口径
 
-`alerting` API 文档必须按 `docs/contracts-alerting.md` 独立存在，并由 `.local-docs/tests-alerting.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、能力点不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求、敏感字段脱敏、测试控制头默认关闭和模块验收口径。
+`alerting` API 文档必须按 `docs/contracts-alerting.md` 独立存在，并由 `.local-docs/tests-ops-core.md` 记录合并后的本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、能力点不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求、敏感字段脱敏、测试控制头默认关闭和模块验收口径。
 
-`alerting` 完成时必须满足以下条件：端口固定为 `8120`；健康检查不泄露敏感信息；除健康检查外全部接口要求后台认证；告警源、规则、评估、实例、确认关闭、静默、通知路由、投递摘要、审计、幂等、状态流转、去重分组、通知失败降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；不修改前序服务稳定接口；不直接调用 `node-daemon`；不执行真实外部通知发送；不把告警规则塞进 `notification`、`admin`、`ops-control`、`server-status`、`cloudreve-sync` 或 `backup-recovery`；自动化测试必须先红灯；实现后 `alerting` 全量测试通过；前序 19 个稳定服务回归通过；边界扫描无违规命中；测试过程记录完整。
+`alerting` 完成时必须满足以下条件：当前运行入口为 `ops-core-service:8133`，历史端口 `8120` 只作为 `legacyPort` 返回；健康检查不泄露敏感信息；除健康检查外全部接口要求后台认证；告警源、规则、评估、实例、确认关闭、静默、通知路由、投递摘要、审计、幂等、状态流转、去重分组、通知失败降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；不修改前序服务稳定接口；不直接调用 `node-daemon`；不执行真实外部通知发送；不把告警规则塞进 `notification`、`admin`、`ops-control`、`server-status`、`cloudreve-sync` 或 `backup-recovery`；自动化测试必须先红灯；实现后 `alerting` 在 `ops-core-service` 中全部测试通过；当前后端运行入口回归测试通过；边界扫描无违规命中；测试过程记录完整。

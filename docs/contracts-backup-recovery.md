@@ -41,7 +41,7 @@
 
 ## 基础路径、端口和认证
 
-所有接口默认使用 `/api/v1/backup-recovery` 前缀。第一版本地端口固定为 `8119`，自检摘要必须返回该端口。
+所有接口默认使用 `/api/v1/backup-recovery` 前缀。第四批合并后当前运行入口为 `ops-core-service:8133`。历史原服务端口 `8119` 只作为 `legacyPort` 返回，不再作为独立服务入口、网关上游或测试入口。
 
 健康检查 `GET /api/v1/backup-recovery/health` 不要求认证，但只能返回存活、版本、服务名和请求编号，不返回策略数量、备份点数量、存储摘要、节点摘要、内部路径或依赖错误细节。
 
@@ -257,7 +257,7 @@
 
 `GET /api/v1/backup-recovery/health` 成功返回 `service=backup-recovery`、`status`、`version` 和 `requestId`。进程存活但依赖不可用时仍可返回 HTTP `200`，并用 `status=DEGRADED` 标记。该接口不得泄露策略、备份点、存储引用、节点、内部路径或依赖错误细节。
 
-`GET /api/v1/backup-recovery/ops/summary` 成功返回 `BackupRecoveryOpsSummary`。第一版必须返回 `port=8119`、`storageMode=IN_MEMORY`、`backupAdapterMode=SIMULATED`、`opsControlAdapterMode=TEST_STUB`、`notificationAdapterMode=TEST_STUB` 和生产化缺口。读取失败返回 `55400`，不得伪造健康。
+`GET /api/v1/backup-recovery/ops/summary` 成功返回 `BackupRecoveryOpsSummary`。合并后必须返回 `port=8133`、`legacyPort=8119`、`storageMode=IN_MEMORY`、`backupAdapterMode=SIMULATED`、`opsControlAdapterMode=TEST_STUB`、`notificationAdapterMode=TEST_STUB` 和生产化缺口。读取失败返回 `55400`，不得伪造健康。
 
 自检摘要必须暴露正式系统设计同步状态。`productionGaps` 在第一版至少包含真实持久化未接入、真实备份介质未接入、真实跨服务 HTTP 未接入、真实恢复执行被阻断、admin 只读入口未适配和 node-daemon 直连禁止等项。该摘要用于提醒后续闭环，不允许前端把这些缺口当作可执行能力。
 
@@ -343,6 +343,6 @@
 
 ## 验收口径
 
-`backup-recovery` API 文档必须按 `docs/contracts-backup-recovery.md` 独立存在，并由 `.local-docs/tests-backup-recovery.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、能力点不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求、敏感字段脱敏、测试控制头默认关闭和模块验收口径。
+`backup-recovery` API 文档必须按 `docs/contracts-backup-recovery.md` 独立存在，并由 `.local-docs/tests-ops-core.md` 记录合并后的本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、能力点不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求、敏感字段脱敏、测试控制头默认关闭和模块验收口径。
 
-`backup-recovery` 完成时必须满足以下条件：端口固定为 `8119`；健康检查不泄露敏感信息；除健康检查外全部接口要求后台认证；备份域、策略、任务、备份点、校验、恢复演练、恢复申请、审批、审计、幂等、状态流转、依赖失败降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；不修改前序服务稳定接口；不直接调用 `node-daemon`；不执行真实恢复；不把备份恢复能力塞回 `ops-control`、`admin`、`resource` 或 `cloudreve-sync`；自动化测试必须先红灯；实现后 `backup-recovery` 全量测试通过；前序 18 个稳定服务回归通过；边界扫描无违规命中；测试过程记录完整。
+`backup-recovery` 完成时必须满足以下条件：当前运行入口为 `ops-core-service:8133`，历史端口 `8119` 只作为 `legacyPort` 返回；健康检查不泄露敏感信息；除健康检查外全部接口要求后台认证；备份域、策略、任务、备份点、校验、恢复演练、恢复申请、审批、审计、幂等、状态流转、依赖失败降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；不修改前序服务稳定接口；不直接调用 `node-daemon`；不执行真实恢复；不把备份恢复能力塞回 `ops-control`、`admin`、`resource` 或 `cloudreve-sync`；自动化测试必须先红灯；实现后 `backup-recovery` 在 `ops-core-service` 中全部测试通过；当前后端运行入口回归测试通过；边界扫描无违规命中；测试过程记录完整。

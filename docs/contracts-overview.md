@@ -25,15 +25,15 @@
 | `activity` | `backend/engagement-core-service` | 8132 | 41 | `docs/contracts-activity.md` | `.local-docs/tests-activity.md` | `mvn -q -f backend/engagement-core-service/pom.xml test` |
 | `admin` | `backend/business-core-service` | 8130 | 10 | `docs/contracts-admin.md` | `.local-docs/tests-admin.md` | `mvn -q -f backend/business-core-service/pom.xml test` |
 | `admission-core` | `backend/admission-core-service` | 8131 | 2 | `docs/contracts-admission-core.md` | `.local-docs/tests-admission-core.md` | `mvn -q -f backend/admission-core-service/pom.xml test` |
-| `alerting` | `backend/ops-core-service` | 8133 | 24 | `docs/contracts-alerting.md` | `.local-docs/tests-alerting.md` | `mvn -q -f backend/ops-core-service/pom.xml test` |
+| `alerting` | `backend/ops-core-service` | 8133 | 24 | `docs/contracts-alerting.md` | `.local-docs/tests-ops-core.md` | `mvn -q -f backend/ops-core-service/pom.xml test` |
 | `api-gateway` | `backend/api-gateway-service` | 8125 | 7 | `docs/contracts-api-gateway.md` | `.local-docs/tests-api-gateway.md` | `mvn -q -f backend/api-gateway-service/pom.xml test` |
 | `attendance` | `backend/admission-core-service` | 8131 | 21 | `docs/contracts-attendance.md` | `.local-docs/tests-attendance.md` | `mvn -q -f backend/admission-core-service/pom.xml test` |
 | `auth` | `backend/business-core-service` | 8130 | 20 | `docs/contracts-auth.md` | `.local-docs/tests-auth.md` | `mvn -q -f backend/business-core-service/pom.xml test` |
-| `backup-recovery` | `backend/ops-core-service` | 8133 | 25 | `docs/contracts-backup-recovery.md` | `.local-docs/tests-backup-recovery.md` | `mvn -q -f backend/ops-core-service/pom.xml test` |
+| `backup-recovery` | `backend/ops-core-service` | 8133 | 25 | `docs/contracts-backup-recovery.md` | `.local-docs/tests-ops-core.md` | `mvn -q -f backend/ops-core-service/pom.xml test` |
 | `business-core` | `backend/business-core-service` | 8130 | 3 | `docs/contracts-business-core.md` | `.local-docs/tests-business-core.md` | `mvn -q -f backend/business-core-service/pom.xml test` |
 | `calendar` | `backend/engagement-core-service` | 8132 | 21 | `docs/contracts-calendar.md` | `.local-docs/tests-calendar.md` | `mvn -q -f backend/engagement-core-service/pom.xml test` |
 | `changelog` | `backend/engagement-core-service` | 8132 | 23 | `docs/contracts-changelog.md` | `.local-docs/tests-changelog.md` | `mvn -q -f backend/engagement-core-service/pom.xml test` |
-| `cloudreve-sync` | `backend/ops-core-service` | 8133 | 16 | `docs/contracts-cloudreve-sync.md` | `.local-docs/tests-cloudreve-sync.md` | `mvn -q -f backend/ops-core-service/pom.xml test` |
+| `cloudreve-sync` | `backend/ops-core-service` | 8133 | 16 | `docs/contracts-cloudreve-sync.md` | `.local-docs/tests-ops-core.md` | `mvn -q -f backend/ops-core-service/pom.xml test` |
 | `community` | `backend/engagement-core-service` | 8132 | 64 | `docs/contracts-community.md` | `.local-docs/tests-community.md` | `mvn -q -f backend/engagement-core-service/pom.xml test` |
 | `content` | `backend/business-core-service` | 8130 | 55 | `docs/contracts-content.md` | `.local-docs/tests-content.md` | `mvn -q -f backend/business-core-service/pom.xml test` |
 | `cross-platform-notification` | `backend/cross-platform-notification-service` | 8123 | 36 | `docs/contracts-cross-platform-notification.md` | `.local-docs/tests-cross-platform-notification.md` | `mvn -q -f backend/cross-platform-notification-service/pom.xml test` |
@@ -45,10 +45,10 @@
 | `notification` | `backend/business-core-service` | 8130 | 19 | `docs/contracts-notification.md` | `.local-docs/tests-notification.md` | `mvn -q -f backend/business-core-service/pom.xml test` |
 | `onboarding` | `backend/admission-core-service` | 8131 | 15 | `docs/contracts-onboarding.md` | `.local-docs/tests-onboarding.md` | `mvn -q -f backend/admission-core-service/pom.xml test` |
 | `online-map` | `backend/online-map-service` | 8121 | 34 | `docs/contracts-online-map.md` | `.local-docs/tests-online-map.md` | `mvn -q -f backend/online-map-service/pom.xml test` |
-| `ops-control` | `backend/ops-core-service` | 8133 | 31 | `docs/contracts-ops-control.md` | `.local-docs/tests-ops-control.md` | `mvn -q -f backend/ops-core-service/pom.xml test` |
+| `ops-control` | `backend/ops-core-service` | 8133 | 31 | `docs/contracts-ops-control.md` | `.local-docs/tests-ops-core.md` | `mvn -q -f backend/ops-core-service/pom.xml test` |
 | `ops-core` | `backend/ops-core-service` | 8133 | 4 | `docs/contracts-ops-core.md` | `.local-docs/tests-ops-core.md` | `mvn -q -f backend/ops-core-service/pom.xml test` |
-| `ops-image-market` | `backend/ops-core-service` | 8133 | 49 | `docs/contracts-ops-image-market.md` | `.local-docs/tests-ops-image-market.md` | `mvn -q -f backend/ops-core-service/pom.xml test` |
-| `plugin-integration` | `backend/ops-core-service` | 8133 | 38 | `docs/contracts-plugin-integration.md` | `.local-docs/tests-plugin-integration.md` | `mvn -q -f backend/ops-core-service/pom.xml test` |
+| `ops-image-market` | `backend/ops-core-service` | 8133 | 49 | `docs/contracts-ops-image-market.md` | `.local-docs/tests-ops-core.md` | `mvn -q -f backend/ops-core-service/pom.xml test` |
+| `plugin-integration` | `backend/ops-core-service` | 8133 | 38 | `docs/contracts-plugin-integration.md` | `.local-docs/tests-ops-core.md` | `mvn -q -f backend/ops-core-service/pom.xml test` |
 | `portal-core` | `backend/portal-core-service` | 8134 | 5 | `docs/contracts-portal-core.md` | `.local-docs/tests-portal-core.md` | `mvn -q -f backend/portal-core-service/pom.xml test` |
 | `profile` | `backend/business-core-service` | 8130 | 16 | `docs/contracts-profile.md` | `.local-docs/tests-profile.md` | `mvn -q -f backend/business-core-service/pom.xml test` |
 | `resource` | `backend/business-core-service` | 8130 | 29 | `docs/contracts-resource.md` | `.local-docs/tests-resource.md` | `mvn -q -f backend/business-core-service/pom.xml test` |
@@ -70,7 +70,7 @@
 | 第一批基础业务 | `backend/business-core-service` | 8130 | `auth`、`profile`、`notification`、`content`、`server-status`、`resource`、`admin` | `8101` 到 `8107` 为历史原端口，旧服务目录已清理且不得恢复 |
 | 第二批入服准入 | `backend/admission-core-service` | 8131 | `onboarding`、`exam`、`whitelist`、`attendance` | `8108` 到 `8111` 为历史原端口，旧服务目录已清理且不得恢复 |
 | 第三批社区运营 | `backend/engagement-core-service` | 8132 | `community`、`activity`、`calendar`、`changelog` | `8112` 到 `8115` 为历史原端口，旧服务目录已清理且不得恢复 |
-| 第四批运维控制面 | `backend/ops-core-service` | 8133 | `ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`ops-image-market` | `8116`、`8118`、`8119`、`8120`、`8122` 和 `8124` 为历史原端口，旧服务目录本期保留为对照组且不得恢复前三期旧目录 |
+| 第四批运维控制面 | `backend/ops-core-service` | 8133 | `ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`ops-image-market` | `8116`、`8118`、`8119`、`8120`、`8122` 和 `8124` 为历史原端口，旧服务目录已退役且不得恢复 |
 | 第五批玩家门户内容 | `backend/portal-core-service` | 8134 | `guide`、`material` | `8127` 和 `8126` 为历史原端口，旧服务目录已退役且不得恢复 |
 
 ## 依赖顺序和边界
@@ -83,4 +83,4 @@
 
 任一模块变更时，必须优先更新该模块自己的 `docs/contracts-<module>.md`，再更新 `.local-docs/tests-<module>.md` 和对应自动化测试。只有模块测试和受影响的上游或下游回归测试全部通过，并留下测试过程记录后，才能认为该模块变更完成。
 
-全量后端验收以合并后的 core 服务、未合并服务和 api-gateway 相关测试全部通过为准。最近一次 `main` 分支全量测试记录见 `.local-docs/backend-main-merge-test-record.md`，该记录不提交到仓库。
+全量后端验收以合并后的 core 服务、未合并服务和 api-gateway 相关测试全部通过为准。本地全量测试过程记录见 `.local-docs/tests-overview.md`，该记录不提交到仓库。

@@ -144,7 +144,7 @@ class OpsCoreApiContractTest {
         mockMvc.perform(get("/api/v1/ops-core/admin/modules").header("Authorization", "Bearer owner-token"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.items.length()").value(6))
-                .andExpect(jsonPath("$.data.items[?(@.moduleName == 'ops-control' && @.legacyServiceDirectory == 'backend/ops-control-service' && @.currentServiceDirectory == 'backend/ops-core-service' && @.currentPort == 8133 && @.routeDriftStatus == 'NO_DRIFT')]").exists())
+                .andExpect(jsonPath("$.data.items[?(@.moduleName == 'ops-control' && @.legacyServiceDirectory == 'backend/ops-control-service' && @.legacyServiceRetired == true && @.legacyTestCommand == null && @.localTestDocument == '.local-docs/tests-ops-core.md' && @.currentServiceDirectory == 'backend/ops-core-service' && @.currentPort == 8133 && @.routeDriftStatus == 'NO_DRIFT')]").exists())
                 .andExpect(jsonPath("$.data.items[?(@.moduleName == 'cloudreve-sync' && @.legacyPort == 8118 && @.currentPort == 8133 && @.pathPrefix == '/api/v1/cloudreve-sync')]").exists())
                 .andExpect(jsonPath("$.data.items[?(@.moduleName == 'backup-recovery' && @.legacyPort == 8119 && @.currentPort == 8133 && @.pathPrefix == '/api/v1/backup-recovery')]").exists())
                 .andExpect(jsonPath("$.data.items[?(@.moduleName == 'alerting' && @.legacyPort == 8120 && @.currentPort == 8133 && @.pathPrefix == '/api/v1/alerting')]").exists())
@@ -253,7 +253,7 @@ class OpsCoreApiContractTest {
     }
 
     @Test
-    void doesNotRestoreFirstThreeBatchLegacyServiceEntrypoints() {
+    void doesNotRestoreMergedLegacyServiceEntrypoints() {
         assertThat(List.of(
                 pathFromProject("../auth-service/pom.xml"),
                 pathFromProject("../profile-service/pom.xml"),
@@ -269,7 +269,13 @@ class OpsCoreApiContractTest {
                 pathFromProject("../community-service/pom.xml"),
                 pathFromProject("../activity-service/pom.xml"),
                 pathFromProject("../calendar-service/pom.xml"),
-                pathFromProject("../changelog-service/pom.xml")
+                pathFromProject("../changelog-service/pom.xml"),
+                pathFromProject("../ops-control-service/pom.xml"),
+                pathFromProject("../cloudreve-sync-service/pom.xml"),
+                pathFromProject("../backup-recovery-service/pom.xml"),
+                pathFromProject("../alerting-service/pom.xml"),
+                pathFromProject("../plugin-integration-service/pom.xml"),
+                pathFromProject("../ops-image-market-service/pom.xml")
         )).allSatisfy(path -> assertThat(Files.exists(path)).isFalse());
     }
 
