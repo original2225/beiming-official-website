@@ -8,7 +8,7 @@
 
 面向前端开发的一体化 API 全文查阅文档见 `docs/api-reference.md`。该文档由公共契约和全部模块契约合并生成，方便前端统一检索路径、字段和响应格式。
 
-本汇总覆盖当前仓库 `docs/contracts-*.md` 中除 `contracts-common.md` 之外的 27 个业务或平台模块，以及 `engagement-core` 和 `ops-core` 两个运行合并单元。第一批、第二批、第三批和第四批已完成运行合并并入仓。当前唯一 `METHOD path` 总数为 759，其中第三批四个业务模块在 `engagement-core-service:8132` 中承载 149 个业务路由，第四批六个后台运维控制面模块在 `ops-core-service:8133` 中承载 183 个业务路由，`engagement-core` 自身提供 3 个运行单元自检和诊断路由，`ops-core` 自身提供 4 个运行单元自检和诊断路由。
+本汇总覆盖当前仓库 `docs/contracts-*.md` 中除 `contracts-common.md` 和本文档之外的 27 个业务或平台模块，以及 `business-core`、`admission-core`、`engagement-core`、`ops-core` 和 `portal-core` 五个运行合并单元。第一批、第二批、第三批、第四批和第五批已完成运行合并并入仓。当前契约表中的 `METHOD path` 记录总数为 772，其中第三批四个业务模块在 `engagement-core-service:8132` 中承载 149 个业务路由，第四批六个后台运维控制面模块在 `ops-core-service:8133` 中承载 183 个业务路由，第五批两个玩家门户内容模块在 `portal-core-service:8134` 中承载 74 个业务路由，`engagement-core` 自身提供 3 个运行单元自检和诊断路由，`ops-core` 自身提供 4 个运行单元自检和诊断路由，`portal-core` 自身提供 4 个运行单元自检和诊断路由。
 
 ## 全局接口规则
 
@@ -24,11 +24,13 @@
 | --- | --- | ---: | ---: | --- | --- | --- |
 | `activity` | `backend/engagement-core-service` | 8132 | 41 | `docs/contracts-activity.md` | `.local-docs/tests-activity.md` | `mvn -q -f backend/engagement-core-service/pom.xml test` |
 | `admin` | `backend/business-core-service` | 8130 | 10 | `docs/contracts-admin.md` | `.local-docs/tests-admin.md` | `mvn -q -f backend/business-core-service/pom.xml test` |
+| `admission-core` | `backend/admission-core-service` | 8131 | 2 | `docs/contracts-admission-core.md` | `.local-docs/tests-admission-core.md` | `mvn -q -f backend/admission-core-service/pom.xml test` |
 | `alerting` | `backend/ops-core-service` | 8133 | 24 | `docs/contracts-alerting.md` | `.local-docs/tests-alerting.md` | `mvn -q -f backend/ops-core-service/pom.xml test` |
-| `api-gateway` | `backend/api-gateway-service` | 8125 | 8 | `docs/contracts-api-gateway.md` | `.local-docs/tests-api-gateway.md` | `mvn -q -f backend/api-gateway-service/pom.xml test` |
-| `attendance` | `backend/admission-core-service` | 8131 | 22 | `docs/contracts-attendance.md` | `.local-docs/tests-attendance.md` | `mvn -q -f backend/admission-core-service/pom.xml test` |
+| `api-gateway` | `backend/api-gateway-service` | 8125 | 7 | `docs/contracts-api-gateway.md` | `.local-docs/tests-api-gateway.md` | `mvn -q -f backend/api-gateway-service/pom.xml test` |
+| `attendance` | `backend/admission-core-service` | 8131 | 21 | `docs/contracts-attendance.md` | `.local-docs/tests-attendance.md` | `mvn -q -f backend/admission-core-service/pom.xml test` |
 | `auth` | `backend/business-core-service` | 8130 | 20 | `docs/contracts-auth.md` | `.local-docs/tests-auth.md` | `mvn -q -f backend/business-core-service/pom.xml test` |
 | `backup-recovery` | `backend/ops-core-service` | 8133 | 25 | `docs/contracts-backup-recovery.md` | `.local-docs/tests-backup-recovery.md` | `mvn -q -f backend/ops-core-service/pom.xml test` |
+| `business-core` | `backend/business-core-service` | 8130 | 3 | `docs/contracts-business-core.md` | `.local-docs/tests-business-core.md` | `mvn -q -f backend/business-core-service/pom.xml test` |
 | `calendar` | `backend/engagement-core-service` | 8132 | 21 | `docs/contracts-calendar.md` | `.local-docs/tests-calendar.md` | `mvn -q -f backend/engagement-core-service/pom.xml test` |
 | `changelog` | `backend/engagement-core-service` | 8132 | 23 | `docs/contracts-changelog.md` | `.local-docs/tests-changelog.md` | `mvn -q -f backend/engagement-core-service/pom.xml test` |
 | `cloudreve-sync` | `backend/ops-core-service` | 8133 | 16 | `docs/contracts-cloudreve-sync.md` | `.local-docs/tests-cloudreve-sync.md` | `mvn -q -f backend/ops-core-service/pom.xml test` |
@@ -36,10 +38,10 @@
 | `content` | `backend/business-core-service` | 8130 | 55 | `docs/contracts-content.md` | `.local-docs/tests-content.md` | `mvn -q -f backend/business-core-service/pom.xml test` |
 | `cross-platform-notification` | `backend/cross-platform-notification-service` | 8123 | 36 | `docs/contracts-cross-platform-notification.md` | `.local-docs/tests-cross-platform-notification.md` | `mvn -q -f backend/cross-platform-notification-service/pom.xml test` |
 | `engagement-core` | `backend/engagement-core-service` | 8132 | 3 | `docs/contracts-engagement-core.md` | `.local-docs/tests-engagement-core.md` | `mvn -q -f backend/engagement-core-service/pom.xml test` |
-| `exam` | `backend/admission-core-service` | 8131 | 29 | `docs/contracts-exam.md` | `.local-docs/tests-exam.md` | `mvn -q -f backend/admission-core-service/pom.xml test` |
-| `guide` | `backend/guide-service` | 8127 | 29 | `docs/contracts-guide.md` | `.local-docs/tests-guide.md` | `mvn -q -f backend/guide-service/pom.xml test` |
-| `material` | `backend/material-service` | 8126 | 33 | `docs/contracts-material.md` | `.local-docs/tests-material.md` | `mvn -q -f backend/material-service/pom.xml test` |
-| `node-daemon` | `backend/node-daemon-service` | 8117 | 17 | `docs/contracts-node-daemon.md` | `.local-docs/tests-node-daemon.md` | `mvn -q -f backend/node-daemon-service/pom.xml test` |
+| `exam` | `backend/admission-core-service` | 8131 | 28 | `docs/contracts-exam.md` | `.local-docs/tests-exam.md` | `mvn -q -f backend/admission-core-service/pom.xml test` |
+| `guide` | `backend/portal-core-service` | 8134 | 41 | `docs/contracts-guide.md` | `.local-docs/tests-guide.md` | `mvn -q -f backend/portal-core-service/pom.xml test` |
+| `material` | `backend/portal-core-service` | 8134 | 33 | `docs/contracts-material.md` | `.local-docs/tests-material.md` | `mvn -q -f backend/portal-core-service/pom.xml test` |
+| `node-daemon` | `backend/node-daemon-service` | 8117 | 15 | `docs/contracts-node-daemon.md` | `.local-docs/tests-node-daemon.md` | `mvn -q -f backend/node-daemon-service/pom.xml test` |
 | `notification` | `backend/business-core-service` | 8130 | 19 | `docs/contracts-notification.md` | `.local-docs/tests-notification.md` | `mvn -q -f backend/business-core-service/pom.xml test` |
 | `onboarding` | `backend/admission-core-service` | 8131 | 15 | `docs/contracts-onboarding.md` | `.local-docs/tests-onboarding.md` | `mvn -q -f backend/admission-core-service/pom.xml test` |
 | `online-map` | `backend/online-map-service` | 8121 | 34 | `docs/contracts-online-map.md` | `.local-docs/tests-online-map.md` | `mvn -q -f backend/online-map-service/pom.xml test` |
@@ -47,18 +49,21 @@
 | `ops-core` | `backend/ops-core-service` | 8133 | 4 | `docs/contracts-ops-core.md` | `.local-docs/tests-ops-core.md` | `mvn -q -f backend/ops-core-service/pom.xml test` |
 | `ops-image-market` | `backend/ops-core-service` | 8133 | 49 | `docs/contracts-ops-image-market.md` | `.local-docs/tests-ops-image-market.md` | `mvn -q -f backend/ops-core-service/pom.xml test` |
 | `plugin-integration` | `backend/ops-core-service` | 8133 | 38 | `docs/contracts-plugin-integration.md` | `.local-docs/tests-plugin-integration.md` | `mvn -q -f backend/ops-core-service/pom.xml test` |
+| `portal-core` | `backend/portal-core-service` | 8134 | 4 | `docs/contracts-portal-core.md` | `.local-docs/tests-portal-core.md` | `mvn -q -f backend/portal-core-service/pom.xml test` |
 | `profile` | `backend/business-core-service` | 8130 | 16 | `docs/contracts-profile.md` | `.local-docs/tests-profile.md` | `mvn -q -f backend/business-core-service/pom.xml test` |
 | `resource` | `backend/business-core-service` | 8130 | 29 | `docs/contracts-resource.md` | `.local-docs/tests-resource.md` | `mvn -q -f backend/business-core-service/pom.xml test` |
 | `server-status` | `backend/business-core-service` | 8130 | 25 | `docs/contracts-server-status.md` | `.local-docs/tests-server-status.md` | `mvn -q -f backend/business-core-service/pom.xml test` |
-| `whitelist` | `backend/admission-core-service` | 8131 | 23 | `docs/contracts-whitelist.md` | `.local-docs/tests-whitelist.md` | `mvn -q -f backend/admission-core-service/pom.xml test` |
+| `whitelist` | `backend/admission-core-service` | 8131 | 20 | `docs/contracts-whitelist.md` | `.local-docs/tests-whitelist.md` | `mvn -q -f backend/admission-core-service/pom.xml test` |
 
 ## 合并后运行入口
 
-当前已入仓的合并运行入口是 `business-core-service`、`admission-core-service`、`engagement-core-service` 和 `ops-core-service`。第三批社区运营路径已经由网关统一切到 `8132`。第四批后台运维控制面路径已经由网关统一切到 `8133`。`engagement-core-service` 的后台自检摘要入口已经支持网关注入的可信认证上下文；149 个业务方法路由完整行为契约已经迁入当前入口，真实业务认证、真实持久化、真实跨服务 adapter、真实通知交付和真实 HTTP smoke 仍需后续独立闭环。
+当前已入仓的合并运行入口是 `business-core-service`、`admission-core-service`、`engagement-core-service`、`ops-core-service` 和 `portal-core-service`。第三批社区运营路径已经由网关统一切到 `8132`。第四批后台运维控制面路径已经由网关统一切到 `8133`。第五批玩家门户内容扩展路径已经由网关统一切到 `8134`。`engagement-core-service` 的后台自检摘要入口已经支持网关注入的可信认证上下文；149 个业务方法路由完整行为契约已经迁入当前入口，真实业务认证、真实持久化、真实跨服务 adapter、真实通知交付和真实 HTTP smoke 仍需后续独立闭环。
 
 `engagement-core` 的 3 个自有接口只用于运行单元自检、后台装配摘要和生产就绪诊断。它不新增 community、activity、calendar 或 changelog 的业务语义。第三批 149 个业务路由签名和四个模块完整行为契约必须在 `engagement-core-service` 中自动化验证；生产就绪诊断仍必须公开真实持久化、审计持久化、真实跨服务 adapter、真实通知交付和真实 HTTP smoke 缺口。
 
 `ops-core` 的 4 个自有接口只用于运行单元健康检查、运行摘要、模块装配摘要和生产就绪诊断。它不新增 ops-control、cloudreve-sync、backup-recovery、alerting、plugin-integration 或 ops-image-market 的业务语义。第四批 183 个业务路由签名和六个模块完整行为契约必须在 `ops-core-service` 中自动化验证；生产就绪诊断仍必须公开真实持久化、审计持久化、真实跨服务 HTTP、真实节点执行、真实 Cloudreve API、真实 registry、真实 scanner、真实插件事件入口、真实通知投递和真实 HTTP smoke 缺口。
+
+`portal-core` 的 4 个自有接口只用于运行单元健康检查、运行摘要、模块装配摘要和生产就绪诊断。它不新增 guide 或 material 的业务语义。第五批 74 个业务路由签名和两个模块完整行为契约必须在 `portal-core-service` 中自动化验证；生产就绪诊断仍必须公开真实持久化、真实跨服务 HTTP、真实审计持久化、真实对象存储、真实文件安全扫描、真实全文搜索、真实外部通知投递和真实 HTTP smoke 缺口。
 
 | 合并批次 | 运行入口 | 端口 | 承载模块 | 旧端口用途 |
 | --- | --- | ---: | --- | --- |
@@ -66,12 +71,13 @@
 | 第二批入服准入 | `backend/admission-core-service` | 8131 | `onboarding`、`exam`、`whitelist`、`attendance` | `8108` 到 `8111` 为历史原端口，旧服务目录已清理且不得恢复 |
 | 第三批社区运营 | `backend/engagement-core-service` | 8132 | `community`、`activity`、`calendar`、`changelog` | `8112` 到 `8115` 为历史原端口，旧服务目录已清理且不得恢复 |
 | 第四批运维控制面 | `backend/ops-core-service` | 8133 | `ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`ops-image-market` | `8116`、`8118`、`8119`、`8120`、`8122` 和 `8124` 为历史原端口，旧服务目录本期保留为对照组且不得恢复前三期旧目录 |
+| 第五批玩家门户内容 | `backend/portal-core-service` | 8134 | `guide`、`material` | `8127` 和 `8126` 为历史原端口，旧服务目录本期保留为对照组且不得恢复前三期旧目录 |
 
 ## 依赖顺序和边界
 
 当前后端服务已经按依赖链路沉淀为独立契约和独立测试。前序服务的契约、测试、响应格式、错误码、认证方式和数据归属默认稳定。后序服务只能通过前序服务正式 API、后端入口认证上下文或受控 stub 适配，不能反向要求前序服务改结构，也不能直接读前序服务数据库。
 
-核心身份链路为 `auth`、`profile`、`onboarding`、`exam`、`whitelist`、`attendance` 和 `notification`。官网内容链路为 `content`、`server-status`、`resource`、`guide`、`material` 和 `online-map`。社区运营链路为 `community`、`activity`、`calendar`、`changelog`、`admin` 和 `cross-platform-notification`。运维平台链路为 `api-gateway`、`ops-core`、`ops-control`、`node-daemon`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration` 和 `ops-image-market`。
+核心身份链路为 `auth`、`profile`、`onboarding`、`exam`、`whitelist`、`attendance` 和 `notification`。官网内容链路为 `content`、`server-status`、`resource`、`portal-core`、`guide`、`material` 和 `online-map`。社区运营链路为 `community`、`activity`、`calendar`、`changelog`、`admin` 和 `cross-platform-notification`。运维平台链路为 `api-gateway`、`ops-core`、`ops-control`、`node-daemon`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration` 和 `ops-image-market`。
 
 ## 验收口径
 

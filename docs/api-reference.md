@@ -4,11 +4,11 @@
 
 ## 文档定位
 
-本文档是面向前端开发的一体化 API 查阅文档，由 `docs/contracts-common.md`、27 个业务或平台模块独立契约，以及 `engagement-core` 运行合并单元契约合并生成。它用于前端统一查路径、字段、权限、错误码、状态流转、失败降级和验收口径。
+本文档是面向前端开发的一体化 API 查阅文档，由 `docs/contracts-common.md`、27 个业务或平台模块独立契约，以及 `business-core`、`admission-core`、`engagement-core`、`ops-core` 和 `portal-core` 五个运行合并单元契约合并生成。它用于前端统一查路径、字段、权限、错误码、状态流转、失败降级和验收口径。
 
 各模块独立契约仍是后端实现和变更的源文档。任一接口发生变化时，必须先更新对应 `docs/contracts-<module>.md`，再同步更新本文档。
 
-当前合并范围包含 27 个业务或平台模块，另包含 `engagement-core` 运行合并单元自检契约。唯一 `METHOD path` 总数为 750，其中第三批四个业务模块在 `engagement-core-service:8132` 中承载 149 个业务路由，`engagement-core` 自身提供 3 个运行单元自检和诊断路由。
+当前合并范围包含 27 个业务或平台模块，另包含五个运行合并单元自检契约。第三批四个业务模块在 `engagement-core-service:8132` 中承载 149 个业务路由，第四批六个后台运维控制面模块在 `ops-core-service:8133` 中承载 183 个业务路由，第五批两个玩家门户内容模块在 `portal-core-service:8134` 中承载 74 个业务路由。
 
 ## 前端接入要点
 
@@ -18,7 +18,7 @@
 
 ## 合并模块
 
-`auth`、`profile`、`notification`、`content`、`server-status`、`resource`、`admin`、`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、`engagement-core`、`ops-control`、`node-daemon`、`cloudreve-sync`、`backup-recovery`、`alerting`、`online-map`、`plugin-integration`、`cross-platform-notification`、`ops-image-market`、`api-gateway`、`material`、`guide`
+`auth`、`profile`、`notification`、`content`、`server-status`、`resource`、`admin`、`business-core`、`onboarding`、`exam`、`whitelist`、`attendance`、`admission-core`、`community`、`activity`、`calendar`、`changelog`、`engagement-core`、`ops-control`、`node-daemon`、`cloudreve-sync`、`backup-recovery`、`alerting`、`online-map`、`plugin-integration`、`cross-platform-notification`、`ops-image-market`、`ops-core`、`api-gateway`、`material`、`guide`、`portal-core`
 
 ## 正文
 
@@ -13843,8 +13843,8 @@ endpoint、repository、tag、namespace 和 URL 摘要必须拒绝 `file:`、`da
 | `plugin-integration` | `PLUGIN_INTEGRATION` | `/api/v1/plugin-integration` | `8133` | `/api/v1/plugin-integration/health` |
 | `cross-platform-notification` | `CROSS_PLATFORM_NOTIFICATION` | `/api/v1/cross-platform-notification` | `8123` | `/api/v1/cross-platform-notification/health` |
 | `ops-image-market` | `OPS_IMAGE_MARKET` | `/api/v1/ops-image-market` | `8133` | `/api/v1/ops-image-market/health` |
-| `material` | `MATERIAL` | `/api/v1/materials` | `8126` | `/api/v1/materials/featured` |
-| `guide` | `GUIDE` | `/api/v1/guides` | `8127` | `/api/v1/guides/categories` |
+| `material` | `MATERIAL` | `/api/v1/materials` | `8134` | `/api/v1/materials/featured` |
+| `guide` | `GUIDE` | `/api/v1/guides` | `8134` | `/api/v1/guides/categories` |
 
 路径匹配规则为最长前缀优先。`/api/v1/resources` 和 `/api/v1/resources/**` 都必须命中 `resource`。未知路径返回网关错误，不转发到任何上游。
 
@@ -14137,7 +14137,28 @@ P0 `api-gateway` 是本地契约实现，必须在自检摘要中明确以下生
 
 本文档列出的每个网关自有接口都有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、分页排序、状态刷新、失败降级、日志脱敏和验收口径。业务转发测试必须覆盖 26 个已接入微服务的路径前缀，确认路由表端口准确、请求编号透传、请求编号非法拒绝、认证头透传、可信身份头剥离、`auth` 会话校验成功后的可信身份注入、`auth` 校验失败后的不注入降级、查询参数透传、JSON body 透传、请求体大小限制、响应头白名单、上游 2xx 透传、上游 4xx 透传、上游 5xx 透传、未知路径、非法方法、CORS 预检、上游不可用、上游超时和敏感字段不落日志。
 
-开发完成后必须执行 `mvn -f backend/api-gateway-service/pom.xml test`、`mvn -f backend/business-core-service/pom.xml test`、`mvn -f backend/admission-core-service/pom.xml test` 和 `mvn -f backend/engagement-core-service/pom.xml test`。第一批、第二批和第三批旧服务清理后，不得为了网关回归恢复对应旧服务目录、旧 Maven 入口、旧启动类或旧测试命令。测试过程必须写入 `.local-docs/tests-api-gateway.md`。
+开发完成后必须执行 `mvn -f backend/api-gateway-service/pom.xml test`、`mvn -f backend/business-core-service/pom.xml test`、`mvn -f backend/admission-core-service/pom.xml test`、`mvn -f backend/engagement-core-service/pom.xml test`、`mvn -f backend/ops-core-service/pom.xml test`、`mvn -f backend/portal-core-service/pom.xml test` 和 `mvn -f backend/node-daemon-service/pom.xml test`。第一批、第二批和第三批旧服务清理后，不得为了网关回归恢复对应旧服务目录、旧 Maven 入口、旧启动类或旧测试命令。第四批和第五批旧服务目录本期保留为对照组，不能因为 `ops-core` 或 `portal-core` 已接管路径就跳过旧服务基线测试。测试过程必须写入 `.local-docs/tests-api-gateway.md`。
+
+## 北冥官网 portal-core API 契约
+
+来源：`docs/contracts-portal-core.md`
+
+版本：0.1
+
+`portal-core-service` 是第五批玩家门户内容扩展运行合并单元，端口固定为 `8134`，承载 `guide` 和 `material` 两个模块的既有业务路径。它不新增两个业务模块的业务语义，不改变 `/api/v1/guides/**` 和 `/api/v1/materials/**` 的路径、权限、状态机、错误码、审计对象或失败降级规则。
+
+`portal-core` 自有接口只用于运行单元健康检查、运行摘要、模块装配摘要和生产就绪诊断。被承载业务模块的业务接口仍分别以 `docs/contracts-guide.md` 和 `docs/contracts-material.md` 为准。
+
+| 接口 | 方法 | 路径 | 认证 | 权限 | 风险 |
+| --- | --- | --- | --- | --- | --- |
+| 健康检查 | GET | `/api/v1/portal-core/health` | 否 | 无 | LOW |
+| 运行摘要 | GET | `/api/v1/portal-core/ops/summary` | 是 | `ADMIN` 或 `OWNER` | LOW |
+| 模块装配摘要 | GET | `/api/v1/portal-core/admin/modules` | 是 | `ADMIN` 或 `OWNER` | LOW |
+| 生产就绪诊断 | GET | `/api/v1/portal-core/admin/readiness` | 是 | `ADMIN` 或 `OWNER` | LOW |
+
+网关切换后，`material` 和 `guide` 的上游端口均为 `8134`，历史端口 `8126` 和 `8127` 只作记录。`online-map`、`cross-platform-notification`、`node-daemon`、`api-gateway` 和 `ops-core` 继续保持独立，不并入 `portal-core`。
+
+验收时必须确认 `portal-core-service:8134` 单进程承载两个模块全部既有 API 路径，两个模块原契约仍有效，`portal-core` 自有四个接口全覆盖，`api-gateway-service` 已按契约切换并通过测试，旧 `guide-service` 和 `material-service` 作为对照组通过测试，生产 readiness 明确暴露真实持久化、真实对象存储、真实扫描、真实搜索、真实外部通知和真实 HTTP smoke 等剩余缺口。
 
 ## 北冥官网 material API 契约
 
@@ -14182,6 +14203,8 @@ P0 `api-gateway` 是本地契约实现，必须在自检摘要中明确以下生
 当前用户投稿接口使用 `/api/v1/materials/me` 前缀，全部要求登录。当前用户只能创建自己的上传会话和投稿，只能读取、编辑、提交、撤回或重新提交自己的素材。浏览器请求体中传入 `authorUserId`、`authorSnapshot`、`status`、`reviewerUserId`、`featuredBy`、`auditLogs` 等服务端字段时，必须忽略并以服务端上下文为准，生产实现推荐返回字段校验失败。
 
 后台接口使用 `/api/v1/materials/admin` 前缀，全部要求登录。后台读取允许 `HELPER`、`ADMIN` 或 `OWNER`。审核通过、拒绝和要求修改允许 `HELPER`、`ADMIN` 或 `OWNER`。精选、取消精选、下架、归档、软删除、分类维护和文件安全状态维护要求 `ADMIN` 或 `OWNER`。审计列表和自检摘要只允许 `ADMIN` 或 `OWNER`。
+
+`material` 当前由 `portal-core-service:8134` 承载。历史原服务端口 `8126` 只作为对照记录，不再作为当前网关默认上游。`api-gateway` 必须以兼容方式保留 `/api/v1/materials` 路由，不能改变已有服务路径、认证方式、响应格式或测试。
 
 ### auth 兼容契约
 
@@ -14581,7 +14604,7 @@ auth 认证上下文失败时，当前用户和后台接口不得使用旧用户
 
 `material` API 文档按 `docs/contracts-material.md` 独立存在，并由 `.local-docs/tests-material.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求和模块验收口径。
 
-`material` 完成时必须满足以下条件：全部接口按本文档实现；公开接口不泄露后台字段、上传票据、内部路径、对象存储密钥、通知结果和审计字段；当前用户只能管理自己的投稿；后台接口按角色限制；上传会话、文件安全摘要、授权声明、profile 作者快照、审核通知、精选展示、状态流转、幂等、审计、自检摘要、端口配置和前序服务适配都有自动化测试；`.local-docs/tests-material.md` 中全部测试用例都有对应自动化验证；未实现时自动化测试必须先失败；实现后 material 全部测试通过；api-gateway 新增 `/api/v1/materials` 路由测试通过；没有修改前序服务稳定接口；没有把 `.local-docs/` 提交到仓库；没有把玩家资源下载、Cloudreve 管理、服务器文件管理、容器、终端、节点执行、真实文件删除或真实对象存储密钥塞进 `material`。
+`material` 完成时必须满足以下条件：全部接口按本文档实现；公开接口不泄露后台字段、上传票据、内部路径、对象存储密钥、通知结果和审计字段；当前用户只能管理自己的投稿；后台接口按角色限制；上传会话、文件安全摘要、授权声明、profile 作者快照、审核通知、精选展示、状态流转、幂等、审计、自检摘要、端口配置和前序服务适配都有自动化测试；`.local-docs/tests-material.md` 中全部测试用例都有对应自动化验证；未实现时自动化测试必须先失败；实现后 material 在 `portal-core-service:8134` 中全部测试通过；api-gateway `/api/v1/materials` 路由指向 `8134` 并测试通过；旧 `material-service:8126` 只作为对照组测试入口保留；没有修改前序服务稳定接口；没有把 `.local-docs/` 提交到仓库；没有把玩家资源下载、Cloudreve 管理、服务器文件管理、容器、终端、节点执行、真实文件删除或真实对象存储密钥塞进 `material`。
 
 ## 北冥官网 guide API 契约
 
@@ -14625,7 +14648,7 @@ auth 认证上下文失败时，当前用户和后台接口不得使用旧用户
 
 后台接口使用 `/api/v1/guides/admin` 前缀，全部要求登录。后台读取接口要求 `HELPER`、`ADMIN` 或 `OWNER`。创建、修改、提交审核、审核、发布、下架、归档、软删除、版本恢复、分类维护、渠道维护和反馈处理要求 `ADMIN` 或 `OWNER`，其中审核通过、拒绝和要求修改可以由 `HELPER` 执行，便于协管参与知识库审核。审计列表和自检摘要只允许 `ADMIN` 或 `OWNER`。
 
-`guide` 本地端口固定为 `8127`。新增服务后，`api-gateway` 只能以兼容方式新增 `/api/v1/guides` 路由，不能改变已有服务路径、端口、认证方式、响应格式或测试。
+`guide` 当前由 `portal-core-service:8134` 承载。历史原服务端口 `8127` 只作为对照记录，不再作为当前网关默认上游。`api-gateway` 必须以兼容方式保留 `/api/v1/guides` 路由，不能改变已有服务路径、认证方式、响应格式或测试。
 
 ### 前序服务兼容契约
 
@@ -15118,5 +15141,5 @@ resource 和 server-status 引用失败时不得影响指南正文公开读取�
 
 `guide` API 文档按 `docs/contracts-guide.md` 独立存在，并由 `.local-docs/tests-guide.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求和模块验收口径。
 
-`guide` 完成时必须满足以下条件：全部接口按本文档实现；公开接口不泄露后台字段、审计字段、通知结果、资源下载密钥、服务器检测目标和外部渠道管理凭据；当前用户反馈只能写入自己的反馈；后台接口按角色限制；指南分类、文章、版本、规则版本、指令索引、外部入口、反馈、搜索摘要、状态流转、幂等、审计、自检摘要、端口配置和前序服务适配都有自动化测试；`.local-docs/tests-guide.md` 中全部测试用例都有对应自动化验证；未实现时自动化测试必须先失败；实现后 guide 全部测试通过；api-gateway 新增 `/api/v1/guides` 路由测试通过；auth、profile、notification、content、server-status、resource、admin 和 material 回归测试通过；没有修改前序服务稳定接口；没有把 `.local-docs/` 提交到仓库；没有把首页配置、公告文章、真实资源下载、素材投稿、社区讨论、考试判分、白名单审核、实时状态采集、服务器文件管理、容器、终端、节点执行、备份恢复或外部聊天同步塞进 `guide`。
+`guide` 完成时必须满足以下条件：全部接口按本文档实现；公开接口不泄露后台字段、审计字段、通知结果、资源下载密钥、服务器检测目标和外部渠道管理凭据；当前用户反馈只能写入自己的反馈；后台接口按角色限制；指南分类、文章、版本、规则版本、指令索引、外部入口、反馈、搜索摘要、状态流转、幂等、审计、自检摘要、端口配置和前序服务适配都有自动化测试；`.local-docs/tests-guide.md` 中全部测试用例都有对应自动化验证；未实现时自动化测试必须先失败；实现后 guide 在 `portal-core-service:8134` 中全部测试通过；api-gateway `/api/v1/guides` 路由指向 `8134` 并测试通过；旧 `guide-service:8127` 只作为对照组测试入口保留；auth、profile、notification、content、server-status、resource、admin 和 material 回归测试通过；没有修改前序服务稳定接口；没有把 `.local-docs/` 提交到仓库；没有把首页配置、公告文章、真实资源下载、素材投稿、社区讨论、考试判分、白名单审核、实时状态采集、服务器文件管理、容器、终端、节点执行、备份恢复或外部聊天同步塞进 `guide`。
 

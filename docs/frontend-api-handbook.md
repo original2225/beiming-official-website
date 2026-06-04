@@ -6,7 +6,7 @@
 
 这份文档是前端开发入口文档。开发页面、封装 API client、做权限路由、做错误态和降级态时，先看这里。字段明细、状态流转、幂等、审计和模块验收仍以 `docs/api-reference.md` 与各模块 `docs/contracts-<module>.md` 为准。
 
-本手册按各模块 `接口总览` 抽取 756 条前端可查接口条目。网关业务转发 `GET/POST/PUT/PATCH/DELETE/OPTIONS /api/v1/{module}/**` 是通配规则，单独写在网关说明里，不重复进普通接口表。
+本手册按各模块 `接口总览` 抽取前端可查接口条目。网关业务转发 `GET/POST/PUT/PATCH/DELETE/OPTIONS /api/v1/{module}/**` 是通配规则，单独写在网关说明里，不重复进普通接口表。
 
 ## 请求入口
 
@@ -124,8 +124,8 @@
 | `cross-platform-notification` | 8123 | 跨平台通知渠道、模板、投递任务、回执和后台演练。 | `docs/contracts-cross-platform-notification.md` |
 | `ops-image-market` | 8133 | 运维镜像、仓库、版本、拉取任务、漏洞摘要和镜像后台管理，由 `ops-core-service` 承载。 | `docs/contracts-ops-image-market.md` |
 | `api-gateway` | 8125 | 统一入口、路由表、上游健康、请求日志和业务请求转发。 | `docs/contracts-api-gateway.md` |
-| `material` | 8126 | 素材投稿、素材展示、精选、审核、授权、文件摘要和素材后台管理。 | `docs/contracts-material.md` |
-| `guide` | 8127 | 指南、规则、指令、外部交流入口、反馈和指南后台维护。 | `docs/contracts-guide.md` |
+| `material` | 8134 | 素材投稿、素材展示、精选、审核、授权、文件摘要和素材后台管理，由 `portal-core-service` 承载。 | `docs/contracts-material.md` |
+| `guide` | 8134 | 指南、规则、指令、外部交流入口、反馈和指南后台维护，由 `portal-core-service` 承载。 | `docs/contracts-guide.md` |
 
 ## 完整接口清单
 
@@ -1044,7 +1044,7 @@
 
 用途：素材投稿、素材展示、精选、审核、授权、文件摘要和素材后台管理。
 
-端口：`8126`。来源：`docs/contracts-material.md`。详情合并稿：`docs/api-reference.md`。
+端口：`8134`，由 `portal-core-service` 承载。来源：`docs/contracts-material.md`。详情合并稿：`docs/api-reference.md`。
 
 | 接口 | 方法 | 路径 | 认证 | 权限 | 风险 |
 | --- | --- | --- | --- | --- | --- |
@@ -1086,7 +1086,7 @@
 
 用途：指南、规则、指令、外部交流入口、反馈和指南后台维护。
 
-端口：`8127`。来源：`docs/contracts-guide.md`。详情合并稿：`docs/api-reference.md`。
+端口：`8134`，由 `portal-core-service` 承载。来源：`docs/contracts-guide.md`。详情合并稿：`docs/api-reference.md`。
 
 | 接口 | 方法 | 路径 | 认证 | 权限 | 风险 |
 | --- | --- | --- | --- | --- | --- |

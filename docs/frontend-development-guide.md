@@ -55,8 +55,9 @@ Zustand 更适合本项目第一版，因为登录态、当前用户、权限、
 | cross-platform-notification | 8123 | 跨平台通知渠道、模板、投递任务 |
 | ops-image-market | 8133 | 运维镜像、仓库、版本、拉取任务，由 `ops-core-service` 承载 |
 | api-gateway | 8125 | 统一入口、路由表、上游健康、请求日志 |
-| material | 8126 | 素材投稿、素材展示、精选、审核、授权 |
-| guide | 8127 | 指南、规则、指令、外部交流入口、反馈 |
+| portal-core | 8134 | 玩家门户内容扩展运行入口，承载 guide 和 material |
+| material | 8134 | 素材投稿、素材展示、精选、审核、授权，由 `portal-core-service` 承载 |
+| guide | 8134 | 指南、规则、指令、外部交流入口、反馈，由 `portal-core-service` 承载 |
 
 ## 前端功能范围
 

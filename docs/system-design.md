@@ -46,6 +46,7 @@ API 网关或后端入口
   |-- activity        活动、报名、结果
   |-- calendar        日程、维护、工程节点
   |-- changelog       版本更新与维护记录
+  |-- portal-core     玩家门户内容扩展合并运行单元，承载 guide 和 material
   |-- online-map      在线地图接入控制面和公开展示快照
   |-- admin           后台聚合、配置、审计
   |-- ops-core        运维控制面合并运行单元，承载 ops-control、cloudreve-sync、backup-recovery、alerting、plugin-integration 和 ops-image-market
@@ -95,6 +96,8 @@ API 网关或后端入口
 `changelog` 负责服务器版本、插件变更、规则调整、资源包更新、地图更新和维护记录。
 
 `online-map` 负责在线地图接入控制面和公开展示快照。它管理地图 provider、公开地图入口、世界列表、图层、marker、区域、嵌入配置、健康快照和审计摘要，不负责真实渲染、真实瓦片代理或节点命令执行。
+
+`portal-core` 是第五批运行合并单元，承载 `guide` 和 `material` 的现有业务路径。它只收敛运行入口，不改变两个模块的数据归属、正式契约、路径前缀、权限、状态机、错误码、审计对象或失败降级规则。`online-map`、`cross-platform-notification`、`node-daemon`、`api-gateway` 和 `ops-core` 继续保持独立。
 
 `admin` 负责后台聚合入口、审核待办、运营配置、数据看板和操作日志。它不直接吞掉业务模块职责。
 
@@ -229,13 +232,13 @@ Cloudreve 第一阶段可以作为外部分享链接存在。后续接入 API �
 
 ## 部署原则
 
-官网前端、后端业务服务、数据库、缓存、Cloudreve、Minecraft 服务器和节点守护进程应分开部署。开发阶段可以先用较少进程模拟模块边界，但接口、权限和数据归属不能混乱。当前第四批运维控制面已收敛到 `ops-core-service:8133`，但 `api-gateway-service:8125` 和 `node-daemon-service:8117` 仍保持独立运行边界。
+官网前端、后端业务服务、数据库、缓存、Cloudreve、Minecraft 服务器和节点守护进程应分开部署。开发阶段可以先用较少进程模拟模块边界，但接口、权限和数据归属不能混乱。当前第四批运维控制面已收敛到 `ops-core-service:8133`，第五批玩家门户内容扩展已收敛到 `portal-core-service:8134`，但 `api-gateway-service:8125` 和 `node-daemon-service:8117` 仍保持独立运行边界。
 
 节点守护进程部署在被管理服务器上。它只开放必要管理端口，优先由控制面主动连接或通过受控通道通信，不暴露无鉴权的系统操作接口。
 
 后续如果采用微服务，网关负责路由、跨域、基础鉴权、限流和请求日志。业务服务负责自己的业务规则。网关不直接访问数据库。
 
-本地开发端口必须固定，避免 IDEA、命令行、前端代理和后续网关联调互相抢占默认端口。当前已合并运行单元中，`auth`、`profile`、`notification`、`content`、`server-status`、`resource` 和 `admin` 由 `business-core-service` 承载，端口固定为 `8130`；`onboarding`、`exam`、`whitelist` 和 `attendance` 由 `admission-core-service` 承载，端口固定为 `8131`；`community`、`activity`、`calendar` 和 `changelog` 由 `engagement-core-service` 承载，端口固定为 `8132`；`ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration` 和 `ops-image-market` 由 `ops-core-service` 承载，端口固定为 `8133`。历史端口 `8101` 到 `8116`、`8118` 到 `8120`、`8122` 和 `8124` 只保留为模块原端口记录，不作为当前网关上游。`node-daemon` 继续使用 `8117`，`online-map` 继续使用 `8121`，`cross-platform-notification` 继续使用 `8123`，`material` 继续使用 `8126`，`guide` 继续使用 `8127`。新增或调整端口时，必须同步更新正式文档和对应自动化测试。
+本地开发端口必须固定，避免 IDEA、命令行、前端代理和后续网关联调互相抢占默认端口。当前已合并运行单元中，`auth`、`profile`、`notification`、`content`、`server-status`、`resource` 和 `admin` 由 `business-core-service` 承载，端口固定为 `8130`；`onboarding`、`exam`、`whitelist` 和 `attendance` 由 `admission-core-service` 承载，端口固定为 `8131`；`community`、`activity`、`calendar` 和 `changelog` 由 `engagement-core-service` 承载，端口固定为 `8132`；`ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration` 和 `ops-image-market` 由 `ops-core-service` 承载，端口固定为 `8133`；`guide` 和 `material` 由 `portal-core-service` 承载，端口固定为 `8134`。历史端口 `8101` 到 `8116`、`8118` 到 `8120`、`8122`、`8124`、`8126` 和 `8127` 只保留为模块原端口记录，不作为当前网关上游。`node-daemon` 继续使用 `8117`，`online-map` 继续使用 `8121`，`cross-platform-notification` 继续使用 `8123`。新增或调整端口时，必须同步更新正式文档和对应自动化测试。
 
 ## 技术选型原则
 
