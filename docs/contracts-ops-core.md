@@ -42,7 +42,7 @@
 | `alerting` | `backend/alerting-service` | 8120 | `backend/ops-core-service` | 8133 | 24 | `docs/contracts-alerting.md` | 已退役，`legacyTestCommand=null` | `mvn -q -f backend/ops-core-service/pom.xml test` |
 | `plugin-integration` | `backend/plugin-integration-service` | 8122 | `backend/ops-core-service` | 8133 | 38 | `docs/contracts-plugin-integration.md` | 已退役，`legacyTestCommand=null` | `mvn -q -f backend/ops-core-service/pom.xml test` |
 | `ops-image-market` | `backend/ops-image-market-service` | 8124 | `backend/ops-core-service` | 8133 | 49 | `docs/contracts-ops-image-market.md` | 已退役，`legacyTestCommand=null` | `mvn -q -f backend/ops-core-service/pom.xml test` |
-| `cross-platform-notification` | `backend/cross-platform-notification-service` | 8123 | `backend/ops-core-service` | 8133 | 36 | `docs/contracts-cross-platform-notification.md` | 第六期退役，`legacyTestCommand=null` | `mvn -q -f backend/ops-core-service/pom.xml test` |
+| `cross-platform-notification` | `backend/cross-platform-notification-service` | 8123 | `backend/ops-core-service` | 8133 | 36 | `docs/contracts-cross-platform-notification.md` | 已退役，`legacyTestCommand=null` | `mvn -q -f backend/ops-core-service/pom.xml test` |
 
 七个继承模块合计 219 个业务 API 路由。`ops-core` 自有接口为 4 个。`ops-core-service` 当前进程应注册 223 个 `/api/v1/**` 方法路由。
 

@@ -14,7 +14,7 @@
 
 `portal-core` 不新增三个业务模块的业务语义，不把指南文章、外部交流入口、素材投稿、上传会话、文件安全摘要、地图 provider、世界、图层、marker、区域、嵌入配置、状态机、错误码、审计对象或主数据揉成一个大模块，不直接读取前序服务数据库，不绕过正式 API 适配前序服务，也不执行真实对象存储、Cloudreve、服务器文件、节点、地图渲染、地图瓦片代理、真实世界目录读取或外部通知发送能力。
 
-`api-gateway-service` 仍保持独立。`cross-platform-notification-service`、`node-daemon-service` 和 `ops-core-service` 仍保持独立。旧 `backend/online-map-service` Maven 入口已退役且不得恢复，不作为当前网关上游。`portal-core` 可以展示真实能力未接入的缺口，也可以通过显式 smoke 入口验证网关到 `guide`、`material` 和 `online-map` 原路径的真实 HTTP 可达性，但不能把内存、stub、fake、静态服务发现或单次 smoke 成功伪造成完整生产完成。
+`api-gateway-service` 仍保持独立。`node-daemon-service` 和 `ops-core-service` 仍保持独立。`cross-platform-notification` 已由 `ops-core-service:8133` 承载，不再保留独立 Maven 运行入口，也不并入 `portal-core`。旧 `backend/online-map-service` 和旧 `backend/cross-platform-notification-service` Maven 入口已退役且不得恢复，不作为当前网关上游。`portal-core` 可以展示真实能力未接入的缺口，也可以通过显式 smoke 入口验证网关到 `guide`、`material` 和 `online-map` 原路径的真实 HTTP 可达性，但不能把内存、stub、fake、静态服务发现或单次 smoke 成功伪造成完整生产完成。
 
 ## 基础路径、端口和认证
 
