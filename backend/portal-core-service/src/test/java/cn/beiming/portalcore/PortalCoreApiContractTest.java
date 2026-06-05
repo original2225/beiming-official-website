@@ -244,7 +244,7 @@ class PortalCoreApiContractTest {
                 .andExpect(jsonPath("$.data.items.length()").value(3))
                 .andExpect(jsonPath("$.data.items[?(@.moduleName == 'guide' && @.legacyServiceDirectory == 'backend/guide-service' && @.legacyTestCommand == 'RETIRED_NO_MAVEN_ENTRY' && @.currentServiceDirectory == 'backend/portal-core-service' && @.legacyPort == 8127 && @.currentPort == 8134 && @.pathPrefix == '/api/v1/guides' && @.routeDriftStatus == 'NO_DRIFT')]").exists())
                 .andExpect(jsonPath("$.data.items[?(@.moduleName == 'material' && @.legacyServiceDirectory == 'backend/material-service' && @.legacyTestCommand == 'RETIRED_NO_MAVEN_ENTRY' && @.currentServiceDirectory == 'backend/portal-core-service' && @.legacyPort == 8126 && @.currentPort == 8134 && @.pathPrefix == '/api/v1/materials' && @.routeDriftStatus == 'NO_DRIFT')]").exists())
-                .andExpect(jsonPath("$.data.items[?(@.moduleName == 'online-map' && @.legacyServiceDirectory == 'backend/online-map-service' && @.legacyTestCommand == 'LEGACY_RETAINED_UNTIL_USER_CONFIRMS' && @.currentServiceDirectory == 'backend/portal-core-service' && @.legacyPort == 8121 && @.currentPort == 8134 && @.pathPrefix == '/api/v1/online-map' && @.routeDriftStatus == 'NO_DRIFT')]").exists())
+                .andExpect(jsonPath("$.data.items[?(@.moduleName == 'online-map' && @.legacyServiceDirectory == 'backend/online-map-service' && @.legacyTestCommand == 'RETIRED_NO_MAVEN_ENTRY' && @.currentServiceDirectory == 'backend/portal-core-service' && @.legacyPort == 8121 && @.currentPort == 8134 && @.pathPrefix == '/api/v1/online-map' && @.routeDriftStatus == 'NO_DRIFT')]").exists())
                 .andExpect(jsonPath("$.data.items[?(@.pathPrefix == '/api/v1/portal-core/guides')]").doesNotExist())
                 .andExpect(jsonPath("$.data.items[?(@.pathPrefix == '/api/v1/portal-core/materials')]").doesNotExist())
                 .andExpect(jsonPath("$.data.items[?(@.pathPrefix == '/api/v1/portal-core/online-map')]").doesNotExist());
@@ -467,7 +467,8 @@ class PortalCoreApiContractTest {
                 "calendar-service",
                 "changelog-service",
                 "guide-service",
-                "material-service"
+                "material-service",
+                "online-map-service"
         )).allSatisfy(serviceDirectory ->
                 assertThat(retiredServicePomCandidates(serviceDirectory))
                         .allSatisfy(path -> assertThat(Files.exists(path)).isFalse()));

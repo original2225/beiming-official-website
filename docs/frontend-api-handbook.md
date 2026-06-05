@@ -833,7 +833,7 @@
 
 用途：在线地图 provider、世界、图层、marker、区域、公开入口和后台维护。
 
-端口：`8134`，由 `portal-core-service` 承载。历史原服务端口 `8121` 只作为迁移来源记录。来源：`docs/contracts-online-map.md`。详情合并稿：`docs/api-reference.md`。
+端口：`8134`，由 `portal-core-service` 承载。历史原服务端口 `8121` 只作为原端口记录，旧入口已退役。来源：`docs/contracts-online-map.md`。详情合并稿：`docs/api-reference.md`。
 
 | 接口 | 方法 | 路径 | 认证 | 权限 | 风险 |
 | --- | --- | --- | --- | --- | --- |

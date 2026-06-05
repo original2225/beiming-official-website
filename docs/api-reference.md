@@ -12262,7 +12262,7 @@ provider 探测失败时不清空旧公开入口。公开接口可以返回最�
 
 `online-map` API 文档必须按 `docs/contracts-online-map.md` 独立存在，并由 `.local-docs/tests-online-map.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、能力点不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求、敏感字段脱敏、测试控制头默认关闭和模块验收口径。
 
-`online-map` 完成时必须满足以下条件：当前运行入口为 `portal-core-service:8134`，历史 `online-map-service:8121` 在用户明确确认清理前只作为迁移来源和历史入口保留；健康检查公开且不泄露敏感信息；公开接口只返回公开可见、已启用、未归档且脱敏的数据；后台接口按角色和能力点限制；provider、world、layer、marker、region、embed、健康快照、审计、幂等、状态流转、URL 安全、坐标边界、依赖降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；自动化测试必须先红灯；实现后 `mvn -q -f backend/portal-core-service/pom.xml test` 通过并覆盖 `online-map` 全部 34 个 API；当前后端运行入口回归通过；边界扫描无违规命中；不修改前序服务稳定接口；不直接调用 `node-daemon`；不读取真实世界目录；不代理真实瓦片；不执行真实地图插件命令；不把地图渲染、资源下载、节点文件管理、终端、备份恢复或告警规则塞进 `online-map`。
+`online-map` 完成时必须满足以下条件：当前运行入口为 `portal-core-service:8134`，历史 `online-map-service:8121` Maven 入口已退役且不得恢复；健康检查公开且不泄露敏感信息；公开接口只返回公开可见、已启用、未归档且脱敏的数据；后台接口按角色和能力点限制；provider、world、layer、marker、region、embed、健康快照、审计、幂等、状态流转、URL 安全、坐标边界、依赖降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；自动化测试必须先红灯；实现后 `mvn -q -f backend/portal-core-service/pom.xml test` 通过并覆盖 `online-map` 全部 34 个 API；当前后端运行入口回归通过；边界扫描无违规命中；不修改前序服务稳定接口；不直接调用 `node-daemon`；不读取真实世界目录；不代理真实瓦片；不执行真实地图插件命令；不把地图渲染、资源下载、节点文件管理、终端、备份恢复或告警规则塞进 `online-map`。
 
 ## 北冥官网 plugin-integration API 契约
 
@@ -14137,7 +14137,7 @@ P0 `api-gateway` 是本地契约实现，必须在自检摘要中明确以下生
 
 本文档列出的每个网关自有接口都有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、分页排序、状态刷新、失败降级、日志脱敏和验收口径。业务转发测试必须覆盖 26 个已接入微服务的路径前缀，确认路由表端口准确、请求编号透传、请求编号非法拒绝、认证头透传、可信身份头剥离、`auth` 会话校验成功后的可信身份注入、`auth` 校验失败后的不注入降级、查询参数透传、JSON body 透传、请求体大小限制、响应头白名单、上游 2xx 透传、上游 4xx 透传、上游 5xx 透传、未知路径、非法方法、CORS 预检、上游不可用、上游超时和敏感字段不落日志。
 
-开发完成后必须执行 `mvn -f backend/api-gateway-service/pom.xml test`、`mvn -f backend/business-core-service/pom.xml test`、`mvn -f backend/admission-core-service/pom.xml test`、`mvn -f backend/engagement-core-service/pom.xml test`、`mvn -f backend/ops-core-service/pom.xml test`、`mvn -f backend/portal-core-service/pom.xml test` 和 `mvn -f backend/node-daemon-service/pom.xml test`。第一批到第五批旧服务清理后，不得为了网关回归恢复对应旧服务目录、旧 Maven 入口、旧启动类或旧测试命令。第四批和第五批业务路径必须继续由 `ops-core` 和 `portal-core` 当前入口覆盖测试。旧 `backend/online-map-service` 在用户明确确认清理前不退役。测试过程必须写入 `.local-docs/tests-api-gateway.md`。
+开发完成后必须执行 `mvn -f backend/api-gateway-service/pom.xml test`、`mvn -f backend/business-core-service/pom.xml test`、`mvn -f backend/admission-core-service/pom.xml test`、`mvn -f backend/engagement-core-service/pom.xml test`、`mvn -f backend/ops-core-service/pom.xml test`、`mvn -f backend/portal-core-service/pom.xml test` 和 `mvn -f backend/node-daemon-service/pom.xml test`。第一批到第五批旧服务清理后，不得为了网关回归恢复对应旧服务目录、旧 Maven 入口、旧启动类或旧测试命令。第四批和第五批业务路径必须继续由 `ops-core` 和 `portal-core` 当前入口覆盖测试。旧 `backend/online-map-service` 已退役且不得恢复。测试过程必须写入 `.local-docs/tests-api-gateway.md`。
 
 ## 北冥官网 portal-core API 契约
 
@@ -14157,9 +14157,9 @@ P0 `api-gateway` 是本地契约实现，必须在自检摘要中明确以下生
 | 生产就绪诊断 | GET | `/api/v1/portal-core/admin/readiness` | 是 | `ADMIN` 或 `OWNER` | LOW |
 | 执行 HTTP smoke | POST | `/api/v1/portal-core/admin/http-smoke/run` | 是 | `ADMIN` 或 `OWNER` | LOW |
 
-网关切换后，`material`、`guide` 和 `online-map` 的上游端口均为 `8134`，历史端口 `8126`、`8127` 和 `8121` 只作记录。旧 `backend/online-map-service` 在用户明确确认清理前只作为迁移来源和历史入口保留。`cross-platform-notification`、`node-daemon`、`api-gateway` 和 `ops-core` 继续保持独立，不并入 `portal-core`。
+网关切换后，`material`、`guide` 和 `online-map` 的上游端口均为 `8134`，历史端口 `8126`、`8127` 和 `8121` 只作记录。旧 `backend/online-map-service` 已退役且不得恢复。`cross-platform-notification`、`node-daemon`、`api-gateway` 和 `ops-core` 继续保持独立，不并入 `portal-core`。
 
-验收时必须确认 `portal-core-service:8134` 单进程承载三个模块全部既有 API 路径，三个模块原契约仍有效，`portal-core` 自有五个接口全覆盖，`api-gateway-service` 已按契约切换并通过测试，旧 `guide-service` 和 `material-service` Maven 入口已退役且不得恢复，旧 `backend/online-map-service` 在用户明确确认清理前保留，生产 readiness 明确暴露真实持久化、真实对象存储、真实扫描、真实搜索、真实地图 provider HTTP、真实 marker 同步、真实瓦片托管、真实外部通知、静态服务发现和 HTTP smoke 状态等剩余缺口。
+验收时必须确认 `portal-core-service:8134` 单进程承载三个模块全部既有 API 路径，三个模块原契约仍有效，`portal-core` 自有五个接口全覆盖，`api-gateway-service` 已按契约切换并通过测试，旧 `guide-service` 和 `material-service` Maven 入口已退役且不得恢复，旧 `backend/online-map-service` 已退役且不得恢复，生产 readiness 明确暴露真实持久化、真实对象存储、真实扫描、真实搜索、真实地图 provider HTTP、真实 marker 同步、真实瓦片托管、真实外部通知、静态服务发现和 HTTP smoke 状态等剩余缺口。
 
 ## 北冥官网 material API 契约
 

@@ -220,7 +220,7 @@ class PortalCoreRegistry {
                     "docs/contracts-material.md", ".local-docs/tests-material.md", "RETIRED_NO_MAVEN_ENTRY",
                     List.of("REAL_PERSISTENCE_NOT_CONNECTED", "REAL_OBJECT_STORAGE_NOT_CONNECTED", "REAL_FILE_SECURITY_SCANNER_NOT_CONNECTED")),
             new PortalCoreModuleRegistration("ONLINE_MAP", "online-map", "/api/v1/online-map", "backend/online-map-service", 8121, 34,
-                    "docs/contracts-online-map.md", ".local-docs/tests-online-map.md", "LEGACY_RETAINED_UNTIL_USER_CONFIRMS",
+                    "docs/contracts-online-map.md", ".local-docs/tests-online-map.md", "RETIRED_NO_MAVEN_ENTRY",
                     List.of("REAL_PERSISTENCE_NOT_CONNECTED", "REAL_MAP_PROVIDER_HTTP_NOT_CONNECTED", "REAL_MARKER_SYNC_NOT_CONNECTED", "REAL_TILE_HOSTING_NOT_CONNECTED"))
     );
 

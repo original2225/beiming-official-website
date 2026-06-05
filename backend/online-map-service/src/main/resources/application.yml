@@ -1,7 +1,0 @@
-server:
-  port: 8121
-
-online-map:
-  service: online-map
-  test-controls:
-    enabled: false
