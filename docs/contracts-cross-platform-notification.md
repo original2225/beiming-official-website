@@ -1,10 +1,10 @@
 # 北冥官网 cross-platform-notification API 契约
 
-版本：0.2
+版本：0.3
 
 ## 文档定位
 
-本文档是 `cross-platform-notification` 微服务的正式 API 契约。`cross-platform-notification` 负责跨平台外部通知控制面，包括外部渠道 provider 摘要、渠道能力、模板映射、路由策略、投递请求、投递尝试、receiver 摘要、重试摘要、失败降级、幂等记录、审计日志和自检摘要。
+本文档是 `cross-platform-notification` 模块的正式 API 契约。第六期运行合并后，该模块由 `ops-core-service:8133` 承载，但仍保持独立模块契约身份。`cross-platform-notification` 负责跨平台外部通知控制面，包括外部渠道 provider 摘要、渠道能力、模板映射、路由策略、投递请求、投递尝试、receiver 摘要、重试摘要、失败降级、幂等记录、审计日志和自检摘要。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、运维能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `cross-platform-notification` 的职责边界、数据归属、前序服务兼容、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
 
@@ -43,7 +43,7 @@
 
 ## 基础路径、端口和认证
 
-所有接口默认使用 `/api/v1/cross-platform-notification` 前缀。第一版本地端口固定为 `8123`，自检摘要必须返回该端口。
+所有接口默认使用 `/api/v1/cross-platform-notification` 前缀。第六期运行合并后当前运行入口为 `ops-core-service:8133`，自检摘要必须返回 `port=8133` 和 `legacyPort=8123`。历史独立端口 `8123` 只作为追溯字段，不再作为当前网关上游、当前 Maven 测试入口或独立部署入口。
 
 健康检查 `GET /api/v1/cross-platform-notification/health` 不要求认证，只能返回 `service`、`version`、`status` 和 `requestId`，不得返回 provider 数量、receiver、endpoint、外部平台错误详情、依赖明细或任何敏感字段。
 
@@ -55,7 +55,7 @@
 
 ## 本地测试控制头
 
-`cross-platform-notification` 允许在本地自动化测试中使用 `X-Test-Auth-Mode`、`X-Test-Notification-Mode`、`X-Test-Alerting-Mode`、`X-Test-Plugin-Integration-Mode`、`X-Test-Source-Mode`、`X-Test-Provider-Mode`、`X-Test-Fail-Audit`、`X-Test-Fail-Store`、`X-Test-Fail-Delivery` 和 `X-Test-Now` 模拟认证失败、依赖不可用、依赖超时、schema 不兼容、provider 降级、模拟投递失败、审计失败、状态写入失败、投递记录写入失败和时间边界。
+`cross-platform-notification` 允许在本地自动化测试中使用 `X-Test-Auth-Mode`、`X-Test-Notification-Mode`、`X-Test-Alerting-Mode`、`X-Test-Plugin-Integration-Mode`、`X-Test-Source-Mode`、`X-Test-Provider-Mode`、`X-Test-Fail-Audit`、`X-Test-Fail-Store`、`X-Test-Fail-Delivery` 和 `X-Test-Now` 模拟认证失败、依赖不可用、依赖超时、schema 不兼容、provider 降级、模拟投递失败、审计失败、状态写入失败、投递记录写入失败和时间边界。第六期合并后，该开关由 `ops-core.test-controls.enabled` 统一控制，并通过 `cross-platform-notification.test-controls.enabled=${ops-core.test-controls.enabled:false}` 继承。
 
 生产和默认运行环境必须关闭测试控制头。关闭后这些请求头必须被忽略，不能触发认证失败、依赖失败、provider 失败、审计失败、存储失败、投递失败或时间模拟。自检摘要必须返回 `testControlsEnabled`，并在测试控制关闭时把 `TEST_CONTROLS_DISABLED_OUTSIDE_TEST` 纳入生产化硬化项。
 
@@ -334,7 +334,7 @@
 
 `GET /api/v1/cross-platform-notification/health` 成功返回 HTTP `200`，`data` 至少包含 `service=cross-platform-notification`、`status`、`version` 和 `requestId`。进程存活但依赖不可用时可以返回 `status=DEGRADED`，但不得返回 provider、receiver、外部 endpoint、依赖详细错误、投递数量或敏感字段。
 
-`GET /api/v1/cross-platform-notification/admin/ops/summary` 成功返回 `CrossPlatformNotificationOpsSummary`。第一版必须返回 `port=8123`、`storageMode=IN_MEMORY`、`providerAdapterMode=SIMULATION_ONLY`、`notificationAdapterMode=TEST_STUB`、`testControlsEnabled` 和生产化缺口。读取失败返回 `55800`，不得伪造健康。
+`GET /api/v1/cross-platform-notification/admin/ops/summary` 成功返回 `CrossPlatformNotificationOpsSummary`。第六期合并后必须返回 `port=8133`、`legacyPort=8123`、`storageMode=IN_MEMORY`、`providerAdapterMode=SIMULATION_ONLY`、`notificationAdapterMode=TEST_STUB`、`testControlsEnabled` 和生产化缺口。读取失败返回 `55800`，不得伪造健康。
 
 ## Provider 接口
 
@@ -452,4 +452,4 @@ receiver 摘要必须按类型脱敏。邮箱最多显示域名和首尾字符�
 
 `cross-platform-notification` API 文档必须按 `docs/contracts-cross-platform-notification.md` 独立存在，并由 `.local-docs/tests-cross-platform-notification.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、能力点不足、高风险确认缺失、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求、敏感字段脱敏、测试控制头默认关闭和模块验收口径。
 
-`cross-platform-notification` 完成时必须满足以下条件：端口固定为 `8123`；健康检查公开且不泄露敏感信息；后台接口按角色和能力点限制；provider、渠道能力、模板映射、路由策略、投递请求、投递尝试、receiver 摘要、审计、幂等、状态流转、依赖降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；自动化测试必须先红灯；实现后本服务全量测试通过；前序 22 个稳定服务回归通过；边界扫描无违规命中；不修改前序服务稳定接口；不直接读取前序服务数据库；不导入前序服务 Java package；不调用真实 `node-daemon`；不执行真实外部通知发送；不保存真实外部 token、完整 webhook、SMTP 密码、短信 token、机器人 token、设备 token、RCON 密码或完整请求头；不把站内通知主数据、告警规则、插件事件、社区工单、活动、日历、白名单、考勤、资源下载、运维任务、节点文件管理或终端能力塞进本服务。
+`cross-platform-notification` 完成时必须满足以下条件：当前运行入口为 `ops-core-service:8133`，历史端口 `8123` 只作为 `legacyPort` 返回；健康检查公开且不泄露敏感信息；后台接口按角色和能力点限制；provider、渠道能力、模板映射、路由策略、投递请求、投递尝试、receiver 摘要、审计、幂等、状态流转、依赖降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；自动化测试必须先红灯；实现后在 `ops-core-service` 中全量测试通过；当前后端运行入口回归通过；边界扫描无违规命中；不修改前序服务稳定接口；不直接读取前序服务数据库；不导入前序服务 Java package；不调用真实 `node-daemon`；不执行真实外部通知发送；不保存真实外部 token、完整 webhook、SMTP 密码、短信 token、机器人 token、设备 token、RCON 密码或完整请求头；不把站内通知主数据、告警规则、插件事件、社区工单、活动、日历、白名单、考勤、资源下载、运维任务、节点文件管理或终端能力塞进本服务；不得恢复 `backend/cross-platform-notification-service` 独立 Maven 入口。

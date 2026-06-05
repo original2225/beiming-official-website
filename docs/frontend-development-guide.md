@@ -52,7 +52,7 @@ Zustand 更适合本项目第一版，因为登录态、当前用户、权限、
 | alerting | 8133 | 告警规则、事件、静默、订阅，由 `ops-core-service` 承载 |
 | online-map | 8134 | 在线地图 provider、世界、图层、marker、区域，由 `portal-core-service` 承载 |
 | plugin-integration | 8133 | 插件源、实例、事件、命令、同步任务，由 `ops-core-service` 承载 |
-| cross-platform-notification | 8123 | 跨平台通知渠道、模板、投递任务 |
+| cross-platform-notification | 8133 | 跨平台通知渠道、模板、投递任务，由 `ops-core-service` 承载 |
 | ops-image-market | 8133 | 运维镜像、仓库、版本、拉取任务，由 `ops-core-service` 承载 |
 | api-gateway | 8125 | 统一入口、路由表、上游健康、请求日志 |
 | portal-core | 8134 | 玩家门户体验运行入口，承载 guide、material 和 online-map |

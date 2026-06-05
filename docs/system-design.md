@@ -97,7 +97,7 @@ API 网关或后端入口
 
 `online-map` 负责在线地图接入控制面和公开展示快照。它管理地图 provider、公开地图入口、世界列表、图层、marker、区域、嵌入配置、健康快照和审计摘要，不负责真实渲染、真实瓦片代理或节点命令执行。
 
-`portal-core` 是第五批运行合并单元，承载 `guide`、`material` 和 `online-map` 的现有业务路径。它只收敛运行入口，不改变三个模块的数据归属、正式契约、路径前缀、权限、状态机、错误码、审计对象或失败降级规则。`online-map` 仍只负责地图控制面和公开展示快照，不执行真实地图渲染、真实瓦片代理、真实世界目录读取或节点命令。`cross-platform-notification`、`node-daemon`、`api-gateway` 和 `ops-core` 继续保持独立。
+`portal-core` 是第五批运行合并单元，承载 `guide`、`material` 和 `online-map` 的现有业务路径。它只收敛运行入口，不改变三个模块的数据归属、正式契约、路径前缀、权限、状态机、错误码、审计对象或失败降级规则。`online-map` 仍只负责地图控制面和公开展示快照，不执行真实地图渲染、真实瓦片代理、真实世界目录读取或节点命令。`cross-platform-notification`、`node-daemon`、`api-gateway` 和 `ops-core` 不并入 `portal-core`。
 
 `admin` 负责后台聚合入口、审核待办、运营配置、数据看板和操作日志。它不直接吞掉业务模块职责。
 
@@ -107,7 +107,7 @@ API 网关或后端入口
 
 `backup-recovery` 负责备份域、备份策略、备份任务、备份点索引、备份校验、恢复演练、恢复申请、审批摘要、保留策略、依赖健康摘要和风险审计。它不执行真实数据库导出、真实文件复制、真实恢复写入或节点守护进程调用；真实执行必须通过后续 `ops-control` 审批和 `node-daemon` 授权任务独立闭环。
 
-`ops-core` 是第四批运行合并单元，承载 `ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration` 和 `ops-image-market` 的现有业务路径。它只收敛运行入口，不改变六个模块的数据归属、正式契约、路径前缀、权限、状态机、错误码、审计对象或失败降级规则。
+`ops-core` 是第四批和第六期运行合并单元，承载 `ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`ops-image-market` 和 `cross-platform-notification` 的现有业务路径。它只收敛运行入口，不改变七个模块的数据归属、正式契约、路径前缀、权限、状态机、错误码、审计对象或失败降级规则。`cross-platform-notification` 仍只负责外部渠道控制面和模拟投递，不执行真实外部消息发送、真实回调签名或生产凭据托管。
 
 ## 公共基础契约
 
@@ -238,7 +238,7 @@ Cloudreve 第一阶段可以作为外部分享链接存在。后续接入 API �
 
 后续如果采用微服务，网关负责路由、跨域、基础鉴权、限流和请求日志。业务服务负责自己的业务规则。网关不直接访问数据库。
 
-本地开发端口必须固定，避免 IDEA、命令行、前端代理和后续网关联调互相抢占默认端口。当前已合并运行单元中，`auth`、`profile`、`notification`、`content`、`server-status`、`resource` 和 `admin` 由 `business-core-service` 承载，端口固定为 `8130`；`onboarding`、`exam`、`whitelist` 和 `attendance` 由 `admission-core-service` 承载，端口固定为 `8131`；`community`、`activity`、`calendar` 和 `changelog` 由 `engagement-core-service` 承载，端口固定为 `8132`；`ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration` 和 `ops-image-market` 由 `ops-core-service` 承载，端口固定为 `8133`；`guide`、`material` 和 `online-map` 由 `portal-core-service` 承载，端口固定为 `8134`。历史端口 `8101` 到 `8116`、`8118` 到 `8122`、`8124`、`8126` 和 `8127` 只保留为模块原端口记录，不作为当前网关上游。`node-daemon` 继续使用 `8117`，`cross-platform-notification` 继续使用 `8123`。旧 `backend/online-map-service` 已退役且不得恢复。新增或调整端口时，必须同步更新正式文档和对应自动化测试。
+本地开发端口必须固定，避免 IDEA、命令行、前端代理和后续网关联调互相抢占默认端口。当前已合并运行单元中，`auth`、`profile`、`notification`、`content`、`server-status`、`resource` 和 `admin` 由 `business-core-service` 承载，端口固定为 `8130`；`onboarding`、`exam`、`whitelist` 和 `attendance` 由 `admission-core-service` 承载，端口固定为 `8131`；`community`、`activity`、`calendar` 和 `changelog` 由 `engagement-core-service` 承载，端口固定为 `8132`；`ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`ops-image-market` 和 `cross-platform-notification` 由 `ops-core-service` 承载，端口固定为 `8133`；`guide`、`material` 和 `online-map` 由 `portal-core-service` 承载，端口固定为 `8134`。历史端口 `8101` 到 `8116`、`8118` 到 `8124`、`8126` 和 `8127` 只保留为模块原端口记录，不作为当前网关上游。`node-daemon` 继续使用 `8117`。旧 `backend/online-map-service` 已退役且不得恢复；第六期完成后旧 `backend/cross-platform-notification-service` 不得恢复。新增或调整端口时，必须同步更新正式文档和对应自动化测试。
 
 ## 技术选型原则
 

@@ -121,7 +121,7 @@
 | `alerting` | 8133 | 告警规则、事件、静默、订阅、通知演练和告警后台管理，由 `ops-core-service` 承载。 | `docs/contracts-alerting.md` |
 | `online-map` | 8134 | 在线地图 provider、世界、图层、marker、区域、公开入口和后台维护，由 `portal-core-service` 承载。 | `docs/contracts-online-map.md` |
 | `plugin-integration` | 8133 | 插件源、实例、事件、命令、同步任务和插件联动后台，由 `ops-core-service` 承载。 | `docs/contracts-plugin-integration.md` |
-| `cross-platform-notification` | 8123 | 跨平台通知渠道、模板、投递任务、回执和后台演练。 | `docs/contracts-cross-platform-notification.md` |
+| `cross-platform-notification` | 8133 | 跨平台通知渠道、模板、投递任务、回执和后台演练，由 `ops-core-service` 承载。 | `docs/contracts-cross-platform-notification.md` |
 | `ops-image-market` | 8133 | 运维镜像、仓库、版本、拉取任务、漏洞摘要和镜像后台管理，由 `ops-core-service` 承载。 | `docs/contracts-ops-image-market.md` |
 | `api-gateway` | 8125 | 统一入口、路由表、上游健康、请求日志和业务请求转发。 | `docs/contracts-api-gateway.md` |
 | `material` | 8134 | 素材投稿、素材展示、精选、审核、授权、文件摘要和素材后台管理，由 `portal-core-service` 承载。 | `docs/contracts-material.md` |
@@ -923,7 +923,7 @@
 
 用途：跨平台通知渠道、模板、投递任务、回执和后台演练。
 
-端口：`8123`。来源：`docs/contracts-cross-platform-notification.md`。详情合并稿：`docs/api-reference.md`。
+端口：`8133`。当前运行入口：`ops-core-service`。历史独立端口：`8123`。来源：`docs/contracts-cross-platform-notification.md`。详情合并稿：`docs/api-reference.md`。
 
 | 接口 | 方法 | 路径 | 认证 | 权限 | 风险 |
 | --- | --- | --- | --- | --- | --- |

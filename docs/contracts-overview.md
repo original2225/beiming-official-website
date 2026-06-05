@@ -8,7 +8,7 @@
 
 面向前端开发的一体化 API 全文查阅文档见 `docs/api-reference.md`。该文档由公共契约和全部模块契约合并生成，方便前端统一检索路径、字段和响应格式。
 
-本汇总覆盖当前仓库 `docs/contracts-*.md` 中除 `contracts-common.md` 和本文档之外的 27 个业务或平台模块，以及 `business-core`、`admission-core`、`engagement-core`、`ops-core` 和 `portal-core` 五个运行合并单元。第一批、第二批、第三批、第四批和第五批已完成运行合并并入仓。当前契约表中的 `METHOD path` 记录总数为 773，其中第三批四个业务模块在 `engagement-core-service:8132` 中承载 149 个业务路由，第四批六个后台运维控制面模块在 `ops-core-service:8133` 中承载 183 个业务路由，第五批后三个玩家门户体验模块在 `portal-core-service:8134` 中承载 108 个业务路由，`engagement-core` 自身提供 3 个运行单元自检和诊断路由，`ops-core` 自身提供 4 个运行单元自检和诊断路由，`portal-core` 自身提供 5 个运行单元自检、诊断和 HTTP smoke 路由。
+本汇总覆盖当前仓库 `docs/contracts-*.md` 中除 `contracts-common.md` 和本文档之外的 27 个业务或平台模块，以及 `business-core`、`admission-core`、`engagement-core`、`ops-core` 和 `portal-core` 五个运行合并单元。第一批、第二批、第三批、第四批、第五批和第六期已完成运行合并并入仓。当前契约表中的 `METHOD path` 记录总数为 773，其中第三批四个业务模块在 `engagement-core-service:8132` 中承载 149 个业务路由，第四批六个后台运维控制面模块和第六期跨平台通知控制面在 `ops-core-service:8133` 中承载 219 个业务路由，第五批后三个玩家门户体验模块在 `portal-core-service:8134` 中承载 108 个业务路由，`engagement-core` 自身提供 3 个运行单元自检和诊断路由，`ops-core` 自身提供 4 个运行单元自检和诊断路由，`portal-core` 自身提供 5 个运行单元自检、诊断和 HTTP smoke 路由。
 
 ## 全局接口规则
 
@@ -36,7 +36,7 @@
 | `cloudreve-sync` | `backend/ops-core-service` | 8133 | 16 | `docs/contracts-cloudreve-sync.md` | `.local-docs/tests-ops-core.md` | `mvn -q -f backend/ops-core-service/pom.xml test` |
 | `community` | `backend/engagement-core-service` | 8132 | 64 | `docs/contracts-community.md` | `.local-docs/tests-community.md` | `mvn -q -f backend/engagement-core-service/pom.xml test` |
 | `content` | `backend/business-core-service` | 8130 | 55 | `docs/contracts-content.md` | `.local-docs/tests-content.md` | `mvn -q -f backend/business-core-service/pom.xml test` |
-| `cross-platform-notification` | `backend/cross-platform-notification-service` | 8123 | 36 | `docs/contracts-cross-platform-notification.md` | `.local-docs/tests-cross-platform-notification.md` | `mvn -q -f backend/cross-platform-notification-service/pom.xml test` |
+| `cross-platform-notification` | `backend/ops-core-service` | 8133 | 36 | `docs/contracts-cross-platform-notification.md` | `.local-docs/tests-ops-core.md` | `mvn -q -f backend/ops-core-service/pom.xml test` |
 | `engagement-core` | `backend/engagement-core-service` | 8132 | 3 | `docs/contracts-engagement-core.md` | `.local-docs/tests-engagement-core.md` | `mvn -q -f backend/engagement-core-service/pom.xml test` |
 | `exam` | `backend/admission-core-service` | 8131 | 28 | `docs/contracts-exam.md` | `.local-docs/tests-exam.md` | `mvn -q -f backend/admission-core-service/pom.xml test` |
 | `guide` | `backend/portal-core-service` | 8134 | 41 | `docs/contracts-guide.md` | `.local-docs/tests-guide.md` | `mvn -q -f backend/portal-core-service/pom.xml test` |
@@ -61,7 +61,7 @@
 
 `engagement-core` 的 3 个自有接口只用于运行单元自检、后台装配摘要和生产就绪诊断。它不新增 community、activity、calendar 或 changelog 的业务语义。第三批 149 个业务路由签名和四个模块完整行为契约必须在 `engagement-core-service` 中自动化验证；生产就绪诊断仍必须公开真实持久化、审计持久化、真实跨服务 adapter、真实通知交付和真实 HTTP smoke 缺口。
 
-`ops-core` 的 4 个自有接口只用于运行单元健康检查、运行摘要、模块装配摘要和生产就绪诊断。它不新增 ops-control、cloudreve-sync、backup-recovery、alerting、plugin-integration 或 ops-image-market 的业务语义。第四批 183 个业务路由签名和六个模块完整行为契约必须在 `ops-core-service` 中自动化验证；生产就绪诊断仍必须公开真实持久化、审计持久化、真实跨服务 HTTP、真实节点执行、真实 Cloudreve API、真实 registry、真实 scanner、真实插件事件入口、真实通知投递和真实 HTTP smoke 缺口。
+`ops-core` 的 4 个自有接口只用于运行单元健康检查、运行摘要、模块装配摘要和生产就绪诊断。它不新增 ops-control、cloudreve-sync、backup-recovery、alerting、plugin-integration、ops-image-market 或 cross-platform-notification 的业务语义。第四批和第六期合计 219 个业务路由签名和七个模块完整行为契约必须在 `ops-core-service` 中自动化验证；生产就绪诊断仍必须公开真实持久化、审计持久化、真实跨服务 HTTP、真实节点执行、真实 Cloudreve API、真实 registry、真实 scanner、真实插件事件入口、真实通知投递、真实外部发送、真实回调签名、生产凭据托管、异步队列、持久化事务和真实 HTTP smoke 缺口。
 
 `portal-core` 的 5 个自有接口只用于运行单元健康检查、运行摘要、模块装配摘要、生产就绪诊断和显式 HTTP smoke。它不新增 guide、material 或 online-map 的业务语义。第五批后三个玩家门户体验模块的 108 个业务路由签名和完整行为契约必须在 `portal-core-service` 中自动化验证；生产就绪诊断必须公开真实持久化、真实跨服务 HTTP、真实审计持久化、真实对象存储、真实文件安全扫描、真实全文搜索、真实地图 provider HTTP、真实 marker 同步、真实瓦片托管、真实外部通知投递、静态服务发现和 HTTP smoke 状态。
 
@@ -72,6 +72,7 @@
 | 第三批社区运营 | `backend/engagement-core-service` | 8132 | `community`、`activity`、`calendar`、`changelog` | `8112` 到 `8115` 为历史原端口，旧服务目录已清理且不得恢复 |
 | 第四批运维控制面 | `backend/ops-core-service` | 8133 | `ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`ops-image-market` | `8116`、`8118`、`8119`、`8120`、`8122` 和 `8124` 为历史原端口，旧服务目录已退役且不得恢复 |
 | 第五批玩家门户体验 | `backend/portal-core-service` | 8134 | `guide`、`material`、`online-map` | `8127`、`8126` 和 `8121` 为历史原端口；`guide`、`material` 和 `online-map` 旧服务目录已退役且不得恢复 |
+| 第六期跨平台通知控制面 | `backend/ops-core-service` | 8133 | `cross-platform-notification` | `8123` 为历史原端口，旧服务目录退役后不得恢复 |
 
 ## 依赖顺序和边界
 

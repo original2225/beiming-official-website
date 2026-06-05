@@ -133,7 +133,7 @@
 | `moduleKey` | string | 是 | 模块键。 |
 | `status` | string | 是 | `AdminModuleStatus`。 |
 | `service` | string | 是 | 服务名。 |
-| `port` | integer 或 null | 是 | 当前运行入口端口。当前已闭环模块必须为非空，未来未实现模块为 `null`。第二批 `ONBOARDING`、`EXAM`、`WHITELIST` 和 `ATTENDANCE` 已由 `admission-core-service` 承载，必须返回 `8131`，历史原服务端口只保留在各自业务契约的 `legacyPort` 中。 |
+| `port` | integer 或 null | 是 | 当前运行入口端口。当前已闭环模块必须为非空，未来未实现模块为 `null`。第二批 `ONBOARDING`、`EXAM`、`WHITELIST` 和 `ATTENDANCE` 已由 `admission-core-service` 承载，必须返回 `8131`；第六期后 `CROSS_PLATFORM_NOTIFICATION` 已由 `ops-core-service` 承载，必须返回 `8133`。历史原服务端口只保留在各自业务契约的 `legacyPort` 中。 |
 | `storageMode` | string 或 null | 是 | 例如 `IN_MEMORY`。 |
 | `authMode` | string 或 null | 是 | 认证适配模式。 |
 | `lastCheckedAt` | string | 是 | 最近检查时间。 |
@@ -365,7 +365,7 @@
 
 成功响应 HTTP `200`，`data.items` 为 `AdminModuleEntry[]`。
 
-业务规则：已实现模块必须包含 `AUTH`、`PROFILE`、`NOTIFICATION`、`CONTENT`、`SERVER_STATUS`、`RESOURCE`、`ADMIN`、`ONBOARDING`、`EXAM`、`WHITELIST`、`ATTENDANCE`、`COMMUNITY`、`ACTIVITY`、`CALENDAR`、`CHANGELOG`、`OPS_CONTROL`、`NODE_DAEMON`、`CLOUDREVE_SYNC`、`BACKUP_RECOVERY`、`ALERTING`、`ONLINE_MAP`、`PLUGIN_INTEGRATION`、`CROSS_PLATFORM_NOTIFICATION`、`OPS_IMAGE_MARKET`、`MATERIAL` 和 `GUIDE`。这些模块正常时 `implemented=true` 且 `status=AVAILABLE`，`targetApiBase` 必须指向对应正式 API 前缀。未实现状态只留给未来没有正式契约和服务目录的模块。被 `hiddenModules` 隐藏的模块视为 admin 自有配置禁用，默认不返回；只有 `OWNER` 传 `includeDisabled=true` 时可返回，且状态必须为 `DISABLED`。
+业务规则：已实现模块必须包含 `AUTH`、`PROFILE`、`NOTIFICATION`、`CONTENT`、`SERVER_STATUS`、`RESOURCE`、`ADMIN`、`ONBOARDING`、`EXAM`、`WHITELIST`、`ATTENDANCE`、`COMMUNITY`、`ACTIVITY`、`CALENDAR`、`CHANGELOG`、`OPS_CONTROL`、`NODE_DAEMON`、`CLOUDREVE_SYNC`、`BACKUP_RECOVERY`、`ALERTING`、`ONLINE_MAP`、`PLUGIN_INTEGRATION`、`CROSS_PLATFORM_NOTIFICATION`、`OPS_IMAGE_MARKET`、`MATERIAL` 和 `GUIDE`。这些模块正常时 `implemented=true` 且 `status=AVAILABLE`，`targetApiBase` 必须指向对应正式 API 前缀。`CROSS_PLATFORM_NOTIFICATION` 的前端入口仍为 `/admin/cross-platform-notification`，后台 API 仍为 `/api/v1/cross-platform-notification/admin`，健康端口必须返回当前入口 `8133`，历史端口 `8123` 只留在模块契约或追溯字段中。未实现状态只留给未来没有正式契约和服务目录的模块。被 `hiddenModules` 隐藏的模块视为 admin 自有配置禁用，默认不返回；只有 `OWNER` 传 `includeDisabled=true` 时可返回，且状态必须为 `DISABLED`。
 
 ### 模块详情
 
