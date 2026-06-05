@@ -8,7 +8,7 @@
 
 各模块独立契约仍是后端实现和变更的源文档。任一接口发生变化时，必须先更新对应 `docs/contracts-<module>.md`，再同步更新本文档。
 
-当前合并范围包含 27 个业务或平台模块，另包含五个运行合并单元自检契约。第三批四个业务模块在 `engagement-core-service:8132` 中承载 149 个业务路由，第四批六个后台运维控制面模块在 `ops-core-service:8133` 中承载 183 个业务路由，第五批后三个玩家门户体验模块在 `portal-core-service:8134` 中承载 108 个业务路由。`portal-core` 自身当前提供 5 个运行单元自检、诊断和 HTTP smoke 路由。
+当前合并范围包含 27 个业务或平台模块，另包含五个运行合并单元自检契约。第三批四个业务模块在 `engagement-core-service:8132` 中承载 149 个业务路由，第四批六个后台运维控制面模块和第六期跨平台通知控制面在 `ops-core-service:8133` 中承载 219 个业务路由，第五批后三个玩家门户体验模块在 `portal-core-service:8134` 中承载 108 个业务路由。`ops-core` 自身当前提供 5 个运行单元自检、诊断和 HTTP smoke 路由，`portal-core` 自身当前提供 5 个运行单元自检、诊断和 HTTP smoke 路由。
 
 ## 前端接入要点
 
@@ -11426,7 +11426,7 @@ Cloudreve 不可用时，读取类接口可以返回旧快照并标记 `degraded
 
 来源：`docs/contracts-alerting.md`
 
-版本：0.2
+版本：0.3
 
 ### 文档定位
 
@@ -11459,7 +11459,7 @@ Cloudreve 不可用时，读取类接口可以返回旧快照并标记 `degraded
 
 `alerting` 拥有以下主数据：AlertSource、AlertRule、AlertEvaluation、AlertInstance、AlertSilence、AlertRoute、AlertDelivery、AlertingAuditLog、AlertingOpsSummary 和幂等记录。
 
-`alerting` 可以保存来自 `auth` 的操作者用户 ID、展示名、角色、能力点和状态快照；可以保存来自 `ops-control`、`node-daemon`、`server-status`、`cloudreve-sync` 和 `backup-recovery` 的健康或异常摘要；可以保存来自 `notification` 的投递引用摘要。所有保存内容都只能是安全摘要，不得保存访问 token、节点密钥、Cloudreve 管理凭据、内部绝对路径、完整通知正文、完整请求头或异常堆栈。
+`alerting` 可以保存来自 `auth` 的操作者用户 ID、展示名、角色、能力点和状态快照；可以保存来自 `ops-control`、`node-daemon`、`server-status`、`cloudreve-sync` 和 `backup-recovery` 的健康或异常摘要；可以保存来自 `notification` 的站内投递引用摘要；可以保存来自 `cross-platform-notification` 的外部模拟投递摘要。所有保存内容都只能是安全摘要，不得保存访问 token、节点密钥、Cloudreve 管理凭据、内部绝对路径、完整通知正文、完整请求头、外部渠道凭据或异常堆栈。
 
 ### 基础路径、端口和认证
 
@@ -11473,7 +11473,7 @@ Cloudreve 不可用时，读取类接口可以返回旧快照并标记 `degraded
 
 ### 本地测试控制头
 
-`alerting` 允许在本地自动化测试中使用 `X-Test-Auth-Mode`、`X-Test-Source-Mode`、`X-Test-Notification-Mode`、`X-Test-Fail-Audit`、`X-Test-Fail-Store` 和 `X-Test-Now` 模拟认证失败、来源服务不可用、来源超时、来源坏 schema、通知不可用、通知超时、审计失败、状态写入失败和时间边界。
+`alerting` 允许在本地自动化测试中使用 `X-Test-Auth-Mode`、`X-Test-Source-Mode`、`X-Test-Notification-Mode`、`X-Test-Cross-Platform-Notification-Mode`、`X-Test-Fail-Audit`、`X-Test-Fail-Store` 和 `X-Test-Now` 模拟认证失败、来源服务不可用、来源超时、来源坏 schema、通知不可用、通知超时、跨平台通知不可用、跨平台通知模拟失败、审计失败、状态写入失败和时间边界。
 
 生产和默认运行环境必须关闭测试控制头。关闭后这些请求头必须被忽略，不能触发认证失败、来源失败、通知失败、审计失败、存储失败或时间模拟。自检摘要必须返回 `testControlsEnabled`，并在测试控制关闭时把 `TEST_CONTROLS_DISABLED_OUTSIDE_TEST` 纳入生产化硬化项。
 
@@ -11481,7 +11481,9 @@ Cloudreve 不可用时，读取类接口可以返回旧快照并标记 `degraded
 
 `auth` 是强依赖。当前请求认证上下文至少包含 `userId`、`displayName`、`roles`、`permissions` 和 `status`。用户状态为 `DISABLED`、`BANNED` 或 `DELETED` 时不得访问后台接口。auth 不可用返回 `46920`，auth 超时返回 `46921`，auth 字段或枚举不兼容返回 `46922`。
 
-`notification` 是投递依赖。`alerting` 只生成告警投递请求和投递摘要，不保存 notification 通知正文主数据，不绕过 notification 自建渠道。notification 不可用返回 `46900`，notification 超时返回 `46901`，notification 字段不兼容返回 `46902`。通知失败只影响投递摘要，不得自动关闭告警实例。
+`notification` 是站内通知依赖。`alerting` 只保存站内通知引用摘要，不保存 notification 通知正文主数据，不绕过 notification 自建未读数或模板主数据。notification 不可用返回 `46900`，notification 超时返回 `46901`，notification 字段不兼容返回 `46902`。站内通知失败只影响投递摘要，不得自动关闭告警实例。
+
+`cross-platform-notification` 是外部模拟投递控制面。`alerting` 告警命中并且路由声明需要外部通知时，只能向 CPN 传入安全摘要，包括 `sourceModule=alerting`、`sourceId=<alertId>`、`eventType=alert.firing`、`riskLevel`、`routeId` 或 provider、template、receiver 摘要、`payloadSummary`、`expiresAt`、`reason` 和 `idempotencyKey`。不得传入完整告警正文、完整日志、内部路径、请求头、token 或异常堆栈。CPN 不可用、路由不匹配、模板变量不合法、模拟发送失败或审计失败时，只影响投递摘要，不得自动关闭告警实例，不得把失败伪造成真实发送成功。
 
 `admin` 是后台聚合入口。`alerting` 可以向 admin 暴露模块健康、待处理告警数量、严重级别摘要和审计摘要，不能让 admin 修改告警规则或告警状态。admin 尚未声明 `ALERTING` 入口时，本轮不得修改 admin 稳定接口。
 
@@ -11616,7 +11618,9 @@ Cloudreve 不可用时，读取类接口可以返回旧快照并标记 `degraded
 
 #### AlertDelivery
 
-字段为 `deliveryId`、`alertId`、`routeId`、`notificationRef`、`status`、`attempts`、`lastAttemptAt`、`failureCode`、`failureSummary`、`nextRetryAt` 和 `createdAt`。不得保存真实外部 webhook secret、邮件密码、短信 token 或完整通知正文。
+字段为 `deliveryId`、`alertId`、`routeId`、`notificationRef`、`status`、`deliveryMode`、`externalModule`、`externalDeliveryId`、`externalAttemptStatus`、`realExternalSend`、`attempts`、`lastAttemptAt`、`failureCode`、`failureSummary`、`nextRetryAt` 和 `createdAt`。不得保存真实外部 webhook secret、邮件密码、短信 token 或完整通知正文。
+
+`status` 为兼容字段，CPN 模拟成功时仍返回 `SENT`。同时必须返回 `deliveryMode=SIMULATED_EXTERNAL`、`externalModule=cross-platform-notification`、`externalDeliveryId`、`externalAttemptStatus=SIMULATED_SUCCESS` 和 `realExternalSend=false`。CPN 模拟失败时返回 `status=FAILED` 或 `RETRYING`，`failureCode` 和 `failureSummary` 只能是脱敏摘要，告警实例仍保持 `FIRING`、`ACKNOWLEDGED` 或契约允许状态。
 
 #### AlertingAuditLog
 
@@ -11624,7 +11628,7 @@ Cloudreve 不可用时，读取类接口可以返回旧快照并标记 `degraded
 
 #### AlertingOpsSummary
 
-字段至少包含 `service`、`port`、`storageMode`、`authMode`、`sourceAdapterMode`、`notificationAdapterMode`、`testControlsEnabled`、`sourcesTotal`、`rulesTotal`、`enabledRulesTotal`、`alertsTotal`、`firingAlertsTotal`、`acknowledgedAlertsTotal`、`silencesTotal`、`activeSilencesTotal`、`routesTotal`、`deliveriesTotal`、`failedDeliveriesTotal`、`auditsTotal`、`idempotencyRecordsTotal`、`lastAlertAt`、`lastDeliveryFailureAt`、`degraded`、`degradeReasons` 和 `productionGaps`。
+字段至少包含 `service`、`port`、`storageMode`、`authMode`、`sourceAdapterMode`、`notificationAdapterMode`、`externalDeliveryAdapterMode`、`testControlsEnabled`、`sourcesTotal`、`rulesTotal`、`enabledRulesTotal`、`alertsTotal`、`firingAlertsTotal`、`acknowledgedAlertsTotal`、`silencesTotal`、`activeSilencesTotal`、`routesTotal`、`deliveriesTotal`、`failedDeliveriesTotal`、`auditsTotal`、`idempotencyRecordsTotal`、`lastAlertAt`、`lastDeliveryFailureAt`、`degraded`、`degradeReasons` 和 `productionGaps`。`externalDeliveryAdapterMode` 第一版固定为 `CPN_SIMULATED_EXTERNAL`。
 
 ### 错误码
 
@@ -11691,7 +11695,7 @@ Cloudreve 不可用时，读取类接口可以返回旧快照并标记 `degraded
 
 `GET /api/v1/alerting/health` 成功返回 `service=alerting`、`status`、`version` 和 `requestId`。进程存活但依赖不可用时仍可返回 HTTP `200`，并用 `status=DEGRADED` 标记。该接口不得泄露来源详情、规则数量、告警数量、通知路由、token 或依赖错误细节。
 
-`GET /api/v1/alerting/ops/summary` 成功返回 `AlertingOpsSummary`。合并后必须返回 `port=8133`、`legacyPort=8120`、`storageMode=IN_MEMORY`、`sourceAdapterMode=TEST_STUB`、`notificationAdapterMode=TEST_STUB` 和生产化缺口。读取失败返回 `55500`，不得伪造健康。
+`GET /api/v1/alerting/ops/summary` 成功返回 `AlertingOpsSummary`。合并后必须返回 `port=8133`、`legacyPort=8120`、`storageMode=IN_MEMORY`、`sourceAdapterMode=TEST_STUB`、`notificationAdapterMode=TEST_STUB`、`externalDeliveryAdapterMode=CPN_SIMULATED_EXTERNAL` 和生产化缺口。读取失败返回 `55500`，不得伪造健康。
 
 `GET /api/v1/alerting/sources` 支持 `page`、`pageSize`、`keyword`、`sourceService`、`sourceType`、`healthStatus`、`enabled` 和 `sort`。`sort` 允许 `lastEventAt_desc`、`lastSnapshotAt_desc`、`displayName_asc`。成功响应分页 `items` 为 `AlertSource[]`。
 
@@ -11711,7 +11715,7 @@ Cloudreve 不可用时，读取类接口可以返回旧快照并标记 `degraded
 
 `PATCH /api/v1/alerting/rules/{ruleId}/disable` 请求字段为 `reason` 和 `idempotencyKey`。`ENABLED` 可禁用为 `DISABLED`。重复禁用保持幂等。禁用规则不删除已有告警实例。
 
-`POST /api/v1/alerting/rules/{ruleId}/evaluate` 请求字段为 `sourceSnapshot`、`dryRun`、`reason` 和 `idempotencyKey`。`sourceSnapshot` 只能是测试或服务端适配器提供的安全摘要，不能包含 token、内部路径、完整日志或任何嵌套可信字段。成功返回 `AlertEvaluation`。规则未启用返回 `49910`。来源不可用返回 `46910`，来源超时返回 `46911`，来源 schema 不兼容返回 `46912`。命中时按 `dedupeKeyTemplate` 生成指纹，重复指纹更新已有 `AlertInstance.lastFiredAt`，不新建告警实例。未静默告警必须先按规则 `routeId` 找到启用路由，再按 route matcher 匹配来源、级别、分组和标签；匹配成功生成 `SENT` 投递摘要，匹配失败保留 `PENDING` 摘要并记录不投递原因。
+`POST /api/v1/alerting/rules/{ruleId}/evaluate` 请求字段为 `sourceSnapshot`、`dryRun`、`reason` 和 `idempotencyKey`。`sourceSnapshot` 只能是测试或服务端适配器提供的安全摘要，不能包含 token、内部路径、完整日志或任何嵌套可信字段。成功返回 `AlertEvaluation`。规则未启用返回 `49910`。来源不可用返回 `46910`，来源超时返回 `46911`，来源 schema 不兼容返回 `46912`。命中时按 `dedupeKeyTemplate` 生成指纹，重复指纹更新已有 `AlertInstance.lastFiredAt`，不新建告警实例。未静默告警必须先按规则 `routeId` 找到启用路由，再按 route matcher 匹配来源、级别、分组和标签；匹配成功生成投递摘要。路由声明外部通知时必须经 CPN 生成模拟外部 delivery 和 attempt 摘要；匹配失败保留 `PENDING` 摘要并记录不投递原因。
 
 ### 告警实例接口
 
@@ -11739,7 +11743,7 @@ Cloudreve 不可用时，读取类接口可以返回旧快照并标记 `degraded
 
 `PATCH /api/v1/alerting/routes/{routeId}` 可修改创建接口中的字段，`reason` 和 `idempotencyKey` 必填。路由不存在返回 `49904`。审计失败时不得改变路由。
 
-`POST /api/v1/alerting/routes/{routeId}/test` 请求字段为 `sampleAlert`、`reason` 和 `idempotencyKey`。成功返回 `AlertDelivery`。第一版只调用 notification 测试适配器或生成投递摘要，不发送真实外部渠道。notification 不可用返回 `46900` 或创建 `FAILED` 投递摘要，同一实现版本内必须固定并写入测试。
+`POST /api/v1/alerting/routes/{routeId}/test` 请求字段为 `sampleAlert`、`reason` 和 `idempotencyKey`。成功返回 `AlertDelivery`。第一版只调用 notification 测试适配器、CPN 模拟投递适配器或生成投递摘要，不发送真实外部渠道。notification 或 CPN 不可用可以返回依赖错误或创建 `FAILED` 投递摘要，同一实现版本内必须固定并写入测试。
 
 `GET /api/v1/alerting/deliveries` 支持 `page`、`pageSize`、`alertId`、`routeId`、`status`、`from`、`to` 和 `sort`。`sort` 允许 `createdAt_desc`、`lastAttemptAt_desc`、`status_asc`。成功响应分页 `items` 为 `AlertDelivery[]`。
 
@@ -11763,7 +11767,7 @@ Cloudreve 不可用时，读取类接口可以返回旧快照并标记 `degraded
 
 任何请求体都不得包含访问 token、节点密钥、Cloudreve 管理 token、分享密码、外部 webhook secret、SMTP 密码、短信 token、完整 Authorization 请求头、完整通知正文、内部绝对路径、完整来源 payload、异常堆栈、数据库连接串、`.env`、`authorized_keys`、`id_rsa`、服务器密码或 shell 命令。任何响应也不得包含这些字段或值。检查必须递归覆盖嵌套对象和数组。
 
-外部依赖不可用时，读取类接口可以返回已有快照并标记 `degraded=true` 和 `degradeReasons`。写入类接口不得假装成功。通知投递失败不得关闭告警，也不得把告警主状态改成已处理。来源服务不可用时，规则评估必须返回明确依赖错误或降级评估摘要。
+外部依赖不可用时，读取类接口可以返回已有快照并标记 `degraded=true` 和 `degradeReasons`。写入类接口不得假装成功。通知投递失败和 CPN 模拟外部投递失败都不得关闭告警，也不得把告警主状态改成已处理。来源服务不可用时，规则评估必须返回明确依赖错误或降级评估摘要。审计失败时，告警实例、alerting 投递摘要、CPN delivery、CPN attempt 和两边审计不得出现半成功。
 
 第一版不得提供真实删除规则、告警、静默、路由或投递记录的接口。确需清理历史记录时，必须在后续独立契约中增加归档接口，并重新完成文档、测试红灯、实现和回归闭环。
 
@@ -12770,7 +12774,7 @@ schema 状态流转为 `DRAFT` 可到 `ENABLED`、`DISABLED` 或 `ARCHIVED`；`E
 
 来源：`docs/contracts-cross-platform-notification.md`
 
-版本：0.2
+版本：0.4
 
 ### 文档定位
 
@@ -12837,6 +12841,8 @@ schema 状态流转为 `DRAFT` 可到 `ENABLED`、`DISABLED` 或 `ARCHIVED`；`E
 
 `alerting` 是告警来源方。`cross-platform-notification` 可以接收或模拟来自 alerting 的外部投递请求摘要，不能修改告警规则、告警实例、静默、确认或关闭状态。alerting 不可用返回 `47130`，超时返回 `47131`，schema 不兼容返回 `47132`。外部投递失败不能自动关闭告警，也不能把告警投递摘要伪造成成功。
 
+来自 `alerting` 的内部适配请求必须使用 `sourceModule=alerting`。请求字段只允许安全摘要，至少包括 `sourceId`、`eventType=alert.firing`、`riskLevel`、`routeId` 或 `providerId` 与 `templateMappingId`、`receiverSummary`、`payloadSummary`、`expiresAt`、`reason` 和 `idempotencyKey`。`payloadSummary` 只能包含模板允许变量的摘要值，不能包含完整日志、完整告警正文、完整请求头、内部路径、token、外部渠道凭据或异常堆栈。`riskLevel` 映射规则为 `INFO -> LOW`、`WARNING -> MEDIUM`、`CRITICAL -> HIGH`、`BLOCKER -> CRITICAL`。相同 `alertId + routeId + fingerprint + idempotencyKey` 只能创建一条 delivery 和一条 attempt；同一幂等键不同请求体返回 `49962`。审计必须记录 `sourceModule=alerting`、`sourceId`、`routeId`、`deliveryId`、`attemptId`、风险等级和脱敏参数摘要。
+
 `plugin-integration` 是插件事件来源方。`cross-platform-notification` 可以保存插件事件通知摘要和模拟投递结果，不能修改插件 provider、事件、路由规则、同步任务或对象映射。plugin-integration 不可用返回 `47140`，超时返回 `47141`，schema 不兼容返回 `47142`。
 
 其他业务来源模块包括 `ops-control`、`node-daemon`、`community`、`activity`、`calendar`、`changelog`、`whitelist`、`attendance`、`resource` 和 `server-status`。本服务只能保存来源模块传入或正式 API 返回的安全摘要。来源模块不可用返回 `47160`，超时返回 `47161`，schema 不兼容返回 `47162`。`node-daemon` 只能作为来源摘要出现，本服务不得直连节点，不得执行命令。
@@ -12857,7 +12863,7 @@ schema 状态流转为 `DRAFT` 可到 `ENABLED`、`DISABLED` 或 `ARCHIVED`；`E
 | `ExternalDependencyStatus` | `AVAILABLE`、`UNAVAILABLE`、`TIMEOUT`、`BAD_SCHEMA`、`STALE`、`SKIPPED` | 依赖摘要状态。 |
 | `ExternalNotificationAuditResult` | `SUCCESS`、`FAILED` | 审计结果。 |
 
-`sourceModule` 使用模块英文名，例如 `notification`、`alerting`、`plugin-integration`、`ops-control`、`community`、`activity`、`calendar`、`changelog`、`whitelist`、`attendance`、`resource`、`server-status` 和 `custom`。第一版不允许浏览器伪装为 `auth`、`node-daemon` 或内部系统用户。浏览器传入未列入本契约的来源模块、`auth`、`node-daemon` 或以 `internal`、`system` 开头的来源模块时必须返回 `40001`，不得创建投递、路由、模板映射或审计记录。
+`sourceModule` 使用模块英文名，例如 `notification`、`alerting`、`plugin-integration`、`ops-control`、`community`、`activity`、`calendar`、`changelog`、`whitelist`、`attendance`、`resource`、`server-status` 和 `custom`。第一版不允许浏览器伪装为 `auth`、`node-daemon` 或内部系统用户。浏览器传入未列入本契约的来源模块、`auth`、`node-daemon` 或以 `internal`、`system` 开头的来源模块时必须返回 `40001`，不得创建投递、路由、模板映射或审计记录。`sourceModule=alerting` 可以由后台接口或同进程受控适配器创建，但必须继续执行 provider、模板、路由、receiver、payload 白名单、幂等和审计校验。
 
 ### 通用对象
 
@@ -13164,7 +13170,7 @@ schema 状态流转为 `DRAFT` 可到 `ENABLED`、`DISABLED` 或 `ARCHIVED`；`E
 
 ### 投递接口
 
-`POST /api/v1/cross-platform-notification/admin/deliveries` 请求字段包括 `sourceModule`、`sourceId`、`eventType`、`riskLevel`、`routeId`、`providerId`、`templateMappingId`、`receiverSummary`、`payloadSummary`、`expiresAt`、`reason`、`confirmText` 和 `idempotencyKey`。`confirmText` 必须为 `CREATE_EXTERNAL_DELIVERY`。成功响应 HTTP `201`，`data` 为 `ExternalDeliveryRequest`。第一版必须创建模拟 attempt，结果只能为 `SIMULATED_SENT`、`SIMULATED_FAILED`、`BLOCKED` 或 `RETRY_SCHEDULED`，不得返回真实 `SENT`。路由启用时优先使用路由的 provider、模板映射、receiver 和 retry policy；显式 provider 或模板与路由冲突返回 `49961`。未传入 `routeId` 时，投递必须使用请求中的 `sourceModule`、`sourceId`、`eventType`、`riskLevel`、`receiverSummary` 和 `expiresAt` 生成投递快照，不能降级为固定 `custom`、`manual.external` 或 `MEDIUM`。未传入 `routeId` 时必须校验 provider 已启用、模板映射已启用、provider 允许该 `sourceModule` 和 `riskLevel`、receiver 类型在 provider 的 `receiverPolicy.allowedReceiverTypes` 内，且 payload 字段只包含模板映射允许变量；不满足时返回 `40001`、`49960`、`49964`、`49965` 或 `49966`。
+`POST /api/v1/cross-platform-notification/admin/deliveries` 请求字段包括 `sourceModule`、`sourceId`、`eventType`、`riskLevel`、`routeId`、`providerId`、`templateMappingId`、`receiverSummary`、`payloadSummary`、`expiresAt`、`reason`、`confirmText` 和 `idempotencyKey`。`confirmText` 必须为 `CREATE_EXTERNAL_DELIVERY`。成功响应 HTTP `201`，`data` 为 `ExternalDeliveryRequest`。第一版必须创建模拟 attempt，结果只能为 `SIMULATED_SENT`、`SIMULATED_FAILED`、`BLOCKED` 或 `RETRY_SCHEDULED`，不得返回真实 `SENT`。路由启用时优先使用路由的 provider、模板映射、receiver 和 retry policy；显式 provider 或模板与路由冲突返回 `49961`。未传入 `routeId` 时，投递必须使用请求中的 `sourceModule`、`sourceId`、`eventType`、`riskLevel`、`receiverSummary` 和 `expiresAt` 生成投递快照，不能降级为固定 `custom`、`manual.external` 或 `MEDIUM`。未传入 `routeId` 时必须校验 provider 已启用、模板映射已启用、provider 允许该 `sourceModule` 和 `riskLevel`、receiver 类型在 provider 的 `receiverPolicy.allowedReceiverTypes` 内，且 payload 字段只包含模板映射允许变量；不满足时返回 `40001`、`49960`、`49964`、`49965` 或 `49966`。`sourceModule=alerting` 的请求必须额外校验 `eventType=alert.firing`、`sourceId` 为告警 ID 摘要、`payloadSummary` 不含完整日志或原始告警正文，并把返回 attempt 摘要交给 alerting 保存为 `externalAttemptStatus`。
 
 `GET /api/v1/cross-platform-notification/admin/deliveries` 支持 `page`、`pageSize`、`sourceModule`、`sourceId`、`eventType`、`riskLevel`、`routeId`、`providerId`、`channel`、`status`、`receiverType`、`from`、`to`、`keyword` 和 `sort`。`sort` 允许 `createdAt_desc`、`updatedAt_desc`、`lastAttemptAt_desc`、`riskLevel_desc`、`status_asc`。成功响应分页 `items` 为 `ExternalDeliveryRequest[]`。
 
@@ -13752,11 +13758,97 @@ endpoint、repository、tag、namespace 和 URL 摘要必须拒绝 `file:`、`da
 
 `ops-image-market` 完成时必须满足以下条件：当前运行入口为 `ops-core-service:8133`，历史端口 `8124` 只作为 `legacyPort` 返回；健康检查公开且不泄露敏感信息；后台接口按角色、能力点、风险等级和确认文本限制；provider、镜像目录、镜像版本、兼容配置、模板、风险扫描、拉取计划、节点缓存快照、审计、幂等、状态流转、依赖降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；自动化测试必须先红灯；实现后本模块在 `ops-core-service` 中全量测试通过；当前后端运行入口回归测试通过；边界扫描无违规命中；不修改前序服务稳定接口；不直接读取前序服务数据库；不导入前序服务 Java package；不调用真实 `node-daemon`；不执行真实 Docker、containerd、registry、scanner、镜像拉取、镜像删除或容器创建；不保存真实 registry token、完整 manifest、layer URL、内部地址、宿主路径、节点凭据、完整请求头或前序服务私有数据；不把玩家资源下载、Cloudreve 文件同步、运维任务执行、节点文件管理、终端能力、告警规则、外部通知发送或插件安装塞进本服务。
 
+## 北冥官网 ops-core API 契约
+
+来源：`docs/contracts-ops-core.md`
+
+版本：0.3
+
+### 文档定位
+
+本文档是 `ops-core-service` 运行合并单元的正式 API 契约。`ops-core` 负责承载第四期后台运维控制面和第六期跨平台通知控制面合并后的运行入口、自检摘要、模块装配摘要、生产就绪诊断、真实 HTTP smoke、继承路由漂移防线、测试控制头总开关和网关切换验收口径。
+
+本文档继承 `docs/contracts-common.md`。七个被承载业务模块的业务接口仍分别以 `docs/contracts-ops-control.md`、`docs/contracts-cloudreve-sync.md`、`docs/contracts-backup-recovery.md`、`docs/contracts-alerting.md`、`docs/contracts-plugin-integration.md`、`docs/contracts-ops-image-market.md` 和 `docs/contracts-cross-platform-notification.md` 为准。本文档不得混写七个模块的业务 API 字段、状态机或错误码。
+
+### 职责边界
+
+`ops-core` 承载 `ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`ops-image-market` 和 `cross-platform-notification` 七个后台运维与通知控制面模块。合并后这些模块继续使用原路径前缀，分别是 `/api/v1/ops-control`、`/api/v1/cloudreve-sync`、`/api/v1/backup-recovery`、`/api/v1/alerting`、`/api/v1/plugin-integration`、`/api/v1/ops-image-market` 和 `/api/v1/cross-platform-notification`。
+
+`ops-core` 不新增七个业务模块的业务语义，不把七套 store、状态机、错误码、审计对象或主数据揉成一个大模块，不直接读取前序服务数据库，不绕过正式 API 适配前序服务，也不执行真实宿主机、容器、节点、Cloudreve、registry、scanner、插件命令或真实外部消息发送。
+
+### 基础路径、端口和认证
+
+`ops-core-service` 本地端口固定为 `8133`。`ops-core` 自有接口使用 `/api/v1/ops-core` 前缀。健康检查公开可访问。后台自检、模块装配、生产就绪诊断和 HTTP smoke 接口要求 `Authorization: Bearer <token>`，本地契约实现允许 `owner-token` 和 `admin-token` 访问，`helper-token` 与 `user-token` 返回 `42001`，缺失 token 返回 `41000`，格式错误返回 `41003`。
+
+通过网关注入的可信身份头也可访问后台自有接口。可信上下文必须同时包含合法 `X-Gateway-Internal-Request-Id`、`X-Gateway-Internal-Timestamp`、`X-Gateway-Internal-Signature`、`X-Beiming-Actor-User-Id` 和角色头。角色必须为 `ADMIN` 或 `OWNER`。缺少必要字段、请求编号非法、角色枚举非法、能力点枚举非法、签名错误、签名时间戳过期或签名明文不匹配时返回 `53233`。
+
+浏览器直连时传入的可信身份头不得覆盖真实身份。只有存在 `X-Gateway-Internal-Request-Id` 且整组可信字段和内部签名通过校验时，才按可信上下文授权；否则按 `Authorization` 本地 token 授权。直连请求一旦携带 `X-Gateway-Internal-Request-Id`，不得在签名失败后回退到本地 token。
+
+### 模块装配表
+
+七个继承模块合计 219 个业务 API 路由。`ops-core` 自有接口为 5 个。`ops-core-service` 当前进程应注册 224 个 `/api/v1/**` 方法路由。
+
+| 模块 | 当前服务目录 | 当前端口 | API 数 | 正式契约 |
+| --- | --- | ---: | ---: | --- |
+| `ops-control` | `backend/ops-core-service` | 8133 | 31 | `docs/contracts-ops-control.md` |
+| `cloudreve-sync` | `backend/ops-core-service` | 8133 | 16 | `docs/contracts-cloudreve-sync.md` |
+| `backup-recovery` | `backend/ops-core-service` | 8133 | 25 | `docs/contracts-backup-recovery.md` |
+| `alerting` | `backend/ops-core-service` | 8133 | 24 | `docs/contracts-alerting.md` |
+| `plugin-integration` | `backend/ops-core-service` | 8133 | 38 | `docs/contracts-plugin-integration.md` |
+| `ops-image-market` | `backend/ops-core-service` | 8133 | 49 | `docs/contracts-ops-image-market.md` |
+| `cross-platform-notification` | `backend/ops-core-service` | 8133 | 36 | `docs/contracts-cross-platform-notification.md` |
+
+### 生产就绪能力状态
+
+生产就绪诊断必须暴露真实数据库持久化、真实跨服务 HTTP adapter、真实审计持久化、真实节点执行、真实 Cloudreve API、真实 registry、真实 scanner、真实插件事件入口、真实通知投递、真实外部消息发送、真实回调签名、生产凭据托管、异步队列和持久化事务仍为 `BLOCKED`。HTTP smoke 使用 `NOT_RUN`、`PASS` 或 `DEGRADED`。可信网关内部签名使用 `PASS` 或 `PARTIAL`。即使 HTTP smoke 和模拟外部投递通过，`readyForProduction` 仍必须为 `false`。
+
+### 接口总览
+
+| 接口 | 方法 | 路径 | 认证 | 权限 | 风险 |
+| --- | --- | --- | --- | --- | --- |
+| 健康检查 | GET | `/api/v1/ops-core/health` | 否 | 无 | LOW |
+| 运行摘要 | GET | `/api/v1/ops-core/ops/summary` | 是 | `ADMIN` 或 `OWNER` | LOW |
+| 模块装配摘要 | GET | `/api/v1/ops-core/admin/modules` | 是 | `ADMIN` 或 `OWNER` | LOW |
+| 生产就绪诊断 | GET | `/api/v1/ops-core/admin/readiness` | 是 | `ADMIN` 或 `OWNER` | LOW |
+| HTTP smoke | POST | `/api/v1/ops-core/admin/http-smoke/run` | 是 | `ADMIN` 或 `OWNER` | LOW |
+
+### 健康检查
+
+`GET /api/v1/ops-core/health`
+
+响应 `data` 必须包含 `service=ops-core`、`status=UP`、`version`、`port=8133`、`modulesTotal=7`、`inheritedRoutesTotal=219`、`selfRoutesTotal=5` 和 `routesTotal=224`。该接口不得返回模块内部 provider 数量、节点 endpoint、外部 URL、token、凭据、异常栈、真实宿主路径或依赖错误细节。
+
+### 运行摘要
+
+`GET /api/v1/ops-core/ops/summary`
+
+响应 `data` 必须包含 `service=ops-core`、`port=8133`、`modulesTotal=7`、`modulesMounted=7`、`inheritedRoutesTotal=219`、`selfRoutesTotal=5`、`routesTotal=224`、`testControlsEnabled`、`storageMode`、`authMode`、`dependencyAdapterMode`、`serviceDiscoveryMode`、`registeredUpstreams`、`httpSmokeStatus`、`lastHttpSmokeAt`、`lastHttpSmokeResults`、`trustedGatewaySignatureStatus`、`routeDriftStatus`、`gatewaySwitchStatus`、`moduleRoutes`、`productionGaps`、`recentAuditSummary` 和 `generatedAt`。
+
+### 模块装配摘要
+
+`GET /api/v1/ops-core/admin/modules`
+
+成功响应 HTTP `200`，`data.items` 为模块装配数组。每个元素必须包含 `moduleKey`、`moduleName`、`pathPrefix`、`legacyServiceDirectory`、`legacyPort`、`legacyServiceRetired`、`currentServiceDirectory`、`currentPort`、`contract`、`localTestDocument`、`legacyTestCommand`、`currentTestCommand`、`routesTotal`、`contractRoutesTotal`、`routeDriftStatus`、`enabled`、`mounted`、`businessContractOwnedByModule`、`compatibilityMode` 和 `productionGaps`。
+
+### 生产就绪诊断
+
+`GET /api/v1/ops-core/admin/readiness`
+
+响应 `data` 必须包含 `service=ops-core`、`port=8133`、`readyForProduction=false`、`readinessStatus=NOT_READY`、`routesTotal=224`、`inheritedRoutesTotal=219`、`selfRoutesTotal=5`、`routeDriftStatus`、`legacyServiceRestoreStatus`、`gatewaySwitchStatus`、`testControlHeadersStatus`、`sensitiveFieldScanStatus`、`serviceDiscoveryMode`、`registeredUpstreams`、`httpSmokeStatus`、`lastHttpSmokeAt`、`lastHttpSmokeResults`、`trustedGatewaySignatureStatus`、`checks`、`moduleReadiness`、`productionBlockers` 和 `generatedAt`。
+
+### HTTP smoke
+
+`POST /api/v1/ops-core/admin/http-smoke/run`
+
+该接口只触发本地真实 HTTP smoke，不创建业务数据，不执行真实节点动作，不发送真实外部消息。smoke 通过 `api-gateway-service` 访问当前 `ops-core-service` 承载的关键路径，目标至少包含 `/api/v1/ops-control/overview`、`/api/v1/alerting/health`、`/api/v1/cross-platform-notification/health` 和 `/api/v1/ops-core/health`。
+
+响应 `data` 必须包含 `status`、`targetsTotal`、`passedTargetsTotal`、`failedTargetsTotal`、`targets`、`startedAt`、`finishedAt` 和 `realHttpSmoke=true`。全部目标通过时 `status=PASS`。任一目标失败时 `status=DEGRADED`，失败摘要必须脱敏，不得返回 token、请求头、异常栈、完整内部地址或真实宿主路径。
+
 ## 北冥官网 api-gateway API 契约
 
 来源：`docs/contracts-api-gateway.md`
 
-版本：0.2
+版本：0.3
 
 ### 文档定位
 
@@ -13776,7 +13868,7 @@ endpoint、repository、tag、namespace 和 URL 摘要必须拒绝 `file:`、`da
 | --- | --- |
 | 路由匹配 | 根据固定路径前缀把请求转发到已有微服务端口。 |
 | 请求编号 | 接收或生成 `X-Request-Id`，向上游和下游保持一致。 |
-| 认证透传与上下文注入 | 原样透传 `Authorization: Bearer <token>`；携带可验证会话时，通过 `auth` 会话校验生成可信身份头。 |
+| 认证透传与上下文注入 | 原样透传 `Authorization: Bearer <token>`；携带可验证会话时，通过 `auth` 会话校验生成可信身份头、内部时间戳和内部签名。 |
 | 请求透传 | 保持 HTTP 方法、路径、查询参数、JSON 请求体和必要请求头。 |
 | 请求边界保护 | 校验 `X-Request-Id` 格式，限制 P0 JSON 请求体大小，拒绝明显异常入口请求。 |
 | 响应透传 | 上游响应状态码、统一响应体、内容类型和响应头白名单默认原样返回。 |
@@ -13802,7 +13894,7 @@ endpoint、repository、tag、namespace 和 URL 摘要必须拒绝 `file:`、`da
 
 业务转发接口不在网关层做强制角色判断。公开业务接口可以无 `Authorization` 透传；需要登录或后台权限的业务接口由上游服务按自身契约返回 `41000`、`41001`、`42001` 或其他业务错误码。业务转发请求如果携带 `Authorization: Bearer <token>` 且目标路由不是 `auth`，网关会向 `auth` 会话校验接口做一次短路径校验。校验成功时，网关向上游注入可信身份头；校验失败、超时或 `auth` 不可用时，网关不注入可信身份头，但仍透传原始 `Authorization` 给目标上游，由目标上游按自身契约判定请求是否可继续。
 
-网关注入的可信身份头只允许由网关生成，客户端传入同名头必须在转发前剥离。P0 可信身份头如下。
+网关注入的可信身份头只允许由网关生成，客户端传入同名头必须在转发前剥离。可信身份签名第一版使用 `api-gateway.internal-signing-secret` 配置的共享密钥和 HMAC SHA-256 小写 hex。签名明文必须包含 HTTP 方法、原始路径、请求编号、用户 ID、角色、能力点、时间戳和规范化后的上下文字段。P0.3 可信身份头如下。
 
 | 请求头 | 来源 | 说明 |
 | --- | --- | --- |
@@ -13812,6 +13904,10 @@ endpoint、repository、tag、namespace 和 URL 摘要必须拒绝 `file:`、`da
 | `X-Beiming-Actor-Minecraft-Id` | `auth.data.user.minecraftBinding.minecraftId` | 已绑定时注入。 |
 | `X-Beiming-Actor-Minecraft-Uuid` | `auth.data.user.minecraftBinding.minecraftUuid` | 已绑定时注入。 |
 | `X-Gateway-Internal-Request-Id` | 网关请求编号 | 标记该可信上下文来自当前网关请求。 |
+| `X-Gateway-Internal-Timestamp` | 网关生成时间戳 | ISO 8601 时间，用于上游校验签名窗口。 |
+| `X-Gateway-Internal-Signature` | 网关内部签名 | HMAC SHA-256 小写 hex，证明可信身份头来自网关。 |
+
+客户端传入的 `X-Gateway-Internal-Signature`、`X-Gateway-Internal-Timestamp`、`X-Gateway-Internal-Request-Id` 和全部 `X-Beiming-Actor-*` 都必须在转发前剥离。没有通过 auth 校验的业务请求不得注入可信身份头、内部时间戳或内部签名，只透传原始 `Authorization` 给上游自行判定。
 
 ### 路由注册表
 
@@ -13845,6 +13941,8 @@ endpoint、repository、tag、namespace 和 URL 摘要必须拒绝 `file:`、`da
 | `ops-image-market` | `OPS_IMAGE_MARKET` | `/api/v1/ops-image-market` | `8133` | `/api/v1/ops-image-market/health` |
 | `material` | `MATERIAL` | `/api/v1/materials` | `8134` | `/api/v1/materials/featured` |
 | `guide` | `GUIDE` | `/api/v1/guides` | `8134` | `/api/v1/guides/categories` |
+
+本地真实 HTTP 联调允许通过配置项 `api-gateway.upstreams.ops-core-base-url` 临时覆盖 `ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`ops-image-market` 和 `cross-platform-notification` 七个路由的上游基础地址。该配置只改变这七个路由的 `upstreamBaseUrl` 和由 URL 推导出的 `upstreamPort`，不得新增 `OPS_CORE` 业务路由，不得改写任一业务路径前缀，不得影响 `node-daemon`、`portal-core`、`business-core`、`admission-core`、`engagement-core` 或其他上游。默认值仍为 `http://127.0.0.1:8133`。
 
 路径匹配规则为最长前缀优先。`/api/v1/resources` 和 `/api/v1/resources/**` 都必须命中 `resource`。未知路径返回网关错误，不转发到任何上游。
 
@@ -14079,7 +14177,7 @@ endpoint、repository、tag、namespace 和 URL 摘要必须拒绝 `file:`、`da
 | X-Forwarded-For | 默认使用当前连接远端地址；后续接入可信反向代理后再启用代理链追加。 |
 | Hop-by-hop header | 不透传 `Connection`、`Transfer-Encoding`、`Upgrade`、`Keep-Alive`、`TE`、`Trailer` 和 `Proxy-Authorization`。 |
 | 可信身份头 | 浏览器传入的 `X-Beiming-Actor-*`、`X-Gateway-Internal-*` 等可信身份头必须丢弃。 |
-| 可信身份注入 | `auth` 会话校验成功时，网关注入 `X-Beiming-Actor-*` 和 `X-Gateway-Internal-Request-Id`；校验失败时不注入。 |
+| 可信身份注入 | `auth` 会话校验成功时，网关注入 `X-Beiming-Actor-*`、`X-Gateway-Internal-Request-Id`、`X-Gateway-Internal-Timestamp` 和 `X-Gateway-Internal-Signature`；校验失败时不注入。 |
 | 响应 | 上游 HTTP 状态、响应体、Content-Type 以及响应头白名单默认原样返回。 |
 | 响应头白名单 | 允许透传 `Content-Type`、`Cache-Control`、`ETag`、`Location`、`Content-Disposition`、`Last-Modified` 和 `Expires`；其他响应头默认丢弃，避免泄露内部实现或不安全代理头。 |
 | 日志 | 只记录脱敏摘要。 |
@@ -14115,7 +14213,7 @@ endpoint、repository、tag、namespace 和 URL 摘要必须拒绝 `file:`、`da
 
 请求日志必须脱敏。以下内容不得存储或返回：请求体、完整 query、完整 `Authorization`、Cookie、密码、邀请码原始码、密码重置令牌、节点密钥、registry 凭据、Cloudreve token、外部 webhook、文件内容、终端命令正文、日志正文、异常堆栈。
 
-网关不得接受浏览器传入的可信身份头作为真实身份。`X-Beiming-Actor-User-Id`、`X-Beiming-Actor-Roles`、`X-Gateway-Internal-Token` 等头如果来自客户端请求，必须在转发前移除。网关向上游注入可信身份时，只能来自 `auth` 会话校验结果。`auth` 校验失败时不得沿用客户端伪造头，不得根据 token 字符串自行推断用户身份。
+网关不得接受浏览器传入的可信身份头作为真实身份。`X-Beiming-Actor-User-Id`、`X-Beiming-Actor-Roles`、`X-Gateway-Internal-Token`、`X-Gateway-Internal-Timestamp`、`X-Gateway-Internal-Signature` 等头如果来自客户端请求，必须在转发前移除。网关向上游注入可信身份时，只能来自 `auth` 会话校验结果。`auth` 校验失败时不得沿用客户端伪造头，不得根据 token 字符串自行推断用户身份。
 
 ### 失败降级
 
@@ -14127,15 +14225,15 @@ endpoint、repository、tag、namespace 和 URL 摘要必须拒绝 `file:`、`da
 
 ### 生产化差距
 
-P0 `api-gateway` 是本地契约实现，必须在自检摘要中明确以下生产化差距：尚未接入真实服务发现，尚未接入集中配置，尚未接入分布式限流，认证上下文已支持通过 `auth` 会话校验注入但尚未接入内部签名和缓存，尚未接入持久化审计，尚未代理 WebSocket 和大文件流。
+P0 `api-gateway` 是本地契约实现，必须在自检摘要中明确以下生产化差距：尚未接入真实服务发现，尚未接入集中配置，尚未接入分布式限流，认证上下文已支持通过 `auth` 会话校验注入和内部签名，但尚未接入签名密钥集中托管、密钥轮换和缓存，尚未接入持久化审计，尚未代理 WebSocket 和大文件流。
 
-这些差距不得影响 P0 的路径转发、请求编号、认证透传、可信身份头剥离、可验证认证上下文注入、错误降级、路由表和测试闭环。
+这些差距不得影响 P0 的路径转发、请求编号、认证透传、可信身份头剥离、可验证认证上下文注入、内部签名注入、错误降级、路由表和测试闭环。
 
 ### 验收口径
 
 `api-gateway` API 文档按 `docs/contracts-api-gateway.md` 独立存在，并由 `.local-docs/tests-api-gateway.md` 记录本地测试闭环。
 
-本文档列出的每个网关自有接口都有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、分页排序、状态刷新、失败降级、日志脱敏和验收口径。业务转发测试必须覆盖 26 个已接入微服务的路径前缀，确认路由表端口准确、请求编号透传、请求编号非法拒绝、认证头透传、可信身份头剥离、`auth` 会话校验成功后的可信身份注入、`auth` 校验失败后的不注入降级、查询参数透传、JSON body 透传、请求体大小限制、响应头白名单、上游 2xx 透传、上游 4xx 透传、上游 5xx 透传、未知路径、非法方法、CORS 预检、上游不可用、上游超时和敏感字段不落日志。
+本文档列出的每个网关自有接口都有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、分页排序、状态刷新、失败降级、日志脱敏和验收口径。业务转发测试必须覆盖 26 个已接入微服务的路径前缀，确认路由表端口准确、`api-gateway.upstreams.ops-core-base-url` 只覆盖七个 ops-core 承载路由、请求编号透传、请求编号非法拒绝、认证头透传、可信身份头剥离、客户端伪造签名头剥离、`auth` 会话校验成功后的可信身份和内部签名注入、`auth` 校验失败后的不注入降级、查询参数透传、JSON body 透传、请求体大小限制、响应头白名单、上游 2xx 透传、上游 4xx 透传、上游 5xx 透传、未知路径、非法方法、CORS 预检、上游不可用、上游超时和敏感字段不落日志。
 
 开发完成后必须执行 `mvn -f backend/api-gateway-service/pom.xml test`、`mvn -f backend/business-core-service/pom.xml test`、`mvn -f backend/admission-core-service/pom.xml test`、`mvn -f backend/engagement-core-service/pom.xml test`、`mvn -f backend/ops-core-service/pom.xml test`、`mvn -f backend/portal-core-service/pom.xml test` 和 `mvn -f backend/node-daemon-service/pom.xml test`。第一批到第五批旧服务清理后，不得为了网关回归恢复对应旧服务目录、旧 Maven 入口、旧启动类或旧测试命令。第四批和第五批业务路径必须继续由 `ops-core` 和 `portal-core` 当前入口覆盖测试。旧 `backend/online-map-service` 已退役且不得恢复。测试过程必须写入 `.local-docs/tests-api-gateway.md`。
 

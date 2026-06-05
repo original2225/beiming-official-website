@@ -1,6 +1,6 @@
 # 北冥官网 alerting API 契约
 
-版本：0.2
+版本：0.3
 
 ## 文档定位
 
@@ -33,7 +33,7 @@
 
 `alerting` 拥有以下主数据：AlertSource、AlertRule、AlertEvaluation、AlertInstance、AlertSilence、AlertRoute、AlertDelivery、AlertingAuditLog、AlertingOpsSummary 和幂等记录。
 
-`alerting` 可以保存来自 `auth` 的操作者用户 ID、展示名、角色、能力点和状态快照；可以保存来自 `ops-control`、`node-daemon`、`server-status`、`cloudreve-sync` 和 `backup-recovery` 的健康或异常摘要；可以保存来自 `notification` 的投递引用摘要。所有保存内容都只能是安全摘要，不得保存访问 token、节点密钥、Cloudreve 管理凭据、内部绝对路径、完整通知正文、完整请求头或异常堆栈。
+`alerting` 可以保存来自 `auth` 的操作者用户 ID、展示名、角色、能力点和状态快照；可以保存来自 `ops-control`、`node-daemon`、`server-status`、`cloudreve-sync` 和 `backup-recovery` 的健康或异常摘要；可以保存来自 `notification` 的站内投递引用摘要；可以保存来自 `cross-platform-notification` 的外部模拟投递摘要。所有保存内容都只能是安全摘要，不得保存访问 token、节点密钥、Cloudreve 管理凭据、内部绝对路径、完整通知正文、完整请求头、外部渠道凭据或异常堆栈。
 
 ## 基础路径、端口和认证
 
@@ -47,7 +47,7 @@
 
 ## 本地测试控制头
 
-`alerting` 允许在本地自动化测试中使用 `X-Test-Auth-Mode`、`X-Test-Source-Mode`、`X-Test-Notification-Mode`、`X-Test-Fail-Audit`、`X-Test-Fail-Store` 和 `X-Test-Now` 模拟认证失败、来源服务不可用、来源超时、来源坏 schema、通知不可用、通知超时、审计失败、状态写入失败和时间边界。
+`alerting` 允许在本地自动化测试中使用 `X-Test-Auth-Mode`、`X-Test-Source-Mode`、`X-Test-Notification-Mode`、`X-Test-Cross-Platform-Notification-Mode`、`X-Test-Fail-Audit`、`X-Test-Fail-Store` 和 `X-Test-Now` 模拟认证失败、来源服务不可用、来源超时、来源坏 schema、通知不可用、通知超时、跨平台通知不可用、跨平台通知模拟失败、审计失败、状态写入失败和时间边界。
 
 生产和默认运行环境必须关闭测试控制头。关闭后这些请求头必须被忽略，不能触发认证失败、来源失败、通知失败、审计失败、存储失败或时间模拟。自检摘要必须返回 `testControlsEnabled`，并在测试控制关闭时把 `TEST_CONTROLS_DISABLED_OUTSIDE_TEST` 纳入生产化硬化项。
 
@@ -55,7 +55,9 @@
 
 `auth` 是强依赖。当前请求认证上下文至少包含 `userId`、`displayName`、`roles`、`permissions` 和 `status`。用户状态为 `DISABLED`、`BANNED` 或 `DELETED` 时不得访问后台接口。auth 不可用返回 `46920`，auth 超时返回 `46921`，auth 字段或枚举不兼容返回 `46922`。
 
-`notification` 是投递依赖。`alerting` 只生成告警投递请求和投递摘要，不保存 notification 通知正文主数据，不绕过 notification 自建渠道。notification 不可用返回 `46900`，notification 超时返回 `46901`，notification 字段不兼容返回 `46902`。通知失败只影响投递摘要，不得自动关闭告警实例。
+`notification` 是站内通知依赖。`alerting` 只保存站内通知引用摘要，不保存 notification 通知正文主数据，不绕过 notification 自建未读数或模板主数据。notification 不可用返回 `46900`，notification 超时返回 `46901`，notification 字段不兼容返回 `46902`。站内通知失败只影响投递摘要，不得自动关闭告警实例。
+
+`cross-platform-notification` 是外部模拟投递控制面。`alerting` 告警命中并且路由声明需要外部通知时，只能向 CPN 传入安全摘要，包括 `sourceModule=alerting`、`sourceId=<alertId>`、`eventType=alert.firing`、`riskLevel`、`routeId` 或 provider、template、receiver 摘要、`payloadSummary`、`expiresAt`、`reason` 和 `idempotencyKey`。不得传入完整告警正文、完整日志、内部路径、请求头、token 或异常堆栈。CPN 不可用、路由不匹配、模板变量不合法、模拟发送失败或审计失败时，只影响投递摘要，不得自动关闭告警实例，不得把失败伪造成真实发送成功。
 
 `admin` 是后台聚合入口。`alerting` 可以向 admin 暴露模块健康、待处理告警数量、严重级别摘要和审计摘要，不能让 admin 修改告警规则或告警状态。admin 尚未声明 `ALERTING` 入口时，本轮不得修改 admin 稳定接口。
 
@@ -190,7 +192,9 @@
 
 ### AlertDelivery
 
-字段为 `deliveryId`、`alertId`、`routeId`、`notificationRef`、`status`、`attempts`、`lastAttemptAt`、`failureCode`、`failureSummary`、`nextRetryAt` 和 `createdAt`。不得保存真实外部 webhook secret、邮件密码、短信 token 或完整通知正文。
+字段为 `deliveryId`、`alertId`、`routeId`、`notificationRef`、`status`、`deliveryMode`、`externalModule`、`externalDeliveryId`、`externalAttemptStatus`、`realExternalSend`、`attempts`、`lastAttemptAt`、`failureCode`、`failureSummary`、`nextRetryAt` 和 `createdAt`。不得保存真实外部 webhook secret、邮件密码、短信 token 或完整通知正文。
+
+`status` 为兼容字段，CPN 模拟成功时仍返回 `SENT`。同时必须返回 `deliveryMode=SIMULATED_EXTERNAL`、`externalModule=cross-platform-notification`、`externalDeliveryId`、`externalAttemptStatus=SIMULATED_SUCCESS` 和 `realExternalSend=false`。CPN 模拟失败时返回 `status=FAILED` 或 `RETRYING`，`failureCode` 和 `failureSummary` 只能是脱敏摘要，告警实例仍保持 `FIRING`、`ACKNOWLEDGED` 或契约允许状态。
 
 ### AlertingAuditLog
 
@@ -198,7 +202,7 @@
 
 ### AlertingOpsSummary
 
-字段至少包含 `service`、`port`、`storageMode`、`authMode`、`sourceAdapterMode`、`notificationAdapterMode`、`testControlsEnabled`、`sourcesTotal`、`rulesTotal`、`enabledRulesTotal`、`alertsTotal`、`firingAlertsTotal`、`acknowledgedAlertsTotal`、`silencesTotal`、`activeSilencesTotal`、`routesTotal`、`deliveriesTotal`、`failedDeliveriesTotal`、`auditsTotal`、`idempotencyRecordsTotal`、`lastAlertAt`、`lastDeliveryFailureAt`、`degraded`、`degradeReasons` 和 `productionGaps`。
+字段至少包含 `service`、`port`、`storageMode`、`authMode`、`sourceAdapterMode`、`notificationAdapterMode`、`externalDeliveryAdapterMode`、`testControlsEnabled`、`sourcesTotal`、`rulesTotal`、`enabledRulesTotal`、`alertsTotal`、`firingAlertsTotal`、`acknowledgedAlertsTotal`、`silencesTotal`、`activeSilencesTotal`、`routesTotal`、`deliveriesTotal`、`failedDeliveriesTotal`、`auditsTotal`、`idempotencyRecordsTotal`、`lastAlertAt`、`lastDeliveryFailureAt`、`degraded`、`degradeReasons` 和 `productionGaps`。`externalDeliveryAdapterMode` 第一版固定为 `CPN_SIMULATED_EXTERNAL`。
 
 ## 错误码
 
@@ -265,7 +269,7 @@
 
 `GET /api/v1/alerting/health` 成功返回 `service=alerting`、`status`、`version` 和 `requestId`。进程存活但依赖不可用时仍可返回 HTTP `200`，并用 `status=DEGRADED` 标记。该接口不得泄露来源详情、规则数量、告警数量、通知路由、token 或依赖错误细节。
 
-`GET /api/v1/alerting/ops/summary` 成功返回 `AlertingOpsSummary`。合并后必须返回 `port=8133`、`legacyPort=8120`、`storageMode=IN_MEMORY`、`sourceAdapterMode=TEST_STUB`、`notificationAdapterMode=TEST_STUB` 和生产化缺口。读取失败返回 `55500`，不得伪造健康。
+`GET /api/v1/alerting/ops/summary` 成功返回 `AlertingOpsSummary`。合并后必须返回 `port=8133`、`legacyPort=8120`、`storageMode=IN_MEMORY`、`sourceAdapterMode=TEST_STUB`、`notificationAdapterMode=TEST_STUB`、`externalDeliveryAdapterMode=CPN_SIMULATED_EXTERNAL` 和生产化缺口。读取失败返回 `55500`，不得伪造健康。
 
 `GET /api/v1/alerting/sources` 支持 `page`、`pageSize`、`keyword`、`sourceService`、`sourceType`、`healthStatus`、`enabled` 和 `sort`。`sort` 允许 `lastEventAt_desc`、`lastSnapshotAt_desc`、`displayName_asc`。成功响应分页 `items` 为 `AlertSource[]`。
 
@@ -285,7 +289,7 @@
 
 `PATCH /api/v1/alerting/rules/{ruleId}/disable` 请求字段为 `reason` 和 `idempotencyKey`。`ENABLED` 可禁用为 `DISABLED`。重复禁用保持幂等。禁用规则不删除已有告警实例。
 
-`POST /api/v1/alerting/rules/{ruleId}/evaluate` 请求字段为 `sourceSnapshot`、`dryRun`、`reason` 和 `idempotencyKey`。`sourceSnapshot` 只能是测试或服务端适配器提供的安全摘要，不能包含 token、内部路径、完整日志或任何嵌套可信字段。成功返回 `AlertEvaluation`。规则未启用返回 `49910`。来源不可用返回 `46910`，来源超时返回 `46911`，来源 schema 不兼容返回 `46912`。命中时按 `dedupeKeyTemplate` 生成指纹，重复指纹更新已有 `AlertInstance.lastFiredAt`，不新建告警实例。未静默告警必须先按规则 `routeId` 找到启用路由，再按 route matcher 匹配来源、级别、分组和标签；匹配成功生成 `SENT` 投递摘要，匹配失败保留 `PENDING` 摘要并记录不投递原因。
+`POST /api/v1/alerting/rules/{ruleId}/evaluate` 请求字段为 `sourceSnapshot`、`dryRun`、`reason` 和 `idempotencyKey`。`sourceSnapshot` 只能是测试或服务端适配器提供的安全摘要，不能包含 token、内部路径、完整日志或任何嵌套可信字段。成功返回 `AlertEvaluation`。规则未启用返回 `49910`。来源不可用返回 `46910`，来源超时返回 `46911`，来源 schema 不兼容返回 `46912`。命中时按 `dedupeKeyTemplate` 生成指纹，重复指纹更新已有 `AlertInstance.lastFiredAt`，不新建告警实例。未静默告警必须先按规则 `routeId` 找到启用路由，再按 route matcher 匹配来源、级别、分组和标签；匹配成功生成投递摘要。路由声明外部通知时必须经 CPN 生成模拟外部 delivery 和 attempt 摘要；匹配失败保留 `PENDING` 摘要并记录不投递原因。
 
 ## 告警实例接口
 
@@ -313,7 +317,7 @@
 
 `PATCH /api/v1/alerting/routes/{routeId}` 可修改创建接口中的字段，`reason` 和 `idempotencyKey` 必填。路由不存在返回 `49904`。审计失败时不得改变路由。
 
-`POST /api/v1/alerting/routes/{routeId}/test` 请求字段为 `sampleAlert`、`reason` 和 `idempotencyKey`。成功返回 `AlertDelivery`。第一版只调用 notification 测试适配器或生成投递摘要，不发送真实外部渠道。notification 不可用返回 `46900` 或创建 `FAILED` 投递摘要，同一实现版本内必须固定并写入测试。
+`POST /api/v1/alerting/routes/{routeId}/test` 请求字段为 `sampleAlert`、`reason` 和 `idempotencyKey`。成功返回 `AlertDelivery`。第一版只调用 notification 测试适配器、CPN 模拟投递适配器或生成投递摘要，不发送真实外部渠道。notification 或 CPN 不可用可以返回依赖错误或创建 `FAILED` 投递摘要，同一实现版本内必须固定并写入测试。
 
 `GET /api/v1/alerting/deliveries` 支持 `page`、`pageSize`、`alertId`、`routeId`、`status`、`from`、`to` 和 `sort`。`sort` 允许 `createdAt_desc`、`lastAttemptAt_desc`、`status_asc`。成功响应分页 `items` 为 `AlertDelivery[]`。
 
@@ -337,7 +341,7 @@
 
 任何请求体都不得包含访问 token、节点密钥、Cloudreve 管理 token、分享密码、外部 webhook secret、SMTP 密码、短信 token、完整 Authorization 请求头、完整通知正文、内部绝对路径、完整来源 payload、异常堆栈、数据库连接串、`.env`、`authorized_keys`、`id_rsa`、服务器密码或 shell 命令。任何响应也不得包含这些字段或值。检查必须递归覆盖嵌套对象和数组。
 
-外部依赖不可用时，读取类接口可以返回已有快照并标记 `degraded=true` 和 `degradeReasons`。写入类接口不得假装成功。通知投递失败不得关闭告警，也不得把告警主状态改成已处理。来源服务不可用时，规则评估必须返回明确依赖错误或降级评估摘要。
+外部依赖不可用时，读取类接口可以返回已有快照并标记 `degraded=true` 和 `degradeReasons`。写入类接口不得假装成功。通知投递失败和 CPN 模拟外部投递失败都不得关闭告警，也不得把告警主状态改成已处理。来源服务不可用时，规则评估必须返回明确依赖错误或降级评估摘要。审计失败时，告警实例、alerting 投递摘要、CPN delivery、CPN attempt 和两边审计不得出现半成功。
 
 第一版不得提供真实删除规则、告警、静默、路由或投递记录的接口。确需清理历史记录时，必须在后续独立契约中增加归档接口，并重新完成文档、测试红灯、实现和回归闭环。
 

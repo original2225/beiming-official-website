@@ -1,6 +1,6 @@
 # 北冥官网 cross-platform-notification API 契约
 
-版本：0.3
+版本：0.4
 
 ## 文档定位
 
@@ -67,6 +67,8 @@
 
 `alerting` 是告警来源方。`cross-platform-notification` 可以接收或模拟来自 alerting 的外部投递请求摘要，不能修改告警规则、告警实例、静默、确认或关闭状态。alerting 不可用返回 `47130`，超时返回 `47131`，schema 不兼容返回 `47132`。外部投递失败不能自动关闭告警，也不能把告警投递摘要伪造成成功。
 
+来自 `alerting` 的内部适配请求必须使用 `sourceModule=alerting`。请求字段只允许安全摘要，至少包括 `sourceId`、`eventType=alert.firing`、`riskLevel`、`routeId` 或 `providerId` 与 `templateMappingId`、`receiverSummary`、`payloadSummary`、`expiresAt`、`reason` 和 `idempotencyKey`。`payloadSummary` 只能包含模板允许变量的摘要值，不能包含完整日志、完整告警正文、完整请求头、内部路径、token、外部渠道凭据或异常堆栈。`riskLevel` 映射规则为 `INFO -> LOW`、`WARNING -> MEDIUM`、`CRITICAL -> HIGH`、`BLOCKER -> CRITICAL`。相同 `alertId + routeId + fingerprint + idempotencyKey` 只能创建一条 delivery 和一条 attempt；同一幂等键不同请求体返回 `49962`。审计必须记录 `sourceModule=alerting`、`sourceId`、`routeId`、`deliveryId`、`attemptId`、风险等级和脱敏参数摘要。
+
 `plugin-integration` 是插件事件来源方。`cross-platform-notification` 可以保存插件事件通知摘要和模拟投递结果，不能修改插件 provider、事件、路由规则、同步任务或对象映射。plugin-integration 不可用返回 `47140`，超时返回 `47141`，schema 不兼容返回 `47142`。
 
 其他业务来源模块包括 `ops-control`、`node-daemon`、`community`、`activity`、`calendar`、`changelog`、`whitelist`、`attendance`、`resource` 和 `server-status`。本服务只能保存来源模块传入或正式 API 返回的安全摘要。来源模块不可用返回 `47160`，超时返回 `47161`，schema 不兼容返回 `47162`。`node-daemon` 只能作为来源摘要出现，本服务不得直连节点，不得执行命令。
@@ -87,7 +89,7 @@
 | `ExternalDependencyStatus` | `AVAILABLE`、`UNAVAILABLE`、`TIMEOUT`、`BAD_SCHEMA`、`STALE`、`SKIPPED` | 依赖摘要状态。 |
 | `ExternalNotificationAuditResult` | `SUCCESS`、`FAILED` | 审计结果。 |
 
-`sourceModule` 使用模块英文名，例如 `notification`、`alerting`、`plugin-integration`、`ops-control`、`community`、`activity`、`calendar`、`changelog`、`whitelist`、`attendance`、`resource`、`server-status` 和 `custom`。第一版不允许浏览器伪装为 `auth`、`node-daemon` 或内部系统用户。浏览器传入未列入本契约的来源模块、`auth`、`node-daemon` 或以 `internal`、`system` 开头的来源模块时必须返回 `40001`，不得创建投递、路由、模板映射或审计记录。
+`sourceModule` 使用模块英文名，例如 `notification`、`alerting`、`plugin-integration`、`ops-control`、`community`、`activity`、`calendar`、`changelog`、`whitelist`、`attendance`、`resource`、`server-status` 和 `custom`。第一版不允许浏览器伪装为 `auth`、`node-daemon` 或内部系统用户。浏览器传入未列入本契约的来源模块、`auth`、`node-daemon` 或以 `internal`、`system` 开头的来源模块时必须返回 `40001`，不得创建投递、路由、模板映射或审计记录。`sourceModule=alerting` 可以由后台接口或同进程受控适配器创建，但必须继续执行 provider、模板、路由、receiver、payload 白名单、幂等和审计校验。
 
 ## 通用对象
 
@@ -394,7 +396,7 @@
 
 ## 投递接口
 
-`POST /api/v1/cross-platform-notification/admin/deliveries` 请求字段包括 `sourceModule`、`sourceId`、`eventType`、`riskLevel`、`routeId`、`providerId`、`templateMappingId`、`receiverSummary`、`payloadSummary`、`expiresAt`、`reason`、`confirmText` 和 `idempotencyKey`。`confirmText` 必须为 `CREATE_EXTERNAL_DELIVERY`。成功响应 HTTP `201`，`data` 为 `ExternalDeliveryRequest`。第一版必须创建模拟 attempt，结果只能为 `SIMULATED_SENT`、`SIMULATED_FAILED`、`BLOCKED` 或 `RETRY_SCHEDULED`，不得返回真实 `SENT`。路由启用时优先使用路由的 provider、模板映射、receiver 和 retry policy；显式 provider 或模板与路由冲突返回 `49961`。未传入 `routeId` 时，投递必须使用请求中的 `sourceModule`、`sourceId`、`eventType`、`riskLevel`、`receiverSummary` 和 `expiresAt` 生成投递快照，不能降级为固定 `custom`、`manual.external` 或 `MEDIUM`。未传入 `routeId` 时必须校验 provider 已启用、模板映射已启用、provider 允许该 `sourceModule` 和 `riskLevel`、receiver 类型在 provider 的 `receiverPolicy.allowedReceiverTypes` 内，且 payload 字段只包含模板映射允许变量；不满足时返回 `40001`、`49960`、`49964`、`49965` 或 `49966`。
+`POST /api/v1/cross-platform-notification/admin/deliveries` 请求字段包括 `sourceModule`、`sourceId`、`eventType`、`riskLevel`、`routeId`、`providerId`、`templateMappingId`、`receiverSummary`、`payloadSummary`、`expiresAt`、`reason`、`confirmText` 和 `idempotencyKey`。`confirmText` 必须为 `CREATE_EXTERNAL_DELIVERY`。成功响应 HTTP `201`，`data` 为 `ExternalDeliveryRequest`。第一版必须创建模拟 attempt，结果只能为 `SIMULATED_SENT`、`SIMULATED_FAILED`、`BLOCKED` 或 `RETRY_SCHEDULED`，不得返回真实 `SENT`。路由启用时优先使用路由的 provider、模板映射、receiver 和 retry policy；显式 provider 或模板与路由冲突返回 `49961`。未传入 `routeId` 时，投递必须使用请求中的 `sourceModule`、`sourceId`、`eventType`、`riskLevel`、`receiverSummary` 和 `expiresAt` 生成投递快照，不能降级为固定 `custom`、`manual.external` 或 `MEDIUM`。未传入 `routeId` 时必须校验 provider 已启用、模板映射已启用、provider 允许该 `sourceModule` 和 `riskLevel`、receiver 类型在 provider 的 `receiverPolicy.allowedReceiverTypes` 内，且 payload 字段只包含模板映射允许变量；不满足时返回 `40001`、`49960`、`49964`、`49965` 或 `49966`。`sourceModule=alerting` 的请求必须额外校验 `eventType=alert.firing`、`sourceId` 为告警 ID 摘要、`payloadSummary` 不含完整日志或原始告警正文，并把返回 attempt 摘要交给 alerting 保存为 `externalAttemptStatus`。
 
 `GET /api/v1/cross-platform-notification/admin/deliveries` 支持 `page`、`pageSize`、`sourceModule`、`sourceId`、`eventType`、`riskLevel`、`routeId`、`providerId`、`channel`、`status`、`receiverType`、`from`、`to`、`keyword` 和 `sort`。`sort` 允许 `createdAt_desc`、`updatedAt_desc`、`lastAttemptAt_desc`、`riskLevel_desc`、`status_asc`。成功响应分页 `items` 为 `ExternalDeliveryRequest[]`。
 

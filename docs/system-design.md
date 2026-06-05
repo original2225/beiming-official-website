@@ -109,6 +109,8 @@ API 网关或后端入口
 
 `ops-core` 是第四批和第六期运行合并单元，承载 `ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`ops-image-market` 和 `cross-platform-notification` 的现有业务路径。它只收敛运行入口，不改变七个模块的数据归属、正式契约、路径前缀、权限、状态机、错误码、审计对象或失败降级规则。`cross-platform-notification` 仍只负责外部渠道控制面和模拟投递，不执行真实外部消息发送、真实回调签名或生产凭据托管。
 
+第七轮生产化优化不继续合并运行入口。`ops-core` 增加经 `api-gateway` 访问的真实 HTTP smoke、自有 readiness 中的 smoke 状态和可信网关内部签名状态；`api-gateway` 在注入可信身份头时同步注入内部时间戳和 HMAC 签名；`ops-core` 管理接口验证签名后才接受可信身份上下文。`alerting` 告警命中后的外部通知只通过 `cross-platform-notification` 的模拟外部投递模型留下 delivery、attempt 和审计摘要，不执行真实外部发送，不关闭告警主状态，不绕过 CPN 的 provider、模板、路由、receiver、幂等和脱敏规则。
+
 ## 公共基础契约
 
 所有模块共享统一响应格式、错误码、分页格式、认证方式、审计字段和时间字段。
@@ -236,7 +238,7 @@ Cloudreve 第一阶段可以作为外部分享链接存在。后续接入 API �
 
 节点守护进程部署在被管理服务器上。它只开放必要管理端口，优先由控制面主动连接或通过受控通道通信，不暴露无鉴权的系统操作接口。
 
-后续如果采用微服务，网关负责路由、跨域、基础鉴权、限流和请求日志。业务服务负责自己的业务规则。网关不直接访问数据库。
+后续如果采用微服务，网关负责路由、跨域、基础鉴权、可信身份签名、限流和请求日志。业务服务负责自己的业务规则。网关不直接访问数据库。
 
 本地开发端口必须固定，避免 IDEA、命令行、前端代理和后续网关联调互相抢占默认端口。当前已合并运行单元中，`auth`、`profile`、`notification`、`content`、`server-status`、`resource` 和 `admin` 由 `business-core-service` 承载，端口固定为 `8130`；`onboarding`、`exam`、`whitelist` 和 `attendance` 由 `admission-core-service` 承载，端口固定为 `8131`；`community`、`activity`、`calendar` 和 `changelog` 由 `engagement-core-service` 承载，端口固定为 `8132`；`ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`ops-image-market` 和 `cross-platform-notification` 由 `ops-core-service` 承载，端口固定为 `8133`；`guide`、`material` 和 `online-map` 由 `portal-core-service` 承载，端口固定为 `8134`。历史端口 `8101` 到 `8116`、`8118` 到 `8124`、`8126` 和 `8127` 只保留为模块原端口记录，不作为当前网关上游。`node-daemon` 继续使用 `8117`。旧 `backend/online-map-service` 已退役且不得恢复；第六期完成后旧 `backend/cross-platform-notification-service` 不得恢复。新增或调整端口时，必须同步更新正式文档和对应自动化测试。
 

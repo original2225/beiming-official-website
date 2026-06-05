@@ -1,6 +1,6 @@
 # 北冥官网 api-gateway API 契约
 
-版本：0.2
+版本：0.3
 
 ## 文档定位
 
@@ -20,7 +20,7 @@
 | --- | --- |
 | 路由匹配 | 根据固定路径前缀把请求转发到已有微服务端口。 |
 | 请求编号 | 接收或生成 `X-Request-Id`，向上游和下游保持一致。 |
-| 认证透传与上下文注入 | 原样透传 `Authorization: Bearer <token>`；携带可验证会话时，通过 `auth` 会话校验生成可信身份头。 |
+| 认证透传与上下文注入 | 原样透传 `Authorization: Bearer <token>`；携带可验证会话时，通过 `auth` 会话校验生成可信身份头、内部时间戳和内部签名。 |
 | 请求透传 | 保持 HTTP 方法、路径、查询参数、JSON 请求体和必要请求头。 |
 | 请求边界保护 | 校验 `X-Request-Id` 格式，限制 P0 JSON 请求体大小，拒绝明显异常入口请求。 |
 | 响应透传 | 上游响应状态码、统一响应体、内容类型和响应头白名单默认原样返回。 |
@@ -46,7 +46,7 @@
 
 业务转发接口不在网关层做强制角色判断。公开业务接口可以无 `Authorization` 透传；需要登录或后台权限的业务接口由上游服务按自身契约返回 `41000`、`41001`、`42001` 或其他业务错误码。业务转发请求如果携带 `Authorization: Bearer <token>` 且目标路由不是 `auth`，网关会向 `auth` 会话校验接口做一次短路径校验。校验成功时，网关向上游注入可信身份头；校验失败、超时或 `auth` 不可用时，网关不注入可信身份头，但仍透传原始 `Authorization` 给目标上游，由目标上游按自身契约判定请求是否可继续。
 
-网关注入的可信身份头只允许由网关生成，客户端传入同名头必须在转发前剥离。P0 可信身份头如下。
+网关注入的可信身份头只允许由网关生成，客户端传入同名头必须在转发前剥离。可信身份签名第一版使用 `api-gateway.internal-signing-secret` 配置的共享密钥和 HMAC SHA-256 小写 hex。签名明文必须包含 HTTP 方法、原始路径、请求编号、用户 ID、角色、能力点、时间戳和规范化后的上下文字段。P0.3 可信身份头如下。
 
 | 请求头 | 来源 | 说明 |
 | --- | --- | --- |
@@ -56,6 +56,10 @@
 | `X-Beiming-Actor-Minecraft-Id` | `auth.data.user.minecraftBinding.minecraftId` | 已绑定时注入。 |
 | `X-Beiming-Actor-Minecraft-Uuid` | `auth.data.user.minecraftBinding.minecraftUuid` | 已绑定时注入。 |
 | `X-Gateway-Internal-Request-Id` | 网关请求编号 | 标记该可信上下文来自当前网关请求。 |
+| `X-Gateway-Internal-Timestamp` | 网关生成时间戳 | ISO 8601 时间，用于上游校验签名窗口。 |
+| `X-Gateway-Internal-Signature` | 网关内部签名 | HMAC SHA-256 小写 hex，证明可信身份头来自网关。 |
+
+客户端传入的 `X-Gateway-Internal-Signature`、`X-Gateway-Internal-Timestamp`、`X-Gateway-Internal-Request-Id` 和全部 `X-Beiming-Actor-*` 都必须在转发前剥离。没有通过 auth 校验的业务请求不得注入可信身份头、内部时间戳或内部签名，只透传原始 `Authorization` 给上游自行判定。
 
 ## 路由注册表
 
@@ -100,7 +104,11 @@
 
 `guide`、`material` 和 `online-map` 已完成第五批后续门户体验运行合并。网关必须把这三个路由的上游统一切到 `portal-core-service` 的 `8134`，但路由 ID、服务键、路径前缀、请求路径、认证透传、可信身份头剥离与注入、请求日志、错误码和响应透传规则都保持原样。端口 `8127`、`8126` 和 `8121` 只作为第五批模块历史原服务端口记录，不再作为网关第五批玩家门户体验路由的默认上游。`node-daemon`、`api-gateway`、`ops-core` 和已经由 `ops-core` 承载的 `cross-platform-notification` 继续不并入 `portal-core`。
 
-本地真实 HTTP 联调允许通过配置项 `api-gateway.upstreams.portal-core-base-url` 临时覆盖 `guide`、`material` 和 `online-map` 三个路由的上游基础地址。该配置只改变这三个路由的 `upstreamBaseUrl` 和由 URL 推导出的 `upstreamPort`，不得新增 `PORTAL_CORE` 业务路由，不得改写 `/api/v1/guides`、`/api/v1/materials` 或 `/api/v1/online-map` 路径前缀，不得影响 `cross-platform-notification`、`node-daemon`、`ops-core` 或其他上游。默认值仍为 `http://127.0.0.1:8134`。这个能力只用于本地双服务 HTTP smoke 和显式环境配置，不代表已接入动态服务发现或集中配置中心。
+本地真实 HTTP 联调允许通过配置项 `api-gateway.upstreams.portal-core-base-url` 临时覆盖 `guide`、`material` 和 `online-map` 三个路由的上游基础地址。该配置只改变这三个路由的 `upstreamBaseUrl` 和由 URL 推导出的 `upstreamPort`，不得新增 `PORTAL_CORE` 业务路由，不得改写 `/api/v1/guides`、`/api/v1/materials` 或 `/api/v1/online-map` 路径前缀，不得影响 `cross-platform-notification`、`node-daemon`、`ops-core` 或其他上游。默认值仍为 `http://127.0.0.1:8134`。
+
+本地真实 HTTP 联调允许通过配置项 `api-gateway.upstreams.ops-core-base-url` 临时覆盖 `ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`ops-image-market` 和 `cross-platform-notification` 七个路由的上游基础地址。该配置只改变这七个路由的 `upstreamBaseUrl` 和由 URL 推导出的 `upstreamPort`，不得新增 `OPS_CORE` 业务路由，不得改写任一业务路径前缀，不得影响 `node-daemon`、`portal-core`、`business-core`、`admission-core`、`engagement-core` 或其他上游。默认值仍为 `http://127.0.0.1:8133`。
+
+这两个覆盖能力只用于本地真实 HTTP smoke 和显式环境配置，不代表已接入动态服务发现或集中配置中心。
 
 路径匹配规则为最长前缀优先。`/api/v1/resources` 和 `/api/v1/resources/**` 都必须命中 `resource`。未知路径返回网关错误，不转发到任何上游。
 
@@ -335,7 +343,7 @@
 | X-Forwarded-For | 默认使用当前连接远端地址；后续接入可信反向代理后再启用代理链追加。 |
 | Hop-by-hop header | 不透传 `Connection`、`Transfer-Encoding`、`Upgrade`、`Keep-Alive`、`TE`、`Trailer` 和 `Proxy-Authorization`。 |
 | 可信身份头 | 浏览器传入的 `X-Beiming-Actor-*`、`X-Gateway-Internal-*` 等可信身份头必须丢弃。 |
-| 可信身份注入 | `auth` 会话校验成功时，网关注入 `X-Beiming-Actor-*` 和 `X-Gateway-Internal-Request-Id`；校验失败时不注入。 |
+| 可信身份注入 | `auth` 会话校验成功时，网关注入 `X-Beiming-Actor-*`、`X-Gateway-Internal-Request-Id`、`X-Gateway-Internal-Timestamp` 和 `X-Gateway-Internal-Signature`；校验失败时不注入。 |
 | 响应 | 上游 HTTP 状态、响应体、Content-Type 以及响应头白名单默认原样返回。 |
 | 响应头白名单 | 允许透传 `Content-Type`、`Cache-Control`、`ETag`、`Location`、`Content-Disposition`、`Last-Modified` 和 `Expires`；其他响应头默认丢弃，避免泄露内部实现或不安全代理头。 |
 | 日志 | 只记录脱敏摘要。 |
@@ -371,7 +379,7 @@
 
 请求日志必须脱敏。以下内容不得存储或返回：请求体、完整 query、完整 `Authorization`、Cookie、密码、邀请码原始码、密码重置令牌、节点密钥、registry 凭据、Cloudreve token、外部 webhook、文件内容、终端命令正文、日志正文、异常堆栈。
 
-网关不得接受浏览器传入的可信身份头作为真实身份。`X-Beiming-Actor-User-Id`、`X-Beiming-Actor-Roles`、`X-Gateway-Internal-Token` 等头如果来自客户端请求，必须在转发前移除。网关向上游注入可信身份时，只能来自 `auth` 会话校验结果。`auth` 校验失败时不得沿用客户端伪造头，不得根据 token 字符串自行推断用户身份。
+网关不得接受浏览器传入的可信身份头作为真实身份。`X-Beiming-Actor-User-Id`、`X-Beiming-Actor-Roles`、`X-Gateway-Internal-Token`、`X-Gateway-Internal-Timestamp`、`X-Gateway-Internal-Signature` 等头如果来自客户端请求，必须在转发前移除。网关向上游注入可信身份时，只能来自 `auth` 会话校验结果。`auth` 校验失败时不得沿用客户端伪造头，不得根据 token 字符串自行推断用户身份。
 
 ## 失败降级
 
@@ -383,14 +391,14 @@
 
 ## 生产化差距
 
-P0 `api-gateway` 是本地契约实现，必须在自检摘要中明确以下生产化差距：尚未接入真实服务发现，尚未接入集中配置，尚未接入分布式限流，认证上下文已支持通过 `auth` 会话校验注入但尚未接入内部签名和缓存，尚未接入持久化审计，尚未代理 WebSocket 和大文件流。`api-gateway.upstreams.portal-core-base-url` 只是本地静态配置覆盖，不得在自检摘要中被描述为动态服务发现或集中配置已经完成。
+P0 `api-gateway` 是本地契约实现，必须在自检摘要中明确以下生产化差距：尚未接入真实服务发现，尚未接入集中配置，尚未接入分布式限流，认证上下文已支持通过 `auth` 会话校验注入和内部签名，但尚未接入签名密钥集中托管、密钥轮换和缓存，尚未接入持久化审计，尚未代理 WebSocket 和大文件流。`api-gateway.upstreams.portal-core-base-url` 和 `api-gateway.upstreams.ops-core-base-url` 只是本地静态配置覆盖，不得在自检摘要中被描述为动态服务发现或集中配置已经完成。
 
-这些差距不得影响 P0 的路径转发、请求编号、认证透传、可信身份头剥离、可验证认证上下文注入、错误降级、路由表和测试闭环。
+这些差距不得影响 P0 的路径转发、请求编号、认证透传、可信身份头剥离、可验证认证上下文注入、内部签名注入、错误降级、路由表和测试闭环。
 
 ## 验收口径
 
 `api-gateway` API 文档按 `docs/contracts-api-gateway.md` 独立存在，并由 `.local-docs/tests-api-gateway.md` 记录本地测试闭环。
 
-本文档列出的每个网关自有接口都有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、分页排序、状态刷新、失败降级、日志脱敏和验收口径。业务转发测试必须覆盖 26 个已接入路径前缀，确认路由表端口准确、第一批七个路由统一指向 `business-core-service:8130`、第二批四个路由统一指向 `admission-core-service:8131`、第三批四个路由统一指向 `engagement-core-service:8132`、第四批六个路由和第六期 `cross-platform-notification` 统一指向 `ops-core-service:8133`、第五批后三个门户体验路由统一指向 `portal-core-service:8134`、原业务路径不被改写为 core 服务前缀、请求编号透传、请求编号非法拒绝、认证头透传、可信身份头剥离、`auth` 会话校验成功后的可信身份注入、`auth` 校验失败后的不注入降级、查询参数透传、JSON body 透传、请求体大小限制、响应头白名单、上游 2xx 透传、上游 4xx 透传、上游 5xx 透传、未知路径、非法方法、CORS 预检、上游不可用、上游超时和敏感字段不落日志。
+本文档列出的每个网关自有接口都有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、分页排序、状态刷新、失败降级、日志脱敏和验收口径。业务转发测试必须覆盖 26 个已接入路径前缀，确认路由表端口准确、第一批七个路由统一指向 `business-core-service:8130`、第二批四个路由统一指向 `admission-core-service:8131`、第三批四个路由统一指向 `engagement-core-service:8132`、第四批六个路由和第六期 `cross-platform-notification` 统一指向 `ops-core-service:8133`、第五批后三个门户体验路由统一指向 `portal-core-service:8134`、原业务路径不被改写为 core 服务前缀、`api-gateway.upstreams.ops-core-base-url` 只覆盖七个 ops-core 承载路由、请求编号透传、请求编号非法拒绝、认证头透传、可信身份头剥离、客户端伪造签名头剥离、`auth` 会话校验成功后的可信身份和内部签名注入、`auth` 校验失败后的不注入降级、查询参数透传、JSON body 透传、请求体大小限制、响应头白名单、上游 2xx 透传、上游 4xx 透传、上游 5xx 透传、未知路径、非法方法、CORS 预检、上游不可用、上游超时和敏感字段不落日志。
 
 开发完成后必须执行 `mvn -f backend/api-gateway-service/pom.xml test`、`mvn -f backend/business-core-service/pom.xml test`、`mvn -f backend/admission-core-service/pom.xml test`、`mvn -f backend/engagement-core-service/pom.xml test`、`mvn -f backend/ops-core-service/pom.xml test`、`mvn -f backend/portal-core-service/pom.xml test` 和 `mvn -f backend/node-daemon-service/pom.xml test`。涉及 `portal-core` smoke 的生产化增强还必须覆盖真实 `api-gateway-service` 与真实 `portal-core-service` 启动后的 HTTP 联调，确认 `api-gateway.upstreams.portal-core-base-url` 只临时覆盖第五批后三个原业务路由。第一批、第二批和第三批旧服务清理后，不得为了网关回归恢复对应旧服务目录、旧 Maven 入口、旧启动类或旧测试命令。第四批和第五批旧服务目录退役后，不得为了网关回归恢复旧 Maven 入口。旧 `backend/online-map-service` 已退役且不得恢复。测试过程必须写入 `.local-docs/tests-api-gateway.md`。
