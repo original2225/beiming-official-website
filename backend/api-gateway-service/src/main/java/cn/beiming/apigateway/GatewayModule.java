@@ -112,6 +112,12 @@ class GatewayController {
         ));
     }
 
+    @GetMapping("/api/v1/gateway/admin/runtime-topology")
+    ResponseEntity<Map<String, Object>> runtimeTopology(HttpServletRequest request) {
+        requireAnyRole(request, Set.of("HELPER", "ADMIN", "OWNER"));
+        return ok(state.runtimeTopology(now()));
+    }
+
     @GetMapping("/api/v1/gateway/admin/routes")
     ResponseEntity<Map<String, Object>> routes(HttpServletRequest request, @RequestParam Map<String, String> query) {
         requireAnyRole(request, Set.of("HELPER", "ADMIN", "OWNER"));
@@ -630,7 +636,11 @@ class GatewayController {
                 "AUTH_CONTEXT_SIGNATURE_AND_CACHE_NOT_CONNECTED",
                 "PERSISTENT_AUDIT_NOT_CONNECTED",
                 "WEBSOCKET_PROXY_NOT_ENABLED",
-                "LARGE_STREAM_PROXY_NOT_ENABLED"
+                "LARGE_STREAM_PROXY_NOT_ENABLED",
+                "UNIFIED_BACKEND_ENTRYPOINT_NOT_IMPLEMENTED",
+                "IN_PROCESS_GATEWAY_MOUNT_NOT_IMPLEMENTED",
+                "DYNAMIC_SERVICE_DISCOVERY_NOT_CONNECTED",
+                "NODE_DAEMON_REMAINS_EXTERNAL_BOUNDARY"
         );
     }
 
@@ -667,6 +677,30 @@ class GatewayController {
 @Component
 class GatewayState {
     private static final Instant REGISTERED_AT = Instant.parse("2026-05-29T00:00:00Z");
+    private static final List<String> GATEWAY_SELF_APIS = List.of(
+            "gateway-health",
+            "gateway-ops-summary",
+            "gateway-runtime-topology",
+            "gateway-routes",
+            "gateway-route-detail",
+            "gateway-upstreams",
+            "gateway-upstream-health-refresh",
+            "gateway-request-logs"
+    );
+    private static final List<String> UNIFIED_BACKEND_CANDIDATES = List.of(
+            "api-gateway",
+            "business-core",
+            "admission-core",
+            "engagement-core",
+            "ops-core",
+            "portal-core"
+    );
+    private static final Set<String> BUSINESS_CORE_ROUTES = Set.of("auth", "profile", "notification", "content", "server-status", "resource", "admin");
+    private static final Set<String> ADMISSION_CORE_ROUTES = Set.of("onboarding", "exam", "whitelist", "attendance");
+    private static final Set<String> ENGAGEMENT_CORE_ROUTES = Set.of("community", "activity", "calendar", "changelog");
+    private static final Set<String> OPS_CORE_ROUTES = Set.of("ops-control", "cloudreve-sync", "backup-recovery", "alerting", "plugin-integration", "cross-platform-notification", "ops-image-market");
+    private static final Set<String> PORTAL_CORE_ROUTES = Set.of("online-map", "material", "guide");
+    private static final Set<String> NODE_DAEMON_ROUTES = Set.of("node-daemon");
     private final String portalCoreBaseUrl;
     private final String opsCoreBaseUrl;
     private final List<GatewayRoute> routes;
@@ -740,6 +774,48 @@ class GatewayState {
         return new ArrayList<>(logs);
     }
 
+    Map<String, Object> runtimeTopology(String generatedAt) {
+        return map(
+                "service", "api-gateway",
+                "deploymentMode", "CURRENT_SEVEN_ENTRYPOINTS",
+                "singleServiceMergeReadiness", "PREPARING",
+                "currentEntrypointsTotal", 7,
+                "futureMergeCandidateEntrypointsTotal", UNIFIED_BACKEND_CANDIDATES.size(),
+                "businessRoutesTotal", routes.size(),
+                "gatewayApiTotal", GATEWAY_SELF_APIS.size(),
+                "currentEntrypoints", List.of(
+                        entrypoint("api-gateway", "backend/api-gateway-service", 8125, "gateway ingress", "INGRESS_CANDIDATE", List.of(), null),
+                        entrypoint("business-core", "backend/business-core-service", 8130, "business core", "IN_PROCESS_CANDIDATE", routesByIds(BUSINESS_CORE_ROUTES), null),
+                        entrypoint("admission-core", "backend/admission-core-service", 8131, "admission core", "IN_PROCESS_CANDIDATE", routesByIds(ADMISSION_CORE_ROUTES), null),
+                        entrypoint("engagement-core", "backend/engagement-core-service", 8132, "engagement core", "IN_PROCESS_CANDIDATE", routesByIds(ENGAGEMENT_CORE_ROUTES), null),
+                        entrypoint("ops-core", "backend/ops-core-service", 8133, "ops control core", "IN_PROCESS_CANDIDATE", routesByIds(OPS_CORE_ROUTES), null),
+                        entrypoint("portal-core", "backend/portal-core-service", 8134, "portal experience core", "IN_PROCESS_CANDIDATE", routesByIds(PORTAL_CORE_ROUTES), null),
+                        entrypoint("node-daemon", "backend/node-daemon-service", 8117, "external node execution", "KEEP_EXTERNAL", routesByIds(NODE_DAEMON_ROUTES), "node-daemon executes controlled node-side tasks and remains outside the unified backend process")
+                ),
+                "futureUnifiedBackend", map(
+                        "entrypointKey", "unified-backend",
+                        "candidateEntrypoints", UNIFIED_BACKEND_CANDIDATES,
+                        "nodeDaemonDisposition", "EXTERNAL_NODE_EXECUTION_BOUNDARY",
+                        "currentBusinessRoutePreserved", true,
+                        "currentBusinessRoutesTotal", routes.size(),
+                        "gatewayApiTotal", GATEWAY_SELF_APIS.size(),
+                        "dynamicServiceDiscoveryConnected", false,
+                        "inProcessMountImplemented", false,
+                        "legacyEntrypointsRestored", false
+                ),
+                "mergePreparationChecks", List.of(
+                        check("ROUTE_PREFIX_PRESERVED", "PASS", "business route prefixes remain unchanged"),
+                        check("GATEWAY_AS_INGRESS_CANDIDATE", "PASS", "api-gateway is the future ingress candidate"),
+                        check("CORE_ROUTES_GROUPED", "PASS", "business routes stay grouped under five core entrypoints"),
+                        check("NODE_DAEMON_EXTERNAL_BOUNDARY", "PASS", "node-daemon remains external"),
+                        check("LEGACY_ENTRYPOINTS_NOT_RESTORED", "PASS", "retired legacy service entrypoints are not part of the topology"),
+                        check("STATIC_SERVICE_DISCOVERY_ONLY", "BLOCKED", "current upstreams are still static route registrations"),
+                        check("IN_PROCESS_MOUNT_NOT_IMPLEMENTED", "NOT_IMPLEMENTED", "business modules are not mounted in-process through the gateway")
+                ),
+                "generatedAt", generatedAt
+        );
+    }
+
     private List<GatewayRoute> createRoutes() {
         List<GatewayRoute> items = new ArrayList<>();
         items.add(route("auth", "AUTH", "auth", "/api/v1/auth", 8130, "/api/v1/auth/session/verify"));
@@ -779,6 +855,42 @@ class GatewayState {
     private GatewayRoute route(String routeId, String serviceKey, String serviceName, String pathPrefix, String upstreamBaseUrl, String healthPath) {
         return new GatewayRoute(routeId, serviceKey, serviceName, pathPrefix, upstreamBaseUrl, portOf(upstreamBaseUrl), healthPath, 1500, true,
                 List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"), true, REGISTERED_AT, REGISTERED_AT);
+    }
+
+    private Map<String, Object> entrypoint(String key, String directory, int port, String role, String disposition, List<GatewayRoute> hostedRoutes, String externalReason) {
+        return map(
+                "entrypointKey", key,
+                "serviceDirectory", directory,
+                "port", port,
+                "role", role,
+                "mergeDisposition", disposition,
+                "hostedRouteIds", hostedRoutes.stream().map(GatewayRoute::routeId).toList(),
+                "hostedPathPrefixes", hostedRoutes.stream().map(GatewayRoute::pathPrefix).toList(),
+                "routesTotal", hostedRoutes.size(),
+                "keptExternalReason", externalReason
+        );
+    }
+
+    private List<GatewayRoute> routesByIds(Set<String> routeIds) {
+        List<GatewayRoute> matched = new ArrayList<>();
+        for (GatewayRoute route : routes) {
+            if (routeIds.contains(route.routeId())) {
+                matched.add(route);
+            }
+        }
+        return List.copyOf(matched);
+    }
+
+    private Map<String, Object> check(String name, String status, String detail) {
+        return map("check", name, "status", status, "detail", detail);
+    }
+
+    private Map<String, Object> map(Object... pairs) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        for (int i = 0; i < pairs.length; i += 2) {
+            map.put(String.valueOf(pairs[i]), pairs[i + 1]);
+        }
+        return map;
     }
 
     private String normalizeBaseUrl(String value) {
