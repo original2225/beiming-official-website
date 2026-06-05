@@ -47,7 +47,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 class PortalCoreApiContractTest {
     private static final int PORTAL_CORE_PORT = 8134;
-    private static final int INHERITED_ROUTES_TOTAL = 74;
+    private static final int INHERITED_ROUTES_TOTAL = 108;
     private static final int SELF_ROUTES_TOTAL = 5;
     private static final int ROUTES_TOTAL = INHERITED_ROUTES_TOTAL + SELF_ROUTES_TOTAL;
     private static final PortalSmokeTestServer SMOKE_SERVER = PortalSmokeTestServer.start();
@@ -87,7 +87,7 @@ class PortalCoreApiContractTest {
                 .andExpect(jsonPath("$.data.service").value("portal-core"))
                 .andExpect(jsonPath("$.data.status").value("UP"))
                 .andExpect(jsonPath("$.data.port").value(PORTAL_CORE_PORT))
-                .andExpect(jsonPath("$.data.modulesTotal").value(2))
+                .andExpect(jsonPath("$.data.modulesTotal").value(3))
                 .andExpect(jsonPath("$.data.inheritedRoutesTotal").value(INHERITED_ROUTES_TOTAL))
                 .andExpect(jsonPath("$.data.selfRoutesTotal").value(SELF_ROUTES_TOTAL))
                 .andExpect(jsonPath("$.data.routesTotal").value(ROUTES_TOTAL))
@@ -187,8 +187,8 @@ class PortalCoreApiContractTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.service").value("portal-core"))
                 .andExpect(jsonPath("$.data.port").value(PORTAL_CORE_PORT))
-                .andExpect(jsonPath("$.data.modulesTotal").value(2))
-                .andExpect(jsonPath("$.data.modulesMounted").value(2))
+                .andExpect(jsonPath("$.data.modulesTotal").value(3))
+                .andExpect(jsonPath("$.data.modulesMounted").value(3))
                 .andExpect(jsonPath("$.data.inheritedRoutesTotal").value(INHERITED_ROUTES_TOTAL))
                 .andExpect(jsonPath("$.data.selfRoutesTotal").value(SELF_ROUTES_TOTAL))
                 .andExpect(jsonPath("$.data.routesTotal").value(ROUTES_TOTAL))
@@ -200,24 +200,28 @@ class PortalCoreApiContractTest {
                 .andExpect(jsonPath("$.data.registeredUpstreams[?(@.serviceKey == 'PORTAL_CORE' && @.port == 8134 && @.pathPrefix == '/api/v1/portal-core')]").exists())
                 .andExpect(jsonPath("$.data.registeredUpstreams[?(@.serviceKey == 'GUIDE' && @.pathPrefix == '/api/v1/guides')]").exists())
                 .andExpect(jsonPath("$.data.registeredUpstreams[?(@.serviceKey == 'MATERIAL' && @.pathPrefix == '/api/v1/materials')]").exists())
+                .andExpect(jsonPath("$.data.registeredUpstreams[?(@.serviceKey == 'ONLINE_MAP' && @.pathPrefix == '/api/v1/online-map')]").exists())
                 .andExpect(jsonPath("$.data.httpSmokeStatus").value("NOT_RUN"))
-                .andExpect(jsonPath("$.data.httpSmokeTargets.length()").value(2))
+                .andExpect(jsonPath("$.data.httpSmokeTargets.length()").value(3))
                 .andExpect(jsonPath("$.data.lastHttpSmokeAt").value(nullValue()))
                 .andExpect(jsonPath("$.data.lastHttpSmokeResults.length()").value(0))
                 .andExpect(jsonPath("$.data.routeDriftStatus").value("NO_DRIFT"))
                 .andExpect(jsonPath("$.data.gatewaySwitchStatus").value("COMPLETED"))
                 .andExpect(jsonPath("$.data.moduleRoutes[?(@.moduleKey == 'GUIDE' && @.pathPrefix == '/api/v1/guides' && @.legacyPort == 8127 && @.currentPort == 8134 && @.routesTotal == 41)]").exists())
                 .andExpect(jsonPath("$.data.moduleRoutes[?(@.moduleKey == 'MATERIAL' && @.pathPrefix == '/api/v1/materials' && @.legacyPort == 8126 && @.currentPort == 8134 && @.routesTotal == 33)]").exists())
+                .andExpect(jsonPath("$.data.moduleRoutes[?(@.moduleKey == 'ONLINE_MAP' && @.pathPrefix == '/api/v1/online-map' && @.legacyPort == 8121 && @.currentPort == 8134 && @.routesTotal == 34)]").exists())
                 .andExpect(jsonPath("$.data.recentAuditSummary.storageMode").value("IN_MEMORY_CONTRACT_STUBS"))
                 .andExpect(jsonPath("$.data.generatedAt").isNotEmpty());
 
         mockMvc.perform(get("/api/v1/portal-core/admin/modules").header("Authorization", "Bearer owner-token"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.items.length()").value(2))
+                .andExpect(jsonPath("$.data.items.length()").value(3))
                 .andExpect(jsonPath("$.data.items[?(@.moduleName == 'guide' && @.legacyServiceDirectory == 'backend/guide-service' && @.legacyTestCommand == 'RETIRED_NO_MAVEN_ENTRY' && @.currentServiceDirectory == 'backend/portal-core-service' && @.legacyPort == 8127 && @.currentPort == 8134 && @.pathPrefix == '/api/v1/guides' && @.routeDriftStatus == 'NO_DRIFT')]").exists())
                 .andExpect(jsonPath("$.data.items[?(@.moduleName == 'material' && @.legacyServiceDirectory == 'backend/material-service' && @.legacyTestCommand == 'RETIRED_NO_MAVEN_ENTRY' && @.currentServiceDirectory == 'backend/portal-core-service' && @.legacyPort == 8126 && @.currentPort == 8134 && @.pathPrefix == '/api/v1/materials' && @.routeDriftStatus == 'NO_DRIFT')]").exists())
+                .andExpect(jsonPath("$.data.items[?(@.moduleName == 'online-map' && @.legacyServiceDirectory == 'backend/online-map-service' && @.legacyTestCommand == 'LEGACY_RETAINED_UNTIL_USER_CONFIRMS' && @.currentServiceDirectory == 'backend/portal-core-service' && @.legacyPort == 8121 && @.currentPort == 8134 && @.pathPrefix == '/api/v1/online-map' && @.routeDriftStatus == 'NO_DRIFT')]").exists())
                 .andExpect(jsonPath("$.data.items[?(@.pathPrefix == '/api/v1/portal-core/guides')]").doesNotExist())
-                .andExpect(jsonPath("$.data.items[?(@.pathPrefix == '/api/v1/portal-core/materials')]").doesNotExist());
+                .andExpect(jsonPath("$.data.items[?(@.pathPrefix == '/api/v1/portal-core/materials')]").doesNotExist())
+                .andExpect(jsonPath("$.data.items[?(@.pathPrefix == '/api/v1/portal-core/online-map')]").doesNotExist());
     }
 
     @Test
@@ -237,10 +241,11 @@ class PortalCoreApiContractTest {
                 .andExpect(jsonPath("$.data.testControlHeadersStatus").value("DISABLED_BY_DEFAULT"))
                 .andExpect(jsonPath("$.data.sensitiveFieldScanStatus").value("PASS"))
                 .andExpect(jsonPath("$.data.serviceDiscoveryMode").value("STATIC_LOCAL_REGISTRY"))
-                .andExpect(jsonPath("$.data.registeredUpstreams.length()").value(4))
+                .andExpect(jsonPath("$.data.registeredUpstreams.length()").value(5))
                 .andExpect(jsonPath("$.data.httpSmokeStatus").value("NOT_RUN"))
                 .andExpect(jsonPath("$.data.httpSmokeTargets[?(@.targetKey == 'GATEWAY_GUIDE_CATEGORIES' && @.serviceKey == 'GUIDE' && @.expectedBusinessCode == 0)]").exists())
                 .andExpect(jsonPath("$.data.httpSmokeTargets[?(@.targetKey == 'GATEWAY_MATERIAL_FEATURED' && @.serviceKey == 'MATERIAL' && @.expectedBusinessCode == 0)]").exists())
+                .andExpect(jsonPath("$.data.httpSmokeTargets[?(@.targetKey == 'GATEWAY_ONLINE_MAP_HEALTH' && @.serviceKey == 'ONLINE_MAP' && @.expectedBusinessCode == 0)]").exists())
                 .andExpect(jsonPath("$.data.lastHttpSmokeAt").value(nullValue()))
                 .andExpect(jsonPath("$.data.lastHttpSmokeResults.length()").value(0))
                 .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'REAL_PERSISTENCE' && @.status == 'BLOCKED')]").exists())
@@ -250,13 +255,16 @@ class PortalCoreApiContractTest {
                 .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'REAL_FILE_SECURITY_SCANNER' && @.status == 'BLOCKED')]").exists())
                 .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'REAL_FULLTEXT_SEARCH' && @.status == 'BLOCKED')]").exists())
                 .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'REAL_NOTIFICATION_DELIVERY' && @.status == 'BLOCKED')]").exists())
+                .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'REAL_MAP_PROVIDER_HTTP' && @.status == 'BLOCKED')]").exists())
+                .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'REAL_MARKER_SYNC' && @.status == 'BLOCKED')]").exists())
+                .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'REAL_TILE_HOSTING' && @.status == 'BLOCKED')]").exists())
                 .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'SERVICE_DISCOVERY' && @.status == 'PARTIAL')]").exists())
                 .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'REAL_HTTP_SMOKE' && @.status == 'NOT_RUN')]").exists())
                 .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'TEST_CONTROL_HEADERS' && @.status == 'PASS')]").exists())
                 .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'INHERITED_ROUTE_DRIFT' && @.status == 'PASS')]").exists())
                 .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'SENSITIVE_FIELD_SCAN' && @.status == 'PASS')]").exists())
                 .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'GATEWAY_ROUTE_SWITCH' && @.status == 'PASS')]").exists())
-                .andExpect(jsonPath("$.data.moduleReadiness.length()").value(2))
+                .andExpect(jsonPath("$.data.moduleReadiness.length()").value(3))
                 .andExpect(jsonPath("$.data.productionBlockers[?(@ == 'real persistence is not connected')]").exists())
                 .andExpect(jsonPath("$.data.productionBlockers[?(@ == 'real object storage is not connected')]").exists());
     }
@@ -265,6 +273,7 @@ class PortalCoreApiContractTest {
     @DirtiesContext(methodMode = DirtiesContext.MethodMode.AFTER_METHOD)
     void runsConfiguredGatewayHttpSmokeAndPersistsLatestInProcessResult() throws Exception {
         SMOKE_SERVER.prepare(
+                SmokeResponse.success(),
                 SmokeResponse.success(),
                 SmokeResponse.success()
         );
@@ -276,18 +285,19 @@ class PortalCoreApiContractTest {
                 .andExpect(jsonPath("$.data.service").value("portal-core"))
                 .andExpect(jsonPath("$.data.serviceDiscoveryMode").value("STATIC_LOCAL_REGISTRY"))
                 .andExpect(jsonPath("$.data.httpSmokeStatus").value("PASS"))
-                .andExpect(jsonPath("$.data.targets.length()").value(2))
-                .andExpect(jsonPath("$.data.results.length()").value(2))
+                .andExpect(jsonPath("$.data.targets.length()").value(3))
+                .andExpect(jsonPath("$.data.results.length()").value(3))
                 .andExpect(jsonPath("$.data.results[?(@.targetKey == 'GATEWAY_GUIDE_CATEGORIES' && @.status == 'PASS' && @.httpStatus == 200 && @.businessCode == 0)]").exists())
-                .andExpect(jsonPath("$.data.results[?(@.targetKey == 'GATEWAY_MATERIAL_FEATURED' && @.status == 'PASS' && @.httpStatus == 200 && @.businessCode == 0)]").exists());
+                .andExpect(jsonPath("$.data.results[?(@.targetKey == 'GATEWAY_MATERIAL_FEATURED' && @.status == 'PASS' && @.httpStatus == 200 && @.businessCode == 0)]").exists())
+                .andExpect(jsonPath("$.data.results[?(@.targetKey == 'GATEWAY_ONLINE_MAP_HEALTH' && @.status == 'PASS' && @.httpStatus == 200 && @.businessCode == 0)]").exists());
 
-        assertThat(SMOKE_SERVER.requestPaths()).containsExactly("/api/v1/guides/categories", "/api/v1/materials/featured");
-        assertThat(SMOKE_SERVER.requestIds()).containsExactly("req-portal-smoke-pass", "req-portal-smoke-pass");
+        assertThat(SMOKE_SERVER.requestPaths()).containsExactly("/api/v1/guides/categories", "/api/v1/materials/featured", "/api/v1/online-map/health");
+        assertThat(SMOKE_SERVER.requestIds()).containsExactly("req-portal-smoke-pass", "req-portal-smoke-pass", "req-portal-smoke-pass");
 
         mockMvc.perform(get("/api/v1/portal-core/admin/readiness").header("Authorization", "Bearer admin-token"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.httpSmokeStatus").value("PASS"))
-                .andExpect(jsonPath("$.data.lastHttpSmokeResults.length()").value(2))
+                .andExpect(jsonPath("$.data.lastHttpSmokeResults.length()").value(3))
                 .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'REAL_HTTP_SMOKE' && @.status == 'PASS')]").exists())
                 .andExpect(jsonPath("$.data.readyForProduction").value(false));
     }
@@ -296,6 +306,7 @@ class PortalCoreApiContractTest {
     @DirtiesContext(methodMode = DirtiesContext.MethodMode.AFTER_METHOD)
     void marksHttpSmokeDegradedWithoutFailingTheReadinessEndpoint() throws Exception {
         SMOKE_SERVER.prepare(
+                SmokeResponse.success(),
                 SmokeResponse.success(),
                 new SmokeResponse(500, "{\"code\":51700,\"message\":\"material failure\",\"data\":null}")
         );
@@ -307,8 +318,9 @@ class PortalCoreApiContractTest {
                 .andExpect(jsonPath("$.code").value(0))
                 .andExpect(jsonPath("$.data.httpSmokeStatus").value("DEGRADED"))
                 .andExpect(jsonPath("$.data.results[?(@.targetKey == 'GATEWAY_GUIDE_CATEGORIES' && @.status == 'PASS')]").exists())
-                .andExpect(jsonPath("$.data.results[?(@.targetKey == 'GATEWAY_MATERIAL_FEATURED' && @.status == 'FAILED' && @.httpStatus == 500)]").exists())
-                .andExpect(jsonPath("$.data.results[?(@.targetKey == 'GATEWAY_MATERIAL_FEATURED')].failureReason").isNotEmpty());
+                .andExpect(jsonPath("$.data.results[?(@.targetKey == 'GATEWAY_MATERIAL_FEATURED' && @.status == 'PASS')]").exists())
+                .andExpect(jsonPath("$.data.results[?(@.targetKey == 'GATEWAY_ONLINE_MAP_HEALTH' && @.status == 'FAILED' && @.httpStatus == 500)]").exists())
+                .andExpect(jsonPath("$.data.results[?(@.targetKey == 'GATEWAY_ONLINE_MAP_HEALTH')].failureReason").isNotEmpty());
 
         mockMvc.perform(get("/api/v1/portal-core/admin/readiness").header("Authorization", "Bearer owner-token"))
                 .andExpect(status().isOk())
@@ -370,7 +382,9 @@ class PortalCoreApiContractTest {
                 "/api/v1/guides/home",
                 "/api/v1/guides/admin/ops/summary",
                 "/api/v1/materials/featured",
-                "/api/v1/materials/admin/ops/summary"
+                "/api/v1/materials/admin/ops/summary",
+                "/api/v1/online-map/health",
+                "/api/v1/online-map/admin/ops/summary"
         );
     }
 
@@ -383,6 +397,7 @@ class PortalCoreApiContractTest {
         assertThat(actualRoutes).containsExactlyInAnyOrderElementsOf(expectedRoutes);
         assertThat(countByPrefix(actualRoutes, "/api/v1/guides")).isEqualTo(41);
         assertThat(countByPrefix(actualRoutes, "/api/v1/materials")).isEqualTo(33);
+        assertThat(countByPrefix(actualRoutes, "/api/v1/online-map")).isEqualTo(34);
     }
 
     @Test
@@ -392,7 +407,7 @@ class PortalCoreApiContractTest {
         assertThat(componentScan).isNotNull();
         assertThat(componentScan.excludeFilters()).anySatisfy(filter -> {
             assertThat(filter.type()).isEqualTo(FilterType.REGEX);
-            assertThat(filter.pattern()).contains("cn\\.beiming\\.(guide|material)\\..*ServiceApplication");
+            assertThat(filter.pattern()).contains("cn\\.beiming\\.(guide|material|onlinemap)\\..*ServiceApplication");
         });
     }
 
@@ -465,7 +480,7 @@ class PortalCoreApiContractTest {
 
     private Set<String> inheritedContractRouteSignatures() throws IOException {
         Set<String> routes = new TreeSet<>();
-        for (String file : List.of("contracts-guide.md", "contracts-material.md")) {
+        for (String file : List.of("contracts-guide.md", "contracts-material.md", "contracts-online-map.md")) {
             Path path = docsPath(file);
             Pattern row = Pattern.compile("\\|[^|]+\\|\\s*(GET|POST|PUT|PATCH|DELETE)\\s*\\|\\s*`([^`]+)`");
             for (String line : Files.readAllLines(path)) {
@@ -479,7 +494,9 @@ class PortalCoreApiContractTest {
     }
 
     private boolean isInheritedPortalPath(String pattern) {
-        return pattern.startsWith("/api/v1/guides") || pattern.startsWith("/api/v1/materials");
+        return pattern.startsWith("/api/v1/guides")
+                || pattern.startsWith("/api/v1/materials")
+                || pattern.startsWith("/api/v1/online-map");
     }
 
     private long countByPrefix(Set<String> routes, String prefix) {
@@ -622,7 +639,7 @@ class PortalCoreApiContractTest {
 
         private void awaitRequests() {
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
-            while (requestPaths.size() < 2 && System.nanoTime() < deadline) {
+            while (requestPaths.size() < 3 && System.nanoTime() < deadline) {
                 try {
                     Thread.sleep(10);
                 } catch (InterruptedException ex) {

@@ -208,8 +208,15 @@ class PortalCoreRegistry {
     private static final int SELF_ROUTES_TOTAL = 5;
 
     private final List<PortalCoreModuleRegistration> modules = List.of(
-            new PortalCoreModuleRegistration("GUIDE", "guide", "/api/v1/guides", "backend/guide-service", 8127, 41, "docs/contracts-guide.md", ".local-docs/tests-guide.md"),
-            new PortalCoreModuleRegistration("MATERIAL", "material", "/api/v1/materials", "backend/material-service", 8126, 33, "docs/contracts-material.md", ".local-docs/tests-material.md")
+            new PortalCoreModuleRegistration("GUIDE", "guide", "/api/v1/guides", "backend/guide-service", 8127, 41,
+                    "docs/contracts-guide.md", ".local-docs/tests-guide.md", "RETIRED_NO_MAVEN_ENTRY",
+                    List.of("REAL_PERSISTENCE_NOT_CONNECTED", "REAL_FULLTEXT_SEARCH_NOT_CONNECTED")),
+            new PortalCoreModuleRegistration("MATERIAL", "material", "/api/v1/materials", "backend/material-service", 8126, 33,
+                    "docs/contracts-material.md", ".local-docs/tests-material.md", "RETIRED_NO_MAVEN_ENTRY",
+                    List.of("REAL_PERSISTENCE_NOT_CONNECTED", "REAL_OBJECT_STORAGE_NOT_CONNECTED", "REAL_FILE_SECURITY_SCANNER_NOT_CONNECTED")),
+            new PortalCoreModuleRegistration("ONLINE_MAP", "online-map", "/api/v1/online-map", "backend/online-map-service", 8121, 34,
+                    "docs/contracts-online-map.md", ".local-docs/tests-online-map.md", "LEGACY_RETAINED_UNTIL_USER_CONFIRMS",
+                    List.of("REAL_PERSISTENCE_NOT_CONNECTED", "REAL_MAP_PROVIDER_HTTP_NOT_CONNECTED", "REAL_MARKER_SYNC_NOT_CONNECTED", "REAL_TILE_HOSTING_NOT_CONNECTED"))
     );
 
     int modulesTotal() {
@@ -256,6 +263,9 @@ class PortalCoreRegistry {
                 "real object storage is not connected",
                 "real file security scanner is not connected",
                 "real fulltext search is not connected",
+                "real map provider HTTP is not connected",
+                "real marker sync is not connected",
+                "real tile hosting is not connected",
                 "real notification delivery is not connected",
                 "dynamic service discovery is not connected"
         ));
@@ -274,6 +284,9 @@ class PortalCoreRegistry {
                 check("REAL_FILE_SECURITY_SCANNER", "BLOCKED", "real file security scanner is not connected"),
                 check("REAL_FULLTEXT_SEARCH", "BLOCKED", "real fulltext search is not connected"),
                 check("REAL_NOTIFICATION_DELIVERY", "BLOCKED", "real notification delivery is not connected"),
+                check("REAL_MAP_PROVIDER_HTTP", "BLOCKED", "real map provider HTTP is not connected"),
+                check("REAL_MARKER_SYNC", "BLOCKED", "real marker sync is not connected"),
+                check("REAL_TILE_HOSTING", "BLOCKED", "real tile hosting is not connected"),
                 check("SERVICE_DISCOVERY", "PARTIAL", "static local service discovery registry is mounted"),
                 check("REAL_HTTP_SMOKE", httpSmokeStatus, "gateway to portal-core HTTP smoke status is " + httpSmokeStatus),
                 check("TEST_CONTROL_HEADERS", "PASS", "test control headers are disabled by default"),
@@ -320,7 +333,8 @@ class PortalCoreSmokeCoordinator {
                 .build();
         this.targets = List.of(
                 new PortalHttpSmokeTarget("GATEWAY_GUIDE_CATEGORIES", "GUIDE", "GET", this.gatewayBaseUrl, "/api/v1/guides/categories", 499, 0, timeoutMs),
-                new PortalHttpSmokeTarget("GATEWAY_MATERIAL_FEATURED", "MATERIAL", "GET", this.gatewayBaseUrl, "/api/v1/materials/featured", 499, 0, timeoutMs)
+                new PortalHttpSmokeTarget("GATEWAY_MATERIAL_FEATURED", "MATERIAL", "GET", this.gatewayBaseUrl, "/api/v1/materials/featured", 499, 0, timeoutMs),
+                new PortalHttpSmokeTarget("GATEWAY_ONLINE_MAP_HEALTH", "ONLINE_MAP", "GET", this.gatewayBaseUrl, "/api/v1/online-map/health", 499, 0, timeoutMs)
         );
     }
 
@@ -333,7 +347,8 @@ class PortalCoreSmokeCoordinator {
                 upstream("API_GATEWAY", "api-gateway", gatewayBaseUrl, gatewayPort, "/api/v1", "/api/v1/gateway/health"),
                 upstream("PORTAL_CORE", "portal-core", "http://127.0.0.1:" + currentPort, currentPort, "/api/v1/portal-core", "/api/v1/portal-core/health"),
                 upstream("GUIDE", "guide", gatewayBaseUrl, gatewayPort, "/api/v1/guides", "/api/v1/guides/categories"),
-                upstream("MATERIAL", "material", gatewayBaseUrl, gatewayPort, "/api/v1/materials", "/api/v1/materials/featured")
+                upstream("MATERIAL", "material", gatewayBaseUrl, gatewayPort, "/api/v1/materials", "/api/v1/materials/featured"),
+                upstream("ONLINE_MAP", "online-map", gatewayBaseUrl, gatewayPort, "/api/v1/online-map", "/api/v1/online-map/health")
         );
     }
 
@@ -546,7 +561,9 @@ record PortalCoreModuleRegistration(String moduleKey,
                                     int legacyPort,
                                     int routesTotal,
                                     String contract,
-                                    String localTestDocument) {
+                                    String localTestDocument,
+                                    String legacyTestCommand,
+                                    List<String> productionGaps) {
     Map<String, Object> toPublicMap(int currentPort) {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("moduleKey", moduleKey);
@@ -567,13 +584,13 @@ record PortalCoreModuleRegistration(String moduleKey,
         data.put("currentServiceDirectory", "backend/portal-core-service");
         data.put("contract", contract);
         data.put("localTestDocument", localTestDocument);
-        data.put("legacyTestCommand", "RETIRED_NO_MAVEN_ENTRY");
+        data.put("legacyTestCommand", legacyTestCommand);
         data.put("currentTestCommand", "mvn -q -f backend/portal-core-service/pom.xml test");
         data.put("contractRoutesTotal", routesTotal);
         data.put("routeDriftStatus", "NO_DRIFT");
         data.put("businessContractOwnedByModule", true);
         data.put("compatibilityMode", "IN_PROCESS_MODULE");
-        data.put("productionGaps", List.of("REAL_PERSISTENCE_NOT_CONNECTED"));
+        data.put("productionGaps", productionGaps);
         return data;
     }
 

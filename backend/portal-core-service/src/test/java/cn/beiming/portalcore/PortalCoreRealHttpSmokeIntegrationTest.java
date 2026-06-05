@@ -41,10 +41,11 @@ class PortalCoreRealHttpSmokeIntegrationTest {
 
             assertThat(report.at("/code").asInt()).isEqualTo(0);
             assertThat(report.at("/data/httpSmokeStatus").asText()).isEqualTo("PASS");
-            assertThat(report.at("/data/results")).hasSize(2);
+            assertThat(report.at("/data/results")).hasSize(3);
             assertThat(report.at("/data/results").toString())
                     .contains("\"targetKey\":\"GATEWAY_GUIDE_CATEGORIES\"")
                     .contains("\"targetKey\":\"GATEWAY_MATERIAL_FEATURED\"")
+                    .contains("\"targetKey\":\"GATEWAY_ONLINE_MAP_HEALTH\"")
                     .contains("\"status\":\"PASS\"")
                     .contains("\"businessCode\":0");
 
@@ -61,6 +62,9 @@ class PortalCoreRealHttpSmokeIntegrationTest {
                     .contains("\"checkKey\":\"REAL_OBJECT_STORAGE\",\"status\":\"BLOCKED\"")
                     .contains("\"checkKey\":\"REAL_FILE_SECURITY_SCANNER\",\"status\":\"BLOCKED\"")
                     .contains("\"checkKey\":\"REAL_FULLTEXT_SEARCH\",\"status\":\"BLOCKED\"")
+                    .contains("\"checkKey\":\"REAL_MAP_PROVIDER_HTTP\",\"status\":\"BLOCKED\"")
+                    .contains("\"checkKey\":\"REAL_MARKER_SYNC\",\"status\":\"BLOCKED\"")
+                    .contains("\"checkKey\":\"REAL_TILE_HOSTING\",\"status\":\"BLOCKED\"")
                     .contains("\"checkKey\":\"REAL_NOTIFICATION_DELIVERY\",\"status\":\"BLOCKED\"");
         }
     }

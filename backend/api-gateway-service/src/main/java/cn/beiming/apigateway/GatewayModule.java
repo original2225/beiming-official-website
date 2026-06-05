@@ -737,7 +737,7 @@ class GatewayState {
         items.add(route("cloudreve-sync", "CLOUDREVE_SYNC", "cloudreve-sync", "/api/v1/cloudreve-sync", 8133, "/api/v1/cloudreve-sync/health"));
         items.add(route("backup-recovery", "BACKUP_RECOVERY", "backup-recovery", "/api/v1/backup-recovery", 8133, "/api/v1/backup-recovery/health"));
         items.add(route("alerting", "ALERTING", "alerting", "/api/v1/alerting", 8133, "/api/v1/alerting/health"));
-        items.add(route("online-map", "ONLINE_MAP", "online-map", "/api/v1/online-map", 8121, "/api/v1/online-map/health"));
+        items.add(route("online-map", "ONLINE_MAP", "online-map", "/api/v1/online-map", portalCoreBaseUrl, "/api/v1/online-map/health"));
         items.add(route("plugin-integration", "PLUGIN_INTEGRATION", "plugin-integration", "/api/v1/plugin-integration", 8133, "/api/v1/plugin-integration/health"));
         items.add(route("cross-platform-notification", "CROSS_PLATFORM_NOTIFICATION", "cross-platform-notification", "/api/v1/cross-platform-notification", 8123, "/api/v1/cross-platform-notification/health"));
         items.add(route("ops-image-market", "OPS_IMAGE_MARKET", "ops-image-market", "/api/v1/ops-image-market", 8133, "/api/v1/ops-image-market/health"));

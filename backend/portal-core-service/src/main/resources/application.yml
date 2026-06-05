@@ -15,3 +15,7 @@ guide:
 material:
   test-controls:
     enabled: ${portal-core.test-controls.enabled:false}
+
+online-map:
+  test-controls:
+    enabled: ${portal-core.test-controls.enabled:false}

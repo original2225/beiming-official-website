@@ -198,7 +198,7 @@ class GatewayApiContractTest {
         assertRoute(routes, "cloudreve-sync", "CLOUDREVE_SYNC", "/api/v1/cloudreve-sync", 8133);
         assertRoute(routes, "backup-recovery", "BACKUP_RECOVERY", "/api/v1/backup-recovery", 8133);
         assertRoute(routes, "alerting", "ALERTING", "/api/v1/alerting", 8133);
-        assertRoute(routes, "online-map", "ONLINE_MAP", "/api/v1/online-map", 8121);
+        assertRoute(routes, "online-map", "ONLINE_MAP", "/api/v1/online-map", 8134);
         assertRoute(routes, "plugin-integration", "PLUGIN_INTEGRATION", "/api/v1/plugin-integration", 8133);
         assertRoute(routes, "cross-platform-notification", "CROSS_PLATFORM_NOTIFICATION", "/api/v1/cross-platform-notification", 8123);
         assertRoute(routes, "ops-image-market", "OPS_IMAGE_MARKET", "/api/v1/ops-image-market", 8133);
@@ -741,8 +741,8 @@ class GatewayApiContractTest {
     }
 
     private void assertFifthBatchPortalCoreRoutes(JsonNode routes) {
-        Set<String> fifthBatch = Set.of("material", "guide");
-        Set<Integer> legacyPorts = Set.of(8126, 8127);
+        Set<String> fifthBatch = Set.of("material", "guide", "online-map");
+        Set<Integer> legacyPorts = Set.of(8126, 8127, 8121);
         for (String routeId : fifthBatch) {
             JsonNode route = findRoute(routes, routeId);
             assertThat(route.path("upstreamPort").asInt()).isEqualTo(8134);
@@ -752,7 +752,7 @@ class GatewayApiContractTest {
         }
         assertThat(findRoute(routes, "material").path("healthCheckPath").asText()).isEqualTo("/api/v1/materials/featured");
         assertThat(findRoute(routes, "guide").path("healthCheckPath").asText()).isEqualTo("/api/v1/guides/categories");
-        assertThat(findRoute(routes, "online-map").path("upstreamPort").asInt()).isEqualTo(8121);
+        assertThat(findRoute(routes, "online-map").path("healthCheckPath").asText()).isEqualTo("/api/v1/online-map/health");
         assertThat(findRoute(routes, "cross-platform-notification").path("upstreamPort").asInt()).isEqualTo(8123);
         assertThat(findRoute(routes, "node-daemon").path("upstreamPort").asInt()).isEqualTo(8117);
         assertThat(findRoute(routes, "ops-control").path("upstreamPort").asInt()).isEqualTo(8133);
