@@ -8,7 +8,7 @@
 
 面向前端开发的一体化 API 全文查阅文档见 `docs/api-reference.md`。该文档由公共契约和全部模块契约合并生成，方便前端统一检索路径、字段和响应格式。
 
-本汇总覆盖当前仓库 `docs/contracts-*.md` 中除 `contracts-common.md` 和本文档之外的 27 个业务或平台模块，以及 `business-core`、`admission-core`、`engagement-core`、`ops-core` 和 `portal-core` 五个运行合并单元。第一批、第二批、第三批、第四批、第五批和第六期已完成运行合并并入仓。当前契约表中的 `METHOD path` 记录总数为 774，其中第三批四个业务模块在 `engagement-core-service:8132` 中承载 149 个业务路由，第四批六个后台运维控制面模块和第六期跨平台通知控制面在 `ops-core-service:8133` 中承载 219 个业务路由，第五批后三个玩家门户体验模块在 `portal-core-service:8134` 中承载 108 个业务路由，`engagement-core` 自身提供 3 个运行单元自检和诊断路由，`ops-core` 自身提供 5 个运行单元自检、诊断和 HTTP smoke 路由，`portal-core` 自身提供 5 个运行单元自检、诊断和 HTTP smoke 路由。
+本汇总覆盖当前仓库 `docs/contracts-*.md` 中除 `contracts-common.md` 和本文档之外的 27 个业务或平台模块，以及 `business-core`、`admission-core`、`engagement-core`、`ops-core` 和 `portal-core` 五个运行合并单元。第一批、第二批、第三批、第四批、第五批和第六期已完成运行合并并入仓。当前契约表中的 `METHOD path` 记录总数为 775，其中第三批四个业务模块在 `engagement-core-service:8132` 中承载 149 个业务路由，第四批六个后台运维控制面模块和第六期跨平台通知控制面在 `ops-core-service:8133` 中承载 219 个业务路由，第五批后三个玩家门户体验模块在 `portal-core-service:8134` 中承载 108 个业务路由，`engagement-core` 自身提供 3 个运行单元自检和诊断路由，`ops-core` 自身提供 5 个运行单元自检、诊断和 HTTP smoke 路由，`portal-core` 自身提供 5 个运行单元自检、诊断和 HTTP smoke 路由，`api-gateway` 自身提供 8 个网关健康、路由、上游、日志和运行拓扑路由。
 
 ## 全局接口规则
 
@@ -26,7 +26,7 @@
 | `admin` | `backend/business-core-service` | 8130 | 10 | `docs/contracts-admin.md` | `.local-docs/tests-admin.md` | `mvn -q -f backend/business-core-service/pom.xml test` |
 | `admission-core` | `backend/admission-core-service` | 8131 | 2 | `docs/contracts-admission-core.md` | `.local-docs/tests-admission-core.md` | `mvn -q -f backend/admission-core-service/pom.xml test` |
 | `alerting` | `backend/ops-core-service` | 8133 | 24 | `docs/contracts-alerting.md` | `.local-docs/tests-ops-core.md` | `mvn -q -f backend/ops-core-service/pom.xml test` |
-| `api-gateway` | `backend/api-gateway-service` | 8125 | 7 | `docs/contracts-api-gateway.md` | `.local-docs/tests-api-gateway.md` | `mvn -q -f backend/api-gateway-service/pom.xml test` |
+| `api-gateway` | `backend/api-gateway-service` | 8125 | 8 | `docs/contracts-api-gateway.md` | `.local-docs/tests-api-gateway.md` | `mvn -q -f backend/api-gateway-service/pom.xml test` |
 | `attendance` | `backend/admission-core-service` | 8131 | 21 | `docs/contracts-attendance.md` | `.local-docs/tests-attendance.md` | `mvn -q -f backend/admission-core-service/pom.xml test` |
 | `auth` | `backend/business-core-service` | 8130 | 20 | `docs/contracts-auth.md` | `.local-docs/tests-auth.md` | `mvn -q -f backend/business-core-service/pom.xml test` |
 | `backup-recovery` | `backend/ops-core-service` | 8133 | 25 | `docs/contracts-backup-recovery.md` | `.local-docs/tests-ops-core.md` | `mvn -q -f backend/ops-core-service/pom.xml test` |
@@ -58,6 +58,8 @@
 ## 合并后运行入口
 
 当前已入仓的合并运行入口是 `business-core-service`、`admission-core-service`、`engagement-core-service`、`ops-core-service` 和 `portal-core-service`。第三批社区运营路径已经由网关统一切到 `8132`。第四批后台运维控制面路径已经由网关统一切到 `8133`。第五批玩家门户体验路径已经由网关统一切到 `8134`。旧 `backend/online-map-service` 已退役且不得恢复，不再作为当前网关上游。`engagement-core-service` 的后台自检摘要入口已经支持网关注入的可信认证上下文；149 个业务方法路由完整行为契约已经迁入当前入口，真实业务认证、真实持久化、真实跨服务 adapter、真实通知交付和真实 HTTP smoke 仍需后续独立闭环。
+
+`api-gateway` 的 8 个自有接口新增只读运行拓扑，不新增业务语义。当前后端仍保持 7 个 Maven 运行入口，未来统一后端候选为 `api-gateway` 与五个 core 运行单元，`node-daemon` 继续作为外部节点执行边界。该拓扑只用于单服务合并准备和测试守卫，不能被描述为已经完成单服务合并、动态服务发现或 in-process 挂载。
 
 `engagement-core` 的 3 个自有接口只用于运行单元自检、后台装配摘要和生产就绪诊断。它不新增 community、activity、calendar 或 changelog 的业务语义。第三批 149 个业务路由签名和四个模块完整行为契约必须在 `engagement-core-service` 中自动化验证；生产就绪诊断仍必须公开真实持久化、审计持久化、真实跨服务 adapter、真实通知交付和真实 HTTP smoke 缺口。
 

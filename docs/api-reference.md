@@ -13848,11 +13848,11 @@ endpoint、repository、tag、namespace 和 URL 摘要必须拒绝 `file:`、`da
 
 来源：`docs/contracts-api-gateway.md`
 
-版本：0.3
+版本：0.4
 
 ### 文档定位
 
-本文档是 `api-gateway` 微服务的正式 API 契约。`api-gateway` 是北冥官网后端统一入口，只负责统一路由、请求编号、认证头透传、认证上下文注入、基础 CORS、上游超时、请求边界保护、响应头白名单透传、错误降级、路由表、自检摘要、上游健康摘要和网关级请求日志摘要。
+本文档是 `api-gateway` 微服务的正式 API 契约。`api-gateway` 是北冥官网后端统一入口，只负责统一路由、请求编号、认证头透传、认证上下文注入、基础 CORS、上游超时、请求边界保护、响应头白名单透传、错误降级、路由表、自检摘要、运行拓扑、上游健康摘要和网关级请求日志摘要。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、时间格式、基础角色、运维能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `api-gateway` 的路径、路由表、字段、错误码、降级、审计和验收口径。
 
@@ -13875,6 +13875,7 @@ endpoint、repository、tag、namespace 和 URL 摘要必须拒绝 `file:`、`da
 | CORS | 对 `/api/v1/**` 提供本地前端允许的预检响应。 |
 | 超时与降级 | 上游不可连接返回网关错误，上游超时返回网关超时错误，不伪造业务成功。 |
 | 路由表 | 暴露只读路由注册表，便于前端和运维控制台确认入口可用性。 |
+| 运行拓扑摘要 | 暴露只读运行入口、路由归属和未来单服务合并准备状态。 |
 | 上游健康摘要 | 维护手动刷新后的上游健康快照。 |
 | 请求日志摘要 | 记录脱敏后的网关访问摘要，用于本地排障和后台观测。 |
 
@@ -13946,6 +13947,8 @@ endpoint、repository、tag、namespace 和 URL 摘要必须拒绝 `file:`、`da
 
 路径匹配规则为最长前缀优先。`/api/v1/resources` 和 `/api/v1/resources/**` 都必须命中 `resource`。未知路径返回网关错误，不转发到任何上游。
 
+第八轮单服务合并准备层只允许在网关公开只读运行拓扑。当前运行入口仍是 `api-gateway-service:8125`、`business-core-service:8130`、`admission-core-service:8131`、`engagement-core-service:8132`、`ops-core-service:8133`、`portal-core-service:8134` 和 `node-daemon-service:8117`。未来可合并候选只包含 `api-gateway` 与五个 core 运行单元，`node-daemon` 继续作为外部节点执行边界。该准备层不得新增业务路由，不得改写 26 条业务路径，不得动态挂载业务模块，不得恢复已退役旧 Maven 入口，不得把节点守护进程并入统一后端。
+
 ### 网关自有对象
 
 #### GatewayRoute
@@ -14002,6 +14005,24 @@ endpoint、repository、tag、namespace 和 URL 摘要必须拒绝 `file:`、`da
 
 请求日志不得保存请求体、完整 query、完整 token、Cookie、Authorization 原文、外部 webhook、registry 凭据、节点密钥、文件内容、日志正文或异常堆栈。
 
+#### GatewayRuntimeTopology
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `service` | string | 是 | 固定为 `api-gateway`。 |
+| `deploymentMode` | string | 是 | 固定为 `CURRENT_SEVEN_ENTRYPOINTS`。 |
+| `singleServiceMergeReadiness` | string | 是 | 固定为 `PREPARING`。 |
+| `currentEntrypointsTotal` | integer | 是 | 当前 Maven 运行入口数量，固定为 `7`。 |
+| `futureMergeCandidateEntrypointsTotal` | integer | 是 | 未来统一后端候选入口数量，固定为 `6`，不包含 `node-daemon`。 |
+| `businessRoutesTotal` | integer | 是 | 当前业务转发路由数量，固定为 `26`。 |
+| `gatewayApiTotal` | integer | 是 | 当前网关自有 API 数量，固定为 `8`。 |
+| `currentEntrypoints` | object[] | 是 | 当前运行入口清单。 |
+| `futureUnifiedBackend` | object | 是 | 未来统一后端目标摘要。 |
+| `mergePreparationChecks` | object[] | 是 | 合并准备守卫检查。 |
+| `generatedAt` | string | 是 | 生成时间。 |
+
+`currentEntrypoints` 每项必须包含 `entrypointKey`、`serviceDirectory`、`port`、`role`、`mergeDisposition`、`hostedRouteIds`、`hostedPathPrefixes`、`routesTotal` 和 `keptExternalReason`。`api-gateway` 的 `mergeDisposition` 为 `INGRESS_CANDIDATE`，五个 core 运行单元为 `IN_PROCESS_CANDIDATE`，`node-daemon` 为 `KEEP_EXTERNAL`。
+
 ### 网关错误码
 
 | 错误码 | HTTP 状态 | 含义 |
@@ -14026,6 +14047,7 @@ endpoint、repository、tag、namespace 和 URL 摘要必须拒绝 `file:`、`da
 | --- | --- | --- | --- | --- | --- |
 | 网关健康检查 | GET | `/api/v1/gateway/health` | 否 | 无 | LOW |
 | 网关自检摘要 | GET | `/api/v1/gateway/admin/ops/summary` | 是 | `HELPER`、`ADMIN` 或 `OWNER` | LOW |
+| 网关运行拓扑 | GET | `/api/v1/gateway/admin/runtime-topology` | 是 | `HELPER`、`ADMIN` 或 `OWNER` | LOW |
 | 网关路由列表 | GET | `/api/v1/gateway/admin/routes` | 是 | `HELPER`、`ADMIN` 或 `OWNER` | LOW |
 | 网关路由详情 | GET | `/api/v1/gateway/admin/routes/{routeId}` | 是 | `HELPER`、`ADMIN` 或 `OWNER` | LOW |
 | 上游健康列表 | GET | `/api/v1/gateway/admin/upstreams` | 是 | `HELPER`、`ADMIN` 或 `OWNER` | LOW |
@@ -14078,6 +14100,14 @@ endpoint、repository、tag、namespace 和 URL 摘要必须拒绝 `file:`、`da
 | `generatedAt` | string | 是 | 生成时间。 |
 
 降级规则：自检摘要只读取网关内存状态，不主动调用所有上游，避免一次后台刷新拖垮上游。
+
+### 网关运行拓扑
+
+`GET /api/v1/gateway/admin/runtime-topology`
+
+成功响应 HTTP `200`，`data` 为 `GatewayRuntimeTopology`。
+
+业务规则：该接口只读取网关内存中的静态路由表和固定运行入口画像，不主动探测上游，不启动其它服务，不读取文件系统，不导入业务服务代码，不访问数据库。它用于给后续单服务合并提供可测试边界，不能被前端或运维控制台当作当前已经完成单服务合并的信号。缺失认证返回 `41000`，非 Bearer 返回 `41003`，`USER` 返回 `42001`，`HELPER`、`ADMIN` 和 `OWNER` 可读取。响应不得包含 `Authorization`、Cookie、token、secret、节点密钥、内部签名、完整上游地址以外的运行环境路径、异常栈或本地用户目录。
 
 ### 网关路由列表
 
@@ -14225,15 +14255,15 @@ endpoint、repository、tag、namespace 和 URL 摘要必须拒绝 `file:`、`da
 
 ### 生产化差距
 
-P0 `api-gateway` 是本地契约实现，必须在自检摘要中明确以下生产化差距：尚未接入真实服务发现，尚未接入集中配置，尚未接入分布式限流，认证上下文已支持通过 `auth` 会话校验注入和内部签名，但尚未接入签名密钥集中托管、密钥轮换和缓存，尚未接入持久化审计，尚未代理 WebSocket 和大文件流。
+P0 `api-gateway` 是本地契约实现，必须在自检摘要中明确以下生产化差距：尚未接入真实服务发现，尚未接入集中配置，尚未接入分布式限流，认证上下文已支持通过 `auth` 会话校验注入和内部签名，但尚未接入签名密钥集中托管、密钥轮换和缓存，尚未接入持久化审计，尚未代理 WebSocket 和大文件流，统一后端入口尚未实现，网关 in-process 挂载尚未实现，动态服务发现尚未接入，`node-daemon` 仍保持外部节点执行边界。
 
-这些差距不得影响 P0 的路径转发、请求编号、认证透传、可信身份头剥离、可验证认证上下文注入、内部签名注入、错误降级、路由表和测试闭环。
+这些差距不得影响 P0 的路径转发、请求编号、认证透传、可信身份头剥离、可验证认证上下文注入、内部签名注入、错误降级、路由表、运行拓扑和测试闭环。
 
 ### 验收口径
 
 `api-gateway` API 文档按 `docs/contracts-api-gateway.md` 独立存在，并由 `.local-docs/tests-api-gateway.md` 记录本地测试闭环。
 
-本文档列出的每个网关自有接口都有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、分页排序、状态刷新、失败降级、日志脱敏和验收口径。业务转发测试必须覆盖 26 个已接入微服务的路径前缀，确认路由表端口准确、`api-gateway.upstreams.ops-core-base-url` 只覆盖七个 ops-core 承载路由、请求编号透传、请求编号非法拒绝、认证头透传、可信身份头剥离、客户端伪造签名头剥离、`auth` 会话校验成功后的可信身份和内部签名注入、`auth` 校验失败后的不注入降级、查询参数透传、JSON body 透传、请求体大小限制、响应头白名单、上游 2xx 透传、上游 4xx 透传、上游 5xx 透传、未知路径、非法方法、CORS 预检、上游不可用、上游超时和敏感字段不落日志。
+本文档列出的每个网关自有接口都有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、分页排序、状态刷新、失败降级、日志脱敏和验收口径。运行拓扑测试必须确认当前 7 个 Maven 入口、未来 6 个统一后端候选、`node-daemon` 外部执行边界、26 条业务转发路由、8 个网关自有 API、5 个 core 运行单元归属、已退役旧入口未恢复、静态服务发现和 in-process 挂载仍未实现。业务转发测试必须覆盖 26 个已接入微服务的路径前缀，确认路由表端口准确、`api-gateway.upstreams.ops-core-base-url` 只覆盖七个 ops-core 承载路由、请求编号透传、请求编号非法拒绝、认证头透传、可信身份头剥离、客户端伪造签名头剥离、`auth` 会话校验成功后的可信身份和内部签名注入、`auth` 校验失败后的不注入降级、查询参数透传、JSON body 透传、请求体大小限制、响应头白名单、上游 2xx 透传、上游 4xx 透传、上游 5xx 透传、未知路径、非法方法、CORS 预检、上游不可用、上游超时和敏感字段不落日志。
 
 开发完成后必须执行 `mvn -f backend/api-gateway-service/pom.xml test`、`mvn -f backend/business-core-service/pom.xml test`、`mvn -f backend/admission-core-service/pom.xml test`、`mvn -f backend/engagement-core-service/pom.xml test`、`mvn -f backend/ops-core-service/pom.xml test`、`mvn -f backend/portal-core-service/pom.xml test` 和 `mvn -f backend/node-daemon-service/pom.xml test`。第一批到第五批旧服务清理后，不得为了网关回归恢复对应旧服务目录、旧 Maven 入口、旧启动类或旧测试命令。第四批和第五批业务路径必须继续由 `ops-core` 和 `portal-core` 当前入口覆盖测试。旧 `backend/online-map-service` 已退役且不得恢复。测试过程必须写入 `.local-docs/tests-api-gateway.md`。
 

@@ -111,6 +111,8 @@ API 网关或后端入口
 
 第七轮生产化优化不继续合并运行入口。`ops-core` 增加经 `api-gateway` 访问的真实 HTTP smoke、自有 readiness 中的 smoke 状态和可信网关内部签名状态；`api-gateway` 在注入可信身份头时同步注入内部时间戳和 HMAC 签名；`ops-core` 管理接口验证签名后才接受可信身份上下文。`alerting` 告警命中后的外部通知只通过 `cross-platform-notification` 的模拟外部投递模型留下 delivery、attempt 和审计摘要，不执行真实外部发送，不关闭告警主状态，不绕过 CPN 的 provider、模板、路由、receiver、幂等和脱敏规则。
 
+第八轮单服务合并准备不真正合并进程。`api-gateway` 增加只读运行拓扑，用来固化当前 7 个 Maven 入口、26 条业务转发路由、五个 core 运行单元和 `node-daemon` 外部节点执行边界。后续如果把 `api-gateway` 与五个 core 收敛成统一后端入口，必须先保持现有路径前缀、认证方式、响应格式、模块数据归属和测试守卫不变，再逐步替换为 in-process 装配。`node-daemon` 不进入统一后端候选。
+
 ## 公共基础契约
 
 所有模块共享统一响应格式、错误码、分页格式、认证方式、审计字段和时间字段。
@@ -234,7 +236,7 @@ Cloudreve 第一阶段可以作为外部分享链接存在。后续接入 API �
 
 ## 部署原则
 
-官网前端、后端业务服务、数据库、缓存、Cloudreve、Minecraft 服务器和节点守护进程应分开部署。开发阶段可以先用较少进程模拟模块边界，但接口、权限和数据归属不能混乱。当前第四批运维控制面已收敛到 `ops-core-service:8133`，第五批玩家门户体验已收敛到 `portal-core-service:8134`，但 `api-gateway-service:8125` 和 `node-daemon-service:8117` 仍保持独立运行边界。
+官网前端、后端业务服务、数据库、缓存、Cloudreve、Minecraft 服务器和节点守护进程应分开部署。开发阶段可以先用较少进程模拟模块边界，但接口、权限和数据归属不能混乱。当前第四批运维控制面已收敛到 `ops-core-service:8133`，第五批玩家门户体验已收敛到 `portal-core-service:8134`，`api-gateway-service:8125` 已具备统一后端入口准备画像，但当前仍保持独立运行边界；`node-daemon-service:8117` 继续保持独立节点执行边界。
 
 节点守护进程部署在被管理服务器上。它只开放必要管理端口，优先由控制面主动连接或通过受控通道通信，不暴露无鉴权的系统操作接口。
 
