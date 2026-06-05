@@ -78,14 +78,15 @@ class GatewayApiContractTest {
         addRange(mapped, "GATE-ECORE", 1, 10);
         addRange(mapped, "GATE-OCORE", 1, 10);
         addRange(mapped, "GATE-PCORE", 1, 11);
+        addRange(mapped, "GATE-TOPOLOGY", 1, 12);
         addRange(mapped, "GATE-UP", 1, 20);
         addRange(mapped, "GATE-LOG", 1, 20);
         addRange(mapped, "GATE-PROXY", 1, 49);
         addRange(mapped, "GATE-CORS", 1, 10);
         addRange(mapped, "GATE-SEC", 1, 11);
 
-        assertThat(mapped).hasSize(235);
-        assertThat(mapped).contains("GATE-COM-001", "GATE-PFX-026", "GATE-BCORE-010", "GATE-ACORE-010", "GATE-ECORE-010", "GATE-OCORE-010", "GATE-PCORE-010", "GATE-PCORE-011", "GATE-UP-020", "GATE-PROXY-049", "GATE-SEC-011");
+        assertThat(mapped).hasSize(247);
+        assertThat(mapped).contains("GATE-COM-001", "GATE-PFX-026", "GATE-BCORE-010", "GATE-ACORE-010", "GATE-ECORE-010", "GATE-OCORE-010", "GATE-PCORE-010", "GATE-PCORE-011", "GATE-TOPOLOGY-012", "GATE-UP-020", "GATE-PROXY-049", "GATE-SEC-011");
     }
 
     @Test
@@ -169,6 +170,69 @@ class GatewayApiContractTest {
                 .contains("\"gatewayStatus\":200")
                 .contains("\"result\":\"SUCCESS\"");
         assertNoSecrets(adminLogs);
+    }
+
+    @Test
+    @DisplayName("GATE-TOPOLOGY covers single service merge readiness without changing current routes")
+    void runtimeTopologyPreparesSingleServiceMergeWithoutChangingRoutes() throws Exception {
+        performJson(get("/api/v1/gateway/admin/runtime-topology"), 401, 41000);
+        performJson(get("/api/v1/gateway/admin/runtime-topology").header("Authorization", "Token bad"), 401, 41003);
+        performJson(get("/api/v1/gateway/admin/runtime-topology").header("Authorization", bearer("user-token")), 403, 42001);
+
+        for (String token : List.of("helper-token", "admin-token", "owner-token")) {
+            performJson(get("/api/v1/gateway/admin/runtime-topology").header("Authorization", bearer(token)), 200);
+        }
+
+        JsonNode topology = performJson(get("/api/v1/gateway/admin/runtime-topology")
+                .header("Authorization", bearer("admin-token"))
+                .header("X-Request-Id", "req-runtime-topology"), 200);
+
+        assertThat(topology.at("/data/service").asText()).isEqualTo("api-gateway");
+        assertThat(topology.at("/data/deploymentMode").asText()).isEqualTo("CURRENT_SEVEN_ENTRYPOINTS");
+        assertThat(topology.at("/data/singleServiceMergeReadiness").asText()).isEqualTo("PREPARING");
+        assertThat(topology.at("/data/currentEntrypointsTotal").asInt()).isEqualTo(7);
+        assertThat(topology.at("/data/futureMergeCandidateEntrypointsTotal").asInt()).isEqualTo(6);
+        assertThat(topology.at("/data/businessRoutesTotal").asInt()).isEqualTo(26);
+        assertThat(topology.at("/data/gatewayApiTotal").asInt()).isEqualTo(8);
+        assertThat(topology.at("/data/currentEntrypoints").size()).isEqualTo(7);
+        assertThat(topology.at("/data/futureUnifiedBackend/entrypointKey").asText()).isEqualTo("unified-backend");
+        assertThat(topology.at("/data/futureUnifiedBackend/nodeDaemonDisposition").asText()).isEqualTo("EXTERNAL_NODE_EXECUTION_BOUNDARY");
+
+        JsonNode gateway = findByText(topology.at("/data/currentEntrypoints"), "entrypointKey", "api-gateway");
+        assertThat(gateway.path("port").asInt()).isEqualTo(8125);
+        assertThat(gateway.path("mergeDisposition").asText()).isEqualTo("INGRESS_CANDIDATE");
+        assertThat(gateway.path("routesTotal").asInt()).isEqualTo(0);
+
+        Map<String, Integer> expectedCoreRouteCounts = Map.of(
+                "business-core", 7,
+                "admission-core", 4,
+                "engagement-core", 4,
+                "ops-core", 7,
+                "portal-core", 3
+        );
+        for (Map.Entry<String, Integer> expected : expectedCoreRouteCounts.entrySet()) {
+            JsonNode entrypoint = findByText(topology.at("/data/currentEntrypoints"), "entrypointKey", expected.getKey());
+            assertThat(entrypoint.path("mergeDisposition").asText()).isEqualTo("IN_PROCESS_CANDIDATE");
+            assertThat(entrypoint.path("routesTotal").asInt()).isEqualTo(expected.getValue());
+            assertThat(entrypoint.path("hostedRouteIds").size()).isEqualTo(expected.getValue());
+        }
+
+        JsonNode nodeDaemon = findByText(topology.at("/data/currentEntrypoints"), "entrypointKey", "node-daemon");
+        assertThat(nodeDaemon.path("port").asInt()).isEqualTo(8117);
+        assertThat(nodeDaemon.path("mergeDisposition").asText()).isEqualTo("KEEP_EXTERNAL");
+        assertThat(nodeDaemon.path("routesTotal").asInt()).isEqualTo(1);
+        assertThat(nodeDaemon.path("keptExternalReason").asText()).contains("node");
+
+        JsonNode checks = topology.at("/data/mergePreparationChecks");
+        assertCheck(checks, "ROUTE_PREFIX_PRESERVED", "PASS");
+        assertCheck(checks, "GATEWAY_AS_INGRESS_CANDIDATE", "PASS");
+        assertCheck(checks, "CORE_ROUTES_GROUPED", "PASS");
+        assertCheck(checks, "NODE_DAEMON_EXTERNAL_BOUNDARY", "PASS");
+        assertCheck(checks, "LEGACY_ENTRYPOINTS_NOT_RESTORED", "PASS");
+        assertCheck(checks, "STATIC_SERVICE_DISCOVERY_ONLY", "BLOCKED");
+        assertCheck(checks, "IN_PROCESS_MOUNT_NOT_IMPLEMENTED", "NOT_IMPLEMENTED");
+
+        assertNoSecrets(topology);
     }
 
     @Test
@@ -704,6 +768,20 @@ class GatewayApiContractTest {
             }
         }
         throw new AssertionError("missing route " + routeId);
+    }
+
+    private JsonNode findByText(JsonNode items, String field, String value) {
+        for (JsonNode item : items) {
+            if (value.equals(item.path(field).asText())) {
+                return item;
+            }
+        }
+        throw new AssertionError("missing " + field + "=" + value);
+    }
+
+    private void assertCheck(JsonNode checks, String check, String status) {
+        JsonNode item = findByText(checks, "check", check);
+        assertThat(item.path("status").asText()).isEqualTo(status);
     }
 
     private void assertFirstBatchBusinessCoreRoutes(JsonNode routes) {
