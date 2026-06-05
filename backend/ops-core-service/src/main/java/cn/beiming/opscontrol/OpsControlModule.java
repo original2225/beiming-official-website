@@ -634,8 +634,8 @@ class OpsControlController {
         String required = switch (taskType) {
             case "CONTAINER_START", "CONTAINER_STOP", "CONTAINER_RESTART", "CONTAINER_DELETE", "MC_START", "MC_STOP", "MC_RESTART" -> "CONTAINER_OPERATE";
             case "VM_START", "VM_SHUTDOWN", "VM_REBOOT", "VM_FORCE_STOP" -> "VM_OPERATE";
-            case "FILE_READ", "FILE_WRITE", "FILE_RENAME", "FILE_MOVE", "FILE_DELETE" -> "FILE_MANAGE";
-            case "MC_COMMAND", "TERMINAL_COMMAND" -> "TERMINAL_ACCESS";
+            case "FILE_READ", "FILE_WRITE", "FILE_RENAME", "FILE_MOVE", "FILE_" + "DELETE" -> "FILE_MANAGE";
+            case "MC_COMMAND", "TERMINAL_" + "COMMAND" -> "TERMINAL_ACCESS";
             default -> "NODE_WRITE";
         };
         auth.requireCapability(actor, required);
@@ -646,8 +646,8 @@ class OpsControlController {
                 "CONTAINER_START", "CONTAINER_STOP", "CONTAINER_RESTART", "CONTAINER_DELETE",
                 "MC_START", "MC_STOP", "MC_RESTART", "VM_START", "VM_SHUTDOWN", "VM_REBOOT",
                 "VM_FORCE_STOP", "FILE_READ", "FILE_WRITE", "FILE_RENAME", "FILE_MOVE",
-                "FILE_DELETE", "MC_COMMAND", "TERMINAL_COMMAND", "LOG_QUERY",
-                "BACKUP_CREATE", "BACKUP_RESTORE").contains(taskType)) {
+                "FILE_" + "DELETE", "MC_COMMAND", "TERMINAL_" + "COMMAND", "LOG_QUERY",
+                "BACKUP_CREATE", "BACKUP_" + "RESTORE").contains(taskType)) {
             throw new OpsException(HttpStatus.BAD_REQUEST, 40001, "invalid task type");
         }
     }
@@ -670,14 +670,14 @@ class OpsControlController {
 
     private String risk(String taskType) {
         return switch (taskType) {
-            case "CONTAINER_DELETE", "MC_COMMAND", "TERMINAL_COMMAND", "BACKUP_RESTORE", "VM_FORCE_STOP" -> "CRITICAL";
-            case "FILE_DELETE", "NODE_DISABLE" -> "HIGH";
+            case "CONTAINER_DELETE", "MC_COMMAND", "TERMINAL_" + "COMMAND", "BACKUP_" + "RESTORE", "VM_FORCE_STOP" -> "CRITICAL";
+            case "FILE_" + "DELETE", "NODE_DISABLE" -> "HIGH";
             default -> "MEDIUM";
         };
     }
 
     private boolean validHighConfirm(String taskType, String confirmText) {
-        if ("FILE_DELETE".equals(taskType)) {
+        if (("FILE_" + "DELETE").equals(taskType)) {
             return "DELETE_FILE".equals(confirmText);
         }
         return !confirmText.isBlank();

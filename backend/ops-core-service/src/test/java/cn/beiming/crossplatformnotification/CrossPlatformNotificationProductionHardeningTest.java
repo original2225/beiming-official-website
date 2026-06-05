@@ -162,9 +162,9 @@ class CrossPlatformNotificationProductionHardeningTest {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("displayName", "Prod External Route " + idempotencyKey);
         body.put("sourceModule", "alerting");
-        body.put("eventType", "alert.fired");
+        body.put("eventType", "alert.firing");
         body.put("riskLevel", "HIGH");
-        body.put("matchers", Map.of("sourceModule", "alerting", "eventType", "alert.fired", "riskLevel", "HIGH"));
+        body.put("matchers", Map.of("sourceModule", "alerting", "eventType", "alert.firing", "riskLevel", "HIGH"));
         body.put("providerId", "provider-discord-main");
         body.put("templateMappingId", mappingId);
         body.put("receiverSummary", Map.of("receiverType", "CHANNEL", "targetRefSummary", "#ops"));

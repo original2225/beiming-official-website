@@ -53,6 +53,8 @@ import java.util.TreeMap;
 import java.util.UUID;
 import java.util.function.Predicate;
 import java.util.regex.Pattern;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 
 @RestController
 class GatewayController {
@@ -71,11 +73,14 @@ class GatewayController {
     private final GatewayState state;
     private final GatewayHttpClient client;
     private final ObjectMapper objectMapper;
+    private final String internalSigningSecret;
 
-    GatewayController(GatewayState state, GatewayHttpClient client, ObjectMapper objectMapper) {
+    GatewayController(GatewayState state, GatewayHttpClient client, ObjectMapper objectMapper,
+                      @Value("${api-gateway.internal-signing-secret:local-test-gateway-signing-secret}") String internalSigningSecret) {
         this.state = state;
         this.client = client;
         this.objectMapper = objectMapper;
+        this.internalSigningSecret = internalSigningSecret;
     }
 
     @GetMapping("/api/v1/gateway/health")
@@ -287,16 +292,33 @@ class GatewayController {
         headers.put("X-Request-Id", List.of(RequestIdFilter.currentRequestId()));
         GatewayAuthContext context = authContext(request);
         if (context != null) {
+            String requestId = RequestIdFilter.currentRequestId();
+            String roles = String.join(",", context.roles());
+            String permissions = String.join(",", context.permissions());
+            String timestamp = Instant.now().toString();
             headers.put("X-Beiming-Actor-User-Id", List.of(context.userId()));
-            headers.put("X-Beiming-Actor-Roles", List.of(String.join(",", context.roles())));
-            headers.put("X-Beiming-Actor-Permissions", List.of(String.join(",", context.permissions())));
+            headers.put("X-Beiming-Actor-Roles", List.of(roles));
+            headers.put("X-Beiming-Actor-Permissions", List.of(permissions));
             if (context.minecraftId() != null && !context.minecraftId().isBlank()) {
                 headers.put("X-Beiming-Actor-Minecraft-Id", List.of(context.minecraftId()));
             }
             if (context.minecraftUuid() != null && !context.minecraftUuid().isBlank()) {
                 headers.put("X-Beiming-Actor-Minecraft-Uuid", List.of(context.minecraftUuid()));
             }
-            headers.put("X-Gateway-Internal-Request-Id", List.of(RequestIdFilter.currentRequestId()));
+            headers.put("X-Gateway-Internal-Request-Id", List.of(requestId));
+            headers.put("X-Gateway-Internal-Timestamp", List.of(timestamp));
+            headers.put("X-Gateway-Internal-Signature", List.of(GatewayInternalSigner.sign(
+                    internalSigningSecret,
+                    request.getMethod().toUpperCase(Locale.ROOT),
+                    request.getRequestURI(),
+                    requestId,
+                    context.userId(),
+                    roles,
+                    permissions,
+                    timestamp,
+                    context.minecraftId(),
+                    context.minecraftUuid()
+            )));
         }
         String remote = request.getRemoteAddr();
         if (remote != null && !remote.isBlank()) {
@@ -646,12 +668,15 @@ class GatewayController {
 class GatewayState {
     private static final Instant REGISTERED_AT = Instant.parse("2026-05-29T00:00:00Z");
     private final String portalCoreBaseUrl;
+    private final String opsCoreBaseUrl;
     private final List<GatewayRoute> routes;
     private final Map<String, GatewayUpstreamHealth> health = new LinkedHashMap<>();
     private final ArrayDeque<GatewayRequestLog> logs = new ArrayDeque<>();
 
-    GatewayState(@Value("${api-gateway.upstreams.portal-core-base-url:http://127.0.0.1:8134}") String portalCoreBaseUrl) {
+    GatewayState(@Value("${api-gateway.upstreams.portal-core-base-url:http://127.0.0.1:8134}") String portalCoreBaseUrl,
+                 @Value("${api-gateway.upstreams.ops-core-base-url:http://127.0.0.1:8133}") String opsCoreBaseUrl) {
         this.portalCoreBaseUrl = normalizeBaseUrl(portalCoreBaseUrl);
+        this.opsCoreBaseUrl = normalizeBaseUrl(opsCoreBaseUrl);
         this.routes = createRoutes();
         resetRuntimeState();
     }
@@ -732,15 +757,15 @@ class GatewayState {
         items.add(route("activity", "ACTIVITY", "activity", "/api/v1/activity", 8132, "/api/v1/activity/events"));
         items.add(route("calendar", "CALENDAR", "calendar", "/api/v1/calendar", 8132, "/api/v1/calendar/upcoming"));
         items.add(route("changelog", "CHANGELOG", "changelog", "/api/v1/changelog", 8132, "/api/v1/changelog/versions/latest"));
-        items.add(route("ops-control", "OPS_CONTROL", "ops-control", "/api/v1/ops-control", 8133, "/api/v1/ops-control/overview"));
+        items.add(route("ops-control", "OPS_CONTROL", "ops-control", "/api/v1/ops-control", opsCoreBaseUrl, "/api/v1/ops-control/overview"));
         items.add(route("node-daemon", "NODE_DAEMON", "node-daemon", "/api/v1/node-daemon", 8117, "/api/v1/node-daemon/health"));
-        items.add(route("cloudreve-sync", "CLOUDREVE_SYNC", "cloudreve-sync", "/api/v1/cloudreve-sync", 8133, "/api/v1/cloudreve-sync/health"));
-        items.add(route("backup-recovery", "BACKUP_RECOVERY", "backup-recovery", "/api/v1/backup-recovery", 8133, "/api/v1/backup-recovery/health"));
-        items.add(route("alerting", "ALERTING", "alerting", "/api/v1/alerting", 8133, "/api/v1/alerting/health"));
+        items.add(route("cloudreve-sync", "CLOUDREVE_SYNC", "cloudreve-sync", "/api/v1/cloudreve-sync", opsCoreBaseUrl, "/api/v1/cloudreve-sync/health"));
+        items.add(route("backup-recovery", "BACKUP_RECOVERY", "backup-recovery", "/api/v1/backup-recovery", opsCoreBaseUrl, "/api/v1/backup-recovery/health"));
+        items.add(route("alerting", "ALERTING", "alerting", "/api/v1/alerting", opsCoreBaseUrl, "/api/v1/alerting/health"));
         items.add(route("online-map", "ONLINE_MAP", "online-map", "/api/v1/online-map", portalCoreBaseUrl, "/api/v1/online-map/health"));
-        items.add(route("plugin-integration", "PLUGIN_INTEGRATION", "plugin-integration", "/api/v1/plugin-integration", 8133, "/api/v1/plugin-integration/health"));
-        items.add(route("cross-platform-notification", "CROSS_PLATFORM_NOTIFICATION", "cross-platform-notification", "/api/v1/cross-platform-notification", 8133, "/api/v1/cross-platform-notification/health"));
-        items.add(route("ops-image-market", "OPS_IMAGE_MARKET", "ops-image-market", "/api/v1/ops-image-market", 8133, "/api/v1/ops-image-market/health"));
+        items.add(route("plugin-integration", "PLUGIN_INTEGRATION", "plugin-integration", "/api/v1/plugin-integration", opsCoreBaseUrl, "/api/v1/plugin-integration/health"));
+        items.add(route("cross-platform-notification", "CROSS_PLATFORM_NOTIFICATION", "cross-platform-notification", "/api/v1/cross-platform-notification", opsCoreBaseUrl, "/api/v1/cross-platform-notification/health"));
+        items.add(route("ops-image-market", "OPS_IMAGE_MARKET", "ops-image-market", "/api/v1/ops-image-market", opsCoreBaseUrl, "/api/v1/ops-image-market/health"));
         items.add(route("material", "MATERIAL", "material", "/api/v1/materials", portalCoreBaseUrl, "/api/v1/materials/featured"));
         items.add(route("guide", "GUIDE", "guide", "/api/v1/guides", portalCoreBaseUrl, "/api/v1/guides/categories"));
         return List.copyOf(items);
@@ -913,6 +938,37 @@ record GatewayHttpResponse(int status, String contentType, byte[] body, Map<Stri
 }
 
 record GatewayAuthContext(String userId, Set<String> roles, Set<String> permissions, String minecraftId, String minecraftUuid) {
+}
+
+final class GatewayInternalSigner {
+    private GatewayInternalSigner() {
+    }
+
+    static String sign(String secret, String method, String path, String requestId, String userId, String roles,
+                       String permissions, String timestamp, String minecraftId, String minecraftUuid) {
+        try {
+            String plain = String.join("\n",
+                    method,
+                    path,
+                    requestId,
+                    userId,
+                    roles,
+                    permissions,
+                    timestamp,
+                    minecraftId == null ? "" : minecraftId,
+                    minecraftUuid == null ? "" : minecraftUuid);
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            byte[] digest = mac.doFinal(plain.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder();
+            for (byte item : digest) {
+                hex.append(String.format("%02x", item));
+            }
+            return hex.toString();
+        } catch (Exception ex) {
+            throw new GatewayApiException(HttpStatus.INTERNAL_SERVER_ERROR, 51250, "api gateway internal error");
+        }
+    }
 }
 
 enum GatewayFailureType {

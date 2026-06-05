@@ -1,5 +1,7 @@
 package cn.beiming.opscore;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -15,13 +17,23 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
+import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -30,20 +42,28 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 
 @RestController
 @RequestMapping("/api/v1/ops-core")
 class OpsCoreController {
     private final int port;
     private final boolean testControlsEnabled;
+    private final String trustedGatewaySigningSecret;
     private final OpsCoreRegistry registry;
+    private final OpsCoreSmokeCoordinator smoke;
 
     OpsCoreController(@Value("${server.port}") int port,
                       @Value("${ops-core.test-controls.enabled:false}") boolean testControlsEnabled,
-                      OpsCoreRegistry registry) {
+                      @Value("${ops-core.trusted-gateway.internal-signing-secret:local-test-gateway-signing-secret}") String trustedGatewaySigningSecret,
+                      OpsCoreRegistry registry,
+                      OpsCoreSmokeCoordinator smoke) {
         this.port = port;
         this.testControlsEnabled = testControlsEnabled;
+        this.trustedGatewaySigningSecret = trustedGatewaySigningSecret;
         this.registry = registry;
+        this.smoke = smoke;
     }
 
     @GetMapping("/health")
@@ -65,10 +85,11 @@ class OpsCoreController {
         data.put("authMode", actor.authMode());
         data.put("actorUserId", actor.userId());
         data.put("dependencyAdapterMode", "SAFE_SNAPSHOT_AND_TEST_ADAPTERS");
+        addProductionDiagnostics(data);
         data.put("routeDriftStatus", "NO_DRIFT");
         data.put("gatewaySwitchStatus", "COMPLETED");
         data.put("moduleRoutes", registry.opsModules(port));
-        data.put("productionGaps", registry.productionGaps());
+        data.put("productionGaps", registry.productionGaps(smoke.currentStatus()));
         data.put("recentAuditSummary", registry.recentAuditSummary());
         data.put("generatedAt", Instant.now().toString());
         return ok(request, data);
@@ -100,11 +121,19 @@ class OpsCoreController {
         data.put("gatewaySwitchStatus", "COMPLETED");
         data.put("testControlHeadersStatus", testControlsEnabled ? "ENABLED_FOR_LOCAL_TEST" : "DISABLED_BY_DEFAULT");
         data.put("sensitiveFieldScanStatus", "PASS");
-        data.put("checks", registry.readinessChecks());
+        addProductionDiagnostics(data);
+        data.put("checks", registry.readinessChecks(smoke.readinessStatus()));
         data.put("moduleReadiness", registry.moduleReadiness(port));
-        data.put("productionBlockers", registry.productionGaps());
+        data.put("productionBlockers", registry.productionGaps(smoke.currentStatus()));
         data.put("generatedAt", Instant.now().toString());
         return ok(request, data);
+    }
+
+    @PostMapping("/admin/http-smoke/run")
+    ResponseEntity<Map<String, Object>> runHttpSmoke(HttpServletRequest request) {
+        requireAdminOrOwner(request);
+        OpsHttpSmokeReport report = smoke.run(requestId(request));
+        return ok(request, report.toMap(smoke.serviceDiscoveryMode(), smoke.registeredUpstreams()));
     }
 
     private Map<String, Object> baseSummary() {
@@ -119,12 +148,21 @@ class OpsCoreController {
         return data;
     }
 
+    private void addProductionDiagnostics(Map<String, Object> data) {
+        data.put("serviceDiscoveryMode", smoke.serviceDiscoveryMode());
+        data.put("registeredUpstreams", smoke.registeredUpstreams());
+        data.put("httpSmokeStatus", smoke.currentStatus());
+        data.put("lastHttpSmokeAt", smoke.lastCheckedAt());
+        data.put("lastHttpSmokeResults", smoke.lastResults());
+        data.put("trustedGatewaySignatureStatus", "HMAC_SHA256_CONFIGURED");
+    }
+
     private ResponseEntity<Map<String, Object>> ok(HttpServletRequest request, Object data) {
         return ResponseEntity.ok(envelope(0, "success", data, requestId(request)));
     }
 
     private OpsCoreActor requireAdminOrOwner(HttpServletRequest request) {
-        Optional<OpsCoreActor> trusted = TrustedGatewayAuth.from(request);
+        Optional<OpsCoreActor> trusted = TrustedGatewayAuth.from(request, trustedGatewaySigningSecret);
         if (trusted.isPresent()) {
             OpsCoreActor actor = trusted.get();
             if (!actor.hasAny("ADMIN", "OWNER")) {
@@ -172,7 +210,7 @@ class OpsCoreController {
 @Component
 class OpsCoreRegistry {
     private static final int CURRENT_PORT = 8133;
-    private static final int SELF_ROUTES_TOTAL = 4;
+    private static final int SELF_ROUTES_TOTAL = 5;
 
     private final List<OpsCoreModuleRegistration> modules = List.of(
             new OpsCoreModuleRegistration("OPS_CONTROL", "ops-control", "/api/v1/ops-control", "backend/ops-control-service", 8116, 31, "docs/contracts-ops-control.md", ".local-docs/tests-ops-core.md"),
@@ -220,8 +258,8 @@ class OpsCoreRegistry {
         return data;
     }
 
-    List<String> productionGaps() {
-        return List.of(
+    List<String> productionGaps(String httpSmokeStatus) {
+        List<String> gaps = new ArrayList<>(List.of(
                 "real persistence is not connected",
                 "real cross-service HTTP adapters are not connected",
                 "real audit persistence is not connected",
@@ -236,10 +274,14 @@ class OpsCoreRegistry {
                 "production credential custody is not connected",
                 "async queue is not connected",
                 "persistence transaction is not connected"
-        );
+        ));
+        if (!"PASS".equals(httpSmokeStatus)) {
+            gaps.add("real HTTP smoke is not passing");
+        }
+        return List.copyOf(gaps);
     }
 
-    List<Map<String, Object>> readinessChecks() {
+    List<Map<String, Object>> readinessChecks(String httpSmokeStatus) {
         return List.of(
                 check("REAL_PERSISTENCE", "BLOCKED", "real persistence is not connected"),
                 check("REAL_CROSS_SERVICE_HTTP", "BLOCKED", "real cross-service HTTP adapters are not connected"),
@@ -256,6 +298,8 @@ class OpsCoreRegistry {
                 check("ASYNC_QUEUE", "BLOCKED", "async queue is not connected"),
                 check("PERSISTENCE_TRANSACTION", "BLOCKED", "persistence transaction is not connected"),
                 check("TEST_CONTROL_HEADERS", "PASS", "test control headers are disabled by default"),
+                check("REAL_HTTP_SMOKE", httpSmokeStatus, "latest explicit HTTP smoke status is " + httpSmokeStatus),
+                check("TRUSTED_GATEWAY_SIGNATURE", "PASS", "trusted gateway context requires HMAC SHA-256 signature"),
                 check("INHERITED_ROUTE_DRIFT", "PASS", "inherited route signatures match formal contracts"),
                 check("SENSITIVE_FIELD_SCAN", "PASS", "sensitive field scan is covered by automated tests"),
                 check("GATEWAY_ROUTE_SWITCH", "PASS", "gateway routes are switched to ops-core")
@@ -268,6 +312,254 @@ class OpsCoreRegistry {
         data.put("status", status);
         data.put("summary", summary);
         data.put("required", true);
+        return data;
+    }
+}
+
+@Component
+class OpsCoreSmokeCoordinator {
+    private static final String DISCOVERY_MODE = "STATIC_LOCAL_CONFIG";
+
+    private final String gatewayBaseUrl;
+    private final String selfBaseUrl;
+    private final int gatewayPort;
+    private final int currentPort;
+    private final int timeoutMs;
+    private final ObjectMapper objectMapper;
+    private final HttpClient httpClient;
+    private final List<OpsHttpSmokeTarget> targets;
+    private volatile OpsHttpSmokeReport lastReport;
+
+    OpsCoreSmokeCoordinator(@Value("${server.port}") int currentPort,
+                            @Value("${ops-core.http-smoke.gateway-base-url:http://127.0.0.1:8125}") String gatewayBaseUrl,
+                            @Value("${ops-core.http-smoke.self-base-url:}") String selfBaseUrl,
+                            @Value("${ops-core.http-smoke.timeout-ms:1500}") int timeoutMs,
+                            ObjectMapper objectMapper) {
+        this.currentPort = currentPort;
+        this.gatewayBaseUrl = normalizeBaseUrl(gatewayBaseUrl, "http://127.0.0.1:8125");
+        this.selfBaseUrl = normalizeBaseUrl(selfBaseUrl, "http://127.0.0.1:" + currentPort);
+        this.gatewayPort = portOf(this.gatewayBaseUrl);
+        this.timeoutMs = timeoutMs;
+        this.objectMapper = objectMapper;
+        this.httpClient = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofMillis(timeoutMs))
+                .build();
+        this.targets = List.of(
+                new OpsHttpSmokeTarget("GATEWAY_OPS_CONTROL_OVERVIEW", "OPS_CONTROL", "GET", this.gatewayBaseUrl, "/api/v1/ops-control/overview", true, 499, 0, timeoutMs),
+                new OpsHttpSmokeTarget("GATEWAY_ALERTING_HEALTH", "ALERTING", "GET", this.gatewayBaseUrl, "/api/v1/alerting/health", false, 499, 0, timeoutMs),
+                new OpsHttpSmokeTarget("GATEWAY_CPN_HEALTH", "CROSS_PLATFORM_NOTIFICATION", "GET", this.gatewayBaseUrl, "/api/v1/cross-platform-notification/health", false, 499, 0, timeoutMs),
+                new OpsHttpSmokeTarget("GATEWAY_OPS_CORE_HEALTH", "OPS_CORE", "GET", this.selfBaseUrl, "/api/v1/ops-core/health", false, 499, 0, timeoutMs)
+        );
+    }
+
+    String serviceDiscoveryMode() {
+        return DISCOVERY_MODE;
+    }
+
+    List<Map<String, Object>> registeredUpstreams() {
+        return List.of(
+                upstream("OPS_CONTROL", "ops-control", gatewayBaseUrl, gatewayPort, "/api/v1/ops-control", "/api/v1/ops-control/overview"),
+                upstream("ALERTING", "alerting", gatewayBaseUrl, gatewayPort, "/api/v1/alerting", "/api/v1/alerting/health"),
+                upstream("CROSS_PLATFORM_NOTIFICATION", "cross-platform-notification", gatewayBaseUrl, gatewayPort, "/api/v1/cross-platform-notification", "/api/v1/cross-platform-notification/health"),
+                upstream("OPS_CORE", "ops-core", selfBaseUrl, currentPort, "/api/v1/ops-core", "/api/v1/ops-core/health")
+        );
+    }
+
+    String currentStatus() {
+        OpsHttpSmokeReport report = lastReport;
+        return report == null ? "NOT_RUN" : report.status();
+    }
+
+    String readinessStatus() {
+        OpsHttpSmokeReport report = lastReport;
+        return report == null ? "NOT_CONNECTED" : report.status();
+    }
+
+    String lastCheckedAt() {
+        OpsHttpSmokeReport report = lastReport;
+        return report == null ? null : report.finishedAt().toString();
+    }
+
+    List<Map<String, Object>> lastResults() {
+        OpsHttpSmokeReport report = lastReport;
+        return report == null ? List.of() : report.results().stream().map(OpsHttpSmokeResult::toMap).toList();
+    }
+
+    synchronized OpsHttpSmokeReport run(String requestId) {
+        if (targets.isEmpty() || timeoutMs <= 0 || targets.stream().map(OpsHttpSmokeTarget::url).anyMatch(this::notHttpUrl)) {
+            throw new OpsCoreException(HttpStatus.INTERNAL_SERVER_ERROR, 50000, "http smoke configuration invalid");
+        }
+        Instant startedAt = Instant.now();
+        List<OpsHttpSmokeResult> results = targets.stream()
+                .map(target -> probe(target, requestId))
+                .toList();
+        String status = results.stream().allMatch(result -> "PASS".equals(result.status())) ? "PASS" : "DEGRADED";
+        OpsHttpSmokeReport report = new OpsHttpSmokeReport(status, startedAt, Instant.now(), results);
+        lastReport = report;
+        return report;
+    }
+
+    private OpsHttpSmokeResult probe(OpsHttpSmokeTarget target, String requestId) {
+        Instant startedAt = Instant.now();
+        Instant checkedAt;
+        try {
+            HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(target.url()))
+                    .timeout(Duration.ofMillis(target.timeoutMs()))
+                    .header("X-Request-Id", requestId)
+                    .GET();
+            if (target.includeSmokeAuthorization()) {
+                builder.header("Authorization", "Bearer owner-token");
+            }
+            HttpResponse<String> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            checkedAt = Instant.now();
+            Integer businessCode = businessCode(response.body());
+            String failureReason = failureReason(response.statusCode(), businessCode, target.expectedStatusMax(), target.expectedBusinessCode());
+            String status = failureReason == null ? "PASS" : "FAILED";
+            return new OpsHttpSmokeResult(target.targetKey(), target.serviceKey(), target.method(), target.path(), status,
+                    response.statusCode(), businessCode, durationMs(startedAt, checkedAt), checkedAt, failureReason);
+        } catch (HttpTimeoutException ex) {
+            checkedAt = Instant.now();
+            return failed(target, startedAt, checkedAt, "timeout");
+        } catch (IllegalArgumentException ex) {
+            checkedAt = Instant.now();
+            return failed(target, startedAt, checkedAt, "invalid target url");
+        } catch (IOException ex) {
+            checkedAt = Instant.now();
+            return failed(target, startedAt, checkedAt, "connection failed");
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            checkedAt = Instant.now();
+            return failed(target, startedAt, checkedAt, "interrupted");
+        }
+    }
+
+    private boolean notHttpUrl(String url) {
+        URI uri = URI.create(url);
+        return !("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme()));
+    }
+
+    private OpsHttpSmokeResult failed(OpsHttpSmokeTarget target, Instant startedAt, Instant checkedAt, String reason) {
+        return new OpsHttpSmokeResult(target.targetKey(), target.serviceKey(), target.method(), target.path(), "FAILED",
+                null, null, durationMs(startedAt, checkedAt), checkedAt, reason);
+    }
+
+    private String failureReason(int httpStatus, Integer businessCode, int expectedStatusMax, int expectedBusinessCode) {
+        if (httpStatus > expectedStatusMax) {
+            return "http status " + httpStatus;
+        }
+        if (businessCode == null) {
+            return "business code missing";
+        }
+        if (businessCode != expectedBusinessCode) {
+            return "business code " + businessCode;
+        }
+        return null;
+    }
+
+    private Integer businessCode(String body) {
+        try {
+            JsonNode node = objectMapper.readTree(body);
+            JsonNode code = node.get("code");
+            return code == null || !code.canConvertToInt() ? null : code.asInt();
+        } catch (IOException ex) {
+            return null;
+        }
+    }
+
+    private Map<String, Object> upstream(String serviceKey, String serviceName, String baseUrl, int port, String pathPrefix, String healthPath) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("serviceKey", serviceKey);
+        data.put("serviceName", serviceName);
+        data.put("baseUrl", baseUrl);
+        data.put("port", port);
+        data.put("pathPrefix", pathPrefix);
+        data.put("healthPath", healthPath);
+        data.put("discoverySource", DISCOVERY_MODE);
+        data.put("enabled", true);
+        data.put("lastObservedStatus", "UNKNOWN");
+        return data;
+    }
+
+    private String normalizeBaseUrl(String value, String fallback) {
+        String normalized = value == null || value.isBlank() ? fallback : value.trim();
+        while (normalized.endsWith("/")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        return normalized;
+    }
+
+    private int portOf(String baseUrl) {
+        URI uri = URI.create(baseUrl);
+        if (uri.getPort() > 0) {
+            return uri.getPort();
+        }
+        return "https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80;
+    }
+
+    private int durationMs(Instant startedAt, Instant finishedAt) {
+        return Math.max(0, (int) Duration.between(startedAt, finishedAt).toMillis());
+    }
+}
+
+record OpsHttpSmokeTarget(String targetKey,
+                          String serviceKey,
+                          String method,
+                          String baseUrl,
+                          String path,
+                          boolean includeSmokeAuthorization,
+                          int expectedStatusMax,
+                          int expectedBusinessCode,
+                          int timeoutMs) {
+    String url() {
+        return baseUrl + path;
+    }
+}
+
+record OpsHttpSmokeResult(String targetKey,
+                          String serviceKey,
+                          String method,
+                          String path,
+                          String status,
+                          Integer httpStatus,
+                          Integer businessCode,
+                          int durationMs,
+                          Instant checkedAt,
+                          String failureReason) {
+    Map<String, Object> toMap() {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("targetKey", targetKey);
+        data.put("serviceKey", serviceKey);
+        data.put("method", method);
+        data.put("path", path);
+        data.put("status", status);
+        data.put("httpStatus", httpStatus);
+        data.put("businessCode", businessCode);
+        data.put("durationMs", durationMs);
+        data.put("checkedAt", checkedAt.toString());
+        data.put("failureReason", failureReason);
+        return data;
+    }
+}
+
+record OpsHttpSmokeReport(String status,
+                          Instant startedAt,
+                          Instant finishedAt,
+                          List<OpsHttpSmokeResult> results) {
+    Map<String, Object> toMap(String discoveryMode, List<Map<String, Object>> upstreams) {
+        long passed = results.stream().filter(result -> "PASS".equals(result.status())).count();
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("service", "ops-core");
+        data.put("serviceDiscoveryMode", discoveryMode);
+        data.put("registeredUpstreams", upstreams);
+        data.put("status", status);
+        data.put("httpSmokeStatus", status);
+        data.put("realHttpSmoke", true);
+        data.put("targetsTotal", results.size());
+        data.put("passedTargetsTotal", passed);
+        data.put("failedTargetsTotal", results.size() - passed);
+        data.put("targets", results.stream().map(OpsHttpSmokeResult::toMap).toList());
+        data.put("startedAt", startedAt.toString());
+        data.put("finishedAt", finishedAt.toString());
         return data;
     }
 }
@@ -332,6 +624,8 @@ record OpsCoreActor(String userId, Set<String> roles, Set<String> permissions, S
 
 final class TrustedGatewayAuth {
     private static final Pattern REQUEST_ID_PATTERN = Pattern.compile("[A-Za-z0-9_.:-]{1,128}");
+    private static final Pattern SIGNATURE_PATTERN = Pattern.compile("[a-f0-9]{64}");
+    private static final Duration SIGNATURE_SKEW = Duration.ofMinutes(5);
     private static final Set<String> VALID_ROLES = Set.of("OWNER", "ADMIN", "HELPER", "USER");
     private static final Set<String> VALID_PERMISSIONS = Set.of("NODE_READ", "NODE_WRITE", "CONTAINER_OPERATE",
             "VM_OPERATE", "FILE_MANAGE", "TERMINAL_ACCESS", "HIGH_RISK_APPROVE");
@@ -339,7 +633,7 @@ final class TrustedGatewayAuth {
     private TrustedGatewayAuth() {
     }
 
-    static Optional<OpsCoreActor> from(HttpServletRequest request) {
+    static Optional<OpsCoreActor> from(HttpServletRequest request, String signingSecret) {
         String gatewayRequestId = request.getHeader("X-Gateway-Internal-Request-Id");
         if (gatewayRequestId == null) {
             return Optional.empty();
@@ -351,9 +645,57 @@ final class TrustedGatewayAuth {
         if (userId == null || userId.isBlank()) {
             throw new OpsCoreException(HttpStatus.BAD_GATEWAY, 53233, "trusted auth context incompatible");
         }
-        LinkedHashSet<String> roles = csv(request.getHeader("X-Beiming-Actor-Roles"), VALID_ROLES, true);
-        LinkedHashSet<String> permissions = csv(request.getHeader("X-Beiming-Actor-Permissions"), VALID_PERMISSIONS, false);
+        String rolesHeader = request.getHeader("X-Beiming-Actor-Roles");
+        String permissionsHeader = request.getHeader("X-Beiming-Actor-Permissions");
+        String timestamp = request.getHeader("X-Gateway-Internal-Timestamp");
+        String signature = request.getHeader("X-Gateway-Internal-Signature");
+        LinkedHashSet<String> roles = csv(rolesHeader, VALID_ROLES, true);
+        LinkedHashSet<String> permissions = csv(permissionsHeader, VALID_PERMISSIONS, false);
+        if (timestamp == null || timestamp.isBlank() || signature == null || !SIGNATURE_PATTERN.matcher(signature).matches()) {
+            throw new OpsCoreException(HttpStatus.BAD_GATEWAY, 53233, "trusted auth context incompatible");
+        }
+        try {
+            Instant signedAt = Instant.parse(timestamp);
+            if (Duration.between(signedAt, Instant.now()).abs().compareTo(SIGNATURE_SKEW) > 0) {
+                throw new OpsCoreException(HttpStatus.BAD_GATEWAY, 53233, "trusted auth context incompatible");
+            }
+        } catch (DateTimeParseException ex) {
+            throw new OpsCoreException(HttpStatus.BAD_GATEWAY, 53233, "trusted auth context incompatible");
+        }
+        String minecraftId = request.getHeader("X-Beiming-Actor-Minecraft-Id");
+        String minecraftUuid = request.getHeader("X-Beiming-Actor-Minecraft-Uuid");
+        String expected = sign(signingSecret, request.getMethod().toUpperCase(), request.getRequestURI(), gatewayRequestId,
+                userId.trim(), String.join(",", roles), String.join(",", permissions), timestamp, minecraftId, minecraftUuid);
+        if (!expected.equals(signature)) {
+            throw new OpsCoreException(HttpStatus.BAD_GATEWAY, 53233, "trusted auth context incompatible");
+        }
         return Optional.of(new OpsCoreActor(userId.trim(), roles, permissions, "TRUSTED_GATEWAY_CONTEXT"));
+    }
+
+    private static String sign(String secret, String method, String path, String requestId, String userId, String roles,
+                               String permissions, String timestamp, String minecraftId, String minecraftUuid) {
+        try {
+            String plain = String.join("\n",
+                    method,
+                    path,
+                    requestId,
+                    userId,
+                    roles,
+                    permissions,
+                    timestamp,
+                    minecraftId == null ? "" : minecraftId,
+                    minecraftUuid == null ? "" : minecraftUuid);
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            byte[] digest = mac.doFinal(plain.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder();
+            for (byte item : digest) {
+                hex.append(String.format("%02x", item));
+            }
+            return hex.toString();
+        } catch (Exception ex) {
+            throw new OpsCoreException(HttpStatus.BAD_GATEWAY, 53233, "trusted auth context incompatible");
+        }
     }
 
     private static LinkedHashSet<String> csv(String value, Set<String> allowed, boolean required) {

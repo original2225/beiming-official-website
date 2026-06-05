@@ -1,5 +1,6 @@
 package cn.beiming.alerting;
 
+import cn.beiming.crossplatformnotification.AlertingExternalDeliveryAdapter;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
@@ -265,7 +266,7 @@ class AlertingController {
                             alert.notificationSummary = delivery.summary();
                             alert.suppressionSummary = Map.of("suppressed", true, "reason", "MATCHED_SILENCE");
                         } else {
-                            store.deliverIfRouteMatches(rule, alert);
+                            store.deliverIfRouteMatches(request, actor, rule, alert);
                         }
                     } else {
                         existing.lastFiredAt = now();
@@ -276,9 +277,9 @@ class AlertingController {
                         } else if ("SUPPRESSED".equals(existing.status)) {
                             existing.status = "FIRING";
                             existing.suppressionSummary = Map.of("suppressed", false, "reason", "SILENCE_NOT_MATCHED");
-                            store.deliverIfRouteMatches(rule, existing);
+                            store.deliverIfRouteMatches(request, actor, rule, existing);
                         } else {
-                            store.deliverIfRouteMatches(rule, existing);
+                            store.deliverIfRouteMatches(request, actor, rule, existing);
                         }
                     }
                 }
@@ -506,7 +507,10 @@ class AlertingController {
             synchronized (store) {
                 AlertRoute route = store.route(routeId);
                 String deliveryId = "delivery-" + store.nextId();
-                AlertDelivery delivery = AlertDelivery.sent(deliveryId, textOr(objectMap(body.get("sampleAlert")).get("alertId"), "sample-alert"), route.routeId);
+                AlertDelivery delivery = store.createExternalDelivery(request, actor, route,
+                        textOr(objectMap(body.get("sampleAlert")).get("alertId"), "sample-alert"), objectMap(body.get("sampleAlert")),
+                        "alert-route-test:" + route.routeId + ":" + textOr(body.get("idempotencyKey"), store.fingerprint(body)), deliveryId,
+                        textOr(body.get("reason"), "alert route test"));
                 store.deliveries.put(deliveryId, delivery);
                 store.audit("ALERT_ROUTE_TESTED", "ROUTE", routeId, actor, request, body, "HIGH", "SUCCESS", null, null, "SENT");
                 return created(request, delivery.view());
@@ -916,10 +920,12 @@ class AlertingStore {
     final Map<String, IdempotencyRecord> idempotency = new ConcurrentHashMap<>();
     final List<AlertAudit> audits = new ArrayList<>();
     private final ObjectMapper mapper;
+    private final AlertingExternalDeliveryAdapter externalDeliveryAdapter;
     private long sequence = 1000;
 
-    AlertingStore(ObjectMapper mapper) {
+    AlertingStore(ObjectMapper mapper, AlertingExternalDeliveryAdapter externalDeliveryAdapter) {
         this.mapper = mapper;
+        this.externalDeliveryAdapter = externalDeliveryAdapter;
     }
 
     @PostConstruct
@@ -1030,7 +1036,7 @@ class AlertingStore {
         return AlertingText.text(value).trim().replaceAll("\\s+", "_");
     }
 
-    void deliverIfRouteMatches(AlertRule rule, AlertInstance alert) {
+    void deliverIfRouteMatches(HttpServletRequest request, Actor actor, AlertRule rule, AlertInstance alert) {
         if (rule.routeId == null || rule.routeId.isBlank()) {
             alert.notificationSummary = Map.of("status", "PENDING", "reason", "NO_ROUTE");
             return;
@@ -1051,16 +1057,72 @@ class AlertingStore {
         AlertDelivery existing = deliveries.values().stream()
                 .filter(delivery -> alert.alertId.equals(delivery.alertId))
                 .filter(delivery -> route.routeId.equals(delivery.routeId))
-                .filter(delivery -> "SENT".equals(delivery.status))
+                .filter(delivery -> !"SUPPRESSED".equals(delivery.status))
                 .findFirst()
                 .orElse(null);
         if (existing != null) {
             alert.notificationSummary = existing.summary();
             return;
         }
-        AlertDelivery delivery = AlertDelivery.sent("delivery-" + nextId(), alert.alertId, route.routeId);
+        String deliveryId = "delivery-" + nextId();
+        AlertDelivery delivery = createExternalDelivery(request, actor, route, alert.alertId,
+                Map.of("summary", alert.summary, "severity", alert.severity, "sourceService", alert.sourceService, "labels", alert.labels),
+                "alert:" + alert.alertId + ":" + route.routeId + ":" + alert.fingerprint,
+                deliveryId, "alerting rule matched");
         deliveries.put(delivery.deliveryId, delivery);
         alert.notificationSummary = delivery.summary();
+    }
+
+    AlertDelivery createExternalDelivery(HttpServletRequest request, Actor actor, AlertRoute route, String alertId,
+                                         Map<String, Object> alertSummary, String idempotencyKey, String deliveryId, String reason) {
+        AlertingExternalDeliveryAdapter.Result result = externalDeliveryAdapter.createSimulatedDelivery(request,
+                actor.userId, actor.displayName, cpnDeliveryBody(route, alertId, alertSummary, idempotencyKey, reason));
+        return result.success()
+                ? AlertDelivery.fromCpn(deliveryId, alertId, route.routeId, result)
+                : AlertDelivery.failedExternal(deliveryId, alertId, route.routeId, result);
+    }
+
+    private Map<String, Object> cpnDeliveryBody(AlertRoute route, String alertId, Map<String, Object> alertSummary,
+                                               String idempotencyKey, String reason) {
+        return AlertingMaps.linked(
+                "sourceModule", "alerting",
+                "sourceId", alertId,
+                "eventType", "alert.firing",
+                "riskLevel", cpnRiskLevel(AlertingText.text(alertSummary.get("severity"))),
+                "providerId", "provider-discord-main",
+                "templateMappingId", "mapping-notification-discord-main",
+                "receiverSummary", cpnReceiver(route),
+                "payloadSummary", cpnPayload(alertSummary),
+                "expiresAt", Instant.now().plusSeconds(3600).toString(),
+                "confirmText", "CREATE_EXTERNAL_DELIVERY",
+                "reason", reason,
+                "idempotencyKey", idempotencyKey);
+    }
+
+    private Map<String, Object> cpnReceiver(AlertRoute route) {
+        Map<String, Object> receiver = AlertingText.objectMap(route.receiverSummary);
+        String type = AlertingText.text(receiver.get("receiverType"));
+        if ("CHANNEL".equals(type)) {
+            return AlertingMaps.linked("receiverType", "CHANNEL",
+                    "displayName", AlertingText.textOr(receiver.get("displayName"), "Ops"),
+                    "targetRefSummary", AlertingText.textOr(receiver.get("targetRefSummary"), "#ops"));
+        }
+        return AlertingMaps.linked("receiverType", "CHANNEL", "displayName", "Ops", "targetRefSummary", "#ops");
+    }
+
+    private Map<String, Object> cpnPayload(Map<String, Object> alertSummary) {
+        String title = AlertingText.textOr(alertSummary.get("summary"), "Alert firing");
+        String body = AlertingText.textOr(alertSummary.get("sourceService"), "alerting") + " " + AlertingText.textOr(alertSummary.get("severity"), "WARNING");
+        return AlertingMaps.linked("title", title, "body", body, "player", "system");
+    }
+
+    private String cpnRiskLevel(String severity) {
+        return switch (severity) {
+            case "INFO" -> "LOW";
+            case "CRITICAL" -> "HIGH";
+            case "BLOCKER" -> "CRITICAL";
+            default -> "MEDIUM";
+        };
     }
 
     private boolean routeMatches(AlertRoute route, AlertInstance alert) {
@@ -1092,6 +1154,7 @@ class AlertingStore {
         view.put("authMode", "TEST_STUB");
         view.put("sourceAdapterMode", "TEST_STUB");
         view.put("notificationAdapterMode", "TEST_STUB");
+        view.put("externalDeliveryAdapterMode", "CPN_SIMULATED_EXTERNAL");
         view.put("testControlsEnabled", testControlsEnabled);
         view.put("sourcesTotal", sources.size());
         view.put("rulesTotal", rules.size());
@@ -1448,6 +1511,12 @@ class AlertDelivery {
     final String alertId;
     final String routeId;
     final Map<String, Object> notificationRef;
+    final String deliveryMode;
+    final String externalModule;
+    final String externalDeliveryId;
+    final String externalDeliveryStatus;
+    final String externalAttemptStatus;
+    final boolean realExternalSend;
     final String status;
     final int attempts;
     final String lastAttemptAt;
@@ -1457,16 +1526,29 @@ class AlertDelivery {
     final String createdAt = Instant.now().toString();
 
     AlertDelivery(String deliveryId, String alertId, String routeId, String status, int attempts, String failureCode, String failureSummary) {
+        this(deliveryId, alertId, routeId, Map.of("mode", "TEST_STUB", "channel", "IN_APP"), "TEST_STUB",
+                null, null, null, null, false, status, attempts, failureCode, failureSummary, null);
+    }
+
+    AlertDelivery(String deliveryId, String alertId, String routeId, Map<String, Object> notificationRef, String deliveryMode,
+                  String externalModule, String externalDeliveryId, String externalDeliveryStatus, String externalAttemptStatus,
+                  boolean realExternalSend, String status, int attempts, String failureCode, String failureSummary, String nextRetryAt) {
         this.deliveryId = deliveryId;
         this.alertId = alertId;
         this.routeId = routeId;
+        this.notificationRef = new LinkedHashMap<>(notificationRef);
+        this.deliveryMode = deliveryMode;
+        this.externalModule = externalModule;
+        this.externalDeliveryId = externalDeliveryId;
+        this.externalDeliveryStatus = externalDeliveryStatus;
+        this.externalAttemptStatus = externalAttemptStatus;
+        this.realExternalSend = realExternalSend;
         this.status = status;
         this.attempts = attempts;
         this.lastAttemptAt = createdAt;
         this.failureCode = failureCode;
         this.failureSummary = failureSummary;
-        this.nextRetryAt = null;
-        this.notificationRef = Map.of("mode", "TEST_STUB", "channel", "IN_APP");
+        this.nextRetryAt = nextRetryAt;
     }
 
     static AlertDelivery sent(String deliveryId, String alertId, String routeId) {
@@ -1477,15 +1559,64 @@ class AlertDelivery {
         return new AlertDelivery(deliveryId, alertId, routeId, "SUPPRESSED", 0, null, "MATCHED_SILENCE");
     }
 
+    static AlertDelivery fromCpn(String deliveryId, String alertId, String routeId, AlertingExternalDeliveryAdapter.Result result) {
+        Map<String, Object> externalDelivery = AlertingText.objectMap(result.delivery());
+        Map<String, Object> externalAttempt = AlertingText.objectMap(result.attempt());
+        String externalStatus = AlertingText.text(externalDelivery.get("status"));
+        String attemptStatus = AlertingText.text(externalAttempt.get("status"));
+        String status = alertingStatus(externalStatus, attemptStatus);
+        Map<String, Object> ref = AlertingMaps.linked(
+                "mode", "SIMULATED_EXTERNAL",
+                "externalModule", "cross-platform-notification",
+                "providerId", externalDelivery.get("providerId"),
+                "channel", externalDelivery.get("channel"),
+                "templateMappingId", externalDelivery.get("templateMappingId"),
+                "receiverSummary", externalDelivery.get("receiverSummary"));
+        return new AlertDelivery(deliveryId, alertId, routeId, ref, "SIMULATED_EXTERNAL",
+                "cross-platform-notification", AlertingText.text(externalDelivery.get("deliveryId")),
+                externalStatus, attemptStatus, false, status,
+                AlertingText.intValue(externalDelivery.get("attempts"), 1),
+                blankToNull(AlertingText.text(externalDelivery.get("failureCode"))),
+                blankToNull(AlertingText.text(externalDelivery.get("failureSummary"))),
+                blankToNull(AlertingText.text(externalDelivery.get("nextRetryAt"))));
+    }
+
+    static AlertDelivery failedExternal(String deliveryId, String alertId, String routeId, AlertingExternalDeliveryAdapter.Result result) {
+        Map<String, Object> ref = AlertingMaps.linked("mode", "SIMULATED_EXTERNAL", "externalModule", "cross-platform-notification");
+        return new AlertDelivery(deliveryId, alertId, routeId, ref, "SIMULATED_EXTERNAL",
+                "cross-platform-notification", null, "ADAPTER_FAILED", "ADAPTER_FAILED", false,
+                "FAILED", 0, "CPN_" + result.code(), result.message(), null);
+    }
+
     Map<String, Object> summary() {
-        return Map.of("deliveryId", deliveryId, "status", status, "attempts", attempts);
+        return AlertingMaps.linked("deliveryId", deliveryId, "status", status, "attempts", attempts,
+                "deliveryMode", deliveryMode, "externalModule", externalModule, "externalDeliveryId", externalDeliveryId,
+                "externalDeliveryStatus", externalDeliveryStatus, "externalAttemptStatus", externalAttemptStatus,
+                "realExternalSend", realExternalSend);
     }
 
     Map<String, Object> view() {
         return AlertingMaps.linked("deliveryId", deliveryId, "alertId", alertId, "routeId", routeId,
-                "notificationRef", notificationRef, "status", status, "attempts", attempts,
+                "notificationRef", notificationRef, "deliveryMode", deliveryMode, "externalModule", externalModule,
+                "externalDeliveryId", externalDeliveryId, "externalDeliveryStatus", externalDeliveryStatus,
+                "externalAttemptStatus", externalAttemptStatus, "realExternalSend", realExternalSend,
+                "status", status, "attempts", attempts,
                 "lastAttemptAt", lastAttemptAt, "failureCode", failureCode, "failureSummary", failureSummary,
                 "nextRetryAt", nextRetryAt, "createdAt", createdAt);
+    }
+
+    private static String alertingStatus(String externalStatus, String attemptStatus) {
+        if ("SIMULATED_SENT".equals(externalStatus) && "SIMULATED_SUCCESS".equals(attemptStatus)) {
+            return "SENT";
+        }
+        if ("RETRY_SCHEDULED".equals(externalStatus) || "RATE_LIMITED".equals(attemptStatus)) {
+            return "RETRYING";
+        }
+        return "FAILED";
+    }
+
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value;
     }
 }
 

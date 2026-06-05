@@ -800,14 +800,14 @@ class CpnStore {
         ensureCapability(sms);
 
         CpnTemplateMapping seedMapping = new CpnTemplateMapping(
-                "mapping-notification-discord-main", "notification", map("code", "seed-alert-template"),
+                "mapping-notification-discord-main", "alerting", map("code", "seed-alert-template"),
                 discord.providerId, discord.channel, "discord-alert-template", List.of("title", "body", "player"),
                 "MARKDOWN", "{{title}}", "{{body}} for {{player}}", "ENABLED", 1, "system", "system", now(), now());
         mappings.put(seedMapping.mappingId, seedMapping);
 
         CpnRoutePolicy seedRoute = new CpnRoutePolicy(
-                "route-alerting-discord-main", "Alerting Discord Main", "alerting", "alert.fired", "HIGH",
-                map("sourceModule", "alerting", "eventType", "alert.fired", "riskLevel", "HIGH"),
+                "route-alerting-discord-main", "Alerting Discord Main", "alerting", "alert.firing", "HIGH",
+                map("sourceModule", "alerting", "eventType", "alert.firing", "riskLevel", "HIGH"),
                 discord.providerId, seedMapping.mappingId,
                 map("receiverType", "CHANNEL", "displayName", "Ops", "targetRefSummary", "#ops", "verified", true),
                 map("groupBy", List.of("sourceModule", "eventType"), "groupWaitSeconds", 10, "groupIntervalSeconds", 60),

@@ -7,6 +7,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
@@ -32,7 +33,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest(classes = OpsCoreServiceApplication.class)
+@SpringBootTest(classes = OpsCoreServiceApplication.class, properties = {
+        "ops-core.http-smoke.gateway-base-url=http://127.0.0.1:1",
+        "ops-core.http-smoke.self-base-url=http://127.0.0.1:1",
+        "ops-core.http-smoke.timeout-ms=100"
+})
 @AutoConfigureMockMvc
 class OpsCoreApiContractTest {
     private static final int OPS_CORE_PORT = 8133;
@@ -241,6 +246,7 @@ class OpsCoreApiContractTest {
     }
 
     @Test
+    @DirtiesContext(methodMode = DirtiesContext.MethodMode.AFTER_METHOD)
     void exposesOpsCoreHttpSmokeRunAndUpdatesReadinessSnapshot() throws Exception {
         mockMvc.perform(post("/api/v1/ops-core/admin/http-smoke/run")
                         .header("Authorization", "Bearer admin-token")
@@ -248,14 +254,14 @@ class OpsCoreApiContractTest {
                 .andExpect(status().isOk())
                 .andExpect(header().string("X-Request-Id", "req-ops-http-smoke"))
                 .andExpect(jsonPath("$.data.realHttpSmoke").value(true))
-                .andExpect(jsonPath("$.data.status").value("PASS"))
+                .andExpect(jsonPath("$.data.status").value("DEGRADED"))
                 .andExpect(jsonPath("$.data.targetsTotal").value(4))
-                .andExpect(jsonPath("$.data.passedTargetsTotal").value(4))
-                .andExpect(jsonPath("$.data.failedTargetsTotal").value(0))
-                .andExpect(jsonPath("$.data.targets[?(@.targetKey == 'GATEWAY_OPS_CONTROL_OVERVIEW' && @.status == 'PASS')]").exists())
-                .andExpect(jsonPath("$.data.targets[?(@.targetKey == 'GATEWAY_ALERTING_HEALTH' && @.status == 'PASS')]").exists())
-                .andExpect(jsonPath("$.data.targets[?(@.targetKey == 'GATEWAY_CPN_HEALTH' && @.status == 'PASS')]").exists())
-                .andExpect(jsonPath("$.data.targets[?(@.targetKey == 'GATEWAY_OPS_CORE_HEALTH' && @.status == 'PASS')]").exists());
+                .andExpect(jsonPath("$.data.passedTargetsTotal").value(0))
+                .andExpect(jsonPath("$.data.failedTargetsTotal").value(4))
+                .andExpect(jsonPath("$.data.targets[?(@.targetKey == 'GATEWAY_OPS_CONTROL_OVERVIEW' && @.status == 'FAILED')]").exists())
+                .andExpect(jsonPath("$.data.targets[?(@.targetKey == 'GATEWAY_ALERTING_HEALTH' && @.status == 'FAILED')]").exists())
+                .andExpect(jsonPath("$.data.targets[?(@.targetKey == 'GATEWAY_CPN_HEALTH' && @.status == 'FAILED')]").exists())
+                .andExpect(jsonPath("$.data.targets[?(@.targetKey == 'GATEWAY_OPS_CORE_HEALTH' && @.status == 'FAILED')]").exists());
     }
 
     @Test
