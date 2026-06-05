@@ -12,17 +12,22 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -32,8 +37,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class OpsCoreApiContractTest {
     private static final int OPS_CORE_PORT = 8133;
     private static final int INHERITED_ROUTES_TOTAL = 219;
-    private static final int SELF_ROUTES_TOTAL = 4;
+    private static final int SELF_ROUTES_TOTAL = 5;
     private static final int ROUTES_TOTAL = INHERITED_ROUTES_TOTAL + SELF_ROUTES_TOTAL;
+    private static final String INTERNAL_SIGNING_SECRET = "local-test-gateway-signing-secret";
 
     @Autowired
     private MockMvc mockMvc;
@@ -93,11 +99,11 @@ class OpsCoreApiContractTest {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.code").value(0));
 
-            mockMvc.perform(trusted(get(path), "gateway-owner", "OWNER", "NODE_READ"))
+            mockMvc.perform(trusted(get(path), "GET", path, "gateway-owner", "OWNER", "NODE_READ"))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.code").value(0));
 
-            mockMvc.perform(trusted(get(path), "gateway-helper", "HELPER", "NODE_READ"))
+            mockMvc.perform(trusted(get(path), "GET", path, "gateway-helper", "HELPER", "NODE_READ"))
                     .andExpect(status().isForbidden())
                     .andExpect(jsonPath("$.code").value(42001));
 
@@ -117,6 +123,32 @@ class OpsCoreApiContractTest {
     }
 
     @Test
+    void rejectsUnsignedOrTamperedTrustedGatewayContext() throws Exception {
+        String path = "/api/v1/ops-core/admin/readiness";
+
+        mockMvc.perform(get(path)
+                        .header("X-Gateway-Internal-Request-Id", "req-unsigned-gateway")
+                        .header("X-Gateway-Internal-Timestamp", "2026-06-05T00:00:00Z")
+                        .header("X-Beiming-Actor-User-Id", "gateway-owner")
+                        .header("X-Beiming-Actor-Roles", "OWNER"))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.code").value(53233));
+
+        mockMvc.perform(get(path)
+                        .header("X-Gateway-Internal-Request-Id", "req-bad-signature")
+                        .header("X-Gateway-Internal-Timestamp", "2026-06-05T00:00:00Z")
+                        .header("X-Gateway-Internal-Signature", "bad-signature")
+                        .header("X-Beiming-Actor-User-Id", "gateway-owner")
+                        .header("X-Beiming-Actor-Roles", "OWNER"))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.code").value(53233));
+
+        mockMvc.perform(trusted(get(path), "GET", path, "gateway-owner", "OWNER", "NODE_READ"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.trustedGatewaySignatureStatus").value("HMAC_SHA256_CONFIGURED"));
+    }
+
+    @Test
     void exposesOpsCoreSummaryAndModuleAssembly() throws Exception {
         mockMvc.perform(get("/api/v1/ops-core/ops/summary").header("Authorization", "Bearer admin-token"))
                 .andExpect(status().isOk())
@@ -130,6 +162,11 @@ class OpsCoreApiContractTest {
                 .andExpect(jsonPath("$.data.testControlsEnabled").value(false))
                 .andExpect(jsonPath("$.data.storageMode").value("IN_MEMORY_CONTRACT_STUBS"))
                 .andExpect(jsonPath("$.data.dependencyAdapterMode").value("SAFE_SNAPSHOT_AND_TEST_ADAPTERS"))
+                .andExpect(jsonPath("$.data.serviceDiscoveryMode").value("STATIC_LOCAL_CONFIG"))
+                .andExpect(jsonPath("$.data.registeredUpstreams.length()").value(4))
+                .andExpect(jsonPath("$.data.httpSmokeStatus").value("NOT_RUN"))
+                .andExpect(jsonPath("$.data.lastHttpSmokeResults").isArray())
+                .andExpect(jsonPath("$.data.trustedGatewaySignatureStatus").value("HMAC_SHA256_CONFIGURED"))
                 .andExpect(jsonPath("$.data.routeDriftStatus").value("NO_DRIFT"))
                 .andExpect(jsonPath("$.data.gatewaySwitchStatus").value("COMPLETED"))
                 .andExpect(jsonPath("$.data.moduleRoutes[?(@.moduleKey == 'OPS_CONTROL' && @.pathPrefix == '/api/v1/ops-control' && @.legacyPort == 8116 && @.currentPort == 8133 && @.routesTotal == 31)]").exists())
@@ -173,6 +210,11 @@ class OpsCoreApiContractTest {
                 .andExpect(jsonPath("$.data.gatewaySwitchStatus").value("COMPLETED"))
                 .andExpect(jsonPath("$.data.testControlHeadersStatus").value("DISABLED_BY_DEFAULT"))
                 .andExpect(jsonPath("$.data.sensitiveFieldScanStatus").value("PASS"))
+                .andExpect(jsonPath("$.data.serviceDiscoveryMode").value("STATIC_LOCAL_CONFIG"))
+                .andExpect(jsonPath("$.data.registeredUpstreams.length()").value(4))
+                .andExpect(jsonPath("$.data.httpSmokeStatus").value("NOT_RUN"))
+                .andExpect(jsonPath("$.data.lastHttpSmokeResults").isArray())
+                .andExpect(jsonPath("$.data.trustedGatewaySignatureStatus").value("HMAC_SHA256_CONFIGURED"))
                 .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'REAL_PERSISTENCE' && @.status == 'BLOCKED')]").exists())
                 .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'REAL_CROSS_SERVICE_HTTP' && @.status == 'BLOCKED')]").exists())
                 .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'REAL_AUDIT_PERSISTENCE' && @.status == 'BLOCKED')]").exists())
@@ -188,12 +230,32 @@ class OpsCoreApiContractTest {
                 .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'ASYNC_QUEUE' && @.status == 'BLOCKED')]").exists())
                 .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'PERSISTENCE_TRANSACTION' && @.status == 'BLOCKED')]").exists())
                 .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'TEST_CONTROL_HEADERS' && @.status == 'PASS')]").exists())
+                .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'REAL_HTTP_SMOKE' && @.status == 'NOT_CONNECTED')]").exists())
+                .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'TRUSTED_GATEWAY_SIGNATURE' && @.status == 'PASS')]").exists())
                 .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'INHERITED_ROUTE_DRIFT' && @.status == 'PASS')]").exists())
                 .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'SENSITIVE_FIELD_SCAN' && @.status == 'PASS')]").exists())
                 .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'GATEWAY_ROUTE_SWITCH' && @.status == 'PASS')]").exists())
                 .andExpect(jsonPath("$.data.moduleReadiness.length()").value(7))
                 .andExpect(jsonPath("$.data.productionBlockers[?(@ == 'real persistence is not connected')]").exists())
                 .andExpect(jsonPath("$.data.productionBlockers[?(@ == 'real node execution stays in node-daemon and is not connected here')]").exists());
+    }
+
+    @Test
+    void exposesOpsCoreHttpSmokeRunAndUpdatesReadinessSnapshot() throws Exception {
+        mockMvc.perform(post("/api/v1/ops-core/admin/http-smoke/run")
+                        .header("Authorization", "Bearer admin-token")
+                        .header("X-Request-Id", "req-ops-http-smoke"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("X-Request-Id", "req-ops-http-smoke"))
+                .andExpect(jsonPath("$.data.realHttpSmoke").value(true))
+                .andExpect(jsonPath("$.data.status").value("PASS"))
+                .andExpect(jsonPath("$.data.targetsTotal").value(4))
+                .andExpect(jsonPath("$.data.passedTargetsTotal").value(4))
+                .andExpect(jsonPath("$.data.failedTargetsTotal").value(0))
+                .andExpect(jsonPath("$.data.targets[?(@.targetKey == 'GATEWAY_OPS_CONTROL_OVERVIEW' && @.status == 'PASS')]").exists())
+                .andExpect(jsonPath("$.data.targets[?(@.targetKey == 'GATEWAY_ALERTING_HEALTH' && @.status == 'PASS')]").exists())
+                .andExpect(jsonPath("$.data.targets[?(@.targetKey == 'GATEWAY_CPN_HEALTH' && @.status == 'PASS')]").exists())
+                .andExpect(jsonPath("$.data.targets[?(@.targetKey == 'GATEWAY_OPS_CORE_HEALTH' && @.status == 'PASS')]").exists());
     }
 
     @Test
@@ -225,6 +287,7 @@ class OpsCoreApiContractTest {
                 "/api/v1/ops-core/ops/summary",
                 "/api/v1/ops-core/admin/modules",
                 "/api/v1/ops-core/admin/readiness",
+                "/api/v1/ops-core/admin/http-smoke/run",
                 "/api/v1/ops-control/overview",
                 "/api/v1/cloudreve-sync/health",
                 "/api/v1/backup-recovery/health",
@@ -321,12 +384,32 @@ class OpsCoreApiContractTest {
                 "rmdir /s", "rd /s", "del /s");
     }
 
-    private MockHttpServletRequestBuilder trusted(MockHttpServletRequestBuilder request, String userId, String roles, String permissions) {
+    private MockHttpServletRequestBuilder trusted(MockHttpServletRequestBuilder request, String method, String path, String userId, String roles, String permissions) {
+        String requestId = "req-gateway-context";
+        String timestamp = Instant.now().toString();
         return request
-                .header("X-Gateway-Internal-Request-Id", "req-gateway-context")
+                .header("X-Gateway-Internal-Request-Id", requestId)
+                .header("X-Gateway-Internal-Timestamp", timestamp)
+                .header("X-Gateway-Internal-Signature", signature(method, path, requestId, userId, roles, permissions, timestamp))
                 .header("X-Beiming-Actor-User-Id", userId)
                 .header("X-Beiming-Actor-Roles", roles)
                 .header("X-Beiming-Actor-Permissions", permissions);
+    }
+
+    private String signature(String method, String path, String requestId, String userId, String roles, String permissions, String timestamp) {
+        try {
+            String plain = String.join("\n", method, path, requestId, userId, roles, permissions, timestamp, "", "");
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(INTERNAL_SIGNING_SECRET.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            byte[] digest = mac.doFinal(plain.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder();
+            for (byte item : digest) {
+                hex.append(String.format("%02x", item));
+            }
+            return hex.toString();
+        } catch (Exception ex) {
+            throw new IllegalStateException(ex);
+        }
     }
 
     private Set<String> inheritedRouteSignatures() {

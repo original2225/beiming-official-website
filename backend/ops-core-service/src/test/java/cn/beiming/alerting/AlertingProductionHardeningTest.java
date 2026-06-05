@@ -48,6 +48,46 @@ class AlertingProductionHardeningTest {
         assertNoSecrets(delivery);
     }
 
+    @Test
+    void routeTestUsesCrossPlatformNotificationSimulatedExternalDeliverySummary() throws Exception {
+        JsonNode delivery = performJson(post("/api/v1/alerting/routes/route-default/test")
+                        .header("Authorization", "Bearer alert-admin-token"),
+                Map.of("sampleAlert", sampleAlert(), "reason", "验证 CPN 模拟外部投递", "idempotencyKey", "prod-cpn-route-test"), 201);
+
+        assertThat(delivery.at("/data/status").asText()).isEqualTo("SENT");
+        assertThat(delivery.at("/data/deliveryMode").asText()).isEqualTo("SIMULATED_EXTERNAL");
+        assertThat(delivery.at("/data/externalModule").asText()).isEqualTo("cross-platform-notification");
+        assertThat(delivery.at("/data/externalDeliveryId").asText()).startsWith("delivery-");
+        assertThat(delivery.at("/data/externalAttemptStatus").asText()).isEqualTo("SIMULATED_SUCCESS");
+        assertThat(delivery.at("/data/realExternalSend").asBoolean()).isFalse();
+        assertThat(delivery.at("/data/notificationRef/mode").asText()).isEqualTo("SIMULATED_EXTERNAL");
+        assertNoSecrets(delivery);
+    }
+
+    @Test
+    void ruleEvaluationKeepsAlertFiringAndStoresCpnExternalDeliveryReference() throws Exception {
+        JsonNode evaluation = performJson(post("/api/v1/alerting/rules/rule-node-offline/evaluate")
+                        .header("Authorization", "Bearer alert-admin-token"),
+                Map.of("sourceSnapshot", Map.of("nodeId", "node-main", "heartbeatAgeSeconds", 600),
+                        "dryRun", false, "reason", "触发告警并投递 CPN 摘要", "idempotencyKey", "prod-cpn-evaluate"), 201);
+        String alertId = evaluation.at("/data/createdAlertId").asText();
+
+        JsonNode alert = performJson(get("/api/v1/alerting/alerts/" + alertId)
+                .header("Authorization", "Bearer alert-viewer-token"), 200);
+        assertThat(alert.at("/data/status").asText()).isEqualTo("FIRING");
+        assertThat(alert.at("/data/notificationSummary/status").asText()).isEqualTo("SENT");
+        assertThat(alert.at("/data/notificationSummary/deliveryMode").asText()).isEqualTo("SIMULATED_EXTERNAL");
+        assertThat(alert.at("/data/notificationSummary/externalModule").asText()).isEqualTo("cross-platform-notification");
+        assertThat(alert.at("/data/notificationSummary/realExternalSend").asBoolean()).isFalse();
+
+        JsonNode deliveries = performJson(get("/api/v1/alerting/deliveries")
+                .header("Authorization", "Bearer alert-viewer-token")
+                .param("alertId", alertId), 200);
+        assertThat(deliveries.at("/data/items/0/deliveryMode").asText()).isEqualTo("SIMULATED_EXTERNAL");
+        assertThat(deliveries.at("/data/items/0/externalAttemptStatus").asText()).isEqualTo("SIMULATED_SUCCESS");
+        assertNoSecrets(deliveries);
+    }
+
     private JsonNode performJson(MockHttpServletRequestBuilder builder, int status) throws Exception {
         MvcResult result = mvc.perform(builder.accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().is(status))

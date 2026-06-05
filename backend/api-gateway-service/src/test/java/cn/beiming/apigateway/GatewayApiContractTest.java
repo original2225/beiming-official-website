@@ -511,6 +511,34 @@ class GatewayApiContractTest {
         }
     }
 
+    @Test
+    void proxyInjectsSignedTrustedGatewayContextAfterRemoteAuthVerification() throws Exception {
+        fakeClient.authContext("ses-ops-admin", "auth-user-ops-admin", List.of("ADMIN"), List.of("NODE_READ", "HIGH_RISK_APPROVE"), null);
+        fakeClient.respond("ALERTING", 200, Map.of("code", 0, "message", "success", "data", Map.of("service", "alerting")));
+
+        performJson(get("/api/v1/alerting/health")
+                .header("Authorization", bearer("ses-ops-admin"))
+                .header("X-Request-Id", "req-signed-alerting")
+                .header("X-Gateway-Internal-Request-Id", "client-forged-request")
+                .header("X-Gateway-Internal-Timestamp", "client-forged-timestamp")
+                .header("X-Gateway-Internal-Signature", "client-forged-signature")
+                .header("X-Beiming-Actor-User-Id", "client-forged-user")
+                .header("X-Beiming-Actor-Roles", "OWNER"), 200);
+
+        GatewayHttpRequest alerting = fakeClient.lastRequestFor("ALERTING");
+        assertThat(alerting.headers().get("X-Beiming-Actor-User-Id")).containsExactly("auth-user-ops-admin");
+        assertThat(alerting.headers().get("X-Beiming-Actor-Roles")).containsExactly("ADMIN");
+        assertThat(alerting.headers().get("X-Beiming-Actor-Permissions")).containsExactly("NODE_READ,HIGH_RISK_APPROVE");
+        assertThat(alerting.headers().get("X-Gateway-Internal-Request-Id")).containsExactly("req-signed-alerting");
+        assertThat(alerting.headers().get("X-Gateway-Internal-Timestamp")).hasSize(1);
+        assertThat(alerting.headers().get("X-Gateway-Internal-Signature")).hasSize(1);
+        assertThat(alerting.headers().get("X-Gateway-Internal-Timestamp").get(0)).isNotEqualTo("client-forged-timestamp");
+        assertThat(alerting.headers().get("X-Gateway-Internal-Signature").get(0))
+                .isNotEqualTo("client-forged-signature")
+                .matches("[a-f0-9]{64}");
+        assertThat(alerting.headers()).doesNotContainValue(List.of("client-forged-user"));
+    }
+
     @TestConfiguration
     static class FakeClientConfig {
         @Bean

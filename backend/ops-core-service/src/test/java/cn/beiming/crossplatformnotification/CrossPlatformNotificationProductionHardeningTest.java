@@ -72,6 +72,45 @@ class CrossPlatformNotificationProductionHardeningTest {
         assertNoSecrets(routeTest);
     }
 
+    @Test
+    void alertingAdapterRouteUsesAlertFiringEventAndAlertingTemplateOwnership() throws Exception {
+        JsonNode route = performJson(get("/api/v1/cross-platform-notification/admin/routes/route-alerting-discord-main")
+                .header("Authorization", "Bearer cpn-viewer-token"), 200);
+
+        assertThat(route.at("/data/sourceModule").asText()).isEqualTo("alerting");
+        assertThat(route.at("/data/eventType").asText()).isEqualTo("alert.firing");
+        assertThat(route.at("/data/riskLevel").asText()).isEqualTo("HIGH");
+        assertThat(route.at("/data/templateMappingSummary/sourceModule").asText()).isEqualTo("alerting");
+        assertThat(route.at("/data/providerSummary/providerId").asText()).isEqualTo("provider-discord-main");
+        assertNoSecrets(route);
+    }
+
+    @Test
+    void alertingSourceDeliveryCreatesSimulatedAttemptAndAuditWithSafePayloadSummary() throws Exception {
+        JsonNode delivery = performJson(post("/api/v1/cross-platform-notification/admin/deliveries")
+                        .header("Authorization", "Bearer cpn-admin-token"),
+                alertingDeliveryBody("cpn-alerting-delivery"), 201);
+
+        String deliveryId = delivery.at("/data/deliveryId").asText();
+        assertThat(delivery.at("/data/sourceModule").asText()).isEqualTo("alerting");
+        assertThat(delivery.at("/data/sourceId").asText()).isEqualTo("alert-node-main");
+        assertThat(delivery.at("/data/eventType").asText()).isEqualTo("alert.firing");
+        assertThat(delivery.at("/data/status").asText()).isEqualTo("SIMULATED_SENT");
+        assertThat(delivery.at("/data/attempts").asInt()).isEqualTo(1);
+        assertThat(delivery.at("/data/payloadSummary/fieldNames").toString()).contains("title", "body", "player");
+        assertThat(delivery.at("/data/payloadSummary/values/body/hash").asText()).isNotBlank();
+        assertThat(delivery.toString()).doesNotContain("Node heartbeat delayed for 600 seconds");
+
+        JsonNode audits = performJson(get("/api/v1/cross-platform-notification/admin/audit-logs")
+                .header("Authorization", "Bearer cpn-admin-token")
+                .param("sourceModule", "alerting")
+                .param("deliveryId", deliveryId), 200);
+        assertThat(audits.at("/data/items/0/sourceModule").asText()).isEqualTo("alerting");
+        assertThat(audits.at("/data/items/0/routeId").asText()).isEqualTo("route-alerting-discord-main");
+        assertThat(audits.at("/data/items/0/riskLevel").asText()).isEqualTo("HIGH");
+        assertNoSecrets(audits);
+    }
+
     private JsonNode performJson(MockHttpServletRequestBuilder builder, int status) throws Exception {
         MvcResult result = mvc.perform(builder.accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().is(status))
@@ -132,6 +171,25 @@ class CrossPlatformNotificationProductionHardeningTest {
         body.put("groupingPolicy", Map.of("groupBy", List.of("sourceModule", "eventType"), "groupWaitSeconds", 10, "groupIntervalSeconds", 60));
         body.put("retryPolicySummary", Map.of("maxAttempts", 3, "backoffSeconds", 30, "expireAfterSeconds", 3600));
         body.put("reason", "创建外部路由");
+        body.put("idempotencyKey", idempotencyKey);
+        return body;
+    }
+
+    private Map<String, Object> alertingDeliveryBody(String idempotencyKey) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("sourceModule", "alerting");
+        body.put("sourceId", "alert-node-main");
+        body.put("eventType", "alert.firing");
+        body.put("riskLevel", "HIGH");
+        body.put("routeId", "route-alerting-discord-main");
+        body.put("receiverSummary", Map.of("receiverType", "CHANNEL", "targetRefSummary", "#ops"));
+        body.put("payloadSummary", Map.of(
+                "title", "Node heartbeat delayed",
+                "body", "Node heartbeat delayed for 600 seconds",
+                "player", "system"));
+        body.put("expiresAt", "2026-06-05T01:00:00Z");
+        body.put("confirmText", "CREATE_EXTERNAL_DELIVERY");
+        body.put("reason", "alerting 内部适配模拟外部投递");
         body.put("idempotencyKey", idempotencyKey);
         return body;
     }

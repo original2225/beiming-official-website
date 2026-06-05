@@ -18,7 +18,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest(classes = ApiGatewayServiceApplication.class)
+@SpringBootTest(classes = ApiGatewayServiceApplication.class, properties = {
+        "api-gateway.upstreams.ops-core-base-url=http://127.0.0.1:19133"
+})
 @AutoConfigureMockMvc
 class GatewayProductionHardeningTest {
     @Autowired
@@ -57,6 +59,24 @@ class GatewayProductionHardeningTest {
     }
 
     @Test
+    void opsCoreBaseUrlOverrideOnlyAffectsOpsCoreHostedRoutes() throws Exception {
+        JsonNode routes = performJson(get("/api/v1/gateway/admin/routes")
+                .header("Authorization", "Bearer owner-token")
+                .param("pageSize", "100"), 200);
+
+        for (String routeId : java.util.List.of("ops-control", "cloudreve-sync", "backup-recovery", "alerting", "plugin-integration", "cross-platform-notification", "ops-image-market")) {
+            JsonNode route = findRoute(routes, routeId);
+            assertThat(route.path("upstreamBaseUrl").asText()).isEqualTo("http://127.0.0.1:19133");
+            assertThat(route.path("upstreamPort").asInt()).isEqualTo(19133);
+            assertThat(route.path("pathPrefix").asText()).doesNotStartWith("/api/v1/ops-core");
+        }
+
+        assertThat(findRoute(routes, "node-daemon").path("upstreamPort").asInt()).isEqualTo(8117);
+        assertThat(findRoute(routes, "material").path("upstreamPort").asInt()).isEqualTo(8134);
+        assertThat(findRoute(routes, "guide").path("upstreamPort").asInt()).isEqualTo(8134);
+    }
+
+    @Test
     void javaHttpClientIsReusedOutsidePerRequestExchange() throws IOException {
         String source = Files.readString(Path.of("src/main/java/cn/beiming/apigateway/GatewayModule.java"));
         Pattern perExchangeClientCreation = Pattern.compile("GatewayHttpResponse exchange\\(GatewayRoute route, GatewayHttpRequest request\\) \\{[\\s\\S]*?HttpClient\\.newBuilder");
@@ -68,5 +88,14 @@ class GatewayProductionHardeningTest {
                 .andExpect(status().is(status))
                 .andReturn();
         return objectMapper.readTree(result.getResponse().getContentAsString());
+    }
+
+    private JsonNode findRoute(JsonNode routes, String routeId) {
+        for (JsonNode item : routes.at("/data/items")) {
+            if (routeId.equals(item.path("routeId").asText())) {
+                return item;
+            }
+        }
+        throw new AssertionError("missing route " + routeId);
     }
 }
