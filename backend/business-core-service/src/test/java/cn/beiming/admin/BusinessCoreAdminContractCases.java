@@ -174,7 +174,7 @@ abstract class BusinessCoreAdminContractCases {
         assertModuleEntry("CLOUDREVE_SYNC", "/api/v1/cloudreve-sync", 8118, "/admin/cloudreve-sync");
         assertModuleEntry("ONLINE_MAP", "/api/v1/online-map/admin", 8121, "/admin/online-map");
         assertModuleEntry("PLUGIN_INTEGRATION", "/api/v1/plugin-integration/admin", 8122, "/admin/plugin-integration");
-        assertModuleEntry("CROSS_PLATFORM_NOTIFICATION", "/api/v1/cross-platform-notification/admin", 8123, "/admin/cross-platform-notification");
+        assertModuleEntry("CROSS_PLATFORM_NOTIFICATION", "/api/v1/cross-platform-notification/admin", 8133, "/admin/cross-platform-notification");
         assertModuleEntry("OPS_IMAGE_MARKET", "/api/v1/ops-image-market/admin", 8124, "/admin/ops-image-market");
 
         performJson(get("/api/v1/admin/modules/BAD").header("Authorization", bearer("admin-token")), 400, 40001);

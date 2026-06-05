@@ -31,7 +31,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 class OpsCoreApiContractTest {
     private static final int OPS_CORE_PORT = 8133;
-    private static final int INHERITED_ROUTES_TOTAL = 183;
+    private static final int INHERITED_ROUTES_TOTAL = 219;
     private static final int SELF_ROUTES_TOTAL = 4;
     private static final int ROUTES_TOTAL = INHERITED_ROUTES_TOTAL + SELF_ROUTES_TOTAL;
 
@@ -59,7 +59,7 @@ class OpsCoreApiContractTest {
                 .andExpect(jsonPath("$.data.service").value("ops-core"))
                 .andExpect(jsonPath("$.data.status").value("UP"))
                 .andExpect(jsonPath("$.data.port").value(OPS_CORE_PORT))
-                .andExpect(jsonPath("$.data.modulesTotal").value(6))
+                .andExpect(jsonPath("$.data.modulesTotal").value(7))
                 .andExpect(jsonPath("$.data.inheritedRoutesTotal").value(INHERITED_ROUTES_TOTAL))
                 .andExpect(jsonPath("$.data.selfRoutesTotal").value(SELF_ROUTES_TOTAL))
                 .andExpect(jsonPath("$.data.routesTotal").value(ROUTES_TOTAL))
@@ -122,8 +122,8 @@ class OpsCoreApiContractTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.service").value("ops-core"))
                 .andExpect(jsonPath("$.data.port").value(OPS_CORE_PORT))
-                .andExpect(jsonPath("$.data.modulesTotal").value(6))
-                .andExpect(jsonPath("$.data.modulesMounted").value(6))
+                .andExpect(jsonPath("$.data.modulesTotal").value(7))
+                .andExpect(jsonPath("$.data.modulesMounted").value(7))
                 .andExpect(jsonPath("$.data.inheritedRoutesTotal").value(INHERITED_ROUTES_TOTAL))
                 .andExpect(jsonPath("$.data.selfRoutesTotal").value(SELF_ROUTES_TOTAL))
                 .andExpect(jsonPath("$.data.routesTotal").value(ROUTES_TOTAL))
@@ -137,21 +137,24 @@ class OpsCoreApiContractTest {
                 .andExpect(jsonPath("$.data.moduleRoutes[?(@.moduleKey == 'BACKUP_RECOVERY' && @.pathPrefix == '/api/v1/backup-recovery' && @.legacyPort == 8119 && @.currentPort == 8133 && @.routesTotal == 25)]").exists())
                 .andExpect(jsonPath("$.data.moduleRoutes[?(@.moduleKey == 'ALERTING' && @.pathPrefix == '/api/v1/alerting' && @.legacyPort == 8120 && @.currentPort == 8133 && @.routesTotal == 24)]").exists())
                 .andExpect(jsonPath("$.data.moduleRoutes[?(@.moduleKey == 'PLUGIN_INTEGRATION' && @.pathPrefix == '/api/v1/plugin-integration' && @.legacyPort == 8122 && @.currentPort == 8133 && @.routesTotal == 38)]").exists())
+                .andExpect(jsonPath("$.data.moduleRoutes[?(@.moduleKey == 'CROSS_PLATFORM_NOTIFICATION' && @.pathPrefix == '/api/v1/cross-platform-notification' && @.legacyPort == 8123 && @.currentPort == 8133 && @.routesTotal == 36)]").exists())
                 .andExpect(jsonPath("$.data.moduleRoutes[?(@.moduleKey == 'OPS_IMAGE_MARKET' && @.pathPrefix == '/api/v1/ops-image-market' && @.legacyPort == 8124 && @.currentPort == 8133 && @.routesTotal == 49)]").exists())
                 .andExpect(jsonPath("$.data.recentAuditSummary.storageMode").value("IN_MEMORY_CONTRACT_STUBS"))
                 .andExpect(jsonPath("$.data.generatedAt").isNotEmpty());
 
         mockMvc.perform(get("/api/v1/ops-core/admin/modules").header("Authorization", "Bearer owner-token"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.items.length()").value(6))
+                .andExpect(jsonPath("$.data.items.length()").value(7))
                 .andExpect(jsonPath("$.data.items[?(@.moduleName == 'ops-control' && @.legacyServiceDirectory == 'backend/ops-control-service' && @.legacyServiceRetired == true && @.legacyTestCommand == null && @.localTestDocument == '.local-docs/tests-ops-core.md' && @.currentServiceDirectory == 'backend/ops-core-service' && @.currentPort == 8133 && @.routeDriftStatus == 'NO_DRIFT')]").exists())
                 .andExpect(jsonPath("$.data.items[?(@.moduleName == 'cloudreve-sync' && @.legacyPort == 8118 && @.currentPort == 8133 && @.pathPrefix == '/api/v1/cloudreve-sync')]").exists())
                 .andExpect(jsonPath("$.data.items[?(@.moduleName == 'backup-recovery' && @.legacyPort == 8119 && @.currentPort == 8133 && @.pathPrefix == '/api/v1/backup-recovery')]").exists())
                 .andExpect(jsonPath("$.data.items[?(@.moduleName == 'alerting' && @.legacyPort == 8120 && @.currentPort == 8133 && @.pathPrefix == '/api/v1/alerting')]").exists())
                 .andExpect(jsonPath("$.data.items[?(@.moduleName == 'plugin-integration' && @.legacyPort == 8122 && @.currentPort == 8133 && @.pathPrefix == '/api/v1/plugin-integration')]").exists())
+                .andExpect(jsonPath("$.data.items[?(@.moduleName == 'cross-platform-notification' && @.legacyServiceDirectory == 'backend/cross-platform-notification-service' && @.legacyPort == 8123 && @.currentServiceDirectory == 'backend/ops-core-service' && @.currentPort == 8133 && @.pathPrefix == '/api/v1/cross-platform-notification' && @.routesTotal == 36 && @.contract == 'docs/contracts-cross-platform-notification.md' && @.localTestDocument == '.local-docs/tests-ops-core.md')]").exists())
                 .andExpect(jsonPath("$.data.items[?(@.moduleName == 'ops-image-market' && @.legacyPort == 8124 && @.currentPort == 8133 && @.pathPrefix == '/api/v1/ops-image-market')]").exists())
                 .andExpect(jsonPath("$.data.items[?(@.pathPrefix == '/api/v1/ops-core/ops-control')]").doesNotExist())
-                .andExpect(jsonPath("$.data.items[?(@.pathPrefix == '/api/v1/ops-core/cloudreve-sync')]").doesNotExist());
+                .andExpect(jsonPath("$.data.items[?(@.pathPrefix == '/api/v1/ops-core/cloudreve-sync')]").doesNotExist())
+                .andExpect(jsonPath("$.data.items[?(@.pathPrefix == '/api/v1/ops-core/cross-platform-notification')]").doesNotExist());
     }
 
     @Test
@@ -179,11 +182,16 @@ class OpsCoreApiContractTest {
                 .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'REAL_SCANNER' && @.status == 'BLOCKED')]").exists())
                 .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'REAL_PLUGIN_EVENT_ENTRY' && @.status == 'BLOCKED')]").exists())
                 .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'REAL_NOTIFICATION_DELIVERY' && @.status == 'BLOCKED')]").exists())
+                .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'REAL_EXTERNAL_SEND' && @.status == 'BLOCKED')]").exists())
+                .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'REAL_CALLBACK_SIGNATURE' && @.status == 'BLOCKED')]").exists())
+                .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'PRODUCTION_CREDENTIAL_CUSTODY' && @.status == 'BLOCKED')]").exists())
+                .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'ASYNC_QUEUE' && @.status == 'BLOCKED')]").exists())
+                .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'PERSISTENCE_TRANSACTION' && @.status == 'BLOCKED')]").exists())
                 .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'TEST_CONTROL_HEADERS' && @.status == 'PASS')]").exists())
                 .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'INHERITED_ROUTE_DRIFT' && @.status == 'PASS')]").exists())
                 .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'SENSITIVE_FIELD_SCAN' && @.status == 'PASS')]").exists())
                 .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'GATEWAY_ROUTE_SWITCH' && @.status == 'PASS')]").exists())
-                .andExpect(jsonPath("$.data.moduleReadiness.length()").value(6))
+                .andExpect(jsonPath("$.data.moduleReadiness.length()").value(7))
                 .andExpect(jsonPath("$.data.productionBlockers[?(@ == 'real persistence is not connected')]").exists())
                 .andExpect(jsonPath("$.data.productionBlockers[?(@ == 'real node execution stays in node-daemon and is not connected here')]").exists());
     }
@@ -222,6 +230,7 @@ class OpsCoreApiContractTest {
                 "/api/v1/backup-recovery/health",
                 "/api/v1/alerting/health",
                 "/api/v1/plugin-integration/health",
+                "/api/v1/cross-platform-notification/health",
                 "/api/v1/ops-image-market/health"
         );
     }
@@ -238,6 +247,7 @@ class OpsCoreApiContractTest {
         assertThat(countByPrefix(actualRoutes, "/api/v1/backup-recovery")).isEqualTo(25);
         assertThat(countByPrefix(actualRoutes, "/api/v1/alerting")).isEqualTo(24);
         assertThat(countByPrefix(actualRoutes, "/api/v1/plugin-integration")).isEqualTo(38);
+        assertThat(countByPrefix(actualRoutes, "/api/v1/cross-platform-notification")).isEqualTo(36);
         assertThat(countByPrefix(actualRoutes, "/api/v1/ops-image-market")).isEqualTo(49);
     }
 
@@ -248,7 +258,7 @@ class OpsCoreApiContractTest {
         assertThat(componentScan).isNotNull();
         assertThat(componentScan.excludeFilters()).anySatisfy(filter -> {
             assertThat(filter.type()).isEqualTo(FilterType.REGEX);
-            assertThat(filter.pattern()).contains("cn\\.beiming\\.(opscontrol|cloudrevesync|backuprecovery|alerting|pluginintegration|opsimagemarket)\\..*ServiceApplication");
+            assertThat(filter.pattern()).contains("cn\\.beiming\\.(opscontrol|cloudrevesync|backuprecovery|alerting|pluginintegration|crossplatformnotification|opsimagemarket)\\..*ServiceApplication");
         });
     }
 
@@ -329,6 +339,7 @@ class OpsCoreApiContractTest {
                 "contracts-backup-recovery.md",
                 "contracts-alerting.md",
                 "contracts-plugin-integration.md",
+                "contracts-cross-platform-notification.md",
                 "contracts-ops-image-market.md"
         )) {
             Path path = docsPath(file);
@@ -349,6 +360,7 @@ class OpsCoreApiContractTest {
                 || pattern.startsWith("/api/v1/backup-recovery")
                 || pattern.startsWith("/api/v1/alerting")
                 || pattern.startsWith("/api/v1/plugin-integration")
+                || pattern.startsWith("/api/v1/cross-platform-notification")
                 || pattern.startsWith("/api/v1/ops-image-market");
     }
 

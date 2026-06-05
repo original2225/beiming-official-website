@@ -200,7 +200,7 @@ class GatewayApiContractTest {
         assertRoute(routes, "alerting", "ALERTING", "/api/v1/alerting", 8133);
         assertRoute(routes, "online-map", "ONLINE_MAP", "/api/v1/online-map", 8134);
         assertRoute(routes, "plugin-integration", "PLUGIN_INTEGRATION", "/api/v1/plugin-integration", 8133);
-        assertRoute(routes, "cross-platform-notification", "CROSS_PLATFORM_NOTIFICATION", "/api/v1/cross-platform-notification", 8123);
+        assertRoute(routes, "cross-platform-notification", "CROSS_PLATFORM_NOTIFICATION", "/api/v1/cross-platform-notification", 8133);
         assertRoute(routes, "ops-image-market", "OPS_IMAGE_MARKET", "/api/v1/ops-image-market", 8133);
         assertRoute(routes, "material", "MATERIAL", "/api/v1/materials", 8134);
         assertRoute(routes, "guide", "GUIDE", "/api/v1/guides", 8134);
@@ -723,8 +723,8 @@ class GatewayApiContractTest {
     }
 
     private void assertFourthBatchOpsCoreRoutes(JsonNode routes) {
-        Set<String> fourthBatch = Set.of("ops-control", "cloudreve-sync", "backup-recovery", "alerting", "plugin-integration", "ops-image-market");
-        Set<Integer> legacyPorts = Set.of(8116, 8118, 8119, 8120, 8122, 8124);
+        Set<String> fourthBatch = Set.of("ops-control", "cloudreve-sync", "backup-recovery", "alerting", "plugin-integration", "cross-platform-notification", "ops-image-market");
+        Set<Integer> legacyPorts = Set.of(8116, 8118, 8119, 8120, 8122, 8123, 8124);
         for (String routeId : fourthBatch) {
             JsonNode route = findRoute(routes, routeId);
             assertThat(route.path("upstreamPort").asInt()).isEqualTo(8133);
@@ -737,6 +737,7 @@ class GatewayApiContractTest {
         assertThat(findRoute(routes, "backup-recovery").path("healthCheckPath").asText()).isEqualTo("/api/v1/backup-recovery/health");
         assertThat(findRoute(routes, "alerting").path("healthCheckPath").asText()).isEqualTo("/api/v1/alerting/health");
         assertThat(findRoute(routes, "plugin-integration").path("healthCheckPath").asText()).isEqualTo("/api/v1/plugin-integration/health");
+        assertThat(findRoute(routes, "cross-platform-notification").path("healthCheckPath").asText()).isEqualTo("/api/v1/cross-platform-notification/health");
         assertThat(findRoute(routes, "ops-image-market").path("healthCheckPath").asText()).isEqualTo("/api/v1/ops-image-market/health");
     }
 
@@ -753,7 +754,7 @@ class GatewayApiContractTest {
         assertThat(findRoute(routes, "material").path("healthCheckPath").asText()).isEqualTo("/api/v1/materials/featured");
         assertThat(findRoute(routes, "guide").path("healthCheckPath").asText()).isEqualTo("/api/v1/guides/categories");
         assertThat(findRoute(routes, "online-map").path("healthCheckPath").asText()).isEqualTo("/api/v1/online-map/health");
-        assertThat(findRoute(routes, "cross-platform-notification").path("upstreamPort").asInt()).isEqualTo(8123);
+        assertThat(findRoute(routes, "cross-platform-notification").path("upstreamPort").asInt()).isEqualTo(8133);
         assertThat(findRoute(routes, "node-daemon").path("upstreamPort").asInt()).isEqualTo(8117);
         assertThat(findRoute(routes, "ops-control").path("upstreamPort").asInt()).isEqualTo(8133);
     }
