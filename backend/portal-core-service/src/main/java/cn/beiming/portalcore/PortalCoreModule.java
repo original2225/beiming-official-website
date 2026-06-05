@@ -65,6 +65,9 @@ class PortalCoreController {
     ResponseEntity<Map<String, Object>> health(HttpServletRequest request) {
         Map<String, Object> data = baseSummary();
         data.put("version", "0.1.0-contract");
+        data.put("livenessStatus", "LIVE");
+        data.put("readinessProbePath", "/api/v1/portal-core/admin/readiness");
+        data.put("startupProbePath", "/api/v1/portal-core/health");
         data.put("moduleRoutes", registry.publicModules());
         data.put("generatedAt", Instant.now().toString());
         return ok(request, data);
@@ -81,6 +84,7 @@ class PortalCoreController {
         data.put("actorUserId", actor.userId());
         data.put("dependencyAdapterMode", "SAFE_SNAPSHOT_AND_TEST_ADAPTERS");
         addProductionDiagnostics(data);
+        data.put("operationalProfile", registry.operationalProfile(smoke.currentStatus(), testControlsEnabled));
         data.put("routeDriftStatus", "NO_DRIFT");
         data.put("gatewaySwitchStatus", "COMPLETED");
         data.put("moduleRoutes", registry.portalModules(port));
@@ -117,6 +121,7 @@ class PortalCoreController {
         data.put("testControlHeadersStatus", testControlsEnabled ? "ENABLED_FOR_LOCAL_TEST" : "DISABLED_BY_DEFAULT");
         data.put("sensitiveFieldScanStatus", "PASS");
         addProductionDiagnostics(data);
+        data.put("operationalProfile", registry.operationalProfile(smoke.currentStatus(), testControlsEnabled));
         data.put("checks", registry.readinessChecks(smoke.currentStatus()));
         data.put("moduleReadiness", registry.moduleReadiness(port));
         data.put("productionBlockers", registry.productionGaps(smoke.currentStatus()));
@@ -294,6 +299,69 @@ class PortalCoreRegistry {
                 check("SENSITIVE_FIELD_SCAN", "PASS", "sensitive field scan is covered by automated tests"),
                 check("GATEWAY_ROUTE_SWITCH", "PASS", "gateway routes are switched to portal-core")
         );
+    }
+
+    Map<String, Object> operationalProfile(String httpSmokeStatus, boolean testControlsEnabled) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("profileVersion", "portal-core-operational-profile-v1");
+        data.put("domainBoundary", "PORTAL_EXPERIENCE_CORE");
+        data.put("referenceModel", List.of("KUBERNETES_PROBES", "SPRING_BOOT_AVAILABILITY", "GOOGLE_SRE_SLO", "UBER_DOMA"));
+        data.put("livenessStatus", "LIVE");
+        data.put("readinessGateStatus", "NOT_READY");
+        data.put("releaseGateStatus", "NOT_READY");
+        data.put("trafficEligibility", "INTERNAL_AND_TEST_ONLY");
+        data.put("probeRecommendations", probeRecommendations());
+        data.put("sloTargets", sloTargets(httpSmokeStatus, testControlsEnabled));
+        data.put("releaseGates", releaseGates(httpSmokeStatus, testControlsEnabled));
+        return data;
+    }
+
+    private Map<String, Object> probeRecommendations() {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("livenessPath", "/api/v1/portal-core/health");
+        data.put("readinessPath", "/api/v1/portal-core/admin/readiness");
+        data.put("startupPath", "/api/v1/portal-core/health");
+        data.put("externalDependenciesInLiveness", false);
+        return data;
+    }
+
+    private List<Map<String, Object>> sloTargets(String httpSmokeStatus, boolean testControlsEnabled) {
+        return List.of(
+                slo("ROUTE_DRIFT_ZERO", "0 drifted inherited routes", "PASS"),
+                slo("TEST_CONTROLS_DISABLED", "test controls disabled outside local tests", testControlsEnabled ? "LOCAL_TEST_ONLY" : "PASS"),
+                slo("HTTP_SMOKE_ALL_TARGETS", "all configured smoke targets return business success", httpSmokeStatus),
+                slo("PRODUCTION_BLOCKERS_ZERO", "0 production blockers before external traffic", "BLOCKED")
+        );
+    }
+
+    private Map<String, Object> slo(String key, String target, String status) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("sloKey", key);
+        data.put("target", target);
+        data.put("currentStatus", status);
+        return data;
+    }
+
+    private List<Map<String, Object>> releaseGates(String httpSmokeStatus, boolean testControlsEnabled) {
+        return List.of(
+                gate("INHERITED_ROUTE_DRIFT", "PASS", "inherited routes match formal contracts"),
+                gate("GATEWAY_ROUTE_SWITCH", "PASS", "gateway routes point to portal-core"),
+                gate("TEST_CONTROL_HEADERS", testControlsEnabled ? "LOCAL_TEST_ONLY" : "PASS", "test controls are disabled by default"),
+                gate("REAL_HTTP_SMOKE", httpSmokeStatus, "latest explicit HTTP smoke status"),
+                gate("REAL_PERSISTENCE", "BLOCKED", "real persistence is not connected"),
+                gate("REAL_AUDIT_PERSISTENCE", "BLOCKED", "real audit persistence is not connected"),
+                gate("REAL_EXTERNAL_DEPENDENCIES", "BLOCKED", "object storage, scanner, search, map provider and notification delivery are not connected"),
+                gate("DYNAMIC_SERVICE_DISCOVERY", "PARTIAL", "static local registry is mounted")
+        );
+    }
+
+    private Map<String, Object> gate(String key, String status, String summary) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("gateKey", key);
+        data.put("status", status);
+        data.put("summary", summary);
+        data.put("requiredForExternalTraffic", true);
+        return data;
     }
 
     private Map<String, Object> check(String key, String status, String summary) {

@@ -44,6 +44,14 @@
 
 smoke 状态允许 `NOT_RUN`、`PASS`、`DEGRADED` 和 `DISABLED`。未执行时为 `NOT_RUN`，全部目标返回 HTTP 小于 `500` 且统一响应体 `code=0` 时为 `PASS`，任一目标连接失败、超时、返回 HTTP `5xx`、非 JSON 或业务 `code` 非 `0` 时为 `DEGRADED`。`portal-core` 不因为 smoke 失败返回 5xx，失败结果进入响应体和 readiness 诊断。结果只保存在当前进程内存中，不代表审计持久化已经完成。
 
+## 运行治理画像
+
+本轮继续优化参考 Google SRE 的 SLI/SLO 管理口径和 Uber DOMA 的领域运行边界思想。`portal-core` 不再只给出零散检查项，还必须在 summary 和 readiness 中暴露统一的运行治理画像 `operationalProfile`。该画像用于把存活、就绪、发布门禁、SLO 目标、流量资格和领域边界放在同一个可测试结构里，方便后续接入部署系统、发布检查和告警系统。
+
+`operationalProfile.profileVersion` 固定为 `portal-core-operational-profile-v1`。`domainBoundary` 固定为 `PORTAL_EXPERIENCE_CORE`。`referenceModel` 必须包含 `KUBERNETES_PROBES`、`SPRING_BOOT_AVAILABILITY`、`GOOGLE_SRE_SLO` 和 `UBER_DOMA`。`livenessStatus` 在进程可响应时为 `LIVE`。`readinessGateStatus` 和 `releaseGateStatus` 在真实生产缺口仍存在时必须为 `NOT_READY`，不能因为 HTTP smoke 一次通过而变成 `PASS`。`trafficEligibility` 在真实持久化、审计持久化、动态发现和外部依赖未接入前必须为 `INTERNAL_AND_TEST_ONLY`。
+
+`operationalProfile.probeRecommendations` 必须明确 `livenessPath=/api/v1/portal-core/health`、`readinessPath=/api/v1/portal-core/admin/readiness`、`startupPath=/api/v1/portal-core/health`，并声明 `externalDependenciesInLiveness=false`。`operationalProfile.sloTargets` 必须至少包含路由漂移为 0、测试控制头默认关闭、HTTP smoke 目标全部成功和生产缺口为 0 四类目标。`operationalProfile.releaseGates` 必须至少包含继承路由漂移、网关路由切换、测试控制头默认关闭、HTTP smoke、真实持久化、真实审计持久化、真实外部依赖和动态服务发现。未完成的生产能力必须以 `BLOCKED`、`PARTIAL`、`NOT_RUN` 或 `DEGRADED` 体现，不能隐藏。
+
 ## 模块装配表
 
 | 模块 | 历史服务目录 | 历史端口 | 当前服务目录 | 当前端口 | API 数 | 正式契约 | 历史测试入口状态 | 当前测试入口 |
@@ -93,7 +101,7 @@ smoke 状态允许 `NOT_RUN`、`PASS`、`DEGRADED` 和 `DISABLED`。未执行时
 
 成功响应 HTTP `200`。
 
-响应 `data` 必须包含 `service=portal-core`、`status=UP`、`version`、`port=8134`、`modulesTotal=3`、`inheritedRoutesTotal=108`、`selfRoutesTotal=5` 和 `routesTotal=113`。该接口不得返回上传票据、内部路径、后台备注、审核意见、通知摘要、外部 URL 管理凭据、地图 provider 内部地址、异常栈或依赖错误细节。
+响应 `data` 必须包含 `service=portal-core`、`status=UP`、`version`、`port=8134`、`modulesTotal=3`、`inheritedRoutesTotal=108`、`selfRoutesTotal=5`、`routesTotal=113`、`livenessStatus=LIVE`、`readinessProbePath=/api/v1/portal-core/admin/readiness` 和 `startupProbePath=/api/v1/portal-core/health`。该接口不得返回上传票据、内部路径、后台备注、审核意见、通知摘要、外部 URL 管理凭据、地图 provider 内部地址、异常栈或依赖错误细节。
 
 ## 运行摘要
 
@@ -101,7 +109,7 @@ smoke 状态允许 `NOT_RUN`、`PASS`、`DEGRADED` 和 `DISABLED`。未执行时
 
 成功响应 HTTP `200`。
 
-响应 `data` 必须包含 `service=portal-core`、`port=8134`、`modulesTotal=3`、`modulesMounted=3`、`inheritedRoutesTotal=108`、`selfRoutesTotal=5`、`routesTotal=113`、`testControlsEnabled`、`storageMode`、`authMode`、`dependencyAdapterMode`、`serviceDiscoveryMode`、`registeredUpstreams`、`httpSmokeStatus`、`httpSmokeTargets`、`lastHttpSmokeAt`、`lastHttpSmokeResults`、`routeDriftStatus`、`gatewaySwitchStatus`、`moduleRoutes`、`productionGaps`、`recentAuditSummary` 和 `generatedAt`。
+响应 `data` 必须包含 `service=portal-core`、`port=8134`、`modulesTotal=3`、`modulesMounted=3`、`inheritedRoutesTotal=108`、`selfRoutesTotal=5`、`routesTotal=113`、`testControlsEnabled`、`storageMode`、`authMode`、`dependencyAdapterMode`、`serviceDiscoveryMode`、`registeredUpstreams`、`httpSmokeStatus`、`httpSmokeTargets`、`lastHttpSmokeAt`、`lastHttpSmokeResults`、`operationalProfile`、`routeDriftStatus`、`gatewaySwitchStatus`、`moduleRoutes`、`productionGaps`、`recentAuditSummary` 和 `generatedAt`。
 
 `storageMode` 第一版固定说明为 `IN_MEMORY_CONTRACT_STUBS`。`dependencyAdapterMode` 第一版固定说明为 `SAFE_SNAPSHOT_AND_TEST_ADAPTERS`。`routeDriftStatus` 必须为 `NO_DRIFT` 才能进入完成验收。`gatewaySwitchStatus` 必须为 `COMPLETED` 才能进入完成验收。
 
@@ -119,7 +127,7 @@ smoke 状态允许 `NOT_RUN`、`PASS`、`DEGRADED` 和 `DISABLED`。未执行时
 
 成功响应 HTTP `200`。
 
-响应 `data` 必须包含 `service=portal-core`、`port=8134`、`readyForProduction=false`、`readinessStatus=NOT_READY`、`routesTotal=113`、`inheritedRoutesTotal=108`、`selfRoutesTotal=5`、`routeDriftStatus`、`legacyServiceRestoreStatus`、`gatewaySwitchStatus`、`testControlHeadersStatus`、`sensitiveFieldScanStatus`、`serviceDiscoveryMode`、`registeredUpstreams`、`httpSmokeStatus`、`httpSmokeTargets`、`lastHttpSmokeAt`、`lastHttpSmokeResults`、`checks`、`moduleReadiness`、`productionBlockers` 和 `generatedAt`。
+响应 `data` 必须包含 `service=portal-core`、`port=8134`、`readyForProduction=false`、`readinessStatus=NOT_READY`、`routesTotal=113`、`inheritedRoutesTotal=108`、`selfRoutesTotal=5`、`routeDriftStatus`、`legacyServiceRestoreStatus`、`gatewaySwitchStatus`、`testControlHeadersStatus`、`sensitiveFieldScanStatus`、`serviceDiscoveryMode`、`registeredUpstreams`、`httpSmokeStatus`、`httpSmokeTargets`、`lastHttpSmokeAt`、`lastHttpSmokeResults`、`operationalProfile`、`checks`、`moduleReadiness`、`productionBlockers` 和 `generatedAt`。
 
 `checks` 必须至少包含真实持久化、真实跨服务 HTTP、真实审计持久化、真实对象存储、真实文件安全扫描、真实全文搜索、真实外部通知投递、真实地图 provider HTTP、真实 marker 同步、真实瓦片托管、服务发现快照、真实 HTTP smoke、测试控制头默认关闭、继承路由漂移防线、敏感字段扫描和网关路由切换。未完成真实生产能力必须以 `BLOCKED`、`PARTIAL`、`NOT_RUN` 或 `NOT_CONNECTED` 暴露，不能返回 `PASS`。真实 HTTP smoke 只有在本进程内最近一次显式执行全部目标成功后才允许返回 `PASS`。
 
@@ -155,4 +163,4 @@ smoke 状态允许 `NOT_RUN`、`PASS`、`DEGRADED` 和 `DISABLED`。未执行时
 
 `portal-core` API 文档按 `docs/contracts-portal-core.md` 独立存在，并由 `.local-docs/tests-portal-core.md` 记录本地测试闭环。
 
-完成时必须满足以下条件：`portal-core-service:8134` 单进程承载三个玩家门户体验模块的全部既有 API 路径；三个模块原契约仍有效；`portal-core` 自有五个接口全覆盖；服务发现静态注册表和 HTTP smoke 结果字段全覆盖；真实 `api-gateway-service` 到真实 `portal-core-service` 的本地 HTTP 联调用例通过；`.local-docs/tests-portal-core.md` 中的完备用例都有自动化验证；自动化测试先红灯；实现后 `mvn -q -f backend/portal-core-service/pom.xml test` 通过；旧 `guide-service` 和 `material-service` Maven 入口已退役且不得恢复；旧 `backend/online-map-service` 在用户明确确认清理前保留为历史入口和迁移来源；`api-gateway-service` 已按契约切换并通过测试；`business-core-service`、`admission-core-service`、`engagement-core-service` 和 `ops-core-service` 回归通过；前三期旧服务目录没有恢复；`cross-platform-notification`、`node-daemon` 和 `api-gateway` 仍保持独立；生产 readiness 明确暴露剩余生产缺口，且不得把静态服务发现、可配置本地上游或单次 smoke 成功当作真实持久化、审计持久化、对象存储、文件扫描、全文搜索、地图 provider HTTP、marker 同步、瓦片托管、外部通知投递、动态服务发现或集中配置完成；测试过程完整写入 `.local-docs/tests-portal-core.md`、`.local-docs/tests-online-map.md` 和 `.local-docs/tests-api-gateway.md`。
+完成时必须满足以下条件：`portal-core-service:8134` 单进程承载三个玩家门户体验模块的全部既有 API 路径；三个模块原契约仍有效；`portal-core` 自有五个接口全覆盖；服务发现静态注册表、HTTP smoke 结果字段和运行治理画像全覆盖；真实 `api-gateway-service` 到真实 `portal-core-service` 的本地 HTTP 联调用例通过；`.local-docs/tests-portal-core.md` 中的完备用例都有自动化验证；自动化测试先红灯；实现后 `mvn -q -f backend/portal-core-service/pom.xml test` 通过；旧 `guide-service` 和 `material-service` Maven 入口已退役且不得恢复；旧 `backend/online-map-service` 在用户明确确认清理前保留为历史入口和迁移来源；`api-gateway-service` 已按契约切换并通过测试；`business-core-service`、`admission-core-service`、`engagement-core-service` 和 `ops-core-service` 回归通过；前三期旧服务目录没有恢复；`cross-platform-notification`、`node-daemon` 和 `api-gateway` 仍保持独立；生产 readiness 明确暴露剩余生产缺口，运行治理画像明确声明当前只具备内部和测试流量资格，且不得把静态服务发现、可配置本地上游、运行画像或单次 smoke 成功当作真实持久化、审计持久化、对象存储、文件扫描、全文搜索、地图 provider HTTP、marker 同步、瓦片托管、外部通知投递、动态服务发现或集中配置完成；测试过程完整写入 `.local-docs/tests-portal-core.md`、`.local-docs/tests-online-map.md` 和 `.local-docs/tests-api-gateway.md`。
