@@ -105,7 +105,8 @@ class GatewayApiContractTest {
                 Path.of("../community-service/pom.xml"),
                 Path.of("../activity-service/pom.xml"),
                 Path.of("../calendar-service/pom.xml"),
-                Path.of("../changelog-service/pom.xml")
+                Path.of("../changelog-service/pom.xml"),
+                Path.of("../cross-platform-notification-service/pom.xml")
         )).allSatisfy(path -> assertThat(Files.exists(path)).isFalse());
     }
 

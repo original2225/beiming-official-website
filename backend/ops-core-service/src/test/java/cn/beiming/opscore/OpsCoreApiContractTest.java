@@ -285,7 +285,14 @@ class OpsCoreApiContractTest {
                 pathFromProject("../backup-recovery-service/pom.xml"),
                 pathFromProject("../alerting-service/pom.xml"),
                 pathFromProject("../plugin-integration-service/pom.xml"),
-                pathFromProject("../ops-image-market-service/pom.xml")
+                pathFromProject("../ops-image-market-service/pom.xml"),
+                pathFromProject("../cross-platform-notification-service/pom.xml"),
+                pathFromProject("../cross-platform-notification-service/src/main/resources/application.yml"),
+                pathFromProject("../cross-platform-notification-service/src/main/java/cn/beiming/crossplatformnotification/CrossPlatformNotificationServiceApplication.java"),
+                pathFromProject("../cross-platform-notification-service/src/main/java/cn/beiming/crossplatformnotification/CrossPlatformNotificationModule.java"),
+                pathFromProject("../cross-platform-notification-service/src/test/java/cn/beiming/crossplatformnotification/CrossPlatformNotificationApiContractTest.java"),
+                pathFromProject("../cross-platform-notification-service/src/test/java/cn/beiming/crossplatformnotification/CrossPlatformNotificationPortConfigTest.java"),
+                pathFromProject("../cross-platform-notification-service/src/test/java/cn/beiming/crossplatformnotification/CrossPlatformNotificationProductionHardeningTest.java")
         )).allSatisfy(path -> assertThat(Files.exists(path)).isFalse());
     }
 
