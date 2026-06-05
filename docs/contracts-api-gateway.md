@@ -83,7 +83,7 @@
 | `cloudreve-sync` | `CLOUDREVE_SYNC` | `/api/v1/cloudreve-sync` | `8133` | `/api/v1/cloudreve-sync/health` |
 | `backup-recovery` | `BACKUP_RECOVERY` | `/api/v1/backup-recovery` | `8133` | `/api/v1/backup-recovery/health` |
 | `alerting` | `ALERTING` | `/api/v1/alerting` | `8133` | `/api/v1/alerting/health` |
-| `online-map` | `ONLINE_MAP` | `/api/v1/online-map` | `8121` | `/api/v1/online-map/health` |
+| `online-map` | `ONLINE_MAP` | `/api/v1/online-map` | `8134` | `/api/v1/online-map/health` |
 | `plugin-integration` | `PLUGIN_INTEGRATION` | `/api/v1/plugin-integration` | `8133` | `/api/v1/plugin-integration/health` |
 | `cross-platform-notification` | `CROSS_PLATFORM_NOTIFICATION` | `/api/v1/cross-platform-notification` | `8123` | `/api/v1/cross-platform-notification/health` |
 | `ops-image-market` | `OPS_IMAGE_MARKET` | `/api/v1/ops-image-market` | `8133` | `/api/v1/ops-image-market/health` |
@@ -98,9 +98,9 @@
 
 `ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration` 和 `ops-image-market` 已完成第四批运行合并。网关必须把这六个路由的上游统一切到 `ops-core-service` 的 `8133`，但路由 ID、服务键、路径前缀、请求路径、认证透传、可信身份头剥离与注入、请求日志、错误码和响应透传规则都保持原样。端口 `8116`、`8118`、`8119`、`8120`、`8122` 和 `8124` 只作为第四批模块历史原服务端口记录，不再作为网关第四批控制面路由的默认上游，当前仓库也不再保留对应旧服务 Maven 运行入口。`node-daemon` 继续保持独立，不并入 `ops-core`。
 
-`guide` 和 `material` 已完成第五批运行合并。网关必须把这两个路由的上游统一切到 `portal-core-service` 的 `8134`，但路由 ID、服务键、路径前缀、请求路径、认证透传、可信身份头剥离与注入、请求日志、错误码和响应透传规则都保持原样。端口 `8127` 和 `8126` 只作为第五批模块历史原服务端口记录，不再作为网关第五批玩家门户内容路由的默认上游。`online-map`、`cross-platform-notification`、`node-daemon`、`api-gateway` 和 `ops-core` 继续保持独立，不并入 `portal-core`。
+`guide`、`material` 和 `online-map` 已完成第五批后续门户体验运行合并。网关必须把这三个路由的上游统一切到 `portal-core-service` 的 `8134`，但路由 ID、服务键、路径前缀、请求路径、认证透传、可信身份头剥离与注入、请求日志、错误码和响应透传规则都保持原样。端口 `8127`、`8126` 和 `8121` 只作为第五批模块历史原服务端口记录，不再作为网关第五批玩家门户体验路由的默认上游。`cross-platform-notification`、`node-daemon`、`api-gateway` 和 `ops-core` 继续保持独立，不并入 `portal-core`。
 
-本地真实 HTTP 联调允许通过配置项 `api-gateway.upstreams.portal-core-base-url` 临时覆盖 `guide` 和 `material` 两个路由的上游基础地址。该配置只改变这两个路由的 `upstreamBaseUrl` 和由 URL 推导出的 `upstreamPort`，不得新增 `PORTAL_CORE` 业务路由，不得改写 `/api/v1/guides` 或 `/api/v1/materials` 路径前缀，不得影响 `online-map`、`cross-platform-notification`、`node-daemon`、`ops-core` 或其他上游。默认值仍为 `http://127.0.0.1:8134`。这个能力只用于本地双服务 HTTP smoke 和显式环境配置，不代表已接入动态服务发现或集中配置中心。
+本地真实 HTTP 联调允许通过配置项 `api-gateway.upstreams.portal-core-base-url` 临时覆盖 `guide`、`material` 和 `online-map` 三个路由的上游基础地址。该配置只改变这三个路由的 `upstreamBaseUrl` 和由 URL 推导出的 `upstreamPort`，不得新增 `PORTAL_CORE` 业务路由，不得改写 `/api/v1/guides`、`/api/v1/materials` 或 `/api/v1/online-map` 路径前缀，不得影响 `cross-platform-notification`、`node-daemon`、`ops-core` 或其他上游。默认值仍为 `http://127.0.0.1:8134`。这个能力只用于本地双服务 HTTP smoke 和显式环境配置，不代表已接入动态服务发现或集中配置中心。
 
 路径匹配规则为最长前缀优先。`/api/v1/resources` 和 `/api/v1/resources/**` 都必须命中 `resource`。未知路径返回网关错误，不转发到任何上游。
 
@@ -391,6 +391,6 @@ P0 `api-gateway` 是本地契约实现，必须在自检摘要中明确以下生
 
 `api-gateway` API 文档按 `docs/contracts-api-gateway.md` 独立存在，并由 `.local-docs/tests-api-gateway.md` 记录本地测试闭环。
 
-本文档列出的每个网关自有接口都有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、分页排序、状态刷新、失败降级、日志脱敏和验收口径。业务转发测试必须覆盖 26 个已接入路径前缀，确认路由表端口准确、第一批七个路由统一指向 `business-core-service:8130`、第二批四个路由统一指向 `admission-core-service:8131`、第三批四个路由统一指向 `engagement-core-service:8132`、第四批六个路由统一指向 `ops-core-service:8133`、第五批两个路由统一指向 `portal-core-service:8134`、原业务路径不被改写为 core 服务前缀、请求编号透传、请求编号非法拒绝、认证头透传、可信身份头剥离、`auth` 会话校验成功后的可信身份注入、`auth` 校验失败后的不注入降级、查询参数透传、JSON body 透传、请求体大小限制、响应头白名单、上游 2xx 透传、上游 4xx 透传、上游 5xx 透传、未知路径、非法方法、CORS 预检、上游不可用、上游超时和敏感字段不落日志。
+本文档列出的每个网关自有接口都有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、分页排序、状态刷新、失败降级、日志脱敏和验收口径。业务转发测试必须覆盖 26 个已接入路径前缀，确认路由表端口准确、第一批七个路由统一指向 `business-core-service:8130`、第二批四个路由统一指向 `admission-core-service:8131`、第三批四个路由统一指向 `engagement-core-service:8132`、第四批六个路由统一指向 `ops-core-service:8133`、第五批后三个门户体验路由统一指向 `portal-core-service:8134`、原业务路径不被改写为 core 服务前缀、请求编号透传、请求编号非法拒绝、认证头透传、可信身份头剥离、`auth` 会话校验成功后的可信身份注入、`auth` 校验失败后的不注入降级、查询参数透传、JSON body 透传、请求体大小限制、响应头白名单、上游 2xx 透传、上游 4xx 透传、上游 5xx 透传、未知路径、非法方法、CORS 预检、上游不可用、上游超时和敏感字段不落日志。
 
-开发完成后必须执行 `mvn -f backend/api-gateway-service/pom.xml test`、`mvn -f backend/business-core-service/pom.xml test`、`mvn -f backend/admission-core-service/pom.xml test`、`mvn -f backend/engagement-core-service/pom.xml test`、`mvn -f backend/ops-core-service/pom.xml test`、`mvn -f backend/portal-core-service/pom.xml test` 和 `mvn -f backend/node-daemon-service/pom.xml test`。涉及 `portal-core` smoke 的生产化增强还必须覆盖真实 `api-gateway-service` 与真实 `portal-core-service` 启动后的 HTTP 联调，确认 `api-gateway.upstreams.portal-core-base-url` 只临时覆盖第五批两个原业务路由。第一批、第二批和第三批旧服务清理后，不得为了网关回归恢复对应旧服务目录、旧 Maven 入口、旧启动类或旧测试命令。第四批和第五批旧服务目录退役后，不得为了网关回归恢复旧 Maven 入口。测试过程必须写入 `.local-docs/tests-api-gateway.md`。
+开发完成后必须执行 `mvn -f backend/api-gateway-service/pom.xml test`、`mvn -f backend/business-core-service/pom.xml test`、`mvn -f backend/admission-core-service/pom.xml test`、`mvn -f backend/engagement-core-service/pom.xml test`、`mvn -f backend/ops-core-service/pom.xml test`、`mvn -f backend/portal-core-service/pom.xml test` 和 `mvn -f backend/node-daemon-service/pom.xml test`。涉及 `portal-core` smoke 的生产化增强还必须覆盖真实 `api-gateway-service` 与真实 `portal-core-service` 启动后的 HTTP 联调，确认 `api-gateway.upstreams.portal-core-base-url` 只临时覆盖第五批后三个原业务路由。第一批、第二批和第三批旧服务清理后，不得为了网关回归恢复对应旧服务目录、旧 Maven 入口、旧启动类或旧测试命令。第四批和第五批旧服务目录退役后，不得为了网关回归恢复旧 Maven 入口。旧 `backend/online-map-service` 在用户明确确认清理前不退役。测试过程必须写入 `.local-docs/tests-api-gateway.md`。

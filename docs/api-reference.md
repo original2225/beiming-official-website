@@ -8,7 +8,7 @@
 
 各模块独立契约仍是后端实现和变更的源文档。任一接口发生变化时，必须先更新对应 `docs/contracts-<module>.md`，再同步更新本文档。
 
-当前合并范围包含 27 个业务或平台模块，另包含五个运行合并单元自检契约。第三批四个业务模块在 `engagement-core-service:8132` 中承载 149 个业务路由，第四批六个后台运维控制面模块在 `ops-core-service:8133` 中承载 183 个业务路由，第五批两个玩家门户内容模块在 `portal-core-service:8134` 中承载 74 个业务路由。`portal-core` 自身当前提供 5 个运行单元自检、诊断和 HTTP smoke 路由。
+当前合并范围包含 27 个业务或平台模块，另包含五个运行合并单元自检契约。第三批四个业务模块在 `engagement-core-service:8132` 中承载 149 个业务路由，第四批六个后台运维控制面模块在 `ops-core-service:8133` 中承载 183 个业务路由，第五批后三个玩家门户体验模块在 `portal-core-service:8134` 中承载 108 个业务路由。`portal-core` 自身当前提供 5 个运行单元自检、诊断和 HTTP smoke 路由。
 
 ## 前端接入要点
 
@@ -11814,7 +11814,7 @@ Cloudreve 不可用时，读取类接口可以返回旧快照并标记 `degraded
 
 ### 基础路径、端口和认证
 
-所有接口默认使用 `/api/v1/online-map` 前缀。第一版本地端口固定为 `8121`，自检摘要必须返回该端口。
+所有接口默认使用 `/api/v1/online-map` 前缀。当前运行入口为 `portal-core-service:8134`，历史独立入口为 `online-map-service:8121`。自检摘要必须返回当前运行端口 `8134`，并可在生产化缺口或模块装配摘要中保留历史端口 `8121` 作为迁移来源记录。
 
 健康检查 `GET /api/v1/online-map/health` 不要求认证，只返回服务名、版本、状态和请求编号。`status` 只允许 `READY` 或 `DEGRADED`，不返回 provider 明细、内部依赖错误、地图入口、内网地址或任何敏感字段。
 
@@ -12054,7 +12054,7 @@ Cloudreve 不可用时，读取类接口可以返回旧快照并标记 `degraded
 
 #### OnlineMapOpsSummary
 
-自检摘要至少包含 `service`、`port`、`storageMode`、`authMode`、`providerAdapterMode`、`serverStatusMode`、`opsControlMode`、`contentMode`、`changelogMode`、`notificationMode`、`testControlsEnabled`、`providersTotal`、`enabledProvidersTotal`、`worldsTotal`、`layersTotal`、`markersTotal`、`regionsTotal`、`healthSnapshotsTotal`、`auditsTotal`、`idempotencyRecordsTotal`、`lastHealthCheckAt`、`lastAuditAt`、`degraded`、`degradeReasons` 和 `productionGaps`。第一版必须返回 `port=8121`、`storageMode=IN_MEMORY`、`providerAdapterMode=TEST_STUB`，并明确真实 provider、真实 auth HTTP、真实持久化、真实跨服务 HTTP 和真实 marker 同步尚未接入。
+自检摘要至少包含 `service`、`port`、`storageMode`、`authMode`、`providerAdapterMode`、`serverStatusMode`、`opsControlMode`、`contentMode`、`changelogMode`、`notificationMode`、`testControlsEnabled`、`providersTotal`、`enabledProvidersTotal`、`worldsTotal`、`layersTotal`、`markersTotal`、`regionsTotal`、`healthSnapshotsTotal`、`auditsTotal`、`idempotencyRecordsTotal`、`lastHealthCheckAt`、`lastAuditAt`、`degraded`、`degradeReasons` 和 `productionGaps`。当前版本必须返回 `port=8134`、`storageMode=IN_MEMORY`、`providerAdapterMode=TEST_STUB`，并明确真实 provider、真实 auth HTTP、真实持久化、真实跨服务 HTTP 和真实 marker 同步尚未接入。
 
 ### online-map 错误码
 
@@ -12262,7 +12262,7 @@ provider 探测失败时不清空旧公开入口。公开接口可以返回最�
 
 `online-map` API 文档必须按 `docs/contracts-online-map.md` 独立存在，并由 `.local-docs/tests-online-map.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、能力点不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求、敏感字段脱敏、测试控制头默认关闭和模块验收口径。
 
-`online-map` 完成时必须满足以下条件：端口固定为 `8121`；健康检查公开且不泄露敏感信息；公开接口只返回公开可见、已启用、未归档且脱敏的数据；后台接口按角色和能力点限制；provider、world、layer、marker、region、embed、健康快照、审计、幂等、状态流转、URL 安全、坐标边界、依赖降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；自动化测试必须先红灯；实现后 `online-map` 全量测试通过；前序 20 个稳定服务回归通过；边界扫描无违规命中；不修改前序服务稳定接口；不直接调用 `node-daemon`；不读取真实世界目录；不代理真实瓦片；不执行真实地图插件命令；不把地图渲染、资源下载、节点文件管理、终端、备份恢复或告警规则塞进 `online-map`。
+`online-map` 完成时必须满足以下条件：当前运行入口为 `portal-core-service:8134`，历史 `online-map-service:8121` 在用户明确确认清理前只作为迁移来源和历史入口保留；健康检查公开且不泄露敏感信息；公开接口只返回公开可见、已启用、未归档且脱敏的数据；后台接口按角色和能力点限制；provider、world、layer、marker、region、embed、健康快照、审计、幂等、状态流转、URL 安全、坐标边界、依赖降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；自动化测试必须先红灯；实现后 `mvn -q -f backend/portal-core-service/pom.xml test` 通过并覆盖 `online-map` 全部 34 个 API；当前后端运行入口回归通过；边界扫描无违规命中；不修改前序服务稳定接口；不直接调用 `node-daemon`；不读取真实世界目录；不代理真实瓦片；不执行真实地图插件命令；不把地图渲染、资源下载、节点文件管理、终端、备份恢复或告警规则塞进 `online-map`。
 
 ## 北冥官网 plugin-integration API 契约
 
@@ -13839,7 +13839,7 @@ endpoint、repository、tag、namespace 和 URL 摘要必须拒绝 `file:`、`da
 | `cloudreve-sync` | `CLOUDREVE_SYNC` | `/api/v1/cloudreve-sync` | `8133` | `/api/v1/cloudreve-sync/health` |
 | `backup-recovery` | `BACKUP_RECOVERY` | `/api/v1/backup-recovery` | `8133` | `/api/v1/backup-recovery/health` |
 | `alerting` | `ALERTING` | `/api/v1/alerting` | `8133` | `/api/v1/alerting/health` |
-| `online-map` | `ONLINE_MAP` | `/api/v1/online-map` | `8121` | `/api/v1/online-map/health` |
+| `online-map` | `ONLINE_MAP` | `/api/v1/online-map` | `8134` | `/api/v1/online-map/health` |
 | `plugin-integration` | `PLUGIN_INTEGRATION` | `/api/v1/plugin-integration` | `8133` | `/api/v1/plugin-integration/health` |
 | `cross-platform-notification` | `CROSS_PLATFORM_NOTIFICATION` | `/api/v1/cross-platform-notification` | `8123` | `/api/v1/cross-platform-notification/health` |
 | `ops-image-market` | `OPS_IMAGE_MARKET` | `/api/v1/ops-image-market` | `8133` | `/api/v1/ops-image-market/health` |
@@ -14137,7 +14137,7 @@ P0 `api-gateway` 是本地契约实现，必须在自检摘要中明确以下生
 
 本文档列出的每个网关自有接口都有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、分页排序、状态刷新、失败降级、日志脱敏和验收口径。业务转发测试必须覆盖 26 个已接入微服务的路径前缀，确认路由表端口准确、请求编号透传、请求编号非法拒绝、认证头透传、可信身份头剥离、`auth` 会话校验成功后的可信身份注入、`auth` 校验失败后的不注入降级、查询参数透传、JSON body 透传、请求体大小限制、响应头白名单、上游 2xx 透传、上游 4xx 透传、上游 5xx 透传、未知路径、非法方法、CORS 预检、上游不可用、上游超时和敏感字段不落日志。
 
-开发完成后必须执行 `mvn -f backend/api-gateway-service/pom.xml test`、`mvn -f backend/business-core-service/pom.xml test`、`mvn -f backend/admission-core-service/pom.xml test`、`mvn -f backend/engagement-core-service/pom.xml test`、`mvn -f backend/ops-core-service/pom.xml test`、`mvn -f backend/portal-core-service/pom.xml test` 和 `mvn -f backend/node-daemon-service/pom.xml test`。第一批到第五批旧服务清理后，不得为了网关回归恢复对应旧服务目录、旧 Maven 入口、旧启动类或旧测试命令。第四批和第五批业务路径必须继续由 `ops-core` 和 `portal-core` 当前入口覆盖测试。测试过程必须写入 `.local-docs/tests-api-gateway.md`。
+开发完成后必须执行 `mvn -f backend/api-gateway-service/pom.xml test`、`mvn -f backend/business-core-service/pom.xml test`、`mvn -f backend/admission-core-service/pom.xml test`、`mvn -f backend/engagement-core-service/pom.xml test`、`mvn -f backend/ops-core-service/pom.xml test`、`mvn -f backend/portal-core-service/pom.xml test` 和 `mvn -f backend/node-daemon-service/pom.xml test`。第一批到第五批旧服务清理后，不得为了网关回归恢复对应旧服务目录、旧 Maven 入口、旧启动类或旧测试命令。第四批和第五批业务路径必须继续由 `ops-core` 和 `portal-core` 当前入口覆盖测试。旧 `backend/online-map-service` 在用户明确确认清理前不退役。测试过程必须写入 `.local-docs/tests-api-gateway.md`。
 
 ## 北冥官网 portal-core API 契约
 
@@ -14145,9 +14145,9 @@ P0 `api-gateway` 是本地契约实现，必须在自检摘要中明确以下生
 
 版本：0.1
 
-`portal-core-service` 是第五批玩家门户内容扩展运行合并单元，端口固定为 `8134`，承载 `guide` 和 `material` 两个模块的既有业务路径。它不新增两个业务模块的业务语义，不改变 `/api/v1/guides/**` 和 `/api/v1/materials/**` 的路径、权限、状态机、错误码、审计对象或失败降级规则。
+`portal-core-service` 是第五批玩家门户体验运行合并单元，端口固定为 `8134`，承载 `guide`、`material` 和 `online-map` 三个模块的既有业务路径。它不新增三个业务模块的业务语义，不改变 `/api/v1/guides/**`、`/api/v1/materials/**` 和 `/api/v1/online-map/**` 的路径、权限、状态机、错误码、审计对象或失败降级规则。
 
-`portal-core` 自有接口只用于运行单元健康检查、运行摘要、模块装配摘要、生产就绪诊断和显式 HTTP smoke。被承载业务模块的业务接口仍分别以 `docs/contracts-guide.md` 和 `docs/contracts-material.md` 为准。
+`portal-core` 自有接口只用于运行单元健康检查、运行摘要、模块装配摘要、生产就绪诊断和显式 HTTP smoke。被承载业务模块的业务接口仍分别以 `docs/contracts-guide.md`、`docs/contracts-material.md` 和 `docs/contracts-online-map.md` 为准。
 
 | 接口 | 方法 | 路径 | 认证 | 权限 | 风险 |
 | --- | --- | --- | --- | --- | --- |
@@ -14157,9 +14157,9 @@ P0 `api-gateway` 是本地契约实现，必须在自检摘要中明确以下生
 | 生产就绪诊断 | GET | `/api/v1/portal-core/admin/readiness` | 是 | `ADMIN` 或 `OWNER` | LOW |
 | 执行 HTTP smoke | POST | `/api/v1/portal-core/admin/http-smoke/run` | 是 | `ADMIN` 或 `OWNER` | LOW |
 
-网关切换后，`material` 和 `guide` 的上游端口均为 `8134`，历史端口 `8126` 和 `8127` 只作记录。`online-map`、`cross-platform-notification`、`node-daemon`、`api-gateway` 和 `ops-core` 继续保持独立，不并入 `portal-core`。
+网关切换后，`material`、`guide` 和 `online-map` 的上游端口均为 `8134`，历史端口 `8126`、`8127` 和 `8121` 只作记录。旧 `backend/online-map-service` 在用户明确确认清理前只作为迁移来源和历史入口保留。`cross-platform-notification`、`node-daemon`、`api-gateway` 和 `ops-core` 继续保持独立，不并入 `portal-core`。
 
-验收时必须确认 `portal-core-service:8134` 单进程承载两个模块全部既有 API 路径，两个模块原契约仍有效，`portal-core` 自有五个接口全覆盖，`api-gateway-service` 已按契约切换并通过测试，旧 `guide-service` 和 `material-service` Maven 入口已退役且不得恢复，生产 readiness 明确暴露真实持久化、真实对象存储、真实扫描、真实搜索、真实外部通知、静态服务发现和 HTTP smoke 状态等剩余缺口。
+验收时必须确认 `portal-core-service:8134` 单进程承载三个模块全部既有 API 路径，三个模块原契约仍有效，`portal-core` 自有五个接口全覆盖，`api-gateway-service` 已按契约切换并通过测试，旧 `guide-service` 和 `material-service` Maven 入口已退役且不得恢复，旧 `backend/online-map-service` 在用户明确确认清理前保留，生产 readiness 明确暴露真实持久化、真实对象存储、真实扫描、真实搜索、真实地图 provider HTTP、真实 marker 同步、真实瓦片托管、真实外部通知、静态服务发现和 HTTP smoke 状态等剩余缺口。
 
 ## 北冥官网 material API 契约
 

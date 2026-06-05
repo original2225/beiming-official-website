@@ -119,7 +119,7 @@
 | `cloudreve-sync` | 8133 | Cloudreve provider、目录同步、文件快照、分享解析和同步审计，由 `ops-core-service` 承载。 | `docs/contracts-cloudreve-sync.md` |
 | `backup-recovery` | 8133 | 备份域、策略、任务、备份点、校验、演练、恢复申请和审批摘要，由 `ops-core-service` 承载。 | `docs/contracts-backup-recovery.md` |
 | `alerting` | 8133 | 告警规则、事件、静默、订阅、通知演练和告警后台管理，由 `ops-core-service` 承载。 | `docs/contracts-alerting.md` |
-| `online-map` | 8121 | 在线地图 provider、世界、图层、marker、区域、公开入口和后台维护。 | `docs/contracts-online-map.md` |
+| `online-map` | 8134 | 在线地图 provider、世界、图层、marker、区域、公开入口和后台维护，由 `portal-core-service` 承载。 | `docs/contracts-online-map.md` |
 | `plugin-integration` | 8133 | 插件源、实例、事件、命令、同步任务和插件联动后台，由 `ops-core-service` 承载。 | `docs/contracts-plugin-integration.md` |
 | `cross-platform-notification` | 8123 | 跨平台通知渠道、模板、投递任务、回执和后台演练。 | `docs/contracts-cross-platform-notification.md` |
 | `ops-image-market` | 8133 | 运维镜像、仓库、版本、拉取任务、漏洞摘要和镜像后台管理，由 `ops-core-service` 承载。 | `docs/contracts-ops-image-market.md` |
@@ -833,7 +833,7 @@
 
 用途：在线地图 provider、世界、图层、marker、区域、公开入口和后台维护。
 
-端口：`8121`。来源：`docs/contracts-online-map.md`。详情合并稿：`docs/api-reference.md`。
+端口：`8134`，由 `portal-core-service` 承载。历史原服务端口 `8121` 只作为迁移来源记录。来源：`docs/contracts-online-map.md`。详情合并稿：`docs/api-reference.md`。
 
 | 接口 | 方法 | 路径 | 认证 | 权限 | 风险 |
 | --- | --- | --- | --- | --- | --- |

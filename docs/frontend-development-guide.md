@@ -50,12 +50,12 @@ Zustand 更适合本项目第一版，因为登录态、当前用户、权限、
 | cloudreve-sync | 8133 | Cloudreve provider、目录同步、文件快照、分享解析，由 `ops-core-service` 承载 |
 | backup-recovery | 8133 | 备份域、策略、任务、备份点、恢复申请，由 `ops-core-service` 承载 |
 | alerting | 8133 | 告警规则、事件、静默、订阅，由 `ops-core-service` 承载 |
-| online-map | 8121 | 在线地图 provider、世界、图层、marker、区域 |
+| online-map | 8134 | 在线地图 provider、世界、图层、marker、区域，由 `portal-core-service` 承载 |
 | plugin-integration | 8133 | 插件源、实例、事件、命令、同步任务，由 `ops-core-service` 承载 |
 | cross-platform-notification | 8123 | 跨平台通知渠道、模板、投递任务 |
 | ops-image-market | 8133 | 运维镜像、仓库、版本、拉取任务，由 `ops-core-service` 承载 |
 | api-gateway | 8125 | 统一入口、路由表、上游健康、请求日志 |
-| portal-core | 8134 | 玩家门户内容扩展运行入口，承载 guide 和 material |
+| portal-core | 8134 | 玩家门户体验运行入口，承载 guide、material 和 online-map |
 | material | 8134 | 素材投稿、素材展示、精选、审核、授权，由 `portal-core-service` 承载 |
 | guide | 8134 | 指南、规则、指令、外部交流入口、反馈，由 `portal-core-service` 承载 |
 
@@ -247,7 +247,7 @@ Tailwind 断点按默认体系使用，优先使用 `sm`、`md`、`lg`、`xl`。
 
 前端建议按工程骨架、API client 和类型、认证登录、公开首页、公开内容页、用户中心、入服流程、社区活动、后台骨架、业务后台、运维控制台的顺序推进。
 
-当前后端契约已经覆盖 27 个模块和 746 个唯一接口。前端第一轮不应试图一次实现全部后台和运维页面。更稳的做法是先完成工程骨架、统一 API 层、统一类型、统一错误处理、权限路由和公开页核心链路，再分域推进。
+当前后端契约已经覆盖 27 个模块和 746 个唯一接口，`guide`、`material` 和 `online-map` 当前都由 `portal-core-service:8134` 承载。前端第一轮不应试图一次实现全部后台和运维页面。更稳的做法是先完成工程骨架、统一 API 层、统一类型、统一错误处理、权限路由和公开页核心链路，再分域推进。
 
 ## 验收口径
 
