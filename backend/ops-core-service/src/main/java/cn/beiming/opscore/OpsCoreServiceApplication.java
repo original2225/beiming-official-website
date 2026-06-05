@@ -17,12 +17,13 @@ import org.springframework.context.annotation.FullyQualifiedAnnotationBeanNameGe
                 "cn.beiming.backuprecovery",
                 "cn.beiming.alerting",
                 "cn.beiming.pluginintegration",
+                "cn.beiming.crossplatformnotification",
                 "cn.beiming.opsimagemarket"
         },
         nameGenerator = FullyQualifiedAnnotationBeanNameGenerator.class,
         excludeFilters = @ComponentScan.Filter(
                 type = FilterType.REGEX,
-                pattern = "cn\\.beiming\\.(opscontrol|cloudrevesync|backuprecovery|alerting|pluginintegration|opsimagemarket)\\..*ServiceApplication"
+                pattern = "cn\\.beiming\\.(opscontrol|cloudrevesync|backuprecovery|alerting|pluginintegration|crossplatformnotification|opsimagemarket)\\..*ServiceApplication"
         )
 )
 public class OpsCoreServiceApplication {

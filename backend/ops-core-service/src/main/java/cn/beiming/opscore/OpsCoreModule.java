@@ -180,6 +180,7 @@ class OpsCoreRegistry {
             new OpsCoreModuleRegistration("BACKUP_RECOVERY", "backup-recovery", "/api/v1/backup-recovery", "backend/backup-recovery-service", 8119, 25, "docs/contracts-backup-recovery.md", ".local-docs/tests-ops-core.md"),
             new OpsCoreModuleRegistration("ALERTING", "alerting", "/api/v1/alerting", "backend/alerting-service", 8120, 24, "docs/contracts-alerting.md", ".local-docs/tests-ops-core.md"),
             new OpsCoreModuleRegistration("PLUGIN_INTEGRATION", "plugin-integration", "/api/v1/plugin-integration", "backend/plugin-integration-service", 8122, 38, "docs/contracts-plugin-integration.md", ".local-docs/tests-ops-core.md"),
+            new OpsCoreModuleRegistration("CROSS_PLATFORM_NOTIFICATION", "cross-platform-notification", "/api/v1/cross-platform-notification", "backend/cross-platform-notification-service", 8123, 36, "docs/contracts-cross-platform-notification.md", ".local-docs/tests-ops-core.md"),
             new OpsCoreModuleRegistration("OPS_IMAGE_MARKET", "ops-image-market", "/api/v1/ops-image-market", "backend/ops-image-market-service", 8124, 49, "docs/contracts-ops-image-market.md", ".local-docs/tests-ops-core.md")
     );
 
@@ -229,7 +230,12 @@ class OpsCoreRegistry {
                 "real registry is not connected",
                 "real scanner is not connected",
                 "real plugin event entry is not connected",
-                "real notification delivery is not connected"
+                "real notification delivery is not connected",
+                "real external send is not connected",
+                "real callback signature is not connected",
+                "production credential custody is not connected",
+                "async queue is not connected",
+                "persistence transaction is not connected"
         );
     }
 
@@ -244,6 +250,11 @@ class OpsCoreRegistry {
                 check("REAL_SCANNER", "BLOCKED", "real scanner is not connected"),
                 check("REAL_PLUGIN_EVENT_ENTRY", "BLOCKED", "real plugin event entry is not connected"),
                 check("REAL_NOTIFICATION_DELIVERY", "BLOCKED", "real notification delivery is not connected"),
+                check("REAL_EXTERNAL_SEND", "BLOCKED", "real external send is not connected"),
+                check("REAL_CALLBACK_SIGNATURE", "BLOCKED", "real callback signature is not connected"),
+                check("PRODUCTION_CREDENTIAL_CUSTODY", "BLOCKED", "production credential custody is not connected"),
+                check("ASYNC_QUEUE", "BLOCKED", "async queue is not connected"),
+                check("PERSISTENCE_TRANSACTION", "BLOCKED", "persistence transaction is not connected"),
                 check("TEST_CONTROL_HEADERS", "PASS", "test control headers are disabled by default"),
                 check("INHERITED_ROUTE_DRIFT", "PASS", "inherited route signatures match formal contracts"),
                 check("SENSITIVE_FIELD_SCAN", "PASS", "sensitive field scan is covered by automated tests"),

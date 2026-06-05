@@ -25,6 +25,10 @@ plugin-integration:
   test-controls:
     enabled: ${ops-core.test-controls.enabled:false}
 
+cross-platform-notification:
+  test-controls:
+    enabled: ${ops-core.test-controls.enabled:false}
+
 ops-image-market:
   test-controls:
     enabled: ${ops-core.test-controls.enabled:false}

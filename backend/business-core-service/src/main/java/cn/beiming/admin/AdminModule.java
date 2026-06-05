@@ -983,7 +983,7 @@ class AdminStore {
             case "ALERTING" -> 8120;
             case "ONLINE_MAP" -> 8121;
             case "PLUGIN_INTEGRATION" -> 8122;
-            case "CROSS_PLATFORM_NOTIFICATION" -> 8123;
+            case "CROSS_PLATFORM_NOTIFICATION" -> 8133;
             case "OPS_IMAGE_MARKET" -> 8124;
             case "MATERIAL" -> 8126;
             case "GUIDE" -> 8127;
