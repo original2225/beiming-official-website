@@ -8,7 +8,7 @@
 
 面向前端开发的一体化 API 全文查阅文档见 `docs/api-reference.md`。该文档由公共契约和全部模块契约合并生成，方便前端统一检索路径、字段和响应格式。
 
-本汇总覆盖当前仓库 `docs/contracts-*.md` 中除 `contracts-common.md` 和本文档之外的 27 个业务或平台模块，以及 `business-core`、`admission-core`、`engagement-core`、`ops-core` 和 `portal-core` 五个运行合并单元。第一批、第二批、第三批、第四批、第五批和第六期已完成运行合并并入仓。当前契约表中的 `METHOD path` 记录总数为 775，其中第三批四个业务模块在 `engagement-core-service:8132` 中承载 149 个业务路由，第四批六个后台运维控制面模块和第六期跨平台通知控制面在 `ops-core-service:8133` 中承载 219 个业务路由，第五批后三个玩家门户体验模块在 `portal-core-service:8134` 中承载 108 个业务路由，`engagement-core` 自身提供 3 个运行单元自检和诊断路由，`ops-core` 自身提供 5 个运行单元自检、诊断和 HTTP smoke 路由，`portal-core` 自身提供 5 个运行单元自检、诊断和 HTTP smoke 路由，`api-gateway` 自身提供 8 个网关健康、路由、上游、日志和运行拓扑路由。
+本汇总覆盖当前仓库 `docs/contracts-*.md` 中除 `contracts-common.md` 和本文档之外的 28 个业务或平台模块，以及 `business-core`、`admission-core`、`engagement-core`、`ops-core`、`portal-core` 和 `unified-backend` 六个运行入口或候选入口契约。第一批、第二批、第三批、第四批、第五批和第六期已完成运行合并并入仓。第九轮新增 `unified-backend-service:8135` 只作为并行候选入口，不计入当前生产入口退役结果。当前契约表中的 `METHOD path` 记录总数为 780，其中第三批四个业务模块在 `engagement-core-service:8132` 中承载 149 个业务路由，第四批六个后台运维控制面模块和第六期跨平台通知控制面在 `ops-core-service:8133` 中承载 219 个业务路由，第五批后三个玩家门户体验模块在 `portal-core-service:8134` 中承载 108 个业务路由，`engagement-core` 自身提供 3 个运行单元自检和诊断路由，`ops-core` 自身提供 5 个运行单元自检、诊断和 HTTP smoke 路由，`portal-core` 自身提供 5 个运行单元自检、诊断和 HTTP smoke 路由，`api-gateway` 自身提供 8 个网关健康、路由、上游、日志和运行拓扑路由，`unified-backend` 自身提供 5 个候选入口自检、挂载和 HTTP smoke 路由。
 
 ## 全局接口规则
 
@@ -53,6 +53,7 @@
 | `profile` | `backend/business-core-service` | 8130 | 16 | `docs/contracts-profile.md` | `.local-docs/tests-profile.md` | `mvn -q -f backend/business-core-service/pom.xml test` |
 | `resource` | `backend/business-core-service` | 8130 | 29 | `docs/contracts-resource.md` | `.local-docs/tests-resource.md` | `mvn -q -f backend/business-core-service/pom.xml test` |
 | `server-status` | `backend/business-core-service` | 8130 | 25 | `docs/contracts-server-status.md` | `.local-docs/tests-server-status.md` | `mvn -q -f backend/business-core-service/pom.xml test` |
+| `unified-backend` | `backend/unified-backend-service` | 8135 | 5 | `docs/contracts-unified-backend.md` | `.local-docs/tests-unified-backend.md` | `mvn -q -f backend/unified-backend-service/pom.xml test` |
 | `whitelist` | `backend/admission-core-service` | 8131 | 20 | `docs/contracts-whitelist.md` | `.local-docs/tests-whitelist.md` | `mvn -q -f backend/admission-core-service/pom.xml test` |
 
 ## 合并后运行入口
@@ -60,6 +61,8 @@
 当前已入仓的合并运行入口是 `business-core-service`、`admission-core-service`、`engagement-core-service`、`ops-core-service` 和 `portal-core-service`。第三批社区运营路径已经由网关统一切到 `8132`。第四批后台运维控制面路径已经由网关统一切到 `8133`。第五批玩家门户体验路径已经由网关统一切到 `8134`。旧 `backend/online-map-service` 已退役且不得恢复，不再作为当前网关上游。`engagement-core-service` 的后台自检摘要入口已经支持网关注入的可信认证上下文；149 个业务方法路由完整行为契约已经迁入当前入口，真实业务认证、真实持久化、真实跨服务 adapter、真实通知交付和真实 HTTP smoke 仍需后续独立闭环。
 
 `api-gateway` 的 8 个自有接口新增只读运行拓扑，不新增业务语义。当前后端仍保持 7 个 Maven 运行入口，未来统一后端候选为 `api-gateway` 与五个 core 运行单元，`node-daemon` 继续作为外部节点执行边界。该拓扑只用于单服务合并准备和测试守卫，不能被描述为已经完成单服务合并、动态服务发现或 in-process 挂载。
+
+`unified-backend` 是第九轮并行候选入口，端口固定为 `8135`。它在同一进程内挂载 `api-gateway` 自有 API、`portal-core` 自有 API、`guide`、`material` 和 `online-map`，只用于验证 `portal-core` 试点 in-process 装配。当前生产入口仍是 7 个，候选入口额外增加 1 个，不替代 `api-gateway-service:8125`、`portal-core-service:8134` 或 `node-daemon-service:8117`。
 
 `engagement-core` 的 3 个自有接口只用于运行单元自检、后台装配摘要和生产就绪诊断。它不新增 community、activity、calendar 或 changelog 的业务语义。第三批 149 个业务路由签名和四个模块完整行为契约必须在 `engagement-core-service` 中自动化验证；生产就绪诊断仍必须公开真实持久化、审计持久化、真实跨服务 adapter、真实通知交付和真实 HTTP smoke 缺口。
 
@@ -75,6 +78,7 @@
 | 第四批运维控制面 | `backend/ops-core-service` | 8133 | `ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`ops-image-market` | `8116`、`8118`、`8119`、`8120`、`8122` 和 `8124` 为历史原端口，旧服务目录已退役且不得恢复 |
 | 第五批玩家门户体验 | `backend/portal-core-service` | 8134 | `guide`、`material`、`online-map` | `8127`、`8126` 和 `8121` 为历史原端口；`guide`、`material` 和 `online-map` 旧服务目录已退役且不得恢复 |
 | 第六期跨平台通知控制面 | `backend/ops-core-service` | 8133 | `cross-platform-notification` | `8123` 为历史原端口，旧服务目录退役后不得恢复 |
+| 第九轮统一后端候选入口 | `backend/unified-backend-service` | 8135 | 候选挂载 `api-gateway` 自有 API、`portal-core` 自有 API、`guide`、`material`、`online-map` | 并行候选入口，不退役当前 7 个生产入口，`node-daemon` 保持外部 |
 
 ## 依赖顺序和边界
 

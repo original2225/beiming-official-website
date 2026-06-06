@@ -50,6 +50,7 @@ API 网关或后端入口
   |-- online-map      在线地图接入控制面和公开展示快照，由 portal-core 承载
   |-- admin           后台聚合、配置、审计
   |-- ops-core        运维控制面合并运行单元，承载 ops-control、cloudreve-sync、backup-recovery、alerting、plugin-integration 和 ops-image-market
+  |-- unified-backend 统一后端候选入口，并行挂载 api-gateway 与 portal-core 试点
   |-- ops-control     服务器与资源运维控制面
   |-- cloudreve-sync  Cloudreve API 深度接入与同步快照
   |-- backup-recovery 备份策略、备份点、校验、恢复演练和恢复申请
@@ -112,6 +113,8 @@ API 网关或后端入口
 第七轮生产化优化不继续合并运行入口。`ops-core` 增加经 `api-gateway` 访问的真实 HTTP smoke、自有 readiness 中的 smoke 状态和可信网关内部签名状态；`api-gateway` 在注入可信身份头时同步注入内部时间戳和 HMAC 签名；`ops-core` 管理接口验证签名后才接受可信身份上下文。`alerting` 告警命中后的外部通知只通过 `cross-platform-notification` 的模拟外部投递模型留下 delivery、attempt 和审计摘要，不执行真实外部发送，不关闭告警主状态，不绕过 CPN 的 provider、模板、路由、receiver、幂等和脱敏规则。
 
 第八轮单服务合并准备不真正合并进程。`api-gateway` 增加只读运行拓扑，用来固化当前 7 个 Maven 入口、26 条业务转发路由、五个 core 运行单元和 `node-daemon` 外部节点执行边界。后续如果把 `api-gateway` 与五个 core 收敛成统一后端入口，必须先保持现有路径前缀、认证方式、响应格式、模块数据归属和测试守卫不变，再逐步替换为 in-process 装配。`node-daemon` 不进入统一后端候选。
+
+第九轮新增 `unified-backend-service:8135` 作为统一后端并行候选入口，先把 `api-gateway` 与低风险的 `portal-core` 放进同一 Spring Boot 进程验证 in-process 挂载。候选入口必须保留 `/api/v1/gateway/**`、`/api/v1/portal-core/**`、`/api/v1/guides/**`、`/api/v1/materials/**` 和 `/api/v1/online-map/**` 原路径、原响应格式、原认证方式和原错误码。当前 `api-gateway-service:8125`、五个 core 入口和 `node-daemon-service:8117` 全部保留，`node-daemon` 继续作为外部节点执行边界。未挂载 core 路由只能标记为 `HTTP_UPSTREAM_FALLBACK`，不能描述成已经 in-process。
 
 ## 公共基础契约
 
@@ -236,13 +239,13 @@ Cloudreve 第一阶段可以作为外部分享链接存在。后续接入 API �
 
 ## 部署原则
 
-官网前端、后端业务服务、数据库、缓存、Cloudreve、Minecraft 服务器和节点守护进程应分开部署。开发阶段可以先用较少进程模拟模块边界，但接口、权限和数据归属不能混乱。当前第四批运维控制面已收敛到 `ops-core-service:8133`，第五批玩家门户体验已收敛到 `portal-core-service:8134`，`api-gateway-service:8125` 已具备统一后端入口准备画像，但当前仍保持独立运行边界；`node-daemon-service:8117` 继续保持独立节点执行边界。
+官网前端、后端业务服务、数据库、缓存、Cloudreve、Minecraft 服务器和节点守护进程应分开部署。开发阶段可以先用较少进程模拟模块边界，但接口、权限和数据归属不能混乱。当前第四批运维控制面已收敛到 `ops-core-service:8133`，第五批玩家门户体验已收敛到 `portal-core-service:8134`，`api-gateway-service:8125` 已具备统一后端入口准备画像；第九轮新增 `unified-backend-service:8135` 作为并行候选入口，当前仍不替代生产入口；`node-daemon-service:8117` 继续保持独立节点执行边界。
 
 节点守护进程部署在被管理服务器上。它只开放必要管理端口，优先由控制面主动连接或通过受控通道通信，不暴露无鉴权的系统操作接口。
 
 后续如果采用微服务，网关负责路由、跨域、基础鉴权、可信身份签名、限流和请求日志。业务服务负责自己的业务规则。网关不直接访问数据库。
 
-本地开发端口必须固定，避免 IDEA、命令行、前端代理和后续网关联调互相抢占默认端口。当前已合并运行单元中，`auth`、`profile`、`notification`、`content`、`server-status`、`resource` 和 `admin` 由 `business-core-service` 承载，端口固定为 `8130`；`onboarding`、`exam`、`whitelist` 和 `attendance` 由 `admission-core-service` 承载，端口固定为 `8131`；`community`、`activity`、`calendar` 和 `changelog` 由 `engagement-core-service` 承载，端口固定为 `8132`；`ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`ops-image-market` 和 `cross-platform-notification` 由 `ops-core-service` 承载，端口固定为 `8133`；`guide`、`material` 和 `online-map` 由 `portal-core-service` 承载，端口固定为 `8134`。历史端口 `8101` 到 `8116`、`8118` 到 `8124`、`8126` 和 `8127` 只保留为模块原端口记录，不作为当前网关上游。`node-daemon` 继续使用 `8117`。旧 `backend/online-map-service` 已退役且不得恢复；第六期完成后旧 `backend/cross-platform-notification-service` 不得恢复。新增或调整端口时，必须同步更新正式文档和对应自动化测试。
+本地开发端口必须固定，避免 IDEA、命令行、前端代理和后续网关联调互相抢占默认端口。当前已合并运行单元中，`auth`、`profile`、`notification`、`content`、`server-status`、`resource` 和 `admin` 由 `business-core-service` 承载，端口固定为 `8130`；`onboarding`、`exam`、`whitelist` 和 `attendance` 由 `admission-core-service` 承载，端口固定为 `8131`；`community`、`activity`、`calendar` 和 `changelog` 由 `engagement-core-service` 承载，端口固定为 `8132`；`ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`ops-image-market` 和 `cross-platform-notification` 由 `ops-core-service` 承载，端口固定为 `8133`；`guide`、`material` 和 `online-map` 由 `portal-core-service` 承载，端口固定为 `8134`；`unified-backend-service` 作为第九轮候选入口使用 `8135`。历史端口 `8101` 到 `8116`、`8118` 到 `8124`、`8126` 和 `8127` 只保留为模块原端口记录，不作为当前网关上游。`node-daemon` 继续使用 `8117`。旧 `backend/online-map-service` 已退役且不得恢复；第六期完成后旧 `backend/cross-platform-notification-service` 不得恢复。新增或调整端口时，必须同步更新正式文档和对应自动化测试。
 
 ## 技术选型原则
 

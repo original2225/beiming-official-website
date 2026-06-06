@@ -113,6 +113,8 @@
 
 第八轮单服务合并准备层只允许在网关公开只读运行拓扑。当前运行入口仍是 `api-gateway-service:8125`、`business-core-service:8130`、`admission-core-service:8131`、`engagement-core-service:8132`、`ops-core-service:8133`、`portal-core-service:8134` 和 `node-daemon-service:8117`。未来可合并候选只包含 `api-gateway` 与五个 core 运行单元，`node-daemon` 继续作为外部节点执行边界。该准备层不得新增业务路由，不得改写 26 条业务路径，不得动态挂载业务模块，不得恢复已退役旧 Maven 入口，不得把节点守护进程并入统一后端。
 
+第九轮新增 `unified-backend-service:8135` 作为并行候选入口。当前网关仍保持 `CURRENT_SEVEN_ENTRYPOINTS` 和 `IN_PROCESS_MOUNT_NOT_IMPLEMENTED=NOT_IMPLEMENTED`，但运行拓扑必须识别 `unified-backend` 试点候选，说明首个 in-process 挂载对象为 `portal-core`，候选挂载路由为 `guide`、`material` 和 `online-map`。该字段只用于后续装配验收，不能让当前 `api-gateway-service:8125` 冒充已经完成 in-process。
+
 路径匹配规则为最长前缀优先。`/api/v1/resources` 和 `/api/v1/resources/**` 都必须命中 `resource`。未知路径返回网关错误，不转发到任何上游。
 
 ## 网关自有对象
@@ -190,6 +192,8 @@
 `currentEntrypoints` 每项必须包含 `entrypointKey`、`serviceDirectory`、`port`、`role`、`mergeDisposition`、`hostedRouteIds`、`hostedPathPrefixes`、`routesTotal` 和 `keptExternalReason`。`api-gateway` 的 `mergeDisposition` 为 `INGRESS_CANDIDATE`，五个 core 运行单元为 `IN_PROCESS_CANDIDATE`，`node-daemon` 为 `KEEP_EXTERNAL`。`node-daemon.keptExternalReason` 固定说明其负责节点侧受控执行，不并入统一后端进程。
 
 `mergePreparationChecks` 至少包含 `ROUTE_PREFIX_PRESERVED`、`GATEWAY_AS_INGRESS_CANDIDATE`、`CORE_ROUTES_GROUPED`、`NODE_DAEMON_EXTERNAL_BOUNDARY`、`LEGACY_ENTRYPOINTS_NOT_RESTORED`、`STATIC_SERVICE_DISCOVERY_ONLY` 和 `IN_PROCESS_MOUNT_NOT_IMPLEMENTED`。前五项为 `PASS`，后两项必须保持 `BLOCKED` 或 `NOT_IMPLEMENTED`，防止把静态路由表误称为动态服务发现或把准备层误称为真正单服务合并。
+
+`futureUnifiedBackend` 必须额外包含 `pilotCandidate`。该对象固定声明 `entrypointKey=unified-backend`、`serviceDirectory=backend/unified-backend-service`、`candidatePort=8135`、`deploymentMode=CANDIDATE_PARALLEL_ENTRYPOINT`、`pilotMountedEntrypoints=["api-gateway","portal-core"]`、`pilotMountedRouteIds=["guide","material","online-map"]`、`nodeDaemonDisposition=KEEP_EXTERNAL`、`readyToReplaceGateway=false` 和 `readyToRetirePortalCore=false`。
 
 ## 网关错误码
 
