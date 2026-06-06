@@ -36,6 +36,8 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
 
 `engagement-core` 的自有路径前缀为 `/api/v1/engagement-core`。四个业务模块路径保持原样，不加 `/engagement-core` 前缀。
 
+第九轮允许 `unified-backend-service:8135` 以 in-process 方式挂载 `engagement-core`。该候选挂载不改变 `engagement-core-service:8132` 的独立入口，不改变 `/api/v1/engagement-core/**`、`/api/v1/community/**`、`/api/v1/activity/**`、`/api/v1/calendar/**` 或 `/api/v1/changelog/**` 的路径、认证、响应格式、错误码、业务行为和测试口径。
+
 ## 承载模块
 
 | 模块 | 正式契约 | 路径前缀 | 原服务端口 | 现有代码路由数 | 是否进入 engagement-core |

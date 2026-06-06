@@ -22,6 +22,11 @@ import org.springframework.context.annotation.FullyQualifiedAnnotationBeanNameGe
                 "cn.beiming.resource",
                 "cn.beiming.admin",
                 "cn.beiming.admission",
+                "cn.beiming.engagement",
+                "cn.beiming.community",
+                "cn.beiming.activity",
+                "cn.beiming.calendar",
+                "cn.beiming.changelog",
                 "cn.beiming.onboarding",
                 "cn.beiming.exam",
                 "cn.beiming.whitelist",
@@ -34,7 +39,7 @@ import org.springframework.context.annotation.FullyQualifiedAnnotationBeanNameGe
         nameGenerator = FullyQualifiedAnnotationBeanNameGenerator.class,
         excludeFilters = @ComponentScan.Filter(
                 type = FilterType.REGEX,
-                pattern = "cn\\.beiming\\.(apigateway|core|admission|onboarding|exam|whitelist|attendance|portalcore|guide|material|onlinemap)\\..*ServiceApplication"
+                pattern = "cn\\.beiming\\.(apigateway|core|admission|engagement|community|activity|calendar|changelog|onboarding|exam|whitelist|attendance|portalcore|guide|material|onlinemap)\\..*ServiceApplication"
         )
 )
 public class UnifiedBackendServiceApplication {

@@ -8,7 +8,7 @@
 
 各模块独立契约仍是后端实现和变更的源文档。任一接口发生变化时，必须先更新对应 `docs/contracts-<module>.md`，再同步更新本文档。
 
-当前合并范围包含 28 个业务或平台模块，另包含六个运行入口或候选入口自检契约。第三批四个业务模块在 `engagement-core-service:8132` 中承载 149 个业务路由，第四批六个后台运维控制面模块和第六期跨平台通知控制面在 `ops-core-service:8133` 中承载 219 个业务路由，第五批后三个玩家门户体验模块在 `portal-core-service:8134` 中承载 108 个业务路由。`ops-core` 自身当前提供 5 个运行单元自检、诊断和 HTTP smoke 路由，`portal-core` 自身当前提供 5 个运行单元自检、诊断和 HTTP smoke 路由，`unified-backend` 自身提供 5 个候选入口自检、挂载和 HTTP smoke 路由。候选入口逐步挂载 `api-gateway`、`business-core`、`admission-core` 和 `portal-core`，但不替代当前 7 个生产入口。
+当前合并范围包含 28 个业务或平台模块，另包含六个运行入口或候选入口自检契约。第三批四个业务模块在 `engagement-core-service:8132` 中承载 149 个业务路由，第四批六个后台运维控制面模块和第六期跨平台通知控制面在 `ops-core-service:8133` 中承载 219 个业务路由，第五批后三个玩家门户体验模块在 `portal-core-service:8134` 中承载 108 个业务路由。`ops-core` 自身当前提供 5 个运行单元自检、诊断和 HTTP smoke 路由，`portal-core` 自身当前提供 5 个运行单元自检、诊断和 HTTP smoke 路由，`unified-backend` 自身提供 5 个候选入口自检、挂载和 HTTP smoke 路由。候选入口逐步挂载 `api-gateway`、`business-core`、`admission-core`、`engagement-core` 和 `portal-core`，但不替代当前 7 个生产入口。
 
 ## 前端接入要点
 
@@ -10013,6 +10013,8 @@ notification 是辅助依赖。发布、下架和安全修复通知失败不得�
 
 当前运行入口为 `engagement-core-service:8132`。历史端口 `8112` 到 `8115` 只作为 `legacyPort` 追溯字段，不再作为独立服务入口、网关上游或回归测试命令。
 
+第九轮允许 `unified-backend-service:8135` 以 in-process 方式挂载 `engagement-core`。该候选挂载不改变 `engagement-core-service:8132` 的独立入口，不改变 `/api/v1/engagement-core/**`、`/api/v1/community/**`、`/api/v1/activity/**`、`/api/v1/calendar/**` 或 `/api/v1/changelog/**` 的路径、认证、响应格式、错误码、业务行为和测试口径。
+
 ### 自有接口
 
 | 接口 | 方法 | 路径 | 认证 | 权限 | 说明 |
@@ -13947,7 +13949,7 @@ endpoint、repository、tag、namespace 和 URL 摘要必须拒绝 `file:`、`da
 
 路径匹配规则为最长前缀优先。`/api/v1/resources` 和 `/api/v1/resources/**` 都必须命中 `resource`。未知路径返回网关错误，不转发到任何上游。
 
-第八轮单服务合并准备层只允许在网关公开只读运行拓扑。当前运行入口仍是 `api-gateway-service:8125`、`business-core-service:8130`、`admission-core-service:8131`、`engagement-core-service:8132`、`ops-core-service:8133`、`portal-core-service:8134` 和 `node-daemon-service:8117`。未来可合并候选只包含 `api-gateway` 与五个 core 运行单元，`node-daemon` 继续作为外部节点执行边界。该准备层不得新增业务路由，不得改写 26 条业务路径，不得动态挂载业务模块，不得恢复已退役旧 Maven 入口，不得把节点守护进程并入统一后端。第九轮新增 `unified-backend-service:8135` 作为并行候选入口；当前网关仍保持 `CURRENT_SEVEN_ENTRYPOINTS` 和 `IN_PROCESS_MOUNT_NOT_IMPLEMENTED=NOT_IMPLEMENTED`，但运行拓扑必须识别 `unified-backend` 试点候选。候选入口第一阶段挂载 `api-gateway` 和 `portal-core`，第二阶段扩展挂载 `business-core`，第三阶段扩展挂载 `admission-core`，候选挂载路由为 `auth`、`profile`、`notification`、`content`、`server-status`、`resource`、`admin`、`onboarding`、`exam`、`whitelist`、`attendance`、`guide`、`material` 和 `online-map`。
+第八轮单服务合并准备层只允许在网关公开只读运行拓扑。当前运行入口仍是 `api-gateway-service:8125`、`business-core-service:8130`、`admission-core-service:8131`、`engagement-core-service:8132`、`ops-core-service:8133`、`portal-core-service:8134` 和 `node-daemon-service:8117`。未来可合并候选只包含 `api-gateway` 与五个 core 运行单元，`node-daemon` 继续作为外部节点执行边界。该准备层不得新增业务路由，不得改写 26 条业务路径，不得动态挂载业务模块，不得恢复已退役旧 Maven 入口，不得把节点守护进程并入统一后端。第九轮新增 `unified-backend-service:8135` 作为并行候选入口；当前网关仍保持 `CURRENT_SEVEN_ENTRYPOINTS` 和 `IN_PROCESS_MOUNT_NOT_IMPLEMENTED=NOT_IMPLEMENTED`，但运行拓扑必须识别 `unified-backend` 试点候选。候选入口第一阶段挂载 `api-gateway` 和 `portal-core`，第二阶段扩展挂载 `business-core`，第三阶段扩展挂载 `admission-core`，第四阶段扩展挂载 `engagement-core`，候选挂载路由为 `auth`、`profile`、`notification`、`content`、`server-status`、`resource`、`admin`、`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、`guide`、`material` 和 `online-map`。
 
 ### 网关自有对象
 
@@ -14263,7 +14265,7 @@ P0 `api-gateway` 是本地契约实现，必须在自检摘要中明确以下生
 
 `api-gateway` API 文档按 `docs/contracts-api-gateway.md` 独立存在，并由 `.local-docs/tests-api-gateway.md` 记录本地测试闭环。
 
-本文档列出的每个网关自有接口都有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、分页排序、状态刷新、失败降级、日志脱敏和验收口径。运行拓扑测试必须确认当前 7 个 Maven 入口、未来 6 个统一后端候选、`node-daemon` 外部执行边界、26 条业务转发路由、8 个网关自有 API、5 个 core 运行单元归属、已退役旧入口未恢复、静态服务发现和 in-process 挂载仍未实现，并确认 `unified-backend-service:8135` 候选画像已把 `business-core`、`admission-core` 和 `portal-core` 标为试点挂载对象。业务转发测试必须覆盖 26 个已接入微服务的路径前缀，确认路由表端口准确、`api-gateway.upstreams.ops-core-base-url` 只覆盖七个 ops-core 承载路由、请求编号透传、请求编号非法拒绝、认证头透传、可信身份头剥离、客户端伪造签名头剥离、`auth` 会话校验成功后的可信身份和内部签名注入、`auth` 校验失败后的不注入降级、查询参数透传、JSON body 透传、请求体大小限制、响应头白名单、上游 2xx 透传、上游 4xx 透传、上游 5xx 透传、未知路径、非法方法、CORS 预检、上游不可用、上游超时和敏感字段不落日志。
+本文档列出的每个网关自有接口都有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、分页排序、状态刷新、失败降级、日志脱敏和验收口径。运行拓扑测试必须确认当前 7 个 Maven 入口、未来 6 个统一后端候选、`node-daemon` 外部执行边界、26 条业务转发路由、8 个网关自有 API、5 个 core 运行单元归属、已退役旧入口未恢复、静态服务发现和 in-process 挂载仍未实现，并确认 `unified-backend-service:8135` 候选画像已把 `business-core`、`admission-core`、`engagement-core` 和 `portal-core` 标为试点挂载对象。业务转发测试必须覆盖 26 个已接入微服务的路径前缀，确认路由表端口准确、`api-gateway.upstreams.ops-core-base-url` 只覆盖七个 ops-core 承载路由、请求编号透传、请求编号非法拒绝、认证头透传、可信身份头剥离、客户端伪造签名头剥离、`auth` 会话校验成功后的可信身份和内部签名注入、`auth` 校验失败后的不注入降级、查询参数透传、JSON body 透传、请求体大小限制、响应头白名单、上游 2xx 透传、上游 4xx 透传、上游 5xx 透传、未知路径、非法方法、CORS 预检、上游不可用、上游超时和敏感字段不落日志。
 
 开发完成后必须执行 `mvn -f backend/api-gateway-service/pom.xml test`、`mvn -f backend/business-core-service/pom.xml test`、`mvn -f backend/admission-core-service/pom.xml test`、`mvn -f backend/engagement-core-service/pom.xml test`、`mvn -f backend/ops-core-service/pom.xml test`、`mvn -f backend/portal-core-service/pom.xml test` 和 `mvn -f backend/node-daemon-service/pom.xml test`。第一批到第五批旧服务清理后，不得为了网关回归恢复对应旧服务目录、旧 Maven 入口、旧启动类或旧测试命令。第四批和第五批业务路径必须继续由 `ops-core` 和 `portal-core` 当前入口覆盖测试。旧 `backend/online-map-service` 已退役且不得恢复。测试过程必须写入 `.local-docs/tests-api-gateway.md`。
 
@@ -14271,11 +14273,11 @@ P0 `api-gateway` 是本地契约实现，必须在自检摘要中明确以下生
 
 来源：`docs/contracts-unified-backend.md`
 
-版本：0.3
+版本：0.4
 
-`unified-backend-service` 是统一后端并行候选入口，端口固定为 `8135`。它用于本地验证 `api-gateway`、`business-core`、`admission-core` 与 `portal-core` 在同一 Spring Boot 进程内装配，不替代当前 `api-gateway-service:8125`、`business-core-service:8130`、`admission-core-service:8131`、`portal-core-service:8134` 或其它生产入口。
+`unified-backend-service` 是统一后端并行候选入口，端口固定为 `8135`。它用于本地验证 `api-gateway`、`business-core`、`admission-core`、`engagement-core` 与 `portal-core` 在同一 Spring Boot 进程内装配，不替代当前 `api-gateway-service:8125`、`business-core-service:8130`、`admission-core-service:8131`、`engagement-core-service:8132`、`portal-core-service:8134` 或其它生产入口。
 
-候选入口必须在同一进程内挂载 `/api/v1/gateway/**`、`/api/v1/business-core/**`、`/api/v1/admission-core/**`、`/api/v1/portal-core/**`、`/api/v1/auth/**`、`/api/v1/profile/**`、`/api/v1/notifications/**`、`/api/v1/content/**`、`/api/v1/server-status/**`、`/api/v1/resources/**`、`/api/v1/admin/**`、`/api/v1/onboarding/**`、`/api/v1/exams/**`、`/api/v1/whitelist/**`、`/api/v1/attendance/**`、`/api/v1/guides/**`、`/api/v1/materials/**` 和 `/api/v1/online-map/**`。`auth`、`profile`、`notification`、`content`、`server-status`、`resource`、`admin`、`onboarding`、`exam`、`whitelist`、`attendance`、`guide`、`material` 和 `online-map` 必须标记为 `IN_PROCESS`，其它未挂载 core 路由标记为 `HTTP_UPSTREAM_FALLBACK`，`node-daemon` 标记为 `KEEP_EXTERNAL`。原路径、认证、响应格式、错误码和测试口径不得改变。
+候选入口必须在同一进程内挂载 `/api/v1/gateway/**`、`/api/v1/business-core/**`、`/api/v1/admission-core/**`、`/api/v1/engagement-core/**`、`/api/v1/portal-core/**`、`/api/v1/auth/**`、`/api/v1/profile/**`、`/api/v1/notifications/**`、`/api/v1/content/**`、`/api/v1/server-status/**`、`/api/v1/resources/**`、`/api/v1/admin/**`、`/api/v1/onboarding/**`、`/api/v1/exams/**`、`/api/v1/whitelist/**`、`/api/v1/attendance/**`、`/api/v1/community/**`、`/api/v1/activity/**`、`/api/v1/calendar/**`、`/api/v1/changelog/**`、`/api/v1/guides/**`、`/api/v1/materials/**` 和 `/api/v1/online-map/**`。`auth`、`profile`、`notification`、`content`、`server-status`、`resource`、`admin`、`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、`guide`、`material` 和 `online-map` 必须标记为 `IN_PROCESS`，其它未挂载 core 路由标记为 `HTTP_UPSTREAM_FALLBACK`，`node-daemon` 标记为 `KEEP_EXTERNAL`。原路径、认证、响应格式、错误码和测试口径不得改变。
 
 | 接口 | 方法 | 路径 | 认证 | 权限 | 风险 |
 | --- | --- | --- | --- | --- | --- |
@@ -14287,13 +14289,13 @@ P0 `api-gateway` 是本地契约实现，必须在自检摘要中明确以下生
 
 `GET /api/v1/unified-backend/health` 返回 `service=unified-backend`、`status=UP`、`port=8135`、`deploymentMode=CANDIDATE_PARALLEL_ENTRYPOINT`、`mountedEntrypoints`、`mountedRouteIds` 和 `generatedAt`。该接口只表示候选进程存活，不表示可替换当前网关。
 
-后台摘要、挂载清单和 readiness 必须固定暴露 `currentProductionEntrypointsTotal=7`、`candidateEntrypointsTotal=1`、`mountedEntrypoints=["api-gateway","business-core","admission-core","portal-core"]`、`mountedRouteIds=["auth","profile","notification","content","server-status","resource","admin","onboarding","exam","whitelist","attendance","guide","material","online-map"]`、`inProcessRoutesTotal=14`、`httpFallbackRoutesTotal=11`、`externalRoutesTotal=1`、`nodeDaemonDisposition=KEEP_EXTERNAL`、`readyToReplaceGateway=false`、`readyToRetireBusinessCore=false`、`readyToRetireAdmissionCore=false` 和 `readyToRetirePortalCore=false`。
+后台摘要、挂载清单和 readiness 必须固定暴露 `currentProductionEntrypointsTotal=7`、`candidateEntrypointsTotal=1`、`mountedEntrypoints=["api-gateway","business-core","admission-core","engagement-core","portal-core"]`、`mountedRouteIds=["auth","profile","notification","content","server-status","resource","admin","onboarding","exam","whitelist","attendance","community","activity","calendar","changelog","guide","material","online-map"]`、`inProcessRoutesTotal=18`、`httpFallbackRoutesTotal=7`、`externalRoutesTotal=1`、`nodeDaemonDisposition=KEEP_EXTERNAL`、`readyToReplaceGateway=false`、`readyToRetireBusinessCore=false`、`readyToRetireAdmissionCore=false`、`readyToRetireEngagementCore=false` 和 `readyToRetirePortalCore=false`。
 
-HTTP smoke 至少覆盖 `UNIFIED_HEALTH`、`GATEWAY_HEALTH`、`BUSINESS_CORE_HEALTH`、`ADMISSION_CORE_HEALTH`、`PORTAL_CORE_HEALTH`、`AUTH_SESSION_VERIFY`、`PROFILE_MEMBERS`、`NOTIFICATION_UNREAD_COUNT`、`CONTENT_HOME`、`SERVER_STATUS_OVERVIEW`、`RESOURCE_LIST`、`ADMIN_OVERVIEW`、`ONBOARDING_PROGRESS`、`EXAM_SESSIONS`、`WHITELIST_CURRENT_APPLICATION`、`ATTENDANCE_LEADERBOARD`、`GUIDE_CATEGORIES`、`MATERIAL_FEATURED` 和 `ONLINE_MAP_HEALTH`。这些第一批、第二批和第五批路径必须通过本地控制器成功，不能调用 `GatewayHttpClient` 的对应代理路径。smoke 失败时接口自身返回统一成功响应，并在 `data.httpSmokeStatus` 中标记 `DEGRADED`。
+HTTP smoke 至少覆盖 `UNIFIED_HEALTH`、`GATEWAY_HEALTH`、`BUSINESS_CORE_HEALTH`、`ADMISSION_CORE_HEALTH`、`ENGAGEMENT_CORE_HEALTH`、`PORTAL_CORE_HEALTH`、`AUTH_SESSION_VERIFY`、`PROFILE_MEMBERS`、`NOTIFICATION_UNREAD_COUNT`、`CONTENT_HOME`、`SERVER_STATUS_OVERVIEW`、`RESOURCE_LIST`、`ADMIN_OVERVIEW`、`ONBOARDING_PROGRESS`、`EXAM_SESSIONS`、`WHITELIST_CURRENT_APPLICATION`、`ATTENDANCE_LEADERBOARD`、`COMMUNITY_BOARDS`、`ACTIVITY_EVENTS`、`CALENDAR_UPCOMING`、`CHANGELOG_LATEST_VERSION`、`GUIDE_CATEGORIES`、`MATERIAL_FEATURED` 和 `ONLINE_MAP_HEALTH`。这些第一批、第二批、第三批和第五批路径必须通过本地控制器成功，不能调用 `GatewayHttpClient` 的对应代理路径。smoke 失败时接口自身返回统一成功响应，并在 `data.httpSmokeStatus` 中标记 `DEGRADED`。
 
 验收时必须确认 `backend/unified-backend-service` 可独立测试，当前 7 个生产后端 Maven 入口和候选入口回归通过，`node-daemon` 不进入候选入口源码扫描和 component scan，已退役旧服务入口没有恢复，生产源码危险删除命令、真实节点执行、终端、RCON、Docker 执行和备份恢复写入扫描无命中。
 
-本阶段允许 `unified-backend-service:8135` 以 in-process 方式挂载 `business-core` 和 `admission-core`。该候选挂载不改变 `business-core-service:8130` 或 `admission-core-service:8131` 的独立入口，不改变 `/api/v1/business-core/**`、`/api/v1/admission-core/**`、`/api/v1/auth/**`、`/api/v1/profile/**`、`/api/v1/notifications/**`、`/api/v1/content/**`、`/api/v1/server-status/**`、`/api/v1/resources/**`、`/api/v1/admin/**`、`/api/v1/onboarding/**`、`/api/v1/exams/**`、`/api/v1/whitelist/**` 或 `/api/v1/attendance/**` 的路径、认证、响应格式和错误码。
+本阶段允许 `unified-backend-service:8135` 以 in-process 方式挂载 `business-core`、`admission-core` 和 `engagement-core`。该候选挂载不改变 `business-core-service:8130`、`admission-core-service:8131` 或 `engagement-core-service:8132` 的独立入口，不改变 `/api/v1/business-core/**`、`/api/v1/admission-core/**`、`/api/v1/engagement-core/**`、`/api/v1/auth/**`、`/api/v1/profile/**`、`/api/v1/notifications/**`、`/api/v1/content/**`、`/api/v1/server-status/**`、`/api/v1/resources/**`、`/api/v1/admin/**`、`/api/v1/onboarding/**`、`/api/v1/exams/**`、`/api/v1/whitelist/**`、`/api/v1/attendance/**`、`/api/v1/community/**`、`/api/v1/activity/**`、`/api/v1/calendar/**` 或 `/api/v1/changelog/**` 的路径、认证、响应格式和错误码。
 
 ## 北冥官网 portal-core API 契约
 

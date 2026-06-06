@@ -30,6 +30,22 @@ attendance:
   test-controls:
     enabled: false
 
+community:
+  test-controls:
+    enabled: false
+
+activity:
+  test-controls:
+    enabled: false
+
+calendar:
+  test-controls:
+    enabled: false
+
+changelog:
+  test-controls:
+    enabled: false
+
 portal-core:
   test-controls:
     enabled: false

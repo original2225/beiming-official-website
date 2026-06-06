@@ -128,7 +128,32 @@ class UnifiedBackendInProcessMountTest {
     }
 
     @Test
-    void stillServesGatewayBusinessCoreAndPortalCoreSelfApisThroughCandidateEntrypoint() throws Exception {
+    void servesEngagementCoreRoutesInProcessBeforeGatewayCatchAllProxy() throws Exception {
+        mvc.perform(get("/api/v1/engagement-core/health").header("X-Request-Id", "req-engagement-core-self"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.service").value("engagement-core"));
+
+        mvc.perform(get("/api/v1/community/boards").header("X-Request-Id", "req-community-in-process"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0));
+
+        mvc.perform(get("/api/v1/activity/events").header("X-Request-Id", "req-activity-in-process"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0));
+
+        mvc.perform(get("/api/v1/calendar/upcoming").header("X-Request-Id", "req-calendar-in-process"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0));
+
+        mvc.perform(get("/api/v1/changelog/versions/latest").header("X-Request-Id", "req-changelog-in-process"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0));
+
+        assertThat(client.calls()).doesNotContain("COMMUNITY", "ACTIVITY", "CALENDAR", "CHANGELOG");
+    }
+
+    @Test
+    void stillServesGatewayCoreAndPortalCoreSelfApisThroughCandidateEntrypoint() throws Exception {
         mvc.perform(get("/api/v1/gateway/health").header("X-Request-Id", "req-gateway-self"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.service").value("api-gateway"));
@@ -140,6 +165,10 @@ class UnifiedBackendInProcessMountTest {
         mvc.perform(get("/api/v1/admission-core/health").header("X-Request-Id", "req-admission-self"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.service").value("admission-core"));
+
+        mvc.perform(get("/api/v1/engagement-core/health").header("X-Request-Id", "req-engagement-self"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.service").value("engagement-core"));
 
         mvc.perform(get("/api/v1/portal-core/health").header("X-Request-Id", "req-portal-self"))
                 .andExpect(status().isOk())
@@ -172,6 +201,7 @@ class UnifiedBackendInProcessMountTest {
             if (List.of(
                     "AUTH", "PROFILE", "NOTIFICATION", "CONTENT", "SERVER_STATUS", "RESOURCE", "ADMIN",
                     "ONBOARDING", "EXAM", "WHITELIST", "ATTENDANCE",
+                    "COMMUNITY", "ACTIVITY", "CALENDAR", "CHANGELOG",
                     "GUIDE", "MATERIAL", "ONLINE_MAP"
             ).contains(route.serviceKey())) {
                 throw new AssertionError(route.serviceKey() + " must be served in-process");
