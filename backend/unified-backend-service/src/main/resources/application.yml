@@ -1,0 +1,27 @@
+server:
+  port: 8135
+
+api-gateway:
+  internal-signing-secret: local-test-gateway-signing-secret
+  upstreams:
+    portal-core-base-url: http://127.0.0.1:8134
+    ops-core-base-url: http://127.0.0.1:8133
+
+portal-core:
+  test-controls:
+    enabled: false
+  http-smoke:
+    gateway-base-url: http://127.0.0.1:8135
+    timeout-ms: 1500
+
+guide:
+  test-controls:
+    enabled: ${portal-core.test-controls.enabled:false}
+
+material:
+  test-controls:
+    enabled: ${portal-core.test-controls.enabled:false}
+
+online-map:
+  test-controls:
+    enabled: ${portal-core.test-controls.enabled:false}
