@@ -10,6 +10,25 @@ api-gateway:
 beiming:
   admin:
     test-mode: true
+  admission-core:
+    test-control-headers:
+      enabled: false
+
+onboarding:
+  test-controls:
+    enabled: false
+
+exam:
+  test-controls:
+    enabled: false
+
+whitelist:
+  test-controls:
+    enabled: false
+
+attendance:
+  test-controls:
+    enabled: false
 
 portal-core:
   test-controls:

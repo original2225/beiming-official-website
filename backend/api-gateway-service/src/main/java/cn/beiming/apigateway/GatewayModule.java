@@ -892,14 +892,16 @@ class GatewayState {
                 "serviceDirectory", "backend/unified-backend-service",
                 "candidatePort", 8135,
                 "deploymentMode", "CANDIDATE_PARALLEL_ENTRYPOINT",
-                "pilotMountedEntrypoints", List.of("api-gateway", "business-core", "portal-core"),
+                "pilotMountedEntrypoints", List.of("api-gateway", "business-core", "admission-core", "portal-core"),
                 "pilotMountedRouteIds", List.of(
                         "auth", "profile", "notification", "content", "server-status", "resource", "admin",
+                        "onboarding", "exam", "whitelist", "attendance",
                         "guide", "material", "online-map"
                 ),
                 "nodeDaemonDisposition", "KEEP_EXTERNAL",
                 "readyToReplaceGateway", false,
                 "readyToRetireBusinessCore", false,
+                "readyToRetireAdmissionCore", false,
                 "readyToRetirePortalCore", false
         );
     }

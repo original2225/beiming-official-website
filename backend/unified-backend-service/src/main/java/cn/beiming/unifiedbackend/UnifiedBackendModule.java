@@ -53,6 +53,7 @@ class UnifiedBackendController {
         Map<String, Object> data = registry.baseProfile();
         data.put("gatewayApiMounted", hasRoute("/api/v1/gateway/health"));
         data.put("businessCoreMounted", hasRoute("/api/v1/business-core/health"));
+        data.put("admissionCoreMounted", hasRoute("/api/v1/admission-core/health"));
         data.put("portalCoreMounted", hasRoute("/api/v1/portal-core/health"));
         data.put("productionEntrypointsPreserved", true);
         data.put("legacyEntrypointsRestored", false);
@@ -85,6 +86,7 @@ class UnifiedBackendController {
                 "readyForProduction", false,
                 "readyToReplaceGateway", false,
                 "readyToRetireBusinessCore", false,
+                "readyToRetireAdmissionCore", false,
                 "readyToRetirePortalCore", false,
                 "currentProductionEntrypointsTotal", 7,
                 "candidateEntrypointsTotal", 1,
@@ -121,6 +123,7 @@ class UnifiedBackendController {
         return List.of(
                 check("API_GATEWAY_SELF_API_MOUNTED", hasRoute("/api/v1/gateway/health") ? "PASS" : "BLOCKED", "api-gateway self API is mounted"),
                 check("BUSINESS_CORE_SELF_API_MOUNTED", hasRoute("/api/v1/business-core/health") ? "PASS" : "BLOCKED", "business-core self API is mounted"),
+                check("ADMISSION_CORE_SELF_API_MOUNTED", hasRoute("/api/v1/admission-core/health") ? "PASS" : "BLOCKED", "admission-core self API is mounted"),
                 check("PORTAL_CORE_SELF_API_MOUNTED", hasRoute("/api/v1/portal-core/health") ? "PASS" : "BLOCKED", "portal-core self API is mounted"),
                 check("AUTH_IN_PROCESS", hasRoute("/api/v1/auth/session/verify") ? "PASS" : "BLOCKED", "auth is served by local controller"),
                 check("PROFILE_IN_PROCESS", hasRoute("/api/v1/profile/members") ? "PASS" : "BLOCKED", "profile is served by local controller"),
@@ -129,6 +132,10 @@ class UnifiedBackendController {
                 check("SERVER_STATUS_IN_PROCESS", hasRoute("/api/v1/server-status/overview") ? "PASS" : "BLOCKED", "server-status is served by local controller"),
                 check("RESOURCE_IN_PROCESS", hasRoute("/api/v1/resources") ? "PASS" : "BLOCKED", "resource is served by local controller"),
                 check("ADMIN_IN_PROCESS", hasRoute("/api/v1/admin/overview") ? "PASS" : "BLOCKED", "admin is served by local controller"),
+                check("ONBOARDING_IN_PROCESS", hasRoute("/api/v1/onboarding/me/progress") ? "PASS" : "BLOCKED", "onboarding is served by local controller"),
+                check("EXAM_IN_PROCESS", hasRoute("/api/v1/exams/me/sessions/current") ? "PASS" : "BLOCKED", "exam is served by local controller"),
+                check("WHITELIST_IN_PROCESS", hasRoute("/api/v1/whitelist/me/applications/current") ? "PASS" : "BLOCKED", "whitelist is served by local controller"),
+                check("ATTENDANCE_IN_PROCESS", hasRoute("/api/v1/attendance/leaderboard") ? "PASS" : "BLOCKED", "attendance is served by local controller"),
                 check("GUIDE_IN_PROCESS", hasRoute("/api/v1/guides/categories") ? "PASS" : "BLOCKED", "guide is served by local controller"),
                 check("MATERIAL_IN_PROCESS", hasRoute("/api/v1/materials/featured") ? "PASS" : "BLOCKED", "material is served by local controller"),
                 check("ONLINE_MAP_IN_PROCESS", hasRoute("/api/v1/online-map/health") ? "PASS" : "BLOCKED", "online-map is served by local controller"),
@@ -250,9 +257,10 @@ class UnifiedBackendController {
 
 @Component
 class UnifiedBackendRegistry {
-    private static final List<String> MOUNTED_ENTRYPOINTS = List.of("api-gateway", "business-core", "portal-core");
+    private static final List<String> MOUNTED_ENTRYPOINTS = List.of("api-gateway", "business-core", "admission-core", "portal-core");
     private static final List<String> MOUNTED_ROUTE_IDS = List.of(
             "auth", "profile", "notification", "content", "server-status", "resource", "admin",
+            "onboarding", "exam", "whitelist", "attendance",
             "guide", "material", "online-map"
     );
     private final List<UnifiedMount> gatewayRoutes = createGatewayRoutes();
@@ -267,12 +275,13 @@ class UnifiedBackendRegistry {
                 "candidateEntrypointsTotal", 1,
                 "mountedEntrypoints", MOUNTED_ENTRYPOINTS,
                 "mountedRouteIds", MOUNTED_ROUTE_IDS,
-                "inProcessRoutesTotal", 10,
-                "httpFallbackRoutesTotal", 15,
+                "inProcessRoutesTotal", 14,
+                "httpFallbackRoutesTotal", 11,
                 "externalRoutesTotal", 1,
                 "nodeDaemonDisposition", "KEEP_EXTERNAL",
                 "readyToReplaceGateway", false,
                 "readyToRetireBusinessCore", false,
+                "readyToRetireAdmissionCore", false,
                 "readyToRetirePortalCore", false
         );
     }
@@ -282,6 +291,7 @@ class UnifiedBackendRegistry {
         items.add(selfMount("unified-backend", "UNIFIED_BACKEND", "/api/v1/unified-backend", "unified-backend", 8135, "candidate self API"));
         items.add(selfMount("api-gateway", "API_GATEWAY", "/api/v1/gateway", "api-gateway", 8125, "api-gateway self API mounted in candidate process"));
         items.add(selfMount("business-core", "BUSINESS_CORE", "/api/v1/business-core", "business-core", 8130, "business-core self API mounted in candidate process"));
+        items.add(selfMount("admission-core", "ADMISSION_CORE", "/api/v1/admission-core", "admission-core", 8131, "admission-core self API mounted in candidate process"));
         items.add(selfMount("portal-core", "PORTAL_CORE", "/api/v1/portal-core", "portal-core", 8134, "portal-core self API mounted in candidate process"));
         for (UnifiedMount route : gatewayRoutes) {
             items.add(route.toMap());
@@ -294,6 +304,7 @@ class UnifiedBackendRegistry {
                 new UnifiedSmokeTarget("UNIFIED_HEALTH", "UNIFIED_BACKEND", "GET", "/api/v1/unified-backend/health", "IN_PROCESS"),
                 new UnifiedSmokeTarget("GATEWAY_HEALTH", "API_GATEWAY", "GET", "/api/v1/gateway/health", "IN_PROCESS"),
                 new UnifiedSmokeTarget("BUSINESS_CORE_HEALTH", "BUSINESS_CORE", "GET", "/api/v1/business-core/health", "IN_PROCESS"),
+                new UnifiedSmokeTarget("ADMISSION_CORE_HEALTH", "ADMISSION_CORE", "GET", "/api/v1/admission-core/health", "IN_PROCESS"),
                 new UnifiedSmokeTarget("PORTAL_CORE_HEALTH", "PORTAL_CORE", "GET", "/api/v1/portal-core/health", "IN_PROCESS"),
                 new UnifiedSmokeTarget("AUTH_SESSION_VERIFY", "AUTH", "GET", "/api/v1/auth/session/verify", "IN_PROCESS"),
                 new UnifiedSmokeTarget("PROFILE_MEMBERS", "PROFILE", "GET", "/api/v1/profile/members", "IN_PROCESS"),
@@ -302,6 +313,10 @@ class UnifiedBackendRegistry {
                 new UnifiedSmokeTarget("SERVER_STATUS_OVERVIEW", "SERVER_STATUS", "GET", "/api/v1/server-status/overview", "IN_PROCESS"),
                 new UnifiedSmokeTarget("RESOURCE_LIST", "RESOURCE", "GET", "/api/v1/resources", "IN_PROCESS"),
                 new UnifiedSmokeTarget("ADMIN_OVERVIEW", "ADMIN", "GET", "/api/v1/admin/overview", "IN_PROCESS"),
+                new UnifiedSmokeTarget("ONBOARDING_PROGRESS", "ONBOARDING", "GET", "/api/v1/onboarding/me/progress", "IN_PROCESS"),
+                new UnifiedSmokeTarget("EXAM_SESSIONS", "EXAM", "GET", "/api/v1/exams/me/sessions/current", "IN_PROCESS"),
+                new UnifiedSmokeTarget("WHITELIST_CURRENT_APPLICATION", "WHITELIST", "GET", "/api/v1/whitelist/me/applications/current", "IN_PROCESS"),
+                new UnifiedSmokeTarget("ATTENDANCE_LEADERBOARD", "ATTENDANCE", "GET", "/api/v1/attendance/leaderboard", "IN_PROCESS"),
                 new UnifiedSmokeTarget("GUIDE_CATEGORIES", "GUIDE", "GET", "/api/v1/guides/categories", "IN_PROCESS"),
                 new UnifiedSmokeTarget("MATERIAL_FEATURED", "MATERIAL", "GET", "/api/v1/materials/featured", "IN_PROCESS"),
                 new UnifiedSmokeTarget("ONLINE_MAP_HEALTH", "ONLINE_MAP", "GET", "/api/v1/online-map/health", "IN_PROCESS")
@@ -312,6 +327,7 @@ class UnifiedBackendRegistry {
         return List.of(
                 "current gateway entrypoint is not replaced",
                 "business-core independent entrypoint is not retired",
+                "admission-core independent entrypoint is not retired",
                 "portal-core independent entrypoint is not retired",
                 "remaining core entrypoints are not mounted in-process",
                 "dynamic service discovery is not connected",
@@ -356,10 +372,10 @@ class UnifiedBackendRegistry {
         items.add(inProcess("server-status", "SERVER_STATUS", "/api/v1/server-status", "business-core", 8130));
         items.add(inProcess("resource", "RESOURCE", "/api/v1/resources", "business-core", 8130));
         items.add(inProcess("admin", "ADMIN", "/api/v1/admin", "business-core", 8130));
-        items.add(fallback("onboarding", "ONBOARDING", "/api/v1/onboarding", "admission-core", 8131));
-        items.add(fallback("exam", "EXAM", "/api/v1/exams", "admission-core", 8131));
-        items.add(fallback("whitelist", "WHITELIST", "/api/v1/whitelist", "admission-core", 8131));
-        items.add(fallback("attendance", "ATTENDANCE", "/api/v1/attendance", "admission-core", 8131));
+        items.add(inProcess("onboarding", "ONBOARDING", "/api/v1/onboarding", "admission-core", 8131));
+        items.add(inProcess("exam", "EXAM", "/api/v1/exams", "admission-core", 8131));
+        items.add(inProcess("whitelist", "WHITELIST", "/api/v1/whitelist", "admission-core", 8131));
+        items.add(inProcess("attendance", "ATTENDANCE", "/api/v1/attendance", "admission-core", 8131));
         items.add(fallback("community", "COMMUNITY", "/api/v1/community", "engagement-core", 8132));
         items.add(fallback("activity", "ACTIVITY", "/api/v1/activity", "engagement-core", 8132));
         items.add(fallback("calendar", "CALENDAR", "/api/v1/calendar", "engagement-core", 8132));

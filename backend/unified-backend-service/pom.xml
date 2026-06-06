@@ -64,6 +64,7 @@
                             <sources>
                                 <source>../api-gateway-service/src/main/java</source>
                                 <source>../business-core-service/src/main/java</source>
+                                <source>../admission-core-service/src/main/java</source>
                                 <source>../portal-core-service/src/main/java</source>
                             </sources>
                         </configuration>
