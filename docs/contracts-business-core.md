@@ -27,6 +27,8 @@
 
 `business-core` 不允许把后续模块逻辑塞进第一批模块，不允许让前端直连新增路径吞掉业务，也不允许为了合并修改旧模块的稳定契约。
 
+`unified-backend-service:8135` 可以把 `business-core` 作为 in-process 稳定运行单元挂载，用于验证最终合并成一个后端服务的候选形态。该挂载不得改变 `business-core-service:8130` 的独立入口，不得改变 `/api/v1/business-core/**` 或第一批七个业务路径的认证、响应格式、错误码、请求编号、状态流转、幂等和审计规则，不得把 `business-core` 路径改写到 `/api/v1/unified-backend/**` 下。
+
 ## 运行形态
 
 本地验证运行单元为 `backend/business-core-service`，本地验证端口为 `8130`。端口 `8101` 到 `8107` 只作为第一批模块历史原服务端口登记，当前仓库不再保留旧七个微服务源码和 Maven 运行入口。端口 `8125` 继续保留给 `api-gateway-service`。
