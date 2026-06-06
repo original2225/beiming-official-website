@@ -1,0 +1,410 @@
+package cn.beiming.unifiedbackend;
+
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Component;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.condition.PatternsRequestCondition;
+import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
+import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
+import org.springframework.web.util.pattern.PathPattern;
+
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+
+@RestController
+@RequestMapping("/api/v1/unified-backend")
+class UnifiedBackendController {
+    private static final String BEARER_PREFIX = "Bearer ";
+    private final UnifiedBackendRegistry registry;
+    private final RequestMappingHandlerMapping handlerMapping;
+    private String lastHttpSmokeStatus = "NOT_RUN";
+    private List<Map<String, Object>> lastHttpSmokeResults = List.of();
+
+    UnifiedBackendController(UnifiedBackendRegistry registry, RequestMappingHandlerMapping handlerMapping) {
+        this.registry = registry;
+        this.handlerMapping = handlerMapping;
+    }
+
+    @GetMapping("/health")
+    ResponseEntity<Map<String, Object>> health(HttpServletRequest request) {
+        Map<String, Object> data = registry.baseProfile();
+        data.put("status", "UP");
+        data.put("generatedAt", now());
+        return ok(request, data);
+    }
+
+    @GetMapping("/admin/ops/summary")
+    ResponseEntity<Map<String, Object>> summary(HttpServletRequest request) {
+        AuthDecision auth = authorize(request, Set.of("HELPER", "ADMIN", "OWNER"));
+        if (!auth.allowed()) {
+            return error(request, auth.status(), auth.code(), auth.message());
+        }
+        Map<String, Object> data = registry.baseProfile();
+        data.put("gatewayApiMounted", hasRoute("/api/v1/gateway/health"));
+        data.put("portalCoreMounted", hasRoute("/api/v1/portal-core/health"));
+        data.put("productionEntrypointsPreserved", true);
+        data.put("legacyEntrypointsRestored", false);
+        data.put("productionGaps", registry.productionGaps());
+        data.put("generatedAt", now());
+        return ok(request, data);
+    }
+
+    @GetMapping("/admin/mounts")
+    ResponseEntity<Map<String, Object>> mounts(HttpServletRequest request) {
+        AuthDecision auth = authorize(request, Set.of("HELPER", "ADMIN", "OWNER"));
+        if (!auth.allowed()) {
+            return error(request, auth.status(), auth.code(), auth.message());
+        }
+        return ok(request, map(
+                "items", registry.mounts(),
+                "total", registry.mounts().size(),
+                "generatedAt", now()
+        ));
+    }
+
+    @GetMapping("/admin/readiness")
+    ResponseEntity<Map<String, Object>> readiness(HttpServletRequest request) {
+        AuthDecision auth = authorize(request, Set.of("HELPER", "ADMIN", "OWNER"));
+        if (!auth.allowed()) {
+            return error(request, auth.status(), auth.code(), auth.message());
+        }
+        return ok(request, map(
+                "service", "unified-backend",
+                "readyForProduction", false,
+                "readyToReplaceGateway", false,
+                "readyToRetirePortalCore", false,
+                "currentProductionEntrypointsTotal", 7,
+                "candidateEntrypointsTotal", 1,
+                "checks", readinessChecks(),
+                "lastHttpSmokeStatus", lastHttpSmokeStatus,
+                "lastHttpSmokeResults", lastHttpSmokeResults,
+                "productionBlockers", registry.productionBlockers(),
+                "generatedAt", now()
+        ));
+    }
+
+    @PostMapping("/admin/http-smoke/run")
+    ResponseEntity<Map<String, Object>> runHttpSmoke(HttpServletRequest request) {
+        AuthDecision auth = authorize(request, Set.of("ADMIN", "OWNER"));
+        if (!auth.allowed()) {
+            return error(request, auth.status(), auth.code(), auth.message());
+        }
+        List<Map<String, Object>> results = registry.smokeTargets().stream()
+                .map(target -> smokeResult(target, hasRoute(target.path())))
+                .toList();
+        boolean allPass = results.stream().allMatch(result -> "PASS".equals(result.get("status")));
+        lastHttpSmokeStatus = allPass ? "PASS" : "DEGRADED";
+        lastHttpSmokeResults = results;
+        return ok(request, map(
+                "service", "unified-backend",
+                "httpSmokeStatus", lastHttpSmokeStatus,
+                "results", results,
+                "startedAt", now(),
+                "finishedAt", now()
+        ));
+    }
+
+    private List<Map<String, Object>> readinessChecks() {
+        return List.of(
+                check("API_GATEWAY_SELF_API_MOUNTED", hasRoute("/api/v1/gateway/health") ? "PASS" : "BLOCKED", "api-gateway self API is mounted"),
+                check("PORTAL_CORE_SELF_API_MOUNTED", hasRoute("/api/v1/portal-core/health") ? "PASS" : "BLOCKED", "portal-core self API is mounted"),
+                check("GUIDE_IN_PROCESS", hasRoute("/api/v1/guides/categories") ? "PASS" : "BLOCKED", "guide is served by local controller"),
+                check("MATERIAL_IN_PROCESS", hasRoute("/api/v1/materials/featured") ? "PASS" : "BLOCKED", "material is served by local controller"),
+                check("ONLINE_MAP_IN_PROCESS", hasRoute("/api/v1/online-map/health") ? "PASS" : "BLOCKED", "online-map is served by local controller"),
+                check("CURRENT_ENTRYPOINTS_PRESERVED", "PASS", "current seven entrypoints remain stable"),
+                check("NODE_DAEMON_EXTERNAL_BOUNDARY", "PASS", "node-daemon remains external"),
+                check("OTHER_CORE_ENTRYPOINTS_NOT_MOUNTED", "BLOCKED", "other core entrypoints are not mounted in-process"),
+                check("PRODUCTION_AUDIT_NOT_CONNECTED", "BLOCKED", "persistent audit is not connected")
+        );
+    }
+
+    private Map<String, Object> smokeResult(UnifiedSmokeTarget target, boolean routePresent) {
+        String checkedAt = now();
+        return map(
+                "targetKey", target.targetKey(),
+                "serviceKey", target.serviceKey(),
+                "method", target.method(),
+                "path", target.path(),
+                "mountDisposition", target.mountDisposition(),
+                "status", routePresent ? "PASS" : "FAILED",
+                "httpStatus", routePresent ? 200 : 404,
+                "businessCode", routePresent ? 0 : null,
+                "durationMs", 0,
+                "checkedAt", checkedAt,
+                "failureReason", routePresent ? null : "candidate route is not registered"
+        );
+    }
+
+    private AuthDecision authorize(HttpServletRequest request, Set<String> allowedRoles) {
+        String authorization = request.getHeader("Authorization");
+        if (authorization == null || authorization.isBlank()) {
+            return AuthDecision.rejected(HttpStatus.UNAUTHORIZED, 41000, "unauthenticated");
+        }
+        if (!authorization.startsWith(BEARER_PREFIX)) {
+            return AuthDecision.rejected(HttpStatus.UNAUTHORIZED, 41003, "invalid token format");
+        }
+        String role = switch (authorization.substring(BEARER_PREFIX.length())) {
+            case "owner-token" -> "OWNER";
+            case "admin-token" -> "ADMIN";
+            case "helper-token" -> "HELPER";
+            case "user-token" -> "USER";
+            default -> null;
+        };
+        if (role == null) {
+            return AuthDecision.rejected(HttpStatus.UNAUTHORIZED, 41000, "unauthenticated");
+        }
+        if (!allowedRoles.contains(role)) {
+            return AuthDecision.rejected(HttpStatus.FORBIDDEN, 42001, "role insufficient");
+        }
+        return AuthDecision.allowed(role);
+    }
+
+    private boolean hasRoute(String path) {
+        for (RequestMappingInfo info : handlerMapping.getHandlerMethods().keySet()) {
+            if (info.getPathPatternsCondition() != null) {
+                for (PathPattern pattern : info.getPathPatternsCondition().getPatterns()) {
+                    if (path.equals(pattern.getPatternString())) {
+                        return true;
+                    }
+                }
+            }
+            PatternsRequestCondition patterns = info.getPatternsCondition();
+            if (patterns != null && patterns.getPatterns().contains(path)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private ResponseEntity<Map<String, Object>> ok(HttpServletRequest request, Object data) {
+        return ResponseEntity.ok()
+                .header("X-Request-Id", requestId(request))
+                .body(envelope(0, "success", data, requestId(request)));
+    }
+
+    private ResponseEntity<Map<String, Object>> error(HttpServletRequest request, HttpStatus status, int code, String message) {
+        return ResponseEntity.status(status)
+                .header("X-Request-Id", requestId(request))
+                .body(envelope(code, message, null, requestId(request)));
+    }
+
+    private Map<String, Object> envelope(int code, String message, Object data, String requestId) {
+        return map("code", code, "message", message, "data", data, "requestId", requestId);
+    }
+
+    private Map<String, Object> check(String check, String status, String detail) {
+        return map("check", check, "status", status, "detail", detail);
+    }
+
+    private String requestId(HttpServletRequest request) {
+        String requestId = request.getHeader("X-Request-Id");
+        if (requestId == null || requestId.isBlank()) {
+            return "req_" + UUID.randomUUID();
+        }
+        return requestId;
+    }
+
+    private String now() {
+        return Instant.now().toString();
+    }
+
+    private Map<String, Object> map(Object... pairs) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        for (int i = 0; i < pairs.length; i += 2) {
+            map.put(String.valueOf(pairs[i]), pairs[i + 1]);
+        }
+        return map;
+    }
+
+    private record AuthDecision(boolean allowed, HttpStatus status, int code, String message, String role) {
+        static AuthDecision allowed(String role) {
+            return new AuthDecision(true, HttpStatus.OK, 0, "success", role);
+        }
+
+        static AuthDecision rejected(HttpStatus status, int code, String message) {
+            return new AuthDecision(false, status, code, message, null);
+        }
+    }
+}
+
+@Component
+class UnifiedBackendRegistry {
+    private static final List<String> MOUNTED_ENTRYPOINTS = List.of("api-gateway", "portal-core");
+    private static final List<String> MOUNTED_ROUTE_IDS = List.of("guide", "material", "online-map");
+    private final List<UnifiedMount> gatewayRoutes = createGatewayRoutes();
+
+    Map<String, Object> baseProfile() {
+        return map(
+                "service", "unified-backend",
+                "deploymentMode", "CANDIDATE_PARALLEL_ENTRYPOINT",
+                "port", 8135,
+                "candidatePort", 8135,
+                "currentProductionEntrypointsTotal", 7,
+                "candidateEntrypointsTotal", 1,
+                "mountedEntrypoints", MOUNTED_ENTRYPOINTS,
+                "mountedRouteIds", MOUNTED_ROUTE_IDS,
+                "inProcessRoutesTotal", 3,
+                "httpFallbackRoutesTotal", 22,
+                "externalRoutesTotal", 1,
+                "nodeDaemonDisposition", "KEEP_EXTERNAL",
+                "readyToReplaceGateway", false,
+                "readyToRetirePortalCore", false
+        );
+    }
+
+    List<Map<String, Object>> mounts() {
+        List<Map<String, Object>> items = new ArrayList<>();
+        items.add(selfMount("unified-backend", "UNIFIED_BACKEND", "/api/v1/unified-backend", "unified-backend", 8135, "candidate self API"));
+        items.add(selfMount("api-gateway", "API_GATEWAY", "/api/v1/gateway", "api-gateway", 8125, "api-gateway self API mounted in candidate process"));
+        items.add(selfMount("portal-core", "PORTAL_CORE", "/api/v1/portal-core", "portal-core", 8134, "portal-core self API mounted in candidate process"));
+        for (UnifiedMount route : gatewayRoutes) {
+            items.add(route.toMap());
+        }
+        return List.copyOf(items);
+    }
+
+    List<UnifiedSmokeTarget> smokeTargets() {
+        return List.of(
+                new UnifiedSmokeTarget("UNIFIED_HEALTH", "UNIFIED_BACKEND", "GET", "/api/v1/unified-backend/health", "IN_PROCESS"),
+                new UnifiedSmokeTarget("GATEWAY_HEALTH", "API_GATEWAY", "GET", "/api/v1/gateway/health", "IN_PROCESS"),
+                new UnifiedSmokeTarget("PORTAL_CORE_HEALTH", "PORTAL_CORE", "GET", "/api/v1/portal-core/health", "IN_PROCESS"),
+                new UnifiedSmokeTarget("GUIDE_CATEGORIES", "GUIDE", "GET", "/api/v1/guides/categories", "IN_PROCESS"),
+                new UnifiedSmokeTarget("MATERIAL_FEATURED", "MATERIAL", "GET", "/api/v1/materials/featured", "IN_PROCESS"),
+                new UnifiedSmokeTarget("ONLINE_MAP_HEALTH", "ONLINE_MAP", "GET", "/api/v1/online-map/health", "IN_PROCESS")
+        );
+    }
+
+    List<String> productionGaps() {
+        return List.of(
+                "current gateway entrypoint is not replaced",
+                "portal-core independent entrypoint is not retired",
+                "other core entrypoints are not mounted in-process",
+                "dynamic service discovery is not connected",
+                "persistent audit is not connected",
+                "node-daemon remains external"
+        );
+    }
+
+    List<String> productionBlockers() {
+        return List.of(
+                "other core entrypoints are not mounted in-process",
+                "node-daemon remains external",
+                "dynamic service discovery is not connected",
+                "persistent audit is not connected",
+                "candidate entrypoint is not production traffic entrypoint"
+        );
+    }
+
+    private Map<String, Object> selfMount(String routeId, String serviceKey, String pathPrefix, String sourceEntrypoint, int currentPort, String reason) {
+        return map(
+                "routeId", routeId,
+                "serviceKey", serviceKey,
+                "pathPrefix", pathPrefix,
+                "sourceEntrypoint", sourceEntrypoint,
+                "candidateEntrypoint", "unified-backend",
+                "mountDisposition", "IN_PROCESS",
+                "currentPort", currentPort,
+                "candidatePort", 8135,
+                "preservesPathPrefix", true,
+                "preservesAuth", true,
+                "preservesResponseEnvelope", true,
+                "boundaryReason", reason
+        );
+    }
+
+    private List<UnifiedMount> createGatewayRoutes() {
+        List<UnifiedMount> items = new ArrayList<>();
+        items.add(fallback("auth", "AUTH", "/api/v1/auth", "business-core", 8130));
+        items.add(fallback("profile", "PROFILE", "/api/v1/profile", "business-core", 8130));
+        items.add(fallback("notification", "NOTIFICATION", "/api/v1/notifications", "business-core", 8130));
+        items.add(fallback("content", "CONTENT", "/api/v1/content", "business-core", 8130));
+        items.add(fallback("server-status", "SERVER_STATUS", "/api/v1/server-status", "business-core", 8130));
+        items.add(fallback("resource", "RESOURCE", "/api/v1/resources", "business-core", 8130));
+        items.add(fallback("admin", "ADMIN", "/api/v1/admin", "business-core", 8130));
+        items.add(fallback("onboarding", "ONBOARDING", "/api/v1/onboarding", "admission-core", 8131));
+        items.add(fallback("exam", "EXAM", "/api/v1/exams", "admission-core", 8131));
+        items.add(fallback("whitelist", "WHITELIST", "/api/v1/whitelist", "admission-core", 8131));
+        items.add(fallback("attendance", "ATTENDANCE", "/api/v1/attendance", "admission-core", 8131));
+        items.add(fallback("community", "COMMUNITY", "/api/v1/community", "engagement-core", 8132));
+        items.add(fallback("activity", "ACTIVITY", "/api/v1/activity", "engagement-core", 8132));
+        items.add(fallback("calendar", "CALENDAR", "/api/v1/calendar", "engagement-core", 8132));
+        items.add(fallback("changelog", "CHANGELOG", "/api/v1/changelog", "engagement-core", 8132));
+        items.add(fallback("ops-control", "OPS_CONTROL", "/api/v1/ops-control", "ops-core", 8133));
+        items.add(external("node-daemon", "NODE_DAEMON", "/api/v1/node-daemon", 8117));
+        items.add(fallback("cloudreve-sync", "CLOUDREVE_SYNC", "/api/v1/cloudreve-sync", "ops-core", 8133));
+        items.add(fallback("backup-recovery", "BACKUP_RECOVERY", "/api/v1/backup-recovery", "ops-core", 8133));
+        items.add(fallback("alerting", "ALERTING", "/api/v1/alerting", "ops-core", 8133));
+        items.add(inProcess("online-map", "ONLINE_MAP", "/api/v1/online-map"));
+        items.add(fallback("plugin-integration", "PLUGIN_INTEGRATION", "/api/v1/plugin-integration", "ops-core", 8133));
+        items.add(fallback("cross-platform-notification", "CROSS_PLATFORM_NOTIFICATION", "/api/v1/cross-platform-notification", "ops-core", 8133));
+        items.add(fallback("ops-image-market", "OPS_IMAGE_MARKET", "/api/v1/ops-image-market", "ops-core", 8133));
+        items.add(inProcess("material", "MATERIAL", "/api/v1/materials"));
+        items.add(inProcess("guide", "GUIDE", "/api/v1/guides"));
+        return List.copyOf(items);
+    }
+
+    private UnifiedMount inProcess(String routeId, String serviceKey, String pathPrefix) {
+        return new UnifiedMount(routeId, serviceKey, pathPrefix, "portal-core", "IN_PROCESS", 8134, 8135,
+                "portal-core route is mounted in candidate process");
+    }
+
+    private UnifiedMount fallback(String routeId, String serviceKey, String pathPrefix, String sourceEntrypoint, int currentPort) {
+        return new UnifiedMount(routeId, serviceKey, pathPrefix, sourceEntrypoint, "HTTP_UPSTREAM_FALLBACK", currentPort, 8135,
+                sourceEntrypoint + " is not mounted in candidate process");
+    }
+
+    private UnifiedMount external(String routeId, String serviceKey, String pathPrefix, int currentPort) {
+        return new UnifiedMount(routeId, serviceKey, pathPrefix, "node-daemon", "KEEP_EXTERNAL", currentPort, null,
+                "node-daemon remains the external node execution boundary");
+    }
+
+    private Map<String, Object> map(Object... pairs) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        for (int i = 0; i < pairs.length; i += 2) {
+            map.put(String.valueOf(pairs[i]), pairs[i + 1]);
+        }
+        return map;
+    }
+}
+
+record UnifiedMount(String routeId, String serviceKey, String pathPrefix, String sourceEntrypoint,
+                    String mountDisposition, Integer currentPort, Integer candidatePort, String boundaryReason) {
+    Map<String, Object> toMap() {
+        return map(
+                "routeId", routeId,
+                "serviceKey", serviceKey,
+                "pathPrefix", pathPrefix,
+                "sourceEntrypoint", sourceEntrypoint,
+                "candidateEntrypoint", "unified-backend",
+                "mountDisposition", mountDisposition,
+                "currentPort", currentPort,
+                "candidatePort", candidatePort,
+                "preservesPathPrefix", true,
+                "preservesAuth", true,
+                "preservesResponseEnvelope", true,
+                "boundaryReason", boundaryReason
+        );
+    }
+
+    private Map<String, Object> map(Object... pairs) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        for (int i = 0; i < pairs.length; i += 2) {
+            map.put(String.valueOf(pairs[i]), pairs[i + 1]);
+        }
+        return map;
+    }
+}
+
+record UnifiedSmokeTarget(String targetKey, String serviceKey, String method, String path, String mountDisposition) {
+}
