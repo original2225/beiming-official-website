@@ -103,6 +103,31 @@ class UnifiedBackendInProcessMountTest {
     }
 
     @Test
+    void servesAdmissionCoreRoutesInProcessBeforeGatewayCatchAllProxy() throws Exception {
+        mvc.perform(get("/api/v1/admission-core/health").header("X-Request-Id", "req-admission-core-self"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.service").value("admission-core"));
+
+        mvc.perform(get("/api/v1/onboarding/me/progress").header("X-Request-Id", "req-onboarding-in-process"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(41000));
+
+        mvc.perform(get("/api/v1/exams/me/sessions/current").header("X-Request-Id", "req-exam-in-process"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(41000));
+
+        mvc.perform(get("/api/v1/whitelist/me/applications/current").header("X-Request-Id", "req-whitelist-in-process"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(41000));
+
+        mvc.perform(get("/api/v1/attendance/leaderboard").header("X-Request-Id", "req-attendance-in-process"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0));
+
+        assertThat(client.calls()).doesNotContain("ONBOARDING", "EXAM", "WHITELIST", "ATTENDANCE");
+    }
+
+    @Test
     void stillServesGatewayBusinessCoreAndPortalCoreSelfApisThroughCandidateEntrypoint() throws Exception {
         mvc.perform(get("/api/v1/gateway/health").header("X-Request-Id", "req-gateway-self"))
                 .andExpect(status().isOk())
@@ -111,6 +136,10 @@ class UnifiedBackendInProcessMountTest {
         mvc.perform(get("/api/v1/business-core/health").header("X-Request-Id", "req-business-self"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.service").value("business-core"));
+
+        mvc.perform(get("/api/v1/admission-core/health").header("X-Request-Id", "req-admission-self"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.service").value("admission-core"));
 
         mvc.perform(get("/api/v1/portal-core/health").header("X-Request-Id", "req-portal-self"))
                 .andExpect(status().isOk())
@@ -142,6 +171,7 @@ class UnifiedBackendInProcessMountTest {
             calls.add(route.serviceKey());
             if (List.of(
                     "AUTH", "PROFILE", "NOTIFICATION", "CONTENT", "SERVER_STATUS", "RESOURCE", "ADMIN",
+                    "ONBOARDING", "EXAM", "WHITELIST", "ATTENDANCE",
                     "GUIDE", "MATERIAL", "ONLINE_MAP"
             ).contains(route.serviceKey())) {
                 throw new AssertionError(route.serviceKey() + " must be served in-process");
