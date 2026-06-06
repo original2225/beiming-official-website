@@ -7,6 +7,10 @@ api-gateway:
     portal-core-base-url: http://127.0.0.1:8134
     ops-core-base-url: http://127.0.0.1:8133
 
+beiming:
+  admin:
+    test-mode: true
+
 portal-core:
   test-controls:
     enabled: false

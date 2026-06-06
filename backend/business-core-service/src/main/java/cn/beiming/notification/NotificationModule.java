@@ -305,6 +305,10 @@ class NotificationAuthContextProvider {
     private boolean failTargetIncompatible;
     private int writeCallCount;
 
+    NotificationAuthContextProvider() {
+        reset();
+    }
+
     synchronized void reset() {
         usersByToken.clear();
         targetsByUserId.clear();

@@ -892,10 +892,14 @@ class GatewayState {
                 "serviceDirectory", "backend/unified-backend-service",
                 "candidatePort", 8135,
                 "deploymentMode", "CANDIDATE_PARALLEL_ENTRYPOINT",
-                "pilotMountedEntrypoints", List.of("api-gateway", "portal-core"),
-                "pilotMountedRouteIds", List.of("guide", "material", "online-map"),
+                "pilotMountedEntrypoints", List.of("api-gateway", "business-core", "portal-core"),
+                "pilotMountedRouteIds", List.of(
+                        "auth", "profile", "notification", "content", "server-status", "resource", "admin",
+                        "guide", "material", "online-map"
+                ),
                 "nodeDaemonDisposition", "KEEP_EXTERNAL",
                 "readyToReplaceGateway", false,
+                "readyToRetireBusinessCore", false,
                 "readyToRetirePortalCore", false
         );
     }
@@ -1159,7 +1163,7 @@ class GatewayApiException extends RuntimeException {
     }
 }
 
-@RestControllerAdvice
+@RestControllerAdvice(assignableTypes = GatewayController.class)
 class GatewayExceptionHandler {
     @ExceptionHandler(GatewayApiException.class)
     ResponseEntity<Map<String, Object>> api(GatewayApiException ex) {

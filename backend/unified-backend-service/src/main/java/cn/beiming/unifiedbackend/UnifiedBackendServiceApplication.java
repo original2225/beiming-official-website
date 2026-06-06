@@ -13,6 +13,14 @@ import org.springframework.context.annotation.FullyQualifiedAnnotationBeanNameGe
         basePackages = {
                 "cn.beiming.unifiedbackend",
                 "cn.beiming.apigateway",
+                "cn.beiming.core",
+                "cn.beiming.auth",
+                "cn.beiming.profile",
+                "cn.beiming.notification",
+                "cn.beiming.content",
+                "cn.beiming.serverstatus",
+                "cn.beiming.resource",
+                "cn.beiming.admin",
                 "cn.beiming.portalcore",
                 "cn.beiming.guide",
                 "cn.beiming.material",
@@ -21,7 +29,7 @@ import org.springframework.context.annotation.FullyQualifiedAnnotationBeanNameGe
         nameGenerator = FullyQualifiedAnnotationBeanNameGenerator.class,
         excludeFilters = @ComponentScan.Filter(
                 type = FilterType.REGEX,
-                pattern = "cn\\.beiming\\.(apigateway|portalcore|guide|material|onlinemap)\\..*ServiceApplication"
+                pattern = "cn\\.beiming\\.(apigateway|core|portalcore|guide|material|onlinemap)\\..*ServiceApplication"
         )
 )
 public class UnifiedBackendServiceApplication {
