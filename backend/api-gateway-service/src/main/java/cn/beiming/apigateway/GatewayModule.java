@@ -799,6 +799,7 @@ class GatewayState {
                         "currentBusinessRoutePreserved", true,
                         "currentBusinessRoutesTotal", routes.size(),
                         "gatewayApiTotal", GATEWAY_SELF_APIS.size(),
+                        "pilotCandidate", pilotCandidate(),
                         "dynamicServiceDiscoveryConnected", false,
                         "inProcessMountImplemented", false,
                         "legacyEntrypointsRestored", false
@@ -883,6 +884,20 @@ class GatewayState {
 
     private Map<String, Object> check(String name, String status, String detail) {
         return map("check", name, "status", status, "detail", detail);
+    }
+
+    private Map<String, Object> pilotCandidate() {
+        return map(
+                "entrypointKey", "unified-backend",
+                "serviceDirectory", "backend/unified-backend-service",
+                "candidatePort", 8135,
+                "deploymentMode", "CANDIDATE_PARALLEL_ENTRYPOINT",
+                "pilotMountedEntrypoints", List.of("api-gateway", "portal-core"),
+                "pilotMountedRouteIds", List.of("guide", "material", "online-map"),
+                "nodeDaemonDisposition", "KEEP_EXTERNAL",
+                "readyToReplaceGateway", false,
+                "readyToRetirePortalCore", false
+        );
     }
 
     private Map<String, Object> map(Object... pairs) {

@@ -79,14 +79,15 @@ class GatewayApiContractTest {
         addRange(mapped, "GATE-OCORE", 1, 10);
         addRange(mapped, "GATE-PCORE", 1, 11);
         addRange(mapped, "GATE-TOPOLOGY", 1, 12);
+        addRange(mapped, "GATE-UNIFIED", 1, 4);
         addRange(mapped, "GATE-UP", 1, 20);
         addRange(mapped, "GATE-LOG", 1, 20);
         addRange(mapped, "GATE-PROXY", 1, 49);
         addRange(mapped, "GATE-CORS", 1, 10);
         addRange(mapped, "GATE-SEC", 1, 11);
 
-        assertThat(mapped).hasSize(247);
-        assertThat(mapped).contains("GATE-COM-001", "GATE-PFX-026", "GATE-BCORE-010", "GATE-ACORE-010", "GATE-ECORE-010", "GATE-OCORE-010", "GATE-PCORE-010", "GATE-PCORE-011", "GATE-TOPOLOGY-012", "GATE-UP-020", "GATE-PROXY-049", "GATE-SEC-011");
+        assertThat(mapped).hasSize(251);
+        assertThat(mapped).contains("GATE-COM-001", "GATE-PFX-026", "GATE-BCORE-010", "GATE-ACORE-010", "GATE-ECORE-010", "GATE-OCORE-010", "GATE-PCORE-010", "GATE-PCORE-011", "GATE-TOPOLOGY-012", "GATE-UNIFIED-004", "GATE-UP-020", "GATE-PROXY-049", "GATE-SEC-011");
     }
 
     @Test
@@ -197,6 +198,16 @@ class GatewayApiContractTest {
         assertThat(topology.at("/data/currentEntrypoints").size()).isEqualTo(7);
         assertThat(topology.at("/data/futureUnifiedBackend/entrypointKey").asText()).isEqualTo("unified-backend");
         assertThat(topology.at("/data/futureUnifiedBackend/nodeDaemonDisposition").asText()).isEqualTo("EXTERNAL_NODE_EXECUTION_BOUNDARY");
+        JsonNode pilotCandidate = topology.at("/data/futureUnifiedBackend/pilotCandidate");
+        assertThat(pilotCandidate.path("entrypointKey").asText()).isEqualTo("unified-backend");
+        assertThat(pilotCandidate.path("serviceDirectory").asText()).isEqualTo("backend/unified-backend-service");
+        assertThat(pilotCandidate.path("candidatePort").asInt()).isEqualTo(8135);
+        assertThat(pilotCandidate.path("deploymentMode").asText()).isEqualTo("CANDIDATE_PARALLEL_ENTRYPOINT");
+        assertThat(pilotCandidate.path("pilotMountedEntrypoints").toString()).contains("api-gateway", "portal-core");
+        assertThat(pilotCandidate.path("pilotMountedRouteIds").toString()).contains("guide", "material", "online-map");
+        assertThat(pilotCandidate.path("nodeDaemonDisposition").asText()).isEqualTo("KEEP_EXTERNAL");
+        assertThat(pilotCandidate.path("readyToReplaceGateway").asBoolean()).isFalse();
+        assertThat(pilotCandidate.path("readyToRetirePortalCore").asBoolean()).isFalse();
 
         JsonNode gateway = findByText(topology.at("/data/currentEntrypoints"), "entrypointKey", "api-gateway");
         assertThat(gateway.path("port").asInt()).isEqualTo(8125);
