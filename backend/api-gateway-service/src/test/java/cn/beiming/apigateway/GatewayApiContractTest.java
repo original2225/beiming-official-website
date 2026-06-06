@@ -203,10 +203,13 @@ class GatewayApiContractTest {
         assertThat(pilotCandidate.path("serviceDirectory").asText()).isEqualTo("backend/unified-backend-service");
         assertThat(pilotCandidate.path("candidatePort").asInt()).isEqualTo(8135);
         assertThat(pilotCandidate.path("deploymentMode").asText()).isEqualTo("CANDIDATE_PARALLEL_ENTRYPOINT");
-        assertThat(pilotCandidate.path("pilotMountedEntrypoints").toString()).contains("api-gateway", "portal-core");
-        assertThat(pilotCandidate.path("pilotMountedRouteIds").toString()).contains("guide", "material", "online-map");
+        assertThat(pilotCandidate.path("pilotMountedEntrypoints").toString()).contains("api-gateway", "business-core", "portal-core");
+        assertThat(pilotCandidate.path("pilotMountedRouteIds").toString()).contains(
+                "auth", "profile", "notification", "content", "server-status", "resource", "admin",
+                "guide", "material", "online-map");
         assertThat(pilotCandidate.path("nodeDaemonDisposition").asText()).isEqualTo("KEEP_EXTERNAL");
         assertThat(pilotCandidate.path("readyToReplaceGateway").asBoolean()).isFalse();
+        assertThat(pilotCandidate.path("readyToRetireBusinessCore").asBoolean()).isFalse();
         assertThat(pilotCandidate.path("readyToRetirePortalCore").asBoolean()).isFalse();
 
         JsonNode gateway = findByText(topology.at("/data/currentEntrypoints"), "entrypointKey", "api-gateway");

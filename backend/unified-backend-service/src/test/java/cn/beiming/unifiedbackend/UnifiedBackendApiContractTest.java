@@ -43,7 +43,7 @@ class UnifiedBackendApiContractTest {
         Set<String> mapped = new TreeSet<>();
         addRange(mapped, "UBACK-COM", 1, 1);
         addRange(mapped, "UBACK-AUTH", 1, 2);
-        addRange(mapped, "UBACK-MOUNT", 1, 5);
+        addRange(mapped, "UBACK-MOUNT", 1, 10);
         addRange(mapped, "UBACK-GATE", 1, 1);
         addRange(mapped, "UBACK-READY", 1, 1);
         addRange(mapped, "UBACK-SMOKE", 1, 1);
@@ -53,14 +53,14 @@ class UnifiedBackendApiContractTest {
         assertThat(mapped).contains(
                 "UBACK-COM-001",
                 "UBACK-AUTH-001",
-                "UBACK-MOUNT-005",
+                "UBACK-MOUNT-010",
                 "UBACK-GATE-001",
                 "UBACK-READY-001",
                 "UBACK-SMOKE-001",
                 "UBACK-BOUNDARY-001",
                 "UBACK-REGRESS-001"
         );
-        assertThat(mapped).hasSize(13);
+        assertThat(mapped).hasSize(18);
     }
 
     @Test
@@ -75,7 +75,15 @@ class UnifiedBackendApiContractTest {
                 .andExpect(jsonPath("$.data.port").value(8135))
                 .andExpect(jsonPath("$.data.deploymentMode").value("CANDIDATE_PARALLEL_ENTRYPOINT"))
                 .andExpect(jsonPath("$.data.mountedEntrypoints[?(@ == 'api-gateway')]").exists())
+                .andExpect(jsonPath("$.data.mountedEntrypoints[?(@ == 'business-core')]").exists())
                 .andExpect(jsonPath("$.data.mountedEntrypoints[?(@ == 'portal-core')]").exists())
+                .andExpect(jsonPath("$.data.mountedRouteIds[?(@ == 'auth')]").exists())
+                .andExpect(jsonPath("$.data.mountedRouteIds[?(@ == 'profile')]").exists())
+                .andExpect(jsonPath("$.data.mountedRouteIds[?(@ == 'notification')]").exists())
+                .andExpect(jsonPath("$.data.mountedRouteIds[?(@ == 'content')]").exists())
+                .andExpect(jsonPath("$.data.mountedRouteIds[?(@ == 'server-status')]").exists())
+                .andExpect(jsonPath("$.data.mountedRouteIds[?(@ == 'resource')]").exists())
+                .andExpect(jsonPath("$.data.mountedRouteIds[?(@ == 'admin')]").exists())
                 .andExpect(jsonPath("$.data.mountedRouteIds[?(@ == 'guide')]").exists())
                 .andExpect(jsonPath("$.data.mountedRouteIds[?(@ == 'material')]").exists())
                 .andExpect(jsonPath("$.data.mountedRouteIds[?(@ == 'online-map')]").exists())
@@ -122,20 +130,29 @@ class UnifiedBackendApiContractTest {
         assertThat(summary.at("/data/service").asText()).isEqualTo("unified-backend");
         assertThat(summary.at("/data/currentProductionEntrypointsTotal").asInt()).isEqualTo(7);
         assertThat(summary.at("/data/candidateEntrypointsTotal").asInt()).isEqualTo(1);
-        assertThat(summary.at("/data/inProcessRoutesTotal").asInt()).isEqualTo(3);
-        assertThat(summary.at("/data/httpFallbackRoutesTotal").asInt()).isEqualTo(22);
+        assertThat(summary.at("/data/inProcessRoutesTotal").asInt()).isEqualTo(10);
+        assertThat(summary.at("/data/httpFallbackRoutesTotal").asInt()).isEqualTo(15);
         assertThat(summary.at("/data/externalRoutesTotal").asInt()).isEqualTo(1);
         assertThat(summary.at("/data/nodeDaemonDisposition").asText()).isEqualTo("KEEP_EXTERNAL");
         assertThat(summary.at("/data/readyToReplaceGateway").asBoolean()).isFalse();
+        assertThat(summary.at("/data/readyToRetireBusinessCore").asBoolean()).isFalse();
         assertThat(summary.at("/data/readyToRetirePortalCore").asBoolean()).isFalse();
         assertNoSecrets(summary);
 
         JsonNode mounts = performJson(get("/api/v1/unified-backend/admin/mounts")
                 .header("Authorization", "Bearer owner-token"));
+        assertMount(mounts, "business-core", "BUSINESS_CORE", "/api/v1/business-core", "IN_PROCESS");
+        assertMount(mounts, "auth", "AUTH", "/api/v1/auth", "IN_PROCESS");
+        assertMount(mounts, "profile", "PROFILE", "/api/v1/profile", "IN_PROCESS");
+        assertMount(mounts, "notification", "NOTIFICATION", "/api/v1/notifications", "IN_PROCESS");
+        assertMount(mounts, "content", "CONTENT", "/api/v1/content", "IN_PROCESS");
+        assertMount(mounts, "server-status", "SERVER_STATUS", "/api/v1/server-status", "IN_PROCESS");
+        assertMount(mounts, "resource", "RESOURCE", "/api/v1/resources", "IN_PROCESS");
+        assertMount(mounts, "admin", "ADMIN", "/api/v1/admin", "IN_PROCESS");
         assertMount(mounts, "guide", "GUIDE", "/api/v1/guides", "IN_PROCESS");
         assertMount(mounts, "material", "MATERIAL", "/api/v1/materials", "IN_PROCESS");
         assertMount(mounts, "online-map", "ONLINE_MAP", "/api/v1/online-map", "IN_PROCESS");
-        assertMount(mounts, "auth", "AUTH", "/api/v1/auth", "HTTP_UPSTREAM_FALLBACK");
+        assertMount(mounts, "onboarding", "ONBOARDING", "/api/v1/onboarding", "HTTP_UPSTREAM_FALLBACK");
         assertMount(mounts, "node-daemon", "NODE_DAEMON", "/api/v1/node-daemon", "KEEP_EXTERNAL");
         assertNoSecrets(mounts);
 
@@ -143,9 +160,10 @@ class UnifiedBackendApiContractTest {
                 .header("Authorization", "Bearer admin-token"));
         assertThat(readiness.at("/data/readyForProduction").asBoolean()).isFalse();
         assertThat(readiness.at("/data/readyToReplaceGateway").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/readyToRetireBusinessCore").asBoolean()).isFalse();
         assertThat(readiness.at("/data/readyToRetirePortalCore").asBoolean()).isFalse();
         assertThat(readiness.at("/data/productionBlockers").toString())
-                .contains("other core entrypoints are not mounted in-process")
+                .contains("remaining core entrypoints are not mounted in-process")
                 .contains("node-daemon remains external");
         assertNoSecrets(readiness);
     }
@@ -158,11 +176,19 @@ class UnifiedBackendApiContractTest {
 
         assertThat(smoke.at("/data/service").asText()).isEqualTo("unified-backend");
         assertThat(smoke.at("/data/httpSmokeStatus").asText()).isIn("PASS", "DEGRADED");
-        assertThat(smoke.at("/data/results").size()).isEqualTo(6);
+        assertThat(smoke.at("/data/results").size()).isEqualTo(14);
         assertThat(smoke.at("/data/results").toString())
                 .contains("\"targetKey\":\"UNIFIED_HEALTH\"")
                 .contains("\"targetKey\":\"GATEWAY_HEALTH\"")
+                .contains("\"targetKey\":\"BUSINESS_CORE_HEALTH\"")
                 .contains("\"targetKey\":\"PORTAL_CORE_HEALTH\"")
+                .contains("\"targetKey\":\"AUTH_SESSION_VERIFY\"")
+                .contains("\"targetKey\":\"PROFILE_MEMBERS\"")
+                .contains("\"targetKey\":\"NOTIFICATION_UNREAD_COUNT\"")
+                .contains("\"targetKey\":\"CONTENT_HOME\"")
+                .contains("\"targetKey\":\"SERVER_STATUS_OVERVIEW\"")
+                .contains("\"targetKey\":\"RESOURCE_LIST\"")
+                .contains("\"targetKey\":\"ADMIN_OVERVIEW\"")
                 .contains("\"targetKey\":\"GUIDE_CATEGORIES\"")
                 .contains("\"targetKey\":\"MATERIAL_FEATURED\"")
                 .contains("\"targetKey\":\"ONLINE_MAP_HEALTH\"");

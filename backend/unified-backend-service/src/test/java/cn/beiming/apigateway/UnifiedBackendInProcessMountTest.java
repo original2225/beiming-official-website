@@ -20,10 +20,11 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest(classes = {UnifiedBackendServiceApplication.class, UnifiedBackendInProcessMountTest.FailOnPortalProxyConfig.class})
+@SpringBootTest(classes = {UnifiedBackendServiceApplication.class, UnifiedBackendInProcessMountTest.FailOnMountedProxyConfig.class})
 @AutoConfigureMockMvc
 @DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_EACH_TEST_METHOD)
 class UnifiedBackendInProcessMountTest {
@@ -31,7 +32,7 @@ class UnifiedBackendInProcessMountTest {
     private MockMvc mvc;
 
     @Autowired
-    private FailOnPortalProxyHttpClient client;
+    private FailOnMountedProxyHttpClient client;
 
     @BeforeEach
     void reset() {
@@ -56,10 +57,60 @@ class UnifiedBackendInProcessMountTest {
     }
 
     @Test
-    void stillServesGatewayAndPortalCoreSelfApisThroughCandidateEntrypoint() throws Exception {
+    void servesBusinessCoreRoutesInProcessBeforeGatewayCatchAllProxy() throws Exception {
+        mvc.perform(get("/api/v1/business-core/health").header("X-Request-Id", "req-business-core-self"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.service").value("business-core"));
+
+        mvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"user\",\"password\":\"Password12345\"}")
+                        .header("X-Request-Id", "req-auth-in-process"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.accessToken").exists());
+
+        mvc.perform(get("/api/v1/profile/members").header("X-Request-Id", "req-profile-in-process"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0));
+
+        mvc.perform(get("/api/v1/notifications/me/unread-count")
+                        .header("Authorization", "Bearer user-token")
+                        .header("X-Request-Id", "req-notification-in-process"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0));
+
+        mvc.perform(get("/api/v1/content/home").header("X-Request-Id", "req-content-in-process"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0));
+
+        mvc.perform(get("/api/v1/server-status/overview").header("X-Request-Id", "req-status-in-process"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0));
+
+        mvc.perform(get("/api/v1/resources").header("X-Request-Id", "req-resource-in-process"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0));
+
+        mvc.perform(get("/api/v1/admin/overview")
+                        .header("Authorization", "Bearer helper-token")
+                        .header("X-Request-Id", "req-admin-in-process"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0));
+
+        assertThat(client.calls()).doesNotContain(
+                "AUTH", "PROFILE", "NOTIFICATION", "CONTENT", "SERVER_STATUS", "RESOURCE", "ADMIN");
+    }
+
+    @Test
+    void stillServesGatewayBusinessCoreAndPortalCoreSelfApisThroughCandidateEntrypoint() throws Exception {
         mvc.perform(get("/api/v1/gateway/health").header("X-Request-Id", "req-gateway-self"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.service").value("api-gateway"));
+
+        mvc.perform(get("/api/v1/business-core/health").header("X-Request-Id", "req-business-self"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.service").value("business-core"));
 
         mvc.perform(get("/api/v1/portal-core/health").header("X-Request-Id", "req-portal-self"))
                 .andExpect(status().isOk())
@@ -67,15 +118,15 @@ class UnifiedBackendInProcessMountTest {
     }
 
     @TestConfiguration
-    static class FailOnPortalProxyConfig {
+    static class FailOnMountedProxyConfig {
         @Bean
         @Primary
-        FailOnPortalProxyHttpClient failOnPortalProxyHttpClient() {
-            return new FailOnPortalProxyHttpClient();
+        FailOnMountedProxyHttpClient failOnMountedProxyHttpClient() {
+            return new FailOnMountedProxyHttpClient();
         }
     }
 
-    static class FailOnPortalProxyHttpClient implements GatewayHttpClient {
+    static class FailOnMountedProxyHttpClient implements GatewayHttpClient {
         private final List<String> calls = new java.util.concurrent.CopyOnWriteArrayList<>();
 
         void reset() {
@@ -89,7 +140,10 @@ class UnifiedBackendInProcessMountTest {
         @Override
         public GatewayHttpResponse exchange(GatewayRoute route, GatewayHttpRequest request) {
             calls.add(route.serviceKey());
-            if (List.of("GUIDE", "MATERIAL", "ONLINE_MAP").contains(route.serviceKey())) {
+            if (List.of(
+                    "AUTH", "PROFILE", "NOTIFICATION", "CONTENT", "SERVER_STATUS", "RESOURCE", "ADMIN",
+                    "GUIDE", "MATERIAL", "ONLINE_MAP"
+            ).contains(route.serviceKey())) {
                 throw new AssertionError(route.serviceKey() + " must be served in-process");
             }
             byte[] body = "{\"code\":0,\"message\":\"success\",\"data\":{\"service\":\"fallback\"}}".getBytes(StandardCharsets.UTF_8);
