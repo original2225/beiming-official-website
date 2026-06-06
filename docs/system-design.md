@@ -50,7 +50,7 @@ API 网关或后端入口
   |-- online-map      在线地图接入控制面和公开展示快照，由 portal-core 承载
   |-- admin           后台聚合、配置、审计
   |-- ops-core        运维控制面合并运行单元，承载 ops-control、cloudreve-sync、backup-recovery、alerting、plugin-integration 和 ops-image-market
-  |-- unified-backend 统一后端候选入口，并行挂载 api-gateway、business-core 与 portal-core 试点
+  |-- unified-backend 统一后端候选入口，并行挂载 api-gateway、business-core、admission-core 与 portal-core 试点
   |-- ops-control     服务器与资源运维控制面
   |-- cloudreve-sync  Cloudreve API 深度接入与同步快照
   |-- backup-recovery 备份策略、备份点、校验、恢复演练和恢复申请
@@ -114,7 +114,7 @@ API 网关或后端入口
 
 第八轮单服务合并准备不真正合并进程。`api-gateway` 增加只读运行拓扑，用来固化当前 7 个 Maven 入口、26 条业务转发路由、五个 core 运行单元和 `node-daemon` 外部节点执行边界。后续如果把 `api-gateway` 与五个 core 收敛成统一后端入口，必须先保持现有路径前缀、认证方式、响应格式、模块数据归属和测试守卫不变，再逐步替换为 in-process 装配。`node-daemon` 不进入统一后端候选。
 
-第九轮新增 `unified-backend-service:8135` 作为统一后端并行候选入口，先把 `api-gateway` 与低风险的 `portal-core` 放进同一 Spring Boot 进程验证 in-process 挂载。后续优化把第一批基础业务运行单元 `business-core` 挂入同一候选进程，作为最终合并成一个后端服务前的第二个核心试点。候选入口必须保留 `/api/v1/gateway/**`、`/api/v1/business-core/**`、`/api/v1/portal-core/**`、`/api/v1/auth/**`、`/api/v1/profile/**`、`/api/v1/notifications/**`、`/api/v1/content/**`、`/api/v1/server-status/**`、`/api/v1/resources/**`、`/api/v1/admin/**`、`/api/v1/guides/**`、`/api/v1/materials/**` 和 `/api/v1/online-map/**` 原路径、原响应格式、原认证方式和原错误码。当前 `api-gateway-service:8125`、五个 core 入口和 `node-daemon-service:8117` 全部保留，`node-daemon` 继续作为外部节点执行边界。未挂载 core 路由只能标记为 `HTTP_UPSTREAM_FALLBACK`，不能描述成已经 in-process。
+第九轮新增 `unified-backend-service:8135` 作为统一后端并行候选入口，先把 `api-gateway` 与低风险的 `portal-core` 放进同一 Spring Boot 进程验证 in-process 挂载。后续优化把第一批基础业务运行单元 `business-core` 挂入同一候选进程，再把第二批入服准入运行单元 `admission-core` 挂入同一候选进程，作为最终合并成一个后端服务前的第三个核心试点。候选入口必须保留 `/api/v1/gateway/**`、`/api/v1/business-core/**`、`/api/v1/admission-core/**`、`/api/v1/portal-core/**`、`/api/v1/auth/**`、`/api/v1/profile/**`、`/api/v1/notifications/**`、`/api/v1/content/**`、`/api/v1/server-status/**`、`/api/v1/resources/**`、`/api/v1/admin/**`、`/api/v1/onboarding/**`、`/api/v1/exams/**`、`/api/v1/whitelist/**`、`/api/v1/attendance/**`、`/api/v1/guides/**`、`/api/v1/materials/**` 和 `/api/v1/online-map/**` 原路径、原响应格式、原认证方式和原错误码。当前 `api-gateway-service:8125`、五个 core 入口和 `node-daemon-service:8117` 全部保留，`node-daemon` 继续作为外部节点执行边界。未挂载 core 路由只能标记为 `HTTP_UPSTREAM_FALLBACK`，不能描述成已经 in-process。
 
 ## 公共基础契约
 
@@ -239,7 +239,7 @@ Cloudreve 第一阶段可以作为外部分享链接存在。后续接入 API �
 
 ## 部署原则
 
-官网前端、后端业务服务、数据库、缓存、Cloudreve、Minecraft 服务器和节点守护进程应分开部署。开发阶段可以先用较少进程模拟模块边界，但接口、权限和数据归属不能混乱。当前第四批运维控制面已收敛到 `ops-core-service:8133`，第五批玩家门户体验已收敛到 `portal-core-service:8134`，`api-gateway-service:8125` 已具备统一后端入口准备画像；第九轮新增 `unified-backend-service:8135` 作为并行候选入口，当前候选入口逐步挂载 `api-gateway`、`business-core` 和 `portal-core`，仍不替代生产入口；`node-daemon-service:8117` 继续保持独立节点执行边界。
+官网前端、后端业务服务、数据库、缓存、Cloudreve、Minecraft 服务器和节点守护进程应分开部署。开发阶段可以先用较少进程模拟模块边界，但接口、权限和数据归属不能混乱。当前第四批运维控制面已收敛到 `ops-core-service:8133`，第五批玩家门户体验已收敛到 `portal-core-service:8134`，`api-gateway-service:8125` 已具备统一后端入口准备画像；第九轮新增 `unified-backend-service:8135` 作为并行候选入口，当前候选入口逐步挂载 `api-gateway`、`business-core`、`admission-core` 和 `portal-core`，仍不替代生产入口；`node-daemon-service:8117` 继续保持独立节点执行边界。
 
 节点守护进程部署在被管理服务器上。它只开放必要管理端口，优先由控制面主动连接或通过受控通道通信，不暴露无鉴权的系统操作接口。
 

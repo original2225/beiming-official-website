@@ -1,6 +1,6 @@
 # 北冥官网 admission-core API 契约
 
-版本：0.1
+版本：0.2
 
 ## 文档定位
 
@@ -28,6 +28,8 @@
 `admission-core` 不负责吸收 `api-gateway`。当前阶段仍保留 `api-gateway-service` 作为统一入口。`admission-core` 不负责第一批基础业务模块，也不负责 `community`、`activity`、`calendar`、`changelog`、`ops-control`、`node-daemon`、`cloudreve-sync`、`backup-recovery`、`alerting`、`online-map`、插件集成或 P3 扩展。
 
 `admission-core` 不允许把真实服务器白名单命令、Minecraft 控制台、节点守护进程、容器、终端、文件管理、备份恢复或 Cloudreve 管理塞进入服链路。白名单审核通过只代表官网业务状态和成员档案激活交接，不代表真实服务器命令已执行。
+
+`unified-backend-service:8135` 可以把 `admission-core` 作为 in-process 稳定运行单元挂载，用于验证最终合并成一个后端服务的候选形态。该挂载不得改变 `admission-core-service:8131` 的独立入口，不得改变 `/api/v1/admission-core/**`、`/api/v1/onboarding/**`、`/api/v1/exams/**`、`/api/v1/whitelist/**` 或 `/api/v1/attendance/**` 的认证、响应格式、错误码、请求编号、状态流转、幂等和审计规则，不得把 `admission-core` 路径改写到 `/api/v1/unified-backend/**` 下。
 
 ## 运行形态
 
@@ -338,6 +340,8 @@ Spring Boot 主应用建议放在 `cn.beiming.admission`，组件扫描范围覆
 `mvn -f backend/admission-core-service/pom.xml test` 必须覆盖本文档两个自有接口和四个模块继承过来的全部契约测试。第二批旧服务清理后，相关回归基线为 `admission-core-service`、`business-core-service` 和 `api-gateway-service`，不得为了测试恢复 `onboarding-service`、`exam-service`、`whitelist-service` 或 `attendance-service`。
 
 `admission-core` 直连合并和第二批网关切换均已完成测试闭环。第二批业务路径经网关访问时仍保持原路径，网关只切换上游端口，不改写业务前缀。
+
+允许 `unified-backend-service:8135` 以不改变路径、认证、响应格式和错误码的方式挂载 `admission-core` 自有 API 以及 `onboarding`、`exam`、`whitelist`、`attendance` 四个业务模块。该候选挂载不能被描述为已退役 `admission-core-service:8131`，也不能绕过四个模块自己的正式契约、测试文档和自动化测试闭环。
 
 用户确认后，第二批旧服务源码和 Maven 运行入口按明确文件路径逐个清理。旧服务目录不得因本契约自动批量删除；后续如需继续清理残留空目录或其他文件，必须单独确认范围，删除文件只能逐个明确路径处理。
 
