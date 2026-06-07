@@ -153,6 +153,47 @@ class UnifiedBackendInProcessMountTest {
     }
 
     @Test
+    void servesOpsCoreRoutesInProcessBeforeGatewayCatchAllProxy() throws Exception {
+        mvc.perform(get("/api/v1/ops-core/health").header("X-Request-Id", "req-ops-core-self"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.service").value("ops-core"));
+
+        mvc.perform(get("/api/v1/ops-control/overview")
+                        .header("Authorization", "Bearer owner-token")
+                        .header("X-Request-Id", "req-ops-control-in-process"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0));
+
+        mvc.perform(get("/api/v1/cloudreve-sync/health").header("X-Request-Id", "req-cloudreve-in-process"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0));
+
+        mvc.perform(get("/api/v1/backup-recovery/health").header("X-Request-Id", "req-backup-in-process"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0));
+
+        mvc.perform(get("/api/v1/alerting/health").header("X-Request-Id", "req-alerting-in-process"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0));
+
+        mvc.perform(get("/api/v1/plugin-integration/health").header("X-Request-Id", "req-plugin-in-process"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0));
+
+        mvc.perform(get("/api/v1/cross-platform-notification/health").header("X-Request-Id", "req-cpn-in-process"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0));
+
+        mvc.perform(get("/api/v1/ops-image-market/health").header("X-Request-Id", "req-image-market-in-process"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0));
+
+        assertThat(client.calls()).doesNotContain(
+                "OPS_CONTROL", "CLOUDREVE_SYNC", "BACKUP_RECOVERY", "ALERTING",
+                "PLUGIN_INTEGRATION", "CROSS_PLATFORM_NOTIFICATION", "OPS_IMAGE_MARKET");
+    }
+
+    @Test
     void stillServesGatewayCoreAndPortalCoreSelfApisThroughCandidateEntrypoint() throws Exception {
         mvc.perform(get("/api/v1/gateway/health").header("X-Request-Id", "req-gateway-self"))
                 .andExpect(status().isOk())
@@ -169,6 +210,10 @@ class UnifiedBackendInProcessMountTest {
         mvc.perform(get("/api/v1/engagement-core/health").header("X-Request-Id", "req-engagement-self"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.service").value("engagement-core"));
+
+        mvc.perform(get("/api/v1/ops-core/health").header("X-Request-Id", "req-ops-self"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.service").value("ops-core"));
 
         mvc.perform(get("/api/v1/portal-core/health").header("X-Request-Id", "req-portal-self"))
                 .andExpect(status().isOk())
@@ -202,6 +247,8 @@ class UnifiedBackendInProcessMountTest {
                     "AUTH", "PROFILE", "NOTIFICATION", "CONTENT", "SERVER_STATUS", "RESOURCE", "ADMIN",
                     "ONBOARDING", "EXAM", "WHITELIST", "ATTENDANCE",
                     "COMMUNITY", "ACTIVITY", "CALENDAR", "CHANGELOG",
+                    "OPS_CONTROL", "CLOUDREVE_SYNC", "BACKUP_RECOVERY", "ALERTING",
+                    "PLUGIN_INTEGRATION", "CROSS_PLATFORM_NOTIFICATION", "OPS_IMAGE_MARKET",
                     "GUIDE", "MATERIAL", "ONLINE_MAP"
             ).contains(route.serviceKey())) {
                 throw new AssertionError(route.serviceKey() + " must be served in-process");

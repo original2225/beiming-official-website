@@ -204,17 +204,20 @@ class GatewayApiContractTest {
         assertThat(pilotCandidate.path("candidatePort").asInt()).isEqualTo(8135);
         assertThat(pilotCandidate.path("deploymentMode").asText()).isEqualTo("CANDIDATE_PARALLEL_ENTRYPOINT");
         assertThat(pilotCandidate.path("pilotMountedEntrypoints").toString()).contains(
-                "api-gateway", "business-core", "admission-core", "engagement-core", "portal-core");
+                "api-gateway", "business-core", "admission-core", "engagement-core", "ops-core", "portal-core");
         assertThat(pilotCandidate.path("pilotMountedRouteIds").toString()).contains(
                 "auth", "profile", "notification", "content", "server-status", "resource", "admin",
                 "onboarding", "exam", "whitelist", "attendance",
                 "community", "activity", "calendar", "changelog",
+                "ops-control", "cloudreve-sync", "backup-recovery", "alerting",
+                "plugin-integration", "cross-platform-notification", "ops-image-market",
                 "guide", "material", "online-map");
         assertThat(pilotCandidate.path("nodeDaemonDisposition").asText()).isEqualTo("KEEP_EXTERNAL");
         assertThat(pilotCandidate.path("readyToReplaceGateway").asBoolean()).isFalse();
         assertThat(pilotCandidate.path("readyToRetireBusinessCore").asBoolean()).isFalse();
         assertThat(pilotCandidate.path("readyToRetireAdmissionCore").asBoolean()).isFalse();
         assertThat(pilotCandidate.path("readyToRetireEngagementCore").asBoolean()).isFalse();
+        assertThat(pilotCandidate.path("readyToRetireOpsCore").asBoolean()).isFalse();
         assertThat(pilotCandidate.path("readyToRetirePortalCore").asBoolean()).isFalse();
 
         JsonNode gateway = findByText(topology.at("/data/currentEntrypoints"), "entrypointKey", "api-gateway");

@@ -43,7 +43,7 @@ class UnifiedBackendApiContractTest {
         Set<String> mapped = new TreeSet<>();
         addRange(mapped, "UBACK-COM", 1, 1);
         addRange(mapped, "UBACK-AUTH", 1, 2);
-        addRange(mapped, "UBACK-MOUNT", 1, 19);
+        addRange(mapped, "UBACK-MOUNT", 1, 22);
         addRange(mapped, "UBACK-GATE", 1, 1);
         addRange(mapped, "UBACK-READY", 1, 1);
         addRange(mapped, "UBACK-SMOKE", 1, 1);
@@ -53,14 +53,14 @@ class UnifiedBackendApiContractTest {
         assertThat(mapped).contains(
                 "UBACK-COM-001",
                 "UBACK-AUTH-001",
-                "UBACK-MOUNT-019",
+                "UBACK-MOUNT-022",
                 "UBACK-GATE-001",
                 "UBACK-READY-001",
                 "UBACK-SMOKE-001",
                 "UBACK-BOUNDARY-001",
                 "UBACK-REGRESS-001"
         );
-        assertThat(mapped).hasSize(27);
+        assertThat(mapped).hasSize(30);
     }
 
     @Test
@@ -78,6 +78,7 @@ class UnifiedBackendApiContractTest {
                 .andExpect(jsonPath("$.data.mountedEntrypoints[?(@ == 'business-core')]").exists())
                 .andExpect(jsonPath("$.data.mountedEntrypoints[?(@ == 'admission-core')]").exists())
                 .andExpect(jsonPath("$.data.mountedEntrypoints[?(@ == 'engagement-core')]").exists())
+                .andExpect(jsonPath("$.data.mountedEntrypoints[?(@ == 'ops-core')]").exists())
                 .andExpect(jsonPath("$.data.mountedEntrypoints[?(@ == 'portal-core')]").exists())
                 .andExpect(jsonPath("$.data.mountedRouteIds[?(@ == 'auth')]").exists())
                 .andExpect(jsonPath("$.data.mountedRouteIds[?(@ == 'profile')]").exists())
@@ -94,6 +95,13 @@ class UnifiedBackendApiContractTest {
                 .andExpect(jsonPath("$.data.mountedRouteIds[?(@ == 'activity')]").exists())
                 .andExpect(jsonPath("$.data.mountedRouteIds[?(@ == 'calendar')]").exists())
                 .andExpect(jsonPath("$.data.mountedRouteIds[?(@ == 'changelog')]").exists())
+                .andExpect(jsonPath("$.data.mountedRouteIds[?(@ == 'ops-control')]").exists())
+                .andExpect(jsonPath("$.data.mountedRouteIds[?(@ == 'cloudreve-sync')]").exists())
+                .andExpect(jsonPath("$.data.mountedRouteIds[?(@ == 'backup-recovery')]").exists())
+                .andExpect(jsonPath("$.data.mountedRouteIds[?(@ == 'alerting')]").exists())
+                .andExpect(jsonPath("$.data.mountedRouteIds[?(@ == 'plugin-integration')]").exists())
+                .andExpect(jsonPath("$.data.mountedRouteIds[?(@ == 'cross-platform-notification')]").exists())
+                .andExpect(jsonPath("$.data.mountedRouteIds[?(@ == 'ops-image-market')]").exists())
                 .andExpect(jsonPath("$.data.mountedRouteIds[?(@ == 'guide')]").exists())
                 .andExpect(jsonPath("$.data.mountedRouteIds[?(@ == 'material')]").exists())
                 .andExpect(jsonPath("$.data.mountedRouteIds[?(@ == 'online-map')]").exists())
@@ -140,14 +148,15 @@ class UnifiedBackendApiContractTest {
         assertThat(summary.at("/data/service").asText()).isEqualTo("unified-backend");
         assertThat(summary.at("/data/currentProductionEntrypointsTotal").asInt()).isEqualTo(7);
         assertThat(summary.at("/data/candidateEntrypointsTotal").asInt()).isEqualTo(1);
-        assertThat(summary.at("/data/inProcessRoutesTotal").asInt()).isEqualTo(18);
-        assertThat(summary.at("/data/httpFallbackRoutesTotal").asInt()).isEqualTo(7);
+        assertThat(summary.at("/data/inProcessRoutesTotal").asInt()).isEqualTo(25);
+        assertThat(summary.at("/data/httpFallbackRoutesTotal").asInt()).isEqualTo(0);
         assertThat(summary.at("/data/externalRoutesTotal").asInt()).isEqualTo(1);
         assertThat(summary.at("/data/nodeDaemonDisposition").asText()).isEqualTo("KEEP_EXTERNAL");
         assertThat(summary.at("/data/readyToReplaceGateway").asBoolean()).isFalse();
         assertThat(summary.at("/data/readyToRetireBusinessCore").asBoolean()).isFalse();
         assertThat(summary.at("/data/readyToRetireAdmissionCore").asBoolean()).isFalse();
         assertThat(summary.at("/data/readyToRetireEngagementCore").asBoolean()).isFalse();
+        assertThat(summary.at("/data/readyToRetireOpsCore").asBoolean()).isFalse();
         assertThat(summary.at("/data/readyToRetirePortalCore").asBoolean()).isFalse();
         assertNoSecrets(summary);
 
@@ -156,6 +165,7 @@ class UnifiedBackendApiContractTest {
         assertMount(mounts, "business-core", "BUSINESS_CORE", "/api/v1/business-core", "IN_PROCESS");
         assertMount(mounts, "admission-core", "ADMISSION_CORE", "/api/v1/admission-core", "IN_PROCESS");
         assertMount(mounts, "engagement-core", "ENGAGEMENT_CORE", "/api/v1/engagement-core", "IN_PROCESS");
+        assertMount(mounts, "ops-core", "OPS_CORE", "/api/v1/ops-core", "IN_PROCESS");
         assertMount(mounts, "auth", "AUTH", "/api/v1/auth", "IN_PROCESS");
         assertMount(mounts, "profile", "PROFILE", "/api/v1/profile", "IN_PROCESS");
         assertMount(mounts, "notification", "NOTIFICATION", "/api/v1/notifications", "IN_PROCESS");
@@ -174,7 +184,15 @@ class UnifiedBackendApiContractTest {
         assertMount(mounts, "activity", "ACTIVITY", "/api/v1/activity", "IN_PROCESS");
         assertMount(mounts, "calendar", "CALENDAR", "/api/v1/calendar", "IN_PROCESS");
         assertMount(mounts, "changelog", "CHANGELOG", "/api/v1/changelog", "IN_PROCESS");
+        assertMount(mounts, "ops-control", "OPS_CONTROL", "/api/v1/ops-control", "IN_PROCESS");
+        assertMount(mounts, "cloudreve-sync", "CLOUDREVE_SYNC", "/api/v1/cloudreve-sync", "IN_PROCESS");
+        assertMount(mounts, "backup-recovery", "BACKUP_RECOVERY", "/api/v1/backup-recovery", "IN_PROCESS");
+        assertMount(mounts, "alerting", "ALERTING", "/api/v1/alerting", "IN_PROCESS");
+        assertMount(mounts, "plugin-integration", "PLUGIN_INTEGRATION", "/api/v1/plugin-integration", "IN_PROCESS");
+        assertMount(mounts, "cross-platform-notification", "CROSS_PLATFORM_NOTIFICATION", "/api/v1/cross-platform-notification", "IN_PROCESS");
+        assertMount(mounts, "ops-image-market", "OPS_IMAGE_MARKET", "/api/v1/ops-image-market", "IN_PROCESS");
         assertMount(mounts, "node-daemon", "NODE_DAEMON", "/api/v1/node-daemon", "KEEP_EXTERNAL");
+        assertThat(mounts.at("/data/items").toString()).doesNotContain("HTTP_UPSTREAM_FALLBACK");
         assertNoSecrets(mounts);
 
         JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
@@ -184,10 +202,12 @@ class UnifiedBackendApiContractTest {
         assertThat(readiness.at("/data/readyToRetireBusinessCore").asBoolean()).isFalse();
         assertThat(readiness.at("/data/readyToRetireAdmissionCore").asBoolean()).isFalse();
         assertThat(readiness.at("/data/readyToRetireEngagementCore").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/readyToRetireOpsCore").asBoolean()).isFalse();
         assertThat(readiness.at("/data/readyToRetirePortalCore").asBoolean()).isFalse();
         assertThat(readiness.at("/data/productionBlockers").toString())
-                .contains("ops-core entrypoint is not mounted in-process")
-                .contains("node-daemon remains external");
+                .contains("candidate entrypoint is not production traffic entrypoint")
+                .contains("node-daemon remains external")
+                .doesNotContain("ops-core entrypoint is not mounted in-process");
         assertNoSecrets(readiness);
     }
 
@@ -199,12 +219,13 @@ class UnifiedBackendApiContractTest {
 
         assertThat(smoke.at("/data/service").asText()).isEqualTo("unified-backend");
         assertThat(smoke.at("/data/httpSmokeStatus").asText()).isIn("PASS", "DEGRADED");
-        assertThat(smoke.at("/data/results").size()).isEqualTo(24);
+        assertThat(smoke.at("/data/results").size()).isEqualTo(32);
         assertThat(smoke.at("/data/results").toString())
                 .contains("\"targetKey\":\"UNIFIED_HEALTH\"")
                 .contains("\"targetKey\":\"GATEWAY_HEALTH\"")
                 .contains("\"targetKey\":\"BUSINESS_CORE_HEALTH\"")
                 .contains("\"targetKey\":\"ADMISSION_CORE_HEALTH\"")
+                .contains("\"targetKey\":\"OPS_CORE_HEALTH\"")
                 .contains("\"targetKey\":\"PORTAL_CORE_HEALTH\"")
                 .contains("\"targetKey\":\"AUTH_SESSION_VERIFY\"")
                 .contains("\"targetKey\":\"PROFILE_MEMBERS\"")
@@ -222,6 +243,13 @@ class UnifiedBackendApiContractTest {
                 .contains("\"targetKey\":\"ACTIVITY_EVENTS\"")
                 .contains("\"targetKey\":\"CALENDAR_UPCOMING\"")
                 .contains("\"targetKey\":\"CHANGELOG_LATEST_VERSION\"")
+                .contains("\"targetKey\":\"OPS_CONTROL_OVERVIEW\"")
+                .contains("\"targetKey\":\"CLOUDREVE_SYNC_HEALTH\"")
+                .contains("\"targetKey\":\"BACKUP_RECOVERY_HEALTH\"")
+                .contains("\"targetKey\":\"ALERTING_HEALTH\"")
+                .contains("\"targetKey\":\"PLUGIN_INTEGRATION_HEALTH\"")
+                .contains("\"targetKey\":\"CROSS_PLATFORM_NOTIFICATION_HEALTH\"")
+                .contains("\"targetKey\":\"OPS_IMAGE_MARKET_HEALTH\"")
                 .contains("\"targetKey\":\"GUIDE_CATEGORIES\"")
                 .contains("\"targetKey\":\"MATERIAL_FEATURED\"")
                 .contains("\"targetKey\":\"ONLINE_MAP_HEALTH\"");
