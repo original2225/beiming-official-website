@@ -12776,7 +12776,7 @@ schema 状态流转为 `DRAFT` 可到 `ENABLED`、`DISABLED` 或 `ARCHIVED`；`E
 
 来源：`docs/contracts-cross-platform-notification.md`
 
-版本：0.7
+版本：0.8
 
 ### 文档定位
 
@@ -14291,7 +14291,7 @@ P0 `api-gateway` 是本地契约实现，必须在自检摘要中明确以下生
 
 后台摘要、挂载清单和 readiness 必须固定暴露 `currentProductionEntrypointsTotal=7`、`candidateEntrypointsTotal=1`、`mountedEntrypoints=["api-gateway","business-core","admission-core","engagement-core","ops-core","portal-core"]`、`mountedRouteIds=["auth","profile","notification","content","server-status","resource","admin","onboarding","exam","whitelist","attendance","community","activity","calendar","changelog","ops-control","cloudreve-sync","backup-recovery","alerting","plugin-integration","cross-platform-notification","ops-image-market","guide","material","online-map"]`、`inProcessRoutesTotal=25`、`httpFallbackRoutesTotal=0`、`externalRoutesTotal=1`、`nodeDaemonDisposition=KEEP_EXTERNAL`、`readyToReplaceGateway=false`、`readyToRetireBusinessCore=false`、`readyToRetireAdmissionCore=false`、`readyToRetireEngagementCore=false`、`readyToRetireOpsCore=false` 和 `readyToRetirePortalCore=false`。
 
-readiness 必须额外暴露 `productionSwitchReadinessStatus=BLOCKED`、`productionSwitchChecks`、`centralConfigPrecheckStatus=BLOCKED`、`centralConfigPrecheckChecks` 和 `replacementDecision`。当前只允许把全业务 in-process 覆盖、当前入口保留、路径响应保持、`node-daemon` 外部边界、旧入口未恢复、候选端口固定、当前入口端口已记录、in-process 路由注册固定、`node-daemon` 外部端口已记录和危险测试控制关闭标为 `PASS`；集中配置提供方、生产 profile、敏感配置源外置、配置漂移扫描、配置回滚源、持久化审计、真实 HTTP 演练、前端入口切换、回滚窗口和生产流量入口必须继续标为 `BLOCKED`。
+readiness 必须额外暴露 `productionSwitchReadinessStatus=BLOCKED`、`productionSwitchChecks`、`centralConfigPrecheckStatus=BLOCKED`、`centralConfigPrecheckChecks`、`persistentAuditPrecheckStatus=BLOCKED`、`persistentAuditPrecheckChecks` 和 `replacementDecision`。当前只允许把全业务 in-process 覆盖、当前入口保留、路径响应保持、`node-daemon` 外部边界、旧入口未恢复、候选端口固定、当前入口端口已记录、in-process 路由注册固定、`node-daemon` 外部端口已记录、危险测试控制关闭、审计落点固定、审计请求编号保留、审计事件结构固定、审计保留窗口已记录和审计备份导出路径已记录标为 `PASS`；集中配置提供方、生产 profile、敏感配置源外置、配置漂移扫描、配置回滚源、真实持久化审计落点、审计写入路径、审计回放路径、审计保留任务、审计配置回滚源、真实 HTTP 演练、前端入口切换、回滚窗口和生产流量入口必须继续标为 `BLOCKED`。
 
 HTTP smoke 至少覆盖 `UNIFIED_HEALTH`、`GATEWAY_HEALTH`、`BUSINESS_CORE_HEALTH`、`ADMISSION_CORE_HEALTH`、`ENGAGEMENT_CORE_HEALTH`、`OPS_CORE_HEALTH`、`PORTAL_CORE_HEALTH`、`AUTH_SESSION_VERIFY`、`PROFILE_MEMBERS`、`NOTIFICATION_UNREAD_COUNT`、`CONTENT_HOME`、`SERVER_STATUS_OVERVIEW`、`RESOURCE_LIST`、`ADMIN_OVERVIEW`、`ONBOARDING_PROGRESS`、`EXAM_SESSIONS`、`WHITELIST_CURRENT_APPLICATION`、`ATTENDANCE_LEADERBOARD`、`COMMUNITY_BOARDS`、`ACTIVITY_EVENTS`、`CALENDAR_UPCOMING`、`CHANGELOG_LATEST_VERSION`、`OPS_CONTROL_OVERVIEW`、`CLOUDREVE_SYNC_HEALTH`、`BACKUP_RECOVERY_HEALTH`、`ALERTING_HEALTH`、`PLUGIN_INTEGRATION_HEALTH`、`CROSS_PLATFORM_NOTIFICATION_HEALTH`、`OPS_IMAGE_MARKET_HEALTH`、`GUIDE_CATEGORIES`、`MATERIAL_FEATURED` 和 `ONLINE_MAP_HEALTH`。除 `node-daemon` 外的 25 条业务路径必须通过本地控制器成功，不能调用 `GatewayHttpClient` 的对应代理路径。smoke 失败时接口自身返回统一成功响应，并在 `data.httpSmokeStatus` 中标记 `DEGRADED`。
 

@@ -45,7 +45,7 @@ class UnifiedBackendApiContractTest {
         addRange(mapped, "UBACK-AUTH", 1, 2);
         addRange(mapped, "UBACK-MOUNT", 1, 22);
         addRange(mapped, "UBACK-GATE", 1, 1);
-        addRange(mapped, "UBACK-READY", 1, 3);
+        addRange(mapped, "UBACK-READY", 1, 4);
         addRange(mapped, "UBACK-SMOKE", 1, 1);
         addRange(mapped, "UBACK-BOUNDARY", 1, 1);
         addRange(mapped, "UBACK-REGRESS", 1, 1);
@@ -58,11 +58,12 @@ class UnifiedBackendApiContractTest {
                 "UBACK-READY-001",
                 "UBACK-READY-002",
                 "UBACK-READY-003",
+                "UBACK-READY-004",
                 "UBACK-SMOKE-001",
                 "UBACK-BOUNDARY-001",
                 "UBACK-REGRESS-001"
         );
-        assertThat(mapped).hasSize(32);
+        assertThat(mapped).hasSize(33);
     }
 
     @Test
@@ -269,6 +270,32 @@ class UnifiedBackendApiContractTest {
     }
 
     @Test
+    void exposesPersistentAuditPrecheckWithoutClaimingPersistentAuditReady() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-persistent-audit-precheck"));
+
+        assertThat(readiness.at("/data/persistentAuditPrecheckStatus").asText()).isEqualTo("BLOCKED");
+        assertPersistentAuditCheck(readiness, "AUDIT_SINK_FIXED", "PASS", true);
+        assertPersistentAuditCheck(readiness, "AUDIT_REQUEST_ID_PRESERVED", "PASS", true);
+        assertPersistentAuditCheck(readiness, "AUDIT_EVENT_SCHEMA_FIXED", "PASS", true);
+        assertPersistentAuditCheck(readiness, "AUDIT_RETENTION_WINDOW_DOCUMENTED", "PASS", true);
+        assertPersistentAuditCheck(readiness, "AUDIT_BACKUP_EXPORT_PATH_DOCUMENTED", "PASS", true);
+        assertPersistentAuditCheck(readiness, "PERSISTENT_AUDIT_SINK_CONNECTED", "BLOCKED", true);
+        assertPersistentAuditCheck(readiness, "AUDIT_WRITE_PATH_CONNECTED", "BLOCKED", true);
+        assertPersistentAuditCheck(readiness, "AUDIT_REPLAY_PATH_CONNECTED", "BLOCKED", true);
+        assertPersistentAuditCheck(readiness, "AUDIT_RETENTION_JOB_CONNECTED", "BLOCKED", true);
+        assertPersistentAuditCheck(readiness, "AUDIT_CONFIG_ROLLBACK_SOURCE_DEFINED", "BLOCKED", true);
+        assertSwitchCheck(readiness, "PERSISTENT_AUDIT_READY", "BLOCKED", true);
+        assertThat(readiness.at("/data/persistentAuditPrecheckChecks").toString())
+                .contains("\"check\":\"AUDIT_SINK_FIXED\"")
+                .contains("\"check\":\"PERSISTENT_AUDIT_SINK_CONNECTED\"")
+                .doesNotContain("C:\\Users\\")
+                .doesNotContain("Authorization");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
     void runsUnifiedBackendHttpSmokeWithoutHidingDegradedTargets() throws Exception {
         JsonNode smoke = performJson(post("/api/v1/unified-backend/admin/http-smoke/run")
                 .header("Authorization", "Bearer admin-token")
@@ -340,6 +367,14 @@ class UnifiedBackendApiContractTest {
 
     private void assertCentralConfigCheck(JsonNode response, String check, String status, boolean requiredForReplacement) {
         String checks = response.at("/data/centralConfigPrecheckChecks").toString();
+        assertThat(checks)
+                .contains("\"check\":\"" + check + "\"")
+                .contains("\"status\":\"" + status + "\"")
+                .contains("\"requiredForReplacement\":" + requiredForReplacement);
+    }
+
+    private void assertPersistentAuditCheck(JsonNode response, String check, String status, boolean requiredForReplacement) {
+        String checks = response.at("/data/persistentAuditPrecheckChecks").toString();
         assertThat(checks)
                 .contains("\"check\":\"" + check + "\"")
                 .contains("\"status\":\"" + status + "\"")

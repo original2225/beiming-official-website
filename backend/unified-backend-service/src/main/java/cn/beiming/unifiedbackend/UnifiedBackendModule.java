@@ -102,6 +102,8 @@ class UnifiedBackendController {
                 "productionSwitchChecks", registry.productionSwitchChecks(),
                 "centralConfigPrecheckStatus", "BLOCKED",
                 "centralConfigPrecheckChecks", registry.centralConfigPrecheckChecks(),
+                "persistentAuditPrecheckStatus", "BLOCKED",
+                "persistentAuditPrecheckChecks", registry.persistentAuditPrecheckChecks(),
                 "replacementDecision", registry.replacementDecision(),
                 "generatedAt", now()
         ));
@@ -420,6 +422,21 @@ class UnifiedBackendRegistry {
                 switchCheck("SENSITIVE_CONFIG_SOURCE_EXTERNALIZED", "BLOCKED", "sensitive config sources are not externalized yet", true),
                 switchCheck("CONFIG_DRIFT_SCAN_AUTOMATED", "BLOCKED", "config drift scan is not automated yet", true),
                 switchCheck("CONFIG_ROLLBACK_SOURCE_DEFINED", "BLOCKED", "config rollback source is not defined yet", true)
+        );
+    }
+
+    List<Map<String, Object>> persistentAuditPrecheckChecks() {
+        return List.of(
+                switchCheck("AUDIT_SINK_FIXED", "PASS", "audit sink remains fixed for the candidate", true),
+                switchCheck("AUDIT_REQUEST_ID_PRESERVED", "PASS", "audit request id is preserved", true),
+                switchCheck("AUDIT_EVENT_SCHEMA_FIXED", "PASS", "audit event schema remains fixed", true),
+                switchCheck("AUDIT_RETENTION_WINDOW_DOCUMENTED", "PASS", "audit retention window is documented", true),
+                switchCheck("AUDIT_BACKUP_EXPORT_PATH_DOCUMENTED", "PASS", "audit backup export path is documented", true),
+                switchCheck("PERSISTENT_AUDIT_SINK_CONNECTED", "BLOCKED", "persistent audit sink is not connected", true),
+                switchCheck("AUDIT_WRITE_PATH_CONNECTED", "BLOCKED", "audit write path is not connected", true),
+                switchCheck("AUDIT_REPLAY_PATH_CONNECTED", "BLOCKED", "audit replay path is not connected", true),
+                switchCheck("AUDIT_RETENTION_JOB_CONNECTED", "BLOCKED", "audit retention job is not connected", true),
+                switchCheck("AUDIT_CONFIG_ROLLBACK_SOURCE_DEFINED", "BLOCKED", "audit config rollback source is not defined", true)
         );
     }
 
