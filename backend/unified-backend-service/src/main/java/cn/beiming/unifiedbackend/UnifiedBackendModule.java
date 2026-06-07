@@ -98,6 +98,9 @@ class UnifiedBackendController {
                 "lastHttpSmokeStatus", lastHttpSmokeStatus,
                 "lastHttpSmokeResults", lastHttpSmokeResults,
                 "productionBlockers", registry.productionBlockers(),
+                "productionSwitchReadinessStatus", "BLOCKED",
+                "productionSwitchChecks", registry.productionSwitchChecks(),
+                "replacementDecision", registry.replacementDecision(),
                 "generatedAt", now()
         ));
     }
@@ -384,6 +387,42 @@ class UnifiedBackendRegistry {
                 "centralized config is not connected",
                 "persistent audit is not connected",
                 "candidate entrypoint is not production traffic entrypoint"
+        );
+    }
+
+    List<Map<String, Object>> productionSwitchChecks() {
+        return List.of(
+                switchCheck("ALL_CURRENT_BUSINESS_ROUTES_IN_PROCESS", "PASS", "all current business routes except node-daemon are mounted in-process", true),
+                switchCheck("CURRENT_ENTRYPOINTS_PRESERVED", "PASS", "current seven production entrypoints remain available for rollback", true),
+                switchCheck("ROUTE_PREFIX_AND_RESPONSE_PRESERVED", "PASS", "candidate preserves existing route prefixes and response envelope", true),
+                switchCheck("NODE_DAEMON_EXTERNAL_BOUNDARY", "PASS", "node-daemon remains the external node execution boundary", true),
+                switchCheck("LEGACY_ENTRYPOINTS_NOT_RESTORED", "PASS", "retired legacy service entrypoints are not restored", true),
+                switchCheck("CENTRAL_CONFIG_READY", "BLOCKED", "centralized production configuration is not connected", true),
+                switchCheck("PERSISTENT_AUDIT_READY", "BLOCKED", "persistent production audit is not connected", true),
+                switchCheck("REAL_HTTP_SMOKE_REHEARSAL_READY", "BLOCKED", "real production HTTP smoke rehearsal is not completed", true),
+                switchCheck("FRONTEND_ENTRYPOINT_SWITCH_READY", "BLOCKED", "frontend and external callers are not switched to unified-backend", true),
+                switchCheck("ROLLBACK_WINDOW_READY", "BLOCKED", "rollback window and old entrypoint retention plan are not validated", true),
+                switchCheck("PRODUCTION_TRAFFIC_ENTRYPOINT_READY", "BLOCKED", "candidate entrypoint is not receiving production traffic", true)
+        );
+    }
+
+    Map<String, Object> replacementDecision() {
+        return map(
+                "canReplaceGateway", false,
+                "canRetireIndependentCoreEntrypoints", false,
+                "canRetireApiGateway", false,
+                "nodeDaemonDisposition", "KEEP_EXTERNAL",
+                "candidateCoverageStatus", "PASS",
+                "reason", "production cutover prerequisites are still blocked; node-daemon remains external"
+        );
+    }
+
+    private Map<String, Object> switchCheck(String check, String status, String detail, boolean requiredForReplacement) {
+        return map(
+                "check", check,
+                "status", status,
+                "detail", detail,
+                "requiredForReplacement", requiredForReplacement
         );
     }
 

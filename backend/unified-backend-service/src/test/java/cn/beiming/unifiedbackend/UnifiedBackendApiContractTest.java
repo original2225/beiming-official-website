@@ -45,7 +45,7 @@ class UnifiedBackendApiContractTest {
         addRange(mapped, "UBACK-AUTH", 1, 2);
         addRange(mapped, "UBACK-MOUNT", 1, 22);
         addRange(mapped, "UBACK-GATE", 1, 1);
-        addRange(mapped, "UBACK-READY", 1, 1);
+        addRange(mapped, "UBACK-READY", 1, 2);
         addRange(mapped, "UBACK-SMOKE", 1, 1);
         addRange(mapped, "UBACK-BOUNDARY", 1, 1);
         addRange(mapped, "UBACK-REGRESS", 1, 1);
@@ -56,11 +56,12 @@ class UnifiedBackendApiContractTest {
                 "UBACK-MOUNT-022",
                 "UBACK-GATE-001",
                 "UBACK-READY-001",
+                "UBACK-READY-002",
                 "UBACK-SMOKE-001",
                 "UBACK-BOUNDARY-001",
                 "UBACK-REGRESS-001"
         );
-        assertThat(mapped).hasSize(30);
+        assertThat(mapped).hasSize(31);
     }
 
     @Test
@@ -212,6 +213,37 @@ class UnifiedBackendApiContractTest {
     }
 
     @Test
+    void exposesProductionSwitchReadinessMatrixWithoutAllowingRetirement() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer admin-token")
+                .header("X-Request-Id", "req-cutover-readiness"));
+
+        assertThat(readiness.at("/data/productionSwitchReadinessStatus").asText()).isEqualTo("BLOCKED");
+        assertSwitchCheck(readiness, "ALL_CURRENT_BUSINESS_ROUTES_IN_PROCESS", "PASS", true);
+        assertSwitchCheck(readiness, "CURRENT_ENTRYPOINTS_PRESERVED", "PASS", true);
+        assertSwitchCheck(readiness, "ROUTE_PREFIX_AND_RESPONSE_PRESERVED", "PASS", true);
+        assertSwitchCheck(readiness, "NODE_DAEMON_EXTERNAL_BOUNDARY", "PASS", true);
+        assertSwitchCheck(readiness, "LEGACY_ENTRYPOINTS_NOT_RESTORED", "PASS", true);
+        assertSwitchCheck(readiness, "CENTRAL_CONFIG_READY", "BLOCKED", true);
+        assertSwitchCheck(readiness, "PERSISTENT_AUDIT_READY", "BLOCKED", true);
+        assertSwitchCheck(readiness, "REAL_HTTP_SMOKE_REHEARSAL_READY", "BLOCKED", true);
+        assertSwitchCheck(readiness, "FRONTEND_ENTRYPOINT_SWITCH_READY", "BLOCKED", true);
+        assertSwitchCheck(readiness, "ROLLBACK_WINDOW_READY", "BLOCKED", true);
+        assertSwitchCheck(readiness, "PRODUCTION_TRAFFIC_ENTRYPOINT_READY", "BLOCKED", true);
+
+        JsonNode decision = readiness.at("/data/replacementDecision");
+        assertThat(decision.at("/canReplaceGateway").asBoolean()).isFalse();
+        assertThat(decision.at("/canRetireIndependentCoreEntrypoints").asBoolean()).isFalse();
+        assertThat(decision.at("/canRetireApiGateway").asBoolean()).isFalse();
+        assertThat(decision.at("/nodeDaemonDisposition").asText()).isEqualTo("KEEP_EXTERNAL");
+        assertThat(decision.at("/candidateCoverageStatus").asText()).isEqualTo("PASS");
+        assertThat(decision.at("/reason").asText())
+                .contains("production cutover prerequisites are still blocked")
+                .doesNotContain("node-daemon can be merged");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
     void runsUnifiedBackendHttpSmokeWithoutHidingDegradedTargets() throws Exception {
         JsonNode smoke = performJson(post("/api/v1/unified-backend/admin/http-smoke/run")
                 .header("Authorization", "Bearer admin-token")
@@ -271,6 +303,14 @@ class UnifiedBackendApiContractTest {
                 .contains("\"serviceKey\":\"" + serviceKey + "\"")
                 .contains("\"pathPrefix\":\"" + pathPrefix + "\"")
                 .contains("\"mountDisposition\":\"" + disposition + "\"");
+    }
+
+    private void assertSwitchCheck(JsonNode response, String check, String status, boolean requiredForReplacement) {
+        String checks = response.at("/data/productionSwitchChecks").toString();
+        assertThat(checks)
+                .contains("\"check\":\"" + check + "\"")
+                .contains("\"status\":\"" + status + "\"")
+                .contains("\"requiredForReplacement\":" + requiredForReplacement);
     }
 
     private void assertNoSecrets(JsonNode node) {
