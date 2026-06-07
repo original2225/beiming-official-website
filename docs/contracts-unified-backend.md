@@ -1,6 +1,6 @@
 # 北冥官网 unified-backend API 契约
 
-版本：0.5
+版本：0.6
 
 ## 文档定位
 
@@ -66,9 +66,11 @@
 
 `GET /api/v1/unified-backend/admin/readiness`
 
-成功响应 HTTP `200`。`data` 必须包含 `readyForProduction=false`、`readyToReplaceGateway=false`、`readyToRetireBusinessCore=false`、`readyToRetireAdmissionCore=false`、`readyToRetireEngagementCore=false`、`readyToRetireOpsCore=false`、`readyToRetirePortalCore=false`、`currentProductionEntrypointsTotal=7`、`candidateEntrypointsTotal=1`、`checks`、`lastHttpSmokeStatus`、`productionBlockers` 和 `generatedAt`。
+成功响应 HTTP `200`。`data` 必须包含 `readyForProduction=false`、`readyToReplaceGateway=false`、`readyToRetireBusinessCore=false`、`readyToRetireAdmissionCore=false`、`readyToRetireEngagementCore=false`、`readyToRetireOpsCore=false`、`readyToRetirePortalCore=false`、`currentProductionEntrypointsTotal=7`、`candidateEntrypointsTotal=1`、`checks`、`lastHttpSmokeStatus`、`productionBlockers`、`productionSwitchReadinessStatus`、`productionSwitchChecks`、`replacementDecision` 和 `generatedAt`。
 
 本阶段即便所有测试通过，readiness 也不能声明可替换当前入口。`checks` 必须把 `api-gateway` 自有 API 挂载、`business-core` 自有 API 挂载、`admission-core` 自有 API 挂载、`engagement-core` 自有 API 挂载、`ops-core` 自有 API 挂载、`portal-core` 自有 API 挂载、第一批七个业务路由 in-process、第二批四个入服准入路由 in-process、第三批四个社区运营路由 in-process、第四批和第六期七个运维通知路由 in-process、第五批三个门户体验路由 in-process、旧入口保留、`node-daemon` 外部边界、路径前缀保留和响应格式保留列为通过或待验证项；动态服务发现未接入、集中配置未接入、生产审计未接入和真实生产流量演练未完成必须保留为阻塞。
+
+为后续最终合并成一个后端应用服务做准备，readiness 必须额外暴露生产切换检查矩阵。`productionSwitchReadinessStatus` 在本阶段固定为 `BLOCKED`。`productionSwitchChecks` 每项必须包含 `check`、`status`、`detail` 和 `requiredForReplacement`。其中 `ALL_CURRENT_BUSINESS_ROUTES_IN_PROCESS`、`CURRENT_ENTRYPOINTS_PRESERVED`、`ROUTE_PREFIX_AND_RESPONSE_PRESERVED`、`NODE_DAEMON_EXTERNAL_BOUNDARY` 和 `LEGACY_ENTRYPOINTS_NOT_RESTORED` 必须为 `PASS`；`CENTRAL_CONFIG_READY`、`PERSISTENT_AUDIT_READY`、`REAL_HTTP_SMOKE_REHEARSAL_READY`、`FRONTEND_ENTRYPOINT_SWITCH_READY`、`ROLLBACK_WINDOW_READY` 和 `PRODUCTION_TRAFFIC_ENTRYPOINT_READY` 必须为 `BLOCKED`。`replacementDecision` 必须包含 `canReplaceGateway=false`、`canRetireIndependentCoreEntrypoints=false`、`canRetireApiGateway=false`、`nodeDaemonDisposition=KEEP_EXTERNAL`、`candidateCoverageStatus=PASS` 和 `reason`。该矩阵只用于生产切换准备，不得把 `node-daemon` 外部边界误报为可合并项，也不得把当前候选入口描述为生产替换完成。
 
 ## 候选 HTTP smoke
 
