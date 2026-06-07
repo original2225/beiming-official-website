@@ -46,6 +46,41 @@ changelog:
   test-controls:
     enabled: false
 
+ops-core:
+  test-controls:
+    enabled: false
+  http-smoke:
+    gateway-base-url: http://127.0.0.1:8135
+    timeout-ms: 1500
+
+ops-control:
+  test-controls:
+    enabled: false
+
+cloudreve-sync:
+  test-controls:
+    enabled: false
+
+backup-recovery:
+  test-controls:
+    enabled: false
+
+alerting:
+  test-controls:
+    enabled: false
+
+plugin-integration:
+  test-controls:
+    enabled: false
+
+cross-platform-notification:
+  test-controls:
+    enabled: false
+
+ops-image-market:
+  test-controls:
+    enabled: false
+
 portal-core:
   test-controls:
     enabled: false

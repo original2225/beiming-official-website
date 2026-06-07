@@ -892,11 +892,13 @@ class GatewayState {
                 "serviceDirectory", "backend/unified-backend-service",
                 "candidatePort", 8135,
                 "deploymentMode", "CANDIDATE_PARALLEL_ENTRYPOINT",
-                "pilotMountedEntrypoints", List.of("api-gateway", "business-core", "admission-core", "engagement-core", "portal-core"),
+                "pilotMountedEntrypoints", List.of("api-gateway", "business-core", "admission-core", "engagement-core", "ops-core", "portal-core"),
                 "pilotMountedRouteIds", List.of(
                         "auth", "profile", "notification", "content", "server-status", "resource", "admin",
                         "onboarding", "exam", "whitelist", "attendance",
                         "community", "activity", "calendar", "changelog",
+                        "ops-control", "cloudreve-sync", "backup-recovery", "alerting", "plugin-integration",
+                        "cross-platform-notification", "ops-image-market",
                         "guide", "material", "online-map"
                 ),
                 "nodeDaemonDisposition", "KEEP_EXTERNAL",
@@ -904,6 +906,7 @@ class GatewayState {
                 "readyToRetireBusinessCore", false,
                 "readyToRetireAdmissionCore", false,
                 "readyToRetireEngagementCore", false,
+                "readyToRetireOpsCore", false,
                 "readyToRetirePortalCore", false
         );
     }

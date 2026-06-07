@@ -55,6 +55,7 @@ class UnifiedBackendController {
         data.put("businessCoreMounted", hasRoute("/api/v1/business-core/health"));
         data.put("admissionCoreMounted", hasRoute("/api/v1/admission-core/health"));
         data.put("engagementCoreMounted", hasRoute("/api/v1/engagement-core/health"));
+        data.put("opsCoreMounted", hasRoute("/api/v1/ops-core/health"));
         data.put("portalCoreMounted", hasRoute("/api/v1/portal-core/health"));
         data.put("productionEntrypointsPreserved", true);
         data.put("legacyEntrypointsRestored", false);
@@ -89,6 +90,7 @@ class UnifiedBackendController {
                 "readyToRetireBusinessCore", false,
                 "readyToRetireAdmissionCore", false,
                 "readyToRetireEngagementCore", false,
+                "readyToRetireOpsCore", false,
                 "readyToRetirePortalCore", false,
                 "currentProductionEntrypointsTotal", 7,
                 "candidateEntrypointsTotal", 1,
@@ -127,6 +129,7 @@ class UnifiedBackendController {
                 check("BUSINESS_CORE_SELF_API_MOUNTED", hasRoute("/api/v1/business-core/health") ? "PASS" : "BLOCKED", "business-core self API is mounted"),
                 check("ADMISSION_CORE_SELF_API_MOUNTED", hasRoute("/api/v1/admission-core/health") ? "PASS" : "BLOCKED", "admission-core self API is mounted"),
                 check("ENGAGEMENT_CORE_SELF_API_MOUNTED", hasRoute("/api/v1/engagement-core/health") ? "PASS" : "BLOCKED", "engagement-core self API is mounted"),
+                check("OPS_CORE_SELF_API_MOUNTED", hasRoute("/api/v1/ops-core/health") ? "PASS" : "BLOCKED", "ops-core self API is mounted"),
                 check("PORTAL_CORE_SELF_API_MOUNTED", hasRoute("/api/v1/portal-core/health") ? "PASS" : "BLOCKED", "portal-core self API is mounted"),
                 check("AUTH_IN_PROCESS", hasRoute("/api/v1/auth/session/verify") ? "PASS" : "BLOCKED", "auth is served by local controller"),
                 check("PROFILE_IN_PROCESS", hasRoute("/api/v1/profile/members") ? "PASS" : "BLOCKED", "profile is served by local controller"),
@@ -143,12 +146,20 @@ class UnifiedBackendController {
                 check("ACTIVITY_IN_PROCESS", hasRoute("/api/v1/activity/events") ? "PASS" : "BLOCKED", "activity is served by local controller"),
                 check("CALENDAR_IN_PROCESS", hasRoute("/api/v1/calendar/upcoming") ? "PASS" : "BLOCKED", "calendar is served by local controller"),
                 check("CHANGELOG_IN_PROCESS", hasRoute("/api/v1/changelog/versions/latest") ? "PASS" : "BLOCKED", "changelog is served by local controller"),
+                check("OPS_CONTROL_IN_PROCESS", hasRoute("/api/v1/ops-control/overview") ? "PASS" : "BLOCKED", "ops-control is served by local controller"),
+                check("CLOUDREVE_SYNC_IN_PROCESS", hasRoute("/api/v1/cloudreve-sync/health") ? "PASS" : "BLOCKED", "cloudreve-sync is served by local controller"),
+                check("BACKUP_RECOVERY_IN_PROCESS", hasRoute("/api/v1/backup-recovery/health") ? "PASS" : "BLOCKED", "backup-recovery is served by local controller"),
+                check("ALERTING_IN_PROCESS", hasRoute("/api/v1/alerting/health") ? "PASS" : "BLOCKED", "alerting is served by local controller"),
+                check("PLUGIN_INTEGRATION_IN_PROCESS", hasRoute("/api/v1/plugin-integration/health") ? "PASS" : "BLOCKED", "plugin-integration is served by local controller"),
+                check("CROSS_PLATFORM_NOTIFICATION_IN_PROCESS", hasRoute("/api/v1/cross-platform-notification/health") ? "PASS" : "BLOCKED", "cross-platform-notification is served by local controller"),
+                check("OPS_IMAGE_MARKET_IN_PROCESS", hasRoute("/api/v1/ops-image-market/health") ? "PASS" : "BLOCKED", "ops-image-market is served by local controller"),
                 check("GUIDE_IN_PROCESS", hasRoute("/api/v1/guides/categories") ? "PASS" : "BLOCKED", "guide is served by local controller"),
                 check("MATERIAL_IN_PROCESS", hasRoute("/api/v1/materials/featured") ? "PASS" : "BLOCKED", "material is served by local controller"),
                 check("ONLINE_MAP_IN_PROCESS", hasRoute("/api/v1/online-map/health") ? "PASS" : "BLOCKED", "online-map is served by local controller"),
                 check("CURRENT_ENTRYPOINTS_PRESERVED", "PASS", "current seven entrypoints remain stable"),
                 check("NODE_DAEMON_EXTERNAL_BOUNDARY", "PASS", "node-daemon remains external"),
-                check("OPS_CORE_ENTRYPOINT_NOT_MOUNTED", "BLOCKED", "ops-core entrypoint is not mounted in-process"),
+                check("PRODUCTION_TRAFFIC_SWITCH_NOT_RUN", "BLOCKED", "candidate entrypoint is not production traffic entrypoint"),
+                check("CENTRAL_CONFIG_NOT_CONNECTED", "BLOCKED", "centralized config is not connected"),
                 check("PRODUCTION_AUDIT_NOT_CONNECTED", "BLOCKED", "persistent audit is not connected")
         );
     }
@@ -264,11 +275,13 @@ class UnifiedBackendController {
 
 @Component
 class UnifiedBackendRegistry {
-    private static final List<String> MOUNTED_ENTRYPOINTS = List.of("api-gateway", "business-core", "admission-core", "engagement-core", "portal-core");
+    private static final List<String> MOUNTED_ENTRYPOINTS = List.of("api-gateway", "business-core", "admission-core", "engagement-core", "ops-core", "portal-core");
     private static final List<String> MOUNTED_ROUTE_IDS = List.of(
             "auth", "profile", "notification", "content", "server-status", "resource", "admin",
             "onboarding", "exam", "whitelist", "attendance",
             "community", "activity", "calendar", "changelog",
+            "ops-control", "cloudreve-sync", "backup-recovery", "alerting", "plugin-integration",
+            "cross-platform-notification", "ops-image-market",
             "guide", "material", "online-map"
     );
     private final List<UnifiedMount> gatewayRoutes = createGatewayRoutes();
@@ -283,14 +296,15 @@ class UnifiedBackendRegistry {
                 "candidateEntrypointsTotal", 1,
                 "mountedEntrypoints", MOUNTED_ENTRYPOINTS,
                 "mountedRouteIds", MOUNTED_ROUTE_IDS,
-                "inProcessRoutesTotal", 18,
-                "httpFallbackRoutesTotal", 7,
+                "inProcessRoutesTotal", 25,
+                "httpFallbackRoutesTotal", 0,
                 "externalRoutesTotal", 1,
                 "nodeDaemonDisposition", "KEEP_EXTERNAL",
                 "readyToReplaceGateway", false,
                 "readyToRetireBusinessCore", false,
                 "readyToRetireAdmissionCore", false,
                 "readyToRetireEngagementCore", false,
+                "readyToRetireOpsCore", false,
                 "readyToRetirePortalCore", false
         );
     }
@@ -302,6 +316,7 @@ class UnifiedBackendRegistry {
         items.add(selfMount("business-core", "BUSINESS_CORE", "/api/v1/business-core", "business-core", 8130, "business-core self API mounted in candidate process"));
         items.add(selfMount("admission-core", "ADMISSION_CORE", "/api/v1/admission-core", "admission-core", 8131, "admission-core self API mounted in candidate process"));
         items.add(selfMount("engagement-core", "ENGAGEMENT_CORE", "/api/v1/engagement-core", "engagement-core", 8132, "engagement-core self API mounted in candidate process"));
+        items.add(selfMount("ops-core", "OPS_CORE", "/api/v1/ops-core", "ops-core", 8133, "ops-core self API mounted in candidate process"));
         items.add(selfMount("portal-core", "PORTAL_CORE", "/api/v1/portal-core", "portal-core", 8134, "portal-core self API mounted in candidate process"));
         for (UnifiedMount route : gatewayRoutes) {
             items.add(route.toMap());
@@ -316,6 +331,7 @@ class UnifiedBackendRegistry {
                 new UnifiedSmokeTarget("BUSINESS_CORE_HEALTH", "BUSINESS_CORE", "GET", "/api/v1/business-core/health", "IN_PROCESS"),
                 new UnifiedSmokeTarget("ADMISSION_CORE_HEALTH", "ADMISSION_CORE", "GET", "/api/v1/admission-core/health", "IN_PROCESS"),
                 new UnifiedSmokeTarget("ENGAGEMENT_CORE_HEALTH", "ENGAGEMENT_CORE", "GET", "/api/v1/engagement-core/health", "IN_PROCESS"),
+                new UnifiedSmokeTarget("OPS_CORE_HEALTH", "OPS_CORE", "GET", "/api/v1/ops-core/health", "IN_PROCESS"),
                 new UnifiedSmokeTarget("PORTAL_CORE_HEALTH", "PORTAL_CORE", "GET", "/api/v1/portal-core/health", "IN_PROCESS"),
                 new UnifiedSmokeTarget("AUTH_SESSION_VERIFY", "AUTH", "GET", "/api/v1/auth/session/verify", "IN_PROCESS"),
                 new UnifiedSmokeTarget("PROFILE_MEMBERS", "PROFILE", "GET", "/api/v1/profile/members", "IN_PROCESS"),
@@ -332,6 +348,13 @@ class UnifiedBackendRegistry {
                 new UnifiedSmokeTarget("ACTIVITY_EVENTS", "ACTIVITY", "GET", "/api/v1/activity/events", "IN_PROCESS"),
                 new UnifiedSmokeTarget("CALENDAR_UPCOMING", "CALENDAR", "GET", "/api/v1/calendar/upcoming", "IN_PROCESS"),
                 new UnifiedSmokeTarget("CHANGELOG_LATEST_VERSION", "CHANGELOG", "GET", "/api/v1/changelog/versions/latest", "IN_PROCESS"),
+                new UnifiedSmokeTarget("OPS_CONTROL_OVERVIEW", "OPS_CONTROL", "GET", "/api/v1/ops-control/overview", "IN_PROCESS"),
+                new UnifiedSmokeTarget("CLOUDREVE_SYNC_HEALTH", "CLOUDREVE_SYNC", "GET", "/api/v1/cloudreve-sync/health", "IN_PROCESS"),
+                new UnifiedSmokeTarget("BACKUP_RECOVERY_HEALTH", "BACKUP_RECOVERY", "GET", "/api/v1/backup-recovery/health", "IN_PROCESS"),
+                new UnifiedSmokeTarget("ALERTING_HEALTH", "ALERTING", "GET", "/api/v1/alerting/health", "IN_PROCESS"),
+                new UnifiedSmokeTarget("PLUGIN_INTEGRATION_HEALTH", "PLUGIN_INTEGRATION", "GET", "/api/v1/plugin-integration/health", "IN_PROCESS"),
+                new UnifiedSmokeTarget("CROSS_PLATFORM_NOTIFICATION_HEALTH", "CROSS_PLATFORM_NOTIFICATION", "GET", "/api/v1/cross-platform-notification/health", "IN_PROCESS"),
+                new UnifiedSmokeTarget("OPS_IMAGE_MARKET_HEALTH", "OPS_IMAGE_MARKET", "GET", "/api/v1/ops-image-market/health", "IN_PROCESS"),
                 new UnifiedSmokeTarget("GUIDE_CATEGORIES", "GUIDE", "GET", "/api/v1/guides/categories", "IN_PROCESS"),
                 new UnifiedSmokeTarget("MATERIAL_FEATURED", "MATERIAL", "GET", "/api/v1/materials/featured", "IN_PROCESS"),
                 new UnifiedSmokeTarget("ONLINE_MAP_HEALTH", "ONLINE_MAP", "GET", "/api/v1/online-map/health", "IN_PROCESS")
@@ -344,19 +367,21 @@ class UnifiedBackendRegistry {
                 "business-core independent entrypoint is not retired",
                 "admission-core independent entrypoint is not retired",
                 "engagement-core independent entrypoint is not retired",
+                "ops-core independent entrypoint is not retired",
                 "portal-core independent entrypoint is not retired",
-                "ops-core entrypoint is not mounted in-process",
                 "dynamic service discovery is not connected",
+                "centralized config is not connected",
                 "persistent audit is not connected",
+                "real production traffic rehearsal is not completed",
                 "node-daemon remains external"
         );
     }
 
     List<String> productionBlockers() {
         return List.of(
-                "ops-core entrypoint is not mounted in-process",
                 "node-daemon remains external",
                 "dynamic service discovery is not connected",
+                "centralized config is not connected",
                 "persistent audit is not connected",
                 "candidate entrypoint is not production traffic entrypoint"
         );
@@ -396,15 +421,15 @@ class UnifiedBackendRegistry {
         items.add(inProcess("activity", "ACTIVITY", "/api/v1/activity", "engagement-core", 8132));
         items.add(inProcess("calendar", "CALENDAR", "/api/v1/calendar", "engagement-core", 8132));
         items.add(inProcess("changelog", "CHANGELOG", "/api/v1/changelog", "engagement-core", 8132));
-        items.add(fallback("ops-control", "OPS_CONTROL", "/api/v1/ops-control", "ops-core", 8133));
+        items.add(inProcess("ops-control", "OPS_CONTROL", "/api/v1/ops-control", "ops-core", 8133));
         items.add(external("node-daemon", "NODE_DAEMON", "/api/v1/node-daemon", 8117));
-        items.add(fallback("cloudreve-sync", "CLOUDREVE_SYNC", "/api/v1/cloudreve-sync", "ops-core", 8133));
-        items.add(fallback("backup-recovery", "BACKUP_RECOVERY", "/api/v1/backup-recovery", "ops-core", 8133));
-        items.add(fallback("alerting", "ALERTING", "/api/v1/alerting", "ops-core", 8133));
+        items.add(inProcess("cloudreve-sync", "CLOUDREVE_SYNC", "/api/v1/cloudreve-sync", "ops-core", 8133));
+        items.add(inProcess("backup-recovery", "BACKUP_RECOVERY", "/api/v1/backup-recovery", "ops-core", 8133));
+        items.add(inProcess("alerting", "ALERTING", "/api/v1/alerting", "ops-core", 8133));
         items.add(inProcess("online-map", "ONLINE_MAP", "/api/v1/online-map", "portal-core", 8134));
-        items.add(fallback("plugin-integration", "PLUGIN_INTEGRATION", "/api/v1/plugin-integration", "ops-core", 8133));
-        items.add(fallback("cross-platform-notification", "CROSS_PLATFORM_NOTIFICATION", "/api/v1/cross-platform-notification", "ops-core", 8133));
-        items.add(fallback("ops-image-market", "OPS_IMAGE_MARKET", "/api/v1/ops-image-market", "ops-core", 8133));
+        items.add(inProcess("plugin-integration", "PLUGIN_INTEGRATION", "/api/v1/plugin-integration", "ops-core", 8133));
+        items.add(inProcess("cross-platform-notification", "CROSS_PLATFORM_NOTIFICATION", "/api/v1/cross-platform-notification", "ops-core", 8133));
+        items.add(inProcess("ops-image-market", "OPS_IMAGE_MARKET", "/api/v1/ops-image-market", "ops-core", 8133));
         items.add(inProcess("material", "MATERIAL", "/api/v1/materials", "portal-core", 8134));
         items.add(inProcess("guide", "GUIDE", "/api/v1/guides", "portal-core", 8134));
         return List.copyOf(items);
