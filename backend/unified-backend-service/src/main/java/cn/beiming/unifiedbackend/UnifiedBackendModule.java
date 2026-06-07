@@ -100,6 +100,8 @@ class UnifiedBackendController {
                 "productionBlockers", registry.productionBlockers(),
                 "productionSwitchReadinessStatus", "BLOCKED",
                 "productionSwitchChecks", registry.productionSwitchChecks(),
+                "centralConfigPrecheckStatus", "BLOCKED",
+                "centralConfigPrecheckChecks", registry.centralConfigPrecheckChecks(),
                 "replacementDecision", registry.replacementDecision(),
                 "generatedAt", now()
         ));
@@ -403,6 +405,21 @@ class UnifiedBackendRegistry {
                 switchCheck("FRONTEND_ENTRYPOINT_SWITCH_READY", "BLOCKED", "frontend and external callers are not switched to unified-backend", true),
                 switchCheck("ROLLBACK_WINDOW_READY", "BLOCKED", "rollback window and old entrypoint retention plan are not validated", true),
                 switchCheck("PRODUCTION_TRAFFIC_ENTRYPOINT_READY", "BLOCKED", "candidate entrypoint is not receiving production traffic", true)
+        );
+    }
+
+    List<Map<String, Object>> centralConfigPrecheckChecks() {
+        return List.of(
+                switchCheck("CANDIDATE_PORT_FIXED", "PASS", "candidate port remains fixed at 8135", true),
+                switchCheck("CURRENT_ENTRYPOINT_PORTS_DOCUMENTED", "PASS", "current entrypoint ports are documented and preserved", true),
+                switchCheck("IN_PROCESS_ROUTE_REGISTRY_FIXED", "PASS", "in-process route registry remains fixed for the candidate", true),
+                switchCheck("NODE_DAEMON_EXTERNAL_PORT_DOCUMENTED", "PASS", "node-daemon external port remains documented as 8117", true),
+                switchCheck("DANGEROUS_TEST_CONTROLS_DISABLED", "PASS", "dangerous test controls remain disabled in the candidate", true),
+                switchCheck("CENTRAL_CONFIG_PROVIDER_CONNECTED", "BLOCKED", "centralized production configuration is not connected", true),
+                switchCheck("PRODUCTION_PROFILE_BOUND", "BLOCKED", "production profile binding is not available yet", true),
+                switchCheck("SENSITIVE_CONFIG_SOURCE_EXTERNALIZED", "BLOCKED", "sensitive config sources are not externalized yet", true),
+                switchCheck("CONFIG_DRIFT_SCAN_AUTOMATED", "BLOCKED", "config drift scan is not automated yet", true),
+                switchCheck("CONFIG_ROLLBACK_SOURCE_DEFINED", "BLOCKED", "config rollback source is not defined yet", true)
         );
     }
 

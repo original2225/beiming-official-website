@@ -45,7 +45,7 @@ class UnifiedBackendApiContractTest {
         addRange(mapped, "UBACK-AUTH", 1, 2);
         addRange(mapped, "UBACK-MOUNT", 1, 22);
         addRange(mapped, "UBACK-GATE", 1, 1);
-        addRange(mapped, "UBACK-READY", 1, 2);
+        addRange(mapped, "UBACK-READY", 1, 3);
         addRange(mapped, "UBACK-SMOKE", 1, 1);
         addRange(mapped, "UBACK-BOUNDARY", 1, 1);
         addRange(mapped, "UBACK-REGRESS", 1, 1);
@@ -57,11 +57,12 @@ class UnifiedBackendApiContractTest {
                 "UBACK-GATE-001",
                 "UBACK-READY-001",
                 "UBACK-READY-002",
+                "UBACK-READY-003",
                 "UBACK-SMOKE-001",
                 "UBACK-BOUNDARY-001",
                 "UBACK-REGRESS-001"
         );
-        assertThat(mapped).hasSize(31);
+        assertThat(mapped).hasSize(32);
     }
 
     @Test
@@ -244,6 +245,30 @@ class UnifiedBackendApiContractTest {
     }
 
     @Test
+    void exposesCentralConfigPrecheckWithoutAllowingProductionSwitch() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-central-config-precheck"));
+
+        assertThat(readiness.at("/data/centralConfigPrecheckStatus").asText()).isEqualTo("BLOCKED");
+        assertCentralConfigCheck(readiness, "CANDIDATE_PORT_FIXED", "PASS", true);
+        assertCentralConfigCheck(readiness, "CURRENT_ENTRYPOINT_PORTS_DOCUMENTED", "PASS", true);
+        assertCentralConfigCheck(readiness, "IN_PROCESS_ROUTE_REGISTRY_FIXED", "PASS", true);
+        assertCentralConfigCheck(readiness, "NODE_DAEMON_EXTERNAL_PORT_DOCUMENTED", "PASS", true);
+        assertCentralConfigCheck(readiness, "DANGEROUS_TEST_CONTROLS_DISABLED", "PASS", true);
+        assertCentralConfigCheck(readiness, "CENTRAL_CONFIG_PROVIDER_CONNECTED", "BLOCKED", true);
+        assertCentralConfigCheck(readiness, "PRODUCTION_PROFILE_BOUND", "BLOCKED", true);
+        assertCentralConfigCheck(readiness, "SENSITIVE_CONFIG_SOURCE_EXTERNALIZED", "BLOCKED", true);
+        assertCentralConfigCheck(readiness, "CONFIG_DRIFT_SCAN_AUTOMATED", "BLOCKED", true);
+        assertCentralConfigCheck(readiness, "CONFIG_ROLLBACK_SOURCE_DEFINED", "BLOCKED", true);
+        assertThat(readiness.at("/data/centralConfigPrecheckChecks").toString())
+                .contains("\"check\":\"CANDIDATE_PORT_FIXED\"")
+                .contains("\"check\":\"CENTRAL_CONFIG_PROVIDER_CONNECTED\"")
+                .doesNotContain("C:\\Users\\");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
     void runsUnifiedBackendHttpSmokeWithoutHidingDegradedTargets() throws Exception {
         JsonNode smoke = performJson(post("/api/v1/unified-backend/admin/http-smoke/run")
                 .header("Authorization", "Bearer admin-token")
@@ -307,6 +332,14 @@ class UnifiedBackendApiContractTest {
 
     private void assertSwitchCheck(JsonNode response, String check, String status, boolean requiredForReplacement) {
         String checks = response.at("/data/productionSwitchChecks").toString();
+        assertThat(checks)
+                .contains("\"check\":\"" + check + "\"")
+                .contains("\"status\":\"" + status + "\"")
+                .contains("\"requiredForReplacement\":" + requiredForReplacement);
+    }
+
+    private void assertCentralConfigCheck(JsonNode response, String check, String status, boolean requiredForReplacement) {
+        String checks = response.at("/data/centralConfigPrecheckChecks").toString();
         assertThat(checks)
                 .contains("\"check\":\"" + check + "\"")
                 .contains("\"status\":\"" + status + "\"")
