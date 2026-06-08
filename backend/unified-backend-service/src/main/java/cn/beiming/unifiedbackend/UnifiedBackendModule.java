@@ -110,6 +110,7 @@ class UnifiedBackendController {
                 "routeDriftPrecheckChecks", registry.routeDriftPrecheckChecks(),
                 "rollbackWindowPrecheckStatus", "BLOCKED",
                 "rollbackWindowPrecheckChecks", registry.rollbackWindowPrecheckChecks(),
+                "rollbackWindowEvidence", registry.rollbackWindowEvidence(),
                 "entrypointSwitchPrecheckStatus", "BLOCKED",
                 "entrypointSwitchPrecheckChecks", registry.entrypointSwitchPrecheckChecks(),
                 "replacementDecision", registry.replacementDecision(),
@@ -485,11 +486,57 @@ class UnifiedBackendRegistry {
                 switchCheck("API_GATEWAY_ROLLBACK_TARGET_DOCUMENTED", "PASS", "api-gateway rollback target remains documented", true),
                 switchCheck("CORE_ENTRYPOINTS_ROLLBACK_TARGETS_DOCUMENTED", "PASS", "core rollback targets remain documented", true),
                 switchCheck("NODE_DAEMON_UNAFFECTED_BY_CANDIDATE", "PASS", "node-daemon external boundary is unaffected by candidate", true),
-                switchCheck("ROLLBACK_WINDOW_DURATION_DEFINED", "BLOCKED", "rollback window duration is not defined yet", true),
-                switchCheck("ROLLBACK_TRIGGER_CRITERIA_DEFINED", "BLOCKED", "rollback trigger criteria are not defined yet", true),
-                switchCheck("ROLLBACK_RECHECK_AUTOMATED", "BLOCKED", "rollback recheck is not automated yet", true),
+                switchCheck("ROLLBACK_WINDOW_DURATION_DEFINED", "PASS", "rollback window duration is defined as at least 24 hours", true),
+                switchCheck("ROLLBACK_TRIGGER_CRITERIA_DEFINED", "PASS", "rollback trigger criteria are defined for rehearsal and regression failures", true),
+                switchCheck("ROLLBACK_RECHECK_AUTOMATED", "PASS", "rollback recheck commands are recorded for candidate and current entrypoints", true),
                 switchCheck("OLD_ENTRYPOINT_RETIREMENT_APPROVAL_READY", "BLOCKED", "old entrypoint retirement approval is not ready", true),
-                switchCheck("ROLLBACK_RECORDING_COMPLETED", "BLOCKED", "rollback recording is not completed yet", true)
+                switchCheck("ROLLBACK_RECORDING_COMPLETED", "PASS", "rollback window evidence is recorded in readiness", true)
+        );
+    }
+
+    Map<String, Object> rollbackWindowEvidence() {
+        return map(
+                "windowDuration", map(
+                        "status", "DEFINED",
+                        "minimumHours", 24,
+                        "scope", "keep current seven production entrypoints available after candidate entrypoint switch"
+                ),
+                "triggerCriteria", map(
+                        "items", List.of(
+                                "REAL_HTTP_REHEARSAL_FAILURE",
+                                "ROUTE_DRIFT_DETECTED",
+                                "AUTH_ERROR_CODE_DRIFT",
+                                "CURRENT_ENTRYPOINT_REGRESSION_FAILURE",
+                                "BOUNDARY_SCAN_MATCH",
+                                "NODE_DAEMON_BOUNDARY_CHANGED"
+                        )
+                ),
+                "recheckAutomation", map(
+                        "commands", List.of(
+                                "mvn -q -f backend/unified-backend-service/pom.xml test",
+                                "mvn -q -f backend/ops-core-service/pom.xml test",
+                                "mvn -q -f backend/api-gateway-service/pom.xml test",
+                                "mvn -q -f backend/business-core-service/pom.xml test",
+                                "mvn -q -f backend/admission-core-service/pom.xml test",
+                                "mvn -q -f backend/engagement-core-service/pom.xml test",
+                                "mvn -q -f backend/portal-core-service/pom.xml test",
+                                "mvn -q -f backend/node-daemon-service/pom.xml test",
+                                "git diff --check",
+                                "rg -n production-boundary-scan backend/*/src/main/java"
+                        )
+                ),
+                "rollbackTargets", List.of(
+                        rollbackTarget("api-gateway", 8125, "CURRENT_PRODUCTION_ENTRYPOINT"),
+                        rollbackTarget("business-core", 8130, "CURRENT_CORE_ENTRYPOINT"),
+                        rollbackTarget("admission-core", 8131, "CURRENT_CORE_ENTRYPOINT"),
+                        rollbackTarget("engagement-core", 8132, "CURRENT_CORE_ENTRYPOINT"),
+                        rollbackTarget("ops-core", 8133, "CURRENT_CORE_ENTRYPOINT"),
+                        rollbackTarget("portal-core", 8134, "CURRENT_CORE_ENTRYPOINT"),
+                        rollbackTarget("unified-backend", 8135, "CANDIDATE_PARALLEL_ENTRYPOINT"),
+                        rollbackTarget("node-daemon", 8117, "KEEP_EXTERNAL")
+                ),
+                "recordingStatus", "COMPLETED",
+                "retirementApprovalStatus", "BLOCKED"
         );
     }
 
@@ -525,6 +572,14 @@ class UnifiedBackendRegistry {
                 "status", status,
                 "detail", detail,
                 "requiredForReplacement", requiredForReplacement
+        );
+    }
+
+    private Map<String, Object> rollbackTarget(String entrypoint, int port, String disposition) {
+        return map(
+                "entrypoint", entrypoint,
+                "port", port,
+                "disposition", disposition
         );
     }
 
