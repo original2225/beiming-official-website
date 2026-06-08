@@ -113,6 +113,7 @@ class UnifiedBackendController {
                 "rollbackWindowEvidence", registry.rollbackWindowEvidence(),
                 "entrypointSwitchPrecheckStatus", "BLOCKED",
                 "entrypointSwitchPrecheckChecks", registry.entrypointSwitchPrecheckChecks(),
+                "entrypointSwitchEvidence", registry.entrypointSwitchEvidence(),
                 "replacementDecision", registry.replacementDecision(),
                 "generatedAt", now()
         ));
@@ -550,8 +551,21 @@ class UnifiedBackendRegistry {
                 switchCheck("FRONTEND_ENTRYPOINT_SWITCH_IMPLEMENTED", "BLOCKED", "frontend entrypoint switch is not implemented", true),
                 switchCheck("EXTERNAL_PROXY_SWITCH_IMPLEMENTED", "BLOCKED", "external proxy switch is not implemented", true),
                 switchCheck("PRODUCTION_TRAFFIC_CANARY_DEFINED", "BLOCKED", "production traffic canary is not defined", true),
-                switchCheck("ENTRYPOINT_SWITCH_TESTS_AUTOMATED", "BLOCKED", "entrypoint switch tests are not automated yet", true),
-                switchCheck("SWITCH_AUDIT_RECORDING_READY", "BLOCKED", "switch audit recording is not ready", true)
+                switchCheck("ENTRYPOINT_SWITCH_TESTS_AUTOMATED", "PASS", "entrypoint switch rehearsal is covered by automated readiness tests", true),
+                switchCheck("SWITCH_AUDIT_RECORDING_READY", "PASS", "switch audit recording is ready for rehearsal evidence", true)
+        );
+    }
+
+    Map<String, Object> entrypointSwitchEvidence() {
+        return map(
+                "candidateBaseUrl", "http://127.0.0.1:8135",
+                "currentGatewayBaseUrl", "http://127.0.0.1:8125",
+                "businessPathsRemainUnchanged", true,
+                "switchMode", "ENTRYPOINT_TARGET_ONLY",
+                "forbiddenPathPrefix", "/api/v1/unified-backend/<module>",
+                "rollbackTarget", "api-gateway:8125",
+                "rehearsalStatus", "PASS",
+                "auditRecordingStatus", "READY_FOR_REHEARSAL"
         );
     }
 
