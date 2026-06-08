@@ -118,6 +118,9 @@ class UnifiedBackendController {
                 "backendSingleServicePrecheckStatus", "PASS",
                 "backendSingleServicePrecheckChecks", registry.backendSingleServicePrecheckChecks(),
                 "backendSingleServiceEvidence", registry.backendSingleServiceEvidence(),
+                "entrypointCutoverAdapterPrecheckStatus", "BLOCKED",
+                "entrypointCutoverAdapterPrecheckChecks", registry.entrypointCutoverAdapterPrecheckChecks(),
+                "entrypointCutoverAdapterEvidence", registry.entrypointCutoverAdapterEvidence(),
                 "replacementDecision", registry.replacementDecision(),
                 "generatedAt", now()
         ));
@@ -647,6 +650,42 @@ class UnifiedBackendRegistry {
                         "CENTRAL_CONFIG_NOT_CONNECTED",
                         "PERSISTENT_AUDIT_NOT_CONNECTED"
                 )
+        );
+    }
+
+    List<Map<String, Object>> entrypointCutoverAdapterPrecheckChecks() {
+        return List.of(
+                switchCheck("FRONTEND_API_BASE_URL_CONTRACT_DOCUMENTED", "PASS", "frontend API base URL override is documented as VITE_API_BASE_URL", true),
+                switchCheck("BUSINESS_PATHS_REMAIN_UNCHANGED", "PASS", "business paths keep their existing /api/v1 prefixes", true),
+                switchCheck("CANDIDATE_BASE_URL_DOCUMENTED", "PASS", "candidate base URL is documented as http://127.0.0.1:8135", true),
+                switchCheck("ROLLBACK_TARGET_DOCUMENTED", "PASS", "rollback base URL is documented as http://127.0.0.1:8125", true),
+                switchCheck("NO_FRONTEND_SOURCE_TO_MODIFY_IN_REPOSITORY", "PASS", "repository does not contain frontend source to modify in this round", true),
+                switchCheck("NO_PROXY_CONFIG_TO_MODIFY_IN_REPOSITORY", "PASS", "repository does not contain proxy config to modify in this round", true),
+                switchCheck("CUTOVER_REQUIRES_EXTERNAL_FRONTEND_OR_PROXY_CHANGE", "PASS", "actual cutover requires changing an external frontend build or proxy target", true),
+                switchCheck("CUTOVER_ADAPTER_EVIDENCE_RECORDED", "PASS", "cutover adapter evidence is recorded without applying traffic switch", true),
+                switchCheck("FRONTEND_ENTRYPOINT_SWITCH_IMPLEMENTED", "BLOCKED", "frontend entrypoint is not switched in this repository", true),
+                switchCheck("EXTERNAL_PROXY_SWITCH_IMPLEMENTED", "BLOCKED", "external proxy target is not switched in this repository", true),
+                switchCheck("PRODUCTION_TRAFFIC_ENTRYPOINT_READY", "BLOCKED", "production traffic entrypoint is not switched to unified-backend", true)
+        );
+    }
+
+    Map<String, Object> entrypointCutoverAdapterEvidence() {
+        return map(
+                "currentGatewayBaseUrl", "http://127.0.0.1:8125",
+                "candidateBaseUrl", "http://127.0.0.1:8135",
+                "switchMode", "ENTRYPOINT_TARGET_ONLY",
+                "businessPathsRemainUnchanged", true,
+                "forbiddenPathPrefix", "/api/v1/unified-backend/<module>",
+                "frontendSourcePresent", false,
+                "proxyConfigPresent", false,
+                "repositoryCutoverConfigApplied", false,
+                "requiredFrontendEnvVar", "VITE_API_BASE_URL",
+                "recommendedNextValue", "http://127.0.0.1:8135",
+                "rollbackTarget", "http://127.0.0.1:8125",
+                "trafficSwitchApplied", false,
+                "frontendEntrypointSwitched", false,
+                "externalProxySwitched", false,
+                "status", "ADAPTER_EVIDENCE_RECORDED_NOT_APPLIED"
         );
     }
 
