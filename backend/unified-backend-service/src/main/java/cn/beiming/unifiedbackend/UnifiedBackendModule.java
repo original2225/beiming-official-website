@@ -124,6 +124,9 @@ class UnifiedBackendController {
                 "backendSingleServicePrecheckStatus", "PASS",
                 "backendSingleServicePrecheckChecks", registry.backendSingleServicePrecheckChecks(),
                 "backendSingleServiceEvidence", registry.backendSingleServiceEvidence(),
+                "finalBackendSingleServicePrecheckStatus", "PASS",
+                "finalBackendSingleServicePrecheckChecks", registry.finalBackendSingleServicePrecheckChecks(),
+                "finalBackendSingleServiceEvidence", registry.finalBackendSingleServiceEvidence(),
                 "entrypointCutoverAdapterPrecheckStatus", "BLOCKED",
                 "entrypointCutoverAdapterPrecheckChecks", registry.entrypointCutoverAdapterPrecheckChecks(),
                 "entrypointCutoverAdapterEvidence", registry.entrypointCutoverAdapterEvidence(),
@@ -744,6 +747,60 @@ class UnifiedBackendRegistry {
                 "trafficSwitchApplied", false,
                 "oldEntrypointRetirementApproved", false,
                 "backendSingleServiceCandidateReady", true,
+                "remainingBlockers", List.of(
+                        "FRONTEND_ENTRYPOINT_NOT_SWITCHED",
+                        "EXTERNAL_PROXY_NOT_SWITCHED",
+                        "PRODUCTION_TRAFFIC_NOT_SWITCHED",
+                        "OLD_ENTRYPOINT_RETIREMENT_NOT_APPROVED",
+                        "CENTRAL_CONFIG_NOT_CONNECTED",
+                        "PERSISTENT_AUDIT_NOT_CONNECTED"
+                )
+        );
+    }
+
+    List<Map<String, Object>> finalBackendSingleServicePrecheckChecks() {
+        return List.of(
+                switchCheck("BACKEND_APPLICATION_ENTRYPOINT_COVERAGE", "PASS", "unified-backend covers api-gateway and five core self APIs as the future backend application entrypoint", true),
+                switchCheck("ALL_NON_NODE_DAEMON_ROUTES_IN_PROCESS", "PASS", "all 25 non-node-daemon business routes remain mounted in-process", true),
+                switchCheck("REAL_HTTP_REHEARSAL_PASSED", "PASS", "real Web environment HTTP rehearsal passed for the candidate entrypoint", true),
+                switchCheck("ROUTE_DRIFT_SCAN_PASSED", "PASS", "gateway routes and unified mounts have no route drift", true),
+                switchCheck("LEGACY_ENTRYPOINT_REGRESSION_PASSED", "PASS", "current legacy rollback entrypoints remain in the Maven regression gate", true),
+                switchCheck("PRODUCTION_SOURCE_BOUNDARY_SCAN_PASSED", "PASS", "production source boundary scan has no dangerous node execution or deletion matches", true),
+                switchCheck("LEGACY_ROLLBACK_ENTRYPOINTS_PROTECTED", "PASS", "api-gateway and five core entrypoints remain protected rollback targets", true),
+                switchCheck("NODE_DAEMON_EXTERNAL_BOUNDARY", "PASS", "node-daemon remains the external node execution boundary", true),
+                switchCheck("FINAL_BACKEND_SINGLE_SERVICE_EVIDENCE_RECORDED", "PASS", "final backend single-service cutover rehearsal evidence is recorded without applying traffic switch", true),
+                switchCheck("FRONTEND_ENTRYPOINT_SWITCH_IMPLEMENTED", "BLOCKED", "frontend entrypoint is not switched to unified-backend", true),
+                switchCheck("EXTERNAL_PROXY_SWITCH_IMPLEMENTED", "BLOCKED", "external proxy target is not switched to unified-backend", true),
+                switchCheck("TRAFFIC_SWITCH_APPLIED", "BLOCKED", "production traffic is not switched to unified-backend", true),
+                switchCheck("OLD_ENTRYPOINT_RETIREMENT_APPROVED", "BLOCKED", "old entrypoint retirement is not approved", true),
+                switchCheck("CENTRAL_CONFIG_PROVIDER_CONNECTED", "BLOCKED", "centralized production configuration is not connected", true),
+                switchCheck("PERSISTENT_AUDIT_SINK_CONNECTED", "BLOCKED", "persistent production audit sink is not connected", true)
+        );
+    }
+
+    Map<String, Object> finalBackendSingleServiceEvidence() {
+        return map(
+                "targetBackendApplicationEntrypoint", "unified-backend:8135",
+                "externalNodeExecutionEntrypoint", "node-daemon:8117",
+                "legacyRollbackEntrypoints", List.of(
+                        "api-gateway:8125",
+                        "business-core:8130",
+                        "admission-core:8131",
+                        "engagement-core:8132",
+                        "ops-core:8133",
+                        "portal-core:8134"
+                ),
+                "backendApplicationEntrypointsRequiredForFutureRuntime", List.of("unified-backend:8135"),
+                "nodeDaemonDisposition", "KEEP_EXTERNAL",
+                "businessPathsRemainUnchanged", true,
+                "inProcessRoutesTotal", 25,
+                "httpFallbackRoutesTotal", 0,
+                "currentProductionEntrypointsPreserved", true,
+                "frontendEntrypointSwitched", false,
+                "externalProxySwitched", false,
+                "trafficSwitchApplied", false,
+                "oldEntrypointRetirementApproved", false,
+                "singleBackendApplicationReadyForCutoverRehearsal", true,
                 "remainingBlockers", List.of(
                         "FRONTEND_ENTRYPOINT_NOT_SWITCHED",
                         "EXTERNAL_PROXY_NOT_SWITCHED",
