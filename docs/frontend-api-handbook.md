@@ -89,7 +89,7 @@
 
 ### 运维控制台
 
-`api-gateway`、`ops-control`、`node-daemon`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`ops-image-market`、`server-status`
+`api-gateway`、`ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`ops-image-market`、`server-status`
 
 ## 前端禁止写死的内容
 
@@ -115,7 +115,6 @@
 | `calendar` | 8132 | 公开日程、维护窗口、工程节点、提醒和日历后台维护。 | `docs/contracts-calendar.md` |
 | `changelog` | 8132 | 版本更新、维护日志、插件变更、规则调整和后台发布。 | `docs/contracts-changelog.md` |
 | `ops-control` | 8133 | 运维控制台的节点、资产、容器、实例、文件、日志、终端和审批控制面，由 `ops-core-service` 承载。 | `docs/contracts-ops-control.md` |
-| `node-daemon` | 8117 | 节点侧健康、心跳、任务领取、任务回写和受控执行接口。 | `docs/contracts-node-daemon.md` |
 | `cloudreve-sync` | 8133 | Cloudreve provider、目录同步、文件快照、分享解析和同步审计，由 `ops-core-service` 承载。 | `docs/contracts-cloudreve-sync.md` |
 | `backup-recovery` | 8133 | 备份域、策略、任务、备份点、校验、演练、恢复申请和审批摘要，由 `ops-core-service` 承载。 | `docs/contracts-backup-recovery.md` |
 | `alerting` | 8133 | 告警规则、事件、静默、订阅、通知演练和告警后台管理，由 `ops-core-service` 承载。 | `docs/contracts-alerting.md` |
@@ -712,30 +711,6 @@
 | 审批拒绝 | PATCH | `/api/v1/ops-control/approvals/{approvalId}/reject` | 是 | `HIGH_RISK_APPROVE` 或 `OWNER` | HIGH |
 | 审计列表 | GET | `/api/v1/ops-control/audit-logs` | 是 | `ADMIN` 或 `OWNER` | LOW |
 | 自检摘要 | GET | `/api/v1/ops-control/ops/summary` | 是 | `NODE_READ` | LOW |
-
-### node-daemon
-
-用途：节点侧健康、心跳、任务领取、任务回写和受控执行接口。
-
-端口：`8117`。来源：`docs/contracts-node-daemon.md`。详情合并稿：`docs/api-reference.md`。
-
-| 接口 | 方法 | 路径 | 认证 | 权限 | 风险 |
-| --- | --- | --- | --- | --- | --- |
-| 健康检查 | GET | `/api/v1/node-daemon/health` | 否 | 无 | LOW |
-| 自检摘要 | GET | `/api/v1/node-daemon/ops/summary` | 是 | 节点认证 | LOW |
-| 能力列表 | GET | `/api/v1/node-daemon/capabilities` | 是 | 节点认证 | LOW |
-| 注册握手摘要 | POST | `/api/v1/node-daemon/registration/handshake` | 是 | 节点认证或本地 bootstrap | MEDIUM |
-| 运行时快照 | GET | `/api/v1/node-daemon/runtime/snapshot` | 是 | 节点认证 | LOW |
-| 触发心跳回写 | POST | `/api/v1/node-daemon/runtime/heartbeat` | 是 | 节点认证 | MEDIUM |
-| 接收受控任务 | POST | `/api/v1/node-daemon/tasks` | 是 | 节点认证，控制面签名 | MEDIUM 到 CRITICAL |
-| 本地任务列表 | GET | `/api/v1/node-daemon/tasks` | 是 | 节点认证 | LOW |
-| 本地任务详情 | GET | `/api/v1/node-daemon/tasks/{nodeRequestId}` | 是 | 节点认证 | LOW |
-| 取消本地任务 | PATCH | `/api/v1/node-daemon/tasks/{nodeRequestId}/cancel` | 是 | 节点认证，控制面签名 | MEDIUM |
-| 任务结果摘要 | GET | `/api/v1/node-daemon/tasks/{nodeRequestId}/result` | 是 | 节点认证 | LOW |
-| 授权目录文件列表 | GET | `/api/v1/node-daemon/files` | 是 | `FILE_MANAGE` 节点能力 | LOW |
-| 文本文件读取摘要 | POST | `/api/v1/node-daemon/files/read` | 是 | `FILE_MANAGE` 节点能力 | MEDIUM |
-| 日志摘要查询 | POST | `/api/v1/node-daemon/logs/query` | 是 | `NODE_READ` 节点能力 | MEDIUM |
-| 本地审计列表 | GET | `/api/v1/node-daemon/audit-logs` | 是 | 节点认证 | LOW |
 
 ### cloudreve-sync
 

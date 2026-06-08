@@ -77,6 +77,9 @@ class OpsControlApiContractTest {
         assertThat(overview.at("/code").asInt()).isZero();
         assertThat(overview.at("/message").asText()).isEqualTo("success");
         assertThat(overview.at("/data/nodesTotal").asInt()).isGreaterThanOrEqualTo(1);
+        assertThat(overview.at("/data/degradedModules").toString())
+                .contains("EXTERNAL_EXECUTOR")
+                .doesNotContain("NODE_DAEMON");
         assertThat(overview.at("/requestId").asText()).isNotBlank();
         assertNoSecrets(overview);
 
@@ -421,9 +424,11 @@ class OpsControlApiContractTest {
         assertThat(ops.at("/data/service").asText()).isEqualTo("ops-control");
         assertThat(ops.at("/data/port").asInt()).isEqualTo(8133);
         assertThat(ops.at("/data/nodeAdapterMode").asText()).isEqualTo("SIMULATED");
-        assertThat(ops.at("/data/nodeDaemonConnected").asBoolean()).isFalse();
+        assertThat(ops.at("/data/externalExecutorConnected").asBoolean()).isFalse();
         assertThat(ops.at("/data/testControlsEnabled").asBoolean()).isTrue();
-        assertThat(ops.toString()).contains("P1_IN_MEMORY_STORAGE", "NODE_DAEMON_NOT_CONNECTED");
+        assertThat(ops.toString())
+                .contains("P1_IN_MEMORY_STORAGE", "EXTERNAL_EXECUTOR_NOT_CONNECTED")
+                .doesNotContain("NODE_DAEMON_NOT_CONNECTED", "nodeDaemonConnected");
         assertNoSecrets(ops);
 
         Path serviceRoot = Path.of("src/main/java/cn/beiming/opscontrol");

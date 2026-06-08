@@ -870,7 +870,7 @@ class BackupRecoveryStore {
         view.put("lastFailedBackupAt", lastFailure.map(job -> job.finishedAt).orElse(null));
         view.put("degraded", false);
         view.put("degradeReasons", List.of());
-        view.put("productionGaps", List.of("REAL_PERSISTENCE_NOT_CONNECTED", "REAL_BACKUP_MEDIA_NOT_CONNECTED", "REAL_CROSS_SERVICE_HTTP_NOT_CONNECTED", "REAL_RESTORE_EXECUTION_BLOCKED", "ADMIN_READ_ONLY_ENTRY_NOT_CONNECTED", "NODE_DAEMON_DIRECT_CALL_FORBIDDEN", testControlsEnabled ? "TEST_CONTROLS_ENABLED_FOR_LOCAL_TEST" : "TEST_CONTROLS_DISABLED_OUTSIDE_TEST"));
+        view.put("productionGaps", List.of("REAL_PERSISTENCE_NOT_CONNECTED", "REAL_BACKUP_MEDIA_NOT_CONNECTED", "REAL_CROSS_SERVICE_HTTP_NOT_CONNECTED", "REAL_RESTORE_EXECUTION_BLOCKED", "ADMIN_READ_ONLY_ENTRY_NOT_CONNECTED", "EXTERNAL_EXECUTOR_DIRECT_CALL_FORBIDDEN", testControlsEnabled ? "TEST_CONTROLS_ENABLED_FOR_LOCAL_TEST" : "TEST_CONTROLS_DISABLED_OUTSIDE_TEST"));
         return view;
     }
 }

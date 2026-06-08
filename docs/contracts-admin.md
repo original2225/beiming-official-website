@@ -4,11 +4,11 @@
 
 ## 文档定位
 
-本文档是 `admin` 微服务的正式 API 契约。当前 `admin` 兼容刷新负责让后台入口识别已经闭环的 26 个后端服务，并把 `api-gateway` 作为平台依赖展示。后续前端管理后台只能通过本文档定义的接口读取后台聚合入口、模块能力、待办摘要、指标摘要、审计索引、平台依赖摘要和 admin 自有配置，不能把业务主数据或真实运维控制塞进 `admin`。
+本文档是 `admin` 微服务的正式 API 契约。当前 `admin` 兼容刷新负责让后台入口识别已经闭环的 25 个官网后端模块，并把 `api-gateway` 作为平台依赖展示。后续前端管理后台只能通过本文档定义的接口读取后台聚合入口、模块能力、待办摘要、指标摘要、审计索引、平台依赖摘要和 admin 自有配置，不能把业务主数据或真实运维控制塞进 `admin`。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `admin` 模块自己的职责边界、路径、字段、状态、权限、错误码、幂等、降级、审计和验收口径。
 
-本文档参考了现有前序服务契约和成熟在线平台的后台信息架构。GitLab Admin Area、Audit Events、Todos 和 Health Check 的设计强调后台总览、审计索引、待办队列和健康摘要分离。Grafana HTTP API 和 RBAC 文档强调健康检查与权限模型分离，适合 admin 自检和模块权限裁剪。Discourse 管理和审核队列强调运营待办只做审核入口，不把处理逻辑塞进总览。MCSManager 的面板和 Daemon 分离思路用于确认游戏服控制面边界，真实实例、文件、终端、容器和节点操作仍归 `ops-control` 与 `node-daemon`。
+本文档参考了现有前序服务契约和成熟在线平台的后台信息架构。GitLab Admin Area、Audit Events、Todos 和 Health Check 的设计强调后台总览、审计索引、待办队列和健康摘要分离。Grafana HTTP API 和 RBAC 文档强调健康检查与权限模型分离，适合 admin 自检和模块权限裁剪。Discourse 管理和审核队列强调运营待办只做审核入口，不把处理逻辑塞进总览。MCSManager 的面板和 Daemon 分离思路用于确认游戏服控制面边界，真实实例、文件、终端、容器和节点操作仍归 `ops-control` 与外部节点执行器。
 
 参考资料：
 
@@ -64,13 +64,13 @@
 
 ## 来源服务兼容契约
 
-`admin` 适配当前已经闭环的 26 个服务，不要求任何来源服务反向适配 `admin`。生产环境可以通过后端入口传入可信认证上下文和模块摘要，也可以调用来源服务正式后台接口。测试环境使用模块适配器 stub。
+`admin` 适配当前已经闭环的 25 个官网后端模块，不要求任何来源服务反向适配 `admin`。生产环境可以通过后端入口传入可信认证上下文和模块摘要，也可以调用来源服务正式后台接口。测试环境使用模块适配器 stub。
 
 当前请求认证上下文至少包含 `userId`、`displayName`、`roles`、`permissions` 和 `status`。浏览器请求体不得传入并覆盖当前操作者、角色、权限、来源 IP、请求编号、模块健康、待办来源、审计来源或来源业务摘要。
 
 来源模块不可用时，聚合读取接口优先返回局部降级结果，并在 `degradedModules`、`moduleHealth` 或对应条目中标记 `DEGRADED` 或 `UNAVAILABLE`。只有认证上下文不可用、admin 自有存储不可用、字段不兼容导致无法构造契约响应时，才返回错误。
 
-当前已闭环模块包括 `AUTH`、`PROFILE`、`NOTIFICATION`、`CONTENT`、`SERVER_STATUS`、`RESOURCE`、`ADMIN`、`ONBOARDING`、`EXAM`、`WHITELIST`、`ATTENDANCE`、`COMMUNITY`、`ACTIVITY`、`CALENDAR`、`CHANGELOG`、`OPS_CONTROL`、`NODE_DAEMON`、`CLOUDREVE_SYNC`、`BACKUP_RECOVERY`、`ALERTING`、`ONLINE_MAP`、`PLUGIN_INTEGRATION`、`CROSS_PLATFORM_NOTIFICATION`、`OPS_IMAGE_MARKET`、`MATERIAL` 和 `GUIDE`。这些模块在测试适配器正常时返回 `AVAILABLE`，适配器报告生产化缺口或局部失败时返回 `DEGRADED`，不可达或超时时返回 `UNAVAILABLE`。只有未来真正没有契约和服务目录的模块，才允许返回 `NOT_IMPLEMENTED`。
+当前已闭环模块包括 `AUTH`、`PROFILE`、`NOTIFICATION`、`CONTENT`、`SERVER_STATUS`、`RESOURCE`、`ADMIN`、`ONBOARDING`、`EXAM`、`WHITELIST`、`ATTENDANCE`、`COMMUNITY`、`ACTIVITY`、`CALENDAR`、`CHANGELOG`、`OPS_CONTROL`、`CLOUDREVE_SYNC`、`BACKUP_RECOVERY`、`ALERTING`、`ONLINE_MAP`、`PLUGIN_INTEGRATION`、`CROSS_PLATFORM_NOTIFICATION`、`OPS_IMAGE_MARKET`、`MATERIAL` 和 `GUIDE`。这些模块在测试适配器正常时返回 `AVAILABLE`，适配器报告生产化缺口或局部失败时返回 `DEGRADED`，不可达或超时时返回 `UNAVAILABLE`。只有未来真正没有契约和服务目录的模块，才允许返回 `NOT_IMPLEMENTED`。外部节点执行器已出仓，不能作为 admin 普通模块、审计来源或待办来源返回。
 
 `API_GATEWAY` 不是业务模块，不参与普通业务待办和模块注册表。它只作为平台依赖摘要出现在总览和自检中，展示端口、健康、路由数量和生产化缺口，避免 admin 到 gateway 再回到 admin 的循环依赖。
 
@@ -78,7 +78,7 @@
 
 | 枚举 | 取值 | 说明 |
 | --- | --- | --- |
-| `AdminModuleKey` | `AUTH`、`PROFILE`、`NOTIFICATION`、`CONTENT`、`SERVER_STATUS`、`RESOURCE`、`ADMIN`、`ONBOARDING`、`EXAM`、`WHITELIST`、`ATTENDANCE`、`COMMUNITY`、`ACTIVITY`、`CALENDAR`、`CHANGELOG`、`OPS_CONTROL`、`NODE_DAEMON`、`CLOUDREVE_SYNC`、`BACKUP_RECOVERY`、`ALERTING`、`ONLINE_MAP`、`PLUGIN_INTEGRATION`、`CROSS_PLATFORM_NOTIFICATION`、`OPS_IMAGE_MARKET`、`MATERIAL`、`GUIDE` | 管理后台模块键。 |
+| `AdminModuleKey` | `AUTH`、`PROFILE`、`NOTIFICATION`、`CONTENT`、`SERVER_STATUS`、`RESOURCE`、`ADMIN`、`ONBOARDING`、`EXAM`、`WHITELIST`、`ATTENDANCE`、`COMMUNITY`、`ACTIVITY`、`CALENDAR`、`CHANGELOG`、`OPS_CONTROL`、`CLOUDREVE_SYNC`、`BACKUP_RECOVERY`、`ALERTING`、`ONLINE_MAP`、`PLUGIN_INTEGRATION`、`CROSS_PLATFORM_NOTIFICATION`、`OPS_IMAGE_MARKET`、`MATERIAL`、`GUIDE` | 管理后台模块键。 |
 | `AdminModuleStatus` | `AVAILABLE`、`DEGRADED`、`UNAVAILABLE`、`NOT_IMPLEMENTED`、`DISABLED` | 模块在后台入口中的可用状态。 |
 | `AdminCapabilityType` | `ENTRY`、`READ`、`WRITE`、`REVIEW`、`CONFIG`、`AUDIT`、`OPS_PLACEHOLDER`、`PLATFORM` | 模块能力类型。 |
 | `AdminTodoType` | `REVIEW`、`CONFIG`、`FAILURE`、`HEALTH`、`SECURITY`、`FOLLOW_UP` | 待办类型。 |
@@ -86,7 +86,7 @@
 | `AdminTodoStatus` | `OPEN`、`READ_ONLY`、`SOURCE_UNAVAILABLE`、`STALE` | 聚合待办当前可读状态。 |
 | `AdminSettingScope` | `GLOBAL`、`MODULE`、`DASHBOARD`、`NAVIGATION`、`AUDIT` | admin 自有配置作用域。 |
 | `AdminSettingValueType` | `STRING`、`BOOLEAN`、`INTEGER`、`JSON` | 配置值类型。 |
-| `AdminAuditIndexSource` | `ADMIN`、`AUTH`、`PROFILE`、`NOTIFICATION`、`CONTENT`、`SERVER_STATUS`、`RESOURCE`、`ONBOARDING`、`EXAM`、`WHITELIST`、`ATTENDANCE`、`COMMUNITY`、`ACTIVITY`、`CALENDAR`、`CHANGELOG`、`OPS_CONTROL`、`NODE_DAEMON`、`CLOUDREVE_SYNC`、`BACKUP_RECOVERY`、`ALERTING`、`ONLINE_MAP`、`PLUGIN_INTEGRATION`、`CROSS_PLATFORM_NOTIFICATION`、`OPS_IMAGE_MARKET`、`MATERIAL`、`GUIDE`、`API_GATEWAY` | 审计索引来源。 |
+| `AdminAuditIndexSource` | `ADMIN`、`AUTH`、`PROFILE`、`NOTIFICATION`、`CONTENT`、`SERVER_STATUS`、`RESOURCE`、`ONBOARDING`、`EXAM`、`WHITELIST`、`ATTENDANCE`、`COMMUNITY`、`ACTIVITY`、`CALENDAR`、`CHANGELOG`、`OPS_CONTROL`、`CLOUDREVE_SYNC`、`BACKUP_RECOVERY`、`ALERTING`、`ONLINE_MAP`、`PLUGIN_INTEGRATION`、`CROSS_PLATFORM_NOTIFICATION`、`OPS_IMAGE_MARKET`、`MATERIAL`、`GUIDE`、`API_GATEWAY` | 审计索引来源。 |
 | `AdminAuditResult` | `SUCCESS`、`FAILED` | admin 审计结果。 |
 
 ## 通用对象
@@ -341,7 +341,7 @@
 
 成功响应 HTTP `200`，`data` 为 `AdminOverview`。
 
-业务规则：总览只返回当前用户有权访问的模块入口和能力。`HELPER` 可以看到可读模块、只读待办和可读指标，但不能看到系统配置入口和审计索引入口。`ADMIN` 可以看到普通配置入口和审计索引入口。`OWNER` 可以看到全局高影响配置入口、运维控制入口和平台依赖摘要。当前 26 个已闭环服务不得再出现在 `notImplementedModules` 中。`API_GATEWAY` 只能出现在 `platformDependencies`，不能作为普通业务模块返回。
+业务规则：总览只返回当前用户有权访问的模块入口和能力。`HELPER` 可以看到可读模块、只读待办和可读指标，但不能看到系统配置入口和审计索引入口。`ADMIN` 可以看到普通配置入口和审计索引入口。`OWNER` 可以看到全局高影响配置入口、运维控制入口和平台依赖摘要。当前 25 个已闭环模块不得再出现在 `notImplementedModules` 中。`API_GATEWAY` 只能出现在 `platformDependencies`，不能作为普通业务模块返回。
 
 降级规则：任一来源模块不可用时，总览仍应返回其他模块数据，并将该模块加入 `degradedModules`，对应指标值为 `0` 且 `degraded=true`。auth 认证上下文不可用时不得返回总览，返回 `46703` 或 `46704`。
 
@@ -365,7 +365,7 @@
 
 成功响应 HTTP `200`，`data.items` 为 `AdminModuleEntry[]`。
 
-业务规则：已实现模块必须包含 `AUTH`、`PROFILE`、`NOTIFICATION`、`CONTENT`、`SERVER_STATUS`、`RESOURCE`、`ADMIN`、`ONBOARDING`、`EXAM`、`WHITELIST`、`ATTENDANCE`、`COMMUNITY`、`ACTIVITY`、`CALENDAR`、`CHANGELOG`、`OPS_CONTROL`、`NODE_DAEMON`、`CLOUDREVE_SYNC`、`BACKUP_RECOVERY`、`ALERTING`、`ONLINE_MAP`、`PLUGIN_INTEGRATION`、`CROSS_PLATFORM_NOTIFICATION`、`OPS_IMAGE_MARKET`、`MATERIAL` 和 `GUIDE`。这些模块正常时 `implemented=true` 且 `status=AVAILABLE`，`targetApiBase` 必须指向对应正式 API 前缀。`CROSS_PLATFORM_NOTIFICATION` 的前端入口仍为 `/admin/cross-platform-notification`，后台 API 仍为 `/api/v1/cross-platform-notification/admin`，健康端口必须返回当前入口 `8133`，历史端口 `8123` 只留在模块契约或追溯字段中。未实现状态只留给未来没有正式契约和服务目录的模块。被 `hiddenModules` 隐藏的模块视为 admin 自有配置禁用，默认不返回；只有 `OWNER` 传 `includeDisabled=true` 时可返回，且状态必须为 `DISABLED`。
+业务规则：已实现模块必须包含 `AUTH`、`PROFILE`、`NOTIFICATION`、`CONTENT`、`SERVER_STATUS`、`RESOURCE`、`ADMIN`、`ONBOARDING`、`EXAM`、`WHITELIST`、`ATTENDANCE`、`COMMUNITY`、`ACTIVITY`、`CALENDAR`、`CHANGELOG`、`OPS_CONTROL`、`CLOUDREVE_SYNC`、`BACKUP_RECOVERY`、`ALERTING`、`ONLINE_MAP`、`PLUGIN_INTEGRATION`、`CROSS_PLATFORM_NOTIFICATION`、`OPS_IMAGE_MARKET`、`MATERIAL` 和 `GUIDE`。这些模块正常时 `implemented=true` 且 `status=AVAILABLE`，`targetApiBase` 必须指向对应正式 API 前缀。`CROSS_PLATFORM_NOTIFICATION` 的前端入口仍为 `/admin/cross-platform-notification`，后台 API 仍为 `/api/v1/cross-platform-notification/admin`，健康端口必须返回当前入口 `8133`，历史端口 `8123` 只留在模块契约或追溯字段中。未实现状态只留给未来没有正式契约和服务目录的模块。被 `hiddenModules` 隐藏的模块视为 admin 自有配置禁用，默认不返回；只有 `OWNER` 传 `includeDisabled=true` 时可返回，且状态必须为 `DISABLED`。
 
 ### 模块详情
 
@@ -373,7 +373,7 @@
 
 成功响应 HTTP `200`，`data` 为 `AdminModuleEntry`。
 
-业务规则：`moduleKey` 必须是 `AdminModuleKey`。不存在或非法返回 `40001` 或 `43700`。当前用户无权查看该模块入口时返回 `42001`。当前 26 个已闭环服务详情不得返回 `NOT_IMPLEMENTED`。未来未实现模块详情可以返回 `NOT_IMPLEMENTED`，但不能返回真实业务指标、待办或写能力。
+业务规则：`moduleKey` 必须是 `AdminModuleKey`。不存在或非法返回 `40001` 或 `43700`。当前用户无权查看该模块入口时返回 `42001`。当前 25 个已闭环模块详情不得返回 `NOT_IMPLEMENTED`。未来未实现模块详情可以返回 `NOT_IMPLEMENTED`，但不能返回真实业务指标、待办或写能力。
 
 降级规则：来源模块自检失败时，详情仍返回入口配置，`health.status` 为 `DEGRADED` 或 `UNAVAILABLE`，`capabilities[].available=false`。
 
@@ -398,7 +398,7 @@
 
 成功响应 HTTP `200`，分页 `items` 为 `AdminTodoItem[]`。
 
-业务规则：待办只聚合已实现来源模块和 admin 自身的只读摘要。`content` 可产生待审核内容、首页草稿未发布、SEO 配置异常。`resource` 可产生待审核资源、下载入口过期、Cloudreve 降级。`notification` 可产生模板禁用、投递失败、外部投递缺口。`server-status` 可产生未确认宕机、采集失败、线路异常。`profile` 可产生待激活成员或成员资料异常。`auth` 可产生管理员邀请码风险、禁用用户安全事件或会话异常摘要。`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、`material` 和 `guide` 可以返回审核、补充、反馈、活动、日程、素材或指南类只读待办。`ops-control`、`node-daemon`、`cloudreve-sync`、`backup-recovery`、`alerting`、`online-map`、`plugin-integration`、`cross-platform-notification` 和 `ops-image-market` 只能返回健康、审批、同步、告警或兼容计划类摘要，不能让 admin 代替它们执行真实操作。`API_GATEWAY` 不产生普通业务待办。
+业务规则：待办只聚合已实现来源模块和 admin 自身的只读摘要。`content` 可产生待审核内容、首页草稿未发布、SEO 配置异常。`resource` 可产生待审核资源、下载入口过期、Cloudreve 降级。`notification` 可产生模板禁用、投递失败、外部投递缺口。`server-status` 可产生未确认宕机、采集失败、线路异常。`profile` 可产生待激活成员或成员资料异常。`auth` 可产生管理员邀请码风险、禁用用户安全事件或会话异常摘要。`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、`material` 和 `guide` 可以返回审核、补充、反馈、活动、日程、素材或指南类只读待办。`ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`online-map`、`plugin-integration`、`cross-platform-notification` 和 `ops-image-market` 只能返回健康、审批、同步、告警或兼容计划类摘要，不能让 admin 代替它们执行真实操作。外部节点执行器未接入时只能通过 `OPS_CONTROL` 摘要体现 `EXTERNAL_EXECUTOR_NOT_CONNECTED`。`API_GATEWAY` 不产生普通业务待办。
 
 待办处理动作不在 `admin` 内完成。`readOnly` 必须为 `true`，前端根据 `targetRoute` 和 `targetApi` 跳回来源模块。
 
@@ -458,7 +458,7 @@
 
 权限规则：只有 `ADMIN` 和 `OWNER` 可访问。`HELPER` 返回 `42001`。
 
-业务规则：审计索引是只读摘要，不是审计主数据。admin 不提供删除、修改或恢复审计索引的接口。来源可以是 26 个已闭环服务和 `API_GATEWAY` 平台依赖。`from` 和 `to` 必须按来源审计 `createdAt` 做闭区间过滤，不能只校验格式后忽略范围。返回结果必须脱敏，不能返回访问令牌、完整请求头、邀请码原文、Cloudreve 密码、内部文件路径、通知正文、模板正文、审计参数全文、节点密钥、外部 webhook、registry token 或异常堆栈。
+业务规则：审计索引是只读摘要，不是审计主数据。admin 不提供删除、修改或恢复审计索引的接口。来源可以是 25 个已闭环模块和 `API_GATEWAY` 平台依赖。`from` 和 `to` 必须按来源审计 `createdAt` 做闭区间过滤，不能只校验格式后忽略范围。返回结果必须脱敏，不能返回访问令牌、完整请求头、邀请码原文、Cloudreve 密码、内部文件路径、通知正文、模板正文、审计参数全文、节点密钥、外部 webhook、registry token 或异常堆栈。
 
 降级规则：某个来源模块审计不可用时，列表仍返回可用来源和 admin 自身审计，并在响应中标记来源模块降级。若请求指定的唯一来源模块不可用，可返回 `46700` 或空分页加降级摘要；同一实现版本内必须固定并写入测试。
 
@@ -520,7 +520,7 @@
 
 ## 状态、幂等和并发
 
-模块状态由 admin 自有配置和模块适配器结果共同决定。模块未实现时为 `NOT_IMPLEMENTED`。模块被 admin 自有配置关闭时为 `DISABLED`。模块适配器成功返回兼容摘要时为 `AVAILABLE`。适配器部分失败或来源模块自检报告降级时为 `DEGRADED`。适配器不可达或超时时为 `UNAVAILABLE`。当前 26 个已闭环服务默认不允许被标记为 `NOT_IMPLEMENTED`。
+模块状态由 admin 自有配置和模块适配器结果共同决定。模块未实现时为 `NOT_IMPLEMENTED`。模块被 admin 自有配置关闭时为 `DISABLED`。模块适配器成功返回兼容摘要时为 `AVAILABLE`。适配器部分失败或来源模块自检报告降级时为 `DEGRADED`。适配器不可达或超时时为 `UNAVAILABLE`。当前 25 个已闭环模块默认不允许被标记为 `NOT_IMPLEMENTED`。
 
 配置更新支持 `idempotencyKey`。同一操作者、同一幂等键、同一请求体重复提交时返回同一个结果；相同幂等键搭配不同请求体返回 `43712`。请求体指纹必须基于结构化 JSON 规范化结果，所有嵌套对象都要按字段名递归排序，不能受任意层级的字段顺序影响。
 
@@ -544,4 +544,4 @@
 
 `admin` API 文档按 `docs/contracts-admin.md` 独立存在，并由 `.local-docs/tests-admin.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求和模块验收口径。
 
-`admin` 完成时必须满足以下条件：全部接口按本文档实现；后台接口全部要求登录；`USER` 不能访问 admin；`HELPER` 只能读允许的聚合入口、待办和指标；`ADMIN` 可读审计和改普通配置；`OWNER` 才能改高影响配置；总览、模块、待办、指标、审计索引、设置和自检都不泄露敏感字段；当前 26 个已闭环服务全部被识别为已实现；`API_GATEWAY` 只作为平台依赖摘要出现；来源模块不可用时局部降级；可信认证上下文优先于本地测试 token；生产模式下测试钩子不生效；配置更新幂等、审计和回滚有测试；端口固定为 `8107`；`.local-docs/tests-admin.md` 中全部测试用例都有对应自动化验证；未实现或行为未满足时自动化测试必须先失败；实现后 `admin` 全部测试通过；`api-gateway` 和 26 个后端服务回归测试通过；没有修改来源服务稳定接口；没有把业务写代理、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复、Cloudreve 管理 token、外部平台凭据或真实运维执行能力塞进 `admin`。
+`admin` 完成时必须满足以下条件：全部接口按本文档实现；后台接口全部要求登录；`USER` 不能访问 admin；`HELPER` 只能读允许的聚合入口、待办和指标；`ADMIN` 可读审计和改普通配置；`OWNER` 才能改高影响配置；总览、模块、待办、指标、审计索引、设置和自检都不泄露敏感字段；当前 25 个已闭环模块全部被识别为已实现；`API_GATEWAY` 只作为平台依赖摘要出现；来源模块不可用时局部降级；可信认证上下文优先于本地测试 token；生产模式下测试钩子不生效；配置更新幂等、审计和回滚有测试；端口固定为 `8107`；`.local-docs/tests-admin.md` 中全部测试用例都有对应自动化验证；未实现或行为未满足时自动化测试必须先失败；实现后 `admin` 全部测试通过；`api-gateway` 和当前官网后端回滚入口测试通过；没有修改来源服务稳定接口；没有把业务写代理、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复、Cloudreve 管理 token、外部平台凭据或真实运维执行能力塞进 `admin`。

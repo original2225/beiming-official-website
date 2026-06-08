@@ -46,7 +46,6 @@ Zustand 更适合本项目第一版，因为登录态、当前用户、权限、
 | calendar | 8132 | 日程、维护窗口、工程节点、提醒 |
 | changelog | 8132 | 更新日志、维护日志、插件变更、规则调整 |
 | ops-control | 8133 | 运维控制台控制面，由 `ops-core-service` 承载 |
-| node-daemon | 8117 | 节点侧健康、心跳、任务领取和回写 |
 | cloudreve-sync | 8133 | Cloudreve provider、目录同步、文件快照、分享解析，由 `ops-core-service` 承载 |
 | backup-recovery | 8133 | 备份域、策略、任务、备份点、恢复申请，由 `ops-core-service` 承载 |
 | alerting | 8133 | 告警规则、事件、静默、订阅，由 `ops-core-service` 承载 |
@@ -71,7 +70,7 @@ Zustand 更适合本项目第一版，因为登录态、当前用户、权限、
 
 后台管理接入 `admin` 以及各业务模块的后台接口。重点页面包括后台概览、待办队列、用户管理、邀请码管理、内容管理、指南管理、素材审核、资源管理、活动管理、通知模板、社区审核、工单举报、白名单审核、考勤管理、日历维护、更新日志和审计记录。
 
-运维控制台接入 `api-gateway`、`ops-control`、`node-daemon`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`ops-image-market` 和 `server-status`。重点页面包括网关健康、上游状态、节点列表、资产清单、容器、Minecraft 实例、文件、日志、终端入口、备份恢复、告警、插件联动和镜像市场。高风险操作必须显示二次确认和原因输入，失败时不能展示成功状态。
+运维控制台接入 `api-gateway`、`ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`ops-image-market` 和 `server-status`。外部节点执行器未接入时，通过 `ops-control` 摘要展示 `EXTERNAL_EXECUTOR_NOT_CONNECTED`，前端不得直连执行器接口。重点页面包括网关健康、上游状态、节点列表、资产清单、容器、Minecraft 实例、文件、日志、终端入口、备份恢复、告警、插件联动和镜像市场。高风险操作必须显示二次确认和原因输入，失败时不能展示成功状态。
 
 ## 推荐目录结构
 
@@ -104,7 +103,6 @@ frontend/
         calendar.ts
         changelog.ts
         opsControl.ts
-        nodeDaemon.ts
         cloudreveSync.ts
         backupRecovery.ts
         alerting.ts

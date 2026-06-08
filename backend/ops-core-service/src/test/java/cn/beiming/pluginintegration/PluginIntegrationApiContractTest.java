@@ -96,7 +96,7 @@ class PluginIntegrationApiContractTest {
         assertThat(summary.at("/data/testControlsEnabled").asBoolean()).isTrue();
         assertThat(summary.at("/data/productionGaps").toString()).contains(
                 "REAL_PLUGIN_RUNTIME_NOT_CONNECTED",
-                "REAL_NODE_DAEMON_NOT_CONNECTED",
+                "EXTERNAL_EXECUTOR_NOT_CONNECTED",
                 "REAL_ONLINE_MAP_SYNC_NOT_CONNECTED",
                 "RAW_PAYLOAD_STORAGE_DISABLED");
         assertNoSecrets(summary);

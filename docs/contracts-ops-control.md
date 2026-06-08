@@ -4,7 +4,7 @@
 
 ## 文档定位
 
-本文档是 `ops-control` 微服务的正式 API 契约。后续前端运维控制台、`admin` 聚合、`node-daemon` 和其他业务模块只能通过本文档定义的接口读取或管理服务器运维控制面，不能直接读取或修改 `ops-control` 数据，也不能把真实服务器命令、文件系统、Docker、虚拟机、Minecraft 实例或终端执行能力塞进其他服务。
+本文档是 `ops-control` 微服务的正式 API 契约。后续前端运维控制台、`admin` 聚合、外部节点执行器和其他业务模块只能通过本文档定义的接口读取或管理服务器运维控制面，不能直接读取或修改 `ops-control` 数据，也不能把真实服务器命令、文件系统、Docker、虚拟机、Minecraft 实例或终端执行能力塞进其他服务。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、运维能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `ops-control` 的职责边界、数据归属、路径、字段、状态、权限、错误码、幂等、任务流转、审批流转、节点降级、审计和验收口径。
 
@@ -27,7 +27,7 @@
 
 `ops-control` 不负责注册、登录、角色能力点主数据、玩家资源下载、玩家可见服务器状态采集、官网公告、活动日历主数据、更新日志主数据、真实 Docker 操作、真实 Proxmox 操作、真实 MCSManager 操作、真实 shell 命令、真实文件上传下载、真实文件删除、真实终端 WebSocket、真实备份恢复或节点守护进程执行逻辑。
 
-真实服务器上的系统资源、进程、容器、文件、日志、Minecraft 实例和终端命令必须由后续 `node-daemon` 或受控适配器执行。P1 `ops-control` 只做控制面契约、授权、审计、任务状态、模拟节点适配和离线降级，不直接调用宿主机。
+真实服务器上的系统资源、进程、容器、文件、日志、Minecraft 实例和终端命令必须由独立外部节点执行器或受控适配器执行。P1 `ops-control` 只做控制面契约、授权、审计、任务状态、模拟节点适配和离线降级，不直接调用宿主机。
 
 ## 数据归属
 
@@ -61,7 +61,7 @@
 
 `calendar` 和 `changelog` 是只读辅助关联来源。维护窗口、版本发布影响可保存为快照。不可用时不阻断运维任务创建，但必须在任务或审计中记录降级摘要。
 
-`node-daemon` 尚未开发。P1 节点调用模式固定为 `SIMULATED`。节点离线时只允许读取最后快照，任何需要实时执行的操作必须返回任务失败或 `49260`，不能假装成功。
+外部节点执行器已出仓且未接入本仓库。P1 节点调用模式固定为 `SIMULATED`。节点离线或外部执行器未连接时只允许读取最后快照，任何需要实时执行的操作必须返回任务失败或 `49260`，不能假装成功。
 
 ## 枚举
 
@@ -234,7 +234,7 @@
 
 ### OpsSummary
 
-自检摘要至少包含 `service`、`port`、`storageMode`、`authMode`、`adminAdapterMode`、`nodeAdapterMode`、`nodeDaemonConnected`、`testControlsEnabled`、`nodesTotal`、`assetsTotal`、`tasksTotal`、`pendingApprovalsTotal`、`auditsTotal`、`idempotencyRecordsTotal`、`lastHeartbeatAt`、`lastAuditAt` 和 `productionGaps`。
+自检摘要至少包含 `service`、`port`、`storageMode`、`authMode`、`adminAdapterMode`、`externalExecutorAdapterMode`、`externalExecutorConnected`、`testControlsEnabled`、`nodesTotal`、`assetsTotal`、`tasksTotal`、`pendingApprovalsTotal`、`auditsTotal`、`idempotencyRecordsTotal`、`lastHeartbeatAt`、`lastAuditAt` 和 `productionGaps`。
 
 ## ops-control 错误码
 
@@ -246,7 +246,7 @@
 | `49210` | 502 | admin 聚合适配不可用。 |
 | `49220` | 502 | server-status 实例快照不可用。 |
 | `49230` | 502 | resource 资产快照不可用。 |
-| `49260` | 502 | node-daemon 未连接或节点离线。 |
+| `49260` | 502 | 外部节点执行器未连接或节点离线。 |
 | `49261` | 504 | 节点调用超时。 |
 | `49262` | 502 | 节点响应字段不兼容。 |
 | `49400` | 404 | 节点、资产、快照、文件、任务、审批或审计不存在。 |
@@ -371,7 +371,7 @@
 
 `GET /api/v1/ops-control/audit-logs` 支持 `page`、`pageSize`、`actorUserId`、`action`、`targetType`、`targetId`、`nodeId`、`taskId`、`result`、`riskLevel`、`from`、`to` 和 `sort`。`sort` 允许 `createdAt_desc`、`riskLevel_desc`。只有 `ADMIN` 和 `OWNER` 可访问。审计列表是只读接口，不提供删除、修改或恢复。审计中的 `requestId` 必须来自当前 HTTP 请求或节点回写请求，不能使用固定占位值。
 
-`GET /api/v1/ops-control/ops/summary` 成功响应 HTTP `200`，`data` 为 `OpsSummary`。P1 必须返回 `storageMode=IN_MEMORY`、`authMode=TEST_STUB`、`adminAdapterMode=TEST_STUB`、`nodeAdapterMode=SIMULATED`、`nodeDaemonConnected=false`、`testControlsEnabled=false` 和生产化缺口。摘要不得返回 token、密码、请求头、内部路径、真实命令、文件内容、异常堆栈或节点密钥。
+`GET /api/v1/ops-control/ops/summary` 成功响应 HTTP `200`，`data` 为 `OpsSummary`。P1 必须返回 `storageMode=IN_MEMORY`、`authMode=TEST_STUB`、`adminAdapterMode=TEST_STUB`、`externalExecutorAdapterMode=SIMULATED`、`externalExecutorConnected=false`、`testControlsEnabled=false` 和生产化缺口。摘要不得返回 token、密码、请求头、内部路径、真实命令、文件内容、异常堆栈或节点密钥。
 
 ## 状态、幂等和并发
 
@@ -399,4 +399,4 @@
 
 `ops-control` API 文档按 `docs/contracts-ops-control.md` 独立存在，并由 `.local-docs/tests-ops-core.md` 记录合并后的本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、能力点不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求和模块验收口径。
 
-`ops-control` 完成时必须满足以下条件：全部接口按本文档实现；当前运行入口为 `ops-core-service:8133`，历史端口 `8116` 只作为 `legacyPort` 返回；所有接口要求登录；读取接口校验 `NODE_READ` 或对应能力；操作接口按任务类型校验能力点；高风险操作要求二次确认；严重风险操作要求审批或 `OWNER` 授权；节点 token、内部路径、命令参数、异常堆栈和凭据脱敏；节点离线时不假装成功；路径穿越被拦截；任务幂等和并发边界可复现；审计失败能回滚状态；自检摘要暴露存储模式、节点适配模式、测试控制状态和生产化缺口；`.local-docs/tests-ops-core.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 ops-control 在 `ops-core-service` 中全部测试通过；当前后端运行入口回归测试通过；没有修改前序服务稳定接口；没有把真实服务器操作、Docker、Proxmox、MCSManager、文件删除、终端命令、备份恢复、Cloudreve 管理 token 或 `node-daemon` 执行能力塞进控制面。
+`ops-control` 完成时必须满足以下条件：全部接口按本文档实现；当前运行入口为 `ops-core-service:8133`，历史端口 `8116` 只作为 `legacyPort` 返回；所有接口要求登录；读取接口校验 `NODE_READ` 或对应能力；操作接口按任务类型校验能力点；高风险操作要求二次确认；严重风险操作要求审批或 `OWNER` 授权；节点 token、内部路径、命令参数、异常堆栈和凭据脱敏；节点离线时不假装成功；路径穿越被拦截；任务幂等和并发边界可复现；审计失败能回滚状态；自检摘要暴露存储模式、外部执行器适配模式、测试控制状态和生产化缺口；`.local-docs/tests-ops-core.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 ops-control 在 `ops-core-service` 中全部测试通过；当前后端运行入口回归测试通过；没有修改前序服务稳定接口；没有把真实服务器操作、Docker、Proxmox、MCSManager、文件删除、终端命令、备份恢复、Cloudreve 管理 token 或外部执行器真实能力塞进控制面。

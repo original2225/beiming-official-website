@@ -97,7 +97,7 @@ class BackupRecoveryApiContractTest {
                 "REAL_CROSS_SERVICE_HTTP_NOT_CONNECTED",
                 "REAL_RESTORE_EXECUTION_BLOCKED",
                 "ADMIN_READ_ONLY_ENTRY_NOT_CONNECTED",
-                "NODE_DAEMON_DIRECT_CALL_FORBIDDEN");
+                "EXTERNAL_EXECUTOR_DIRECT_CALL_FORBIDDEN");
         assertNoSecrets(summary);
 
         performJson(get("/api/v1/backup-recovery/domains").header("Authorization", bearer("br-viewer-token")).param("page", "0"), 400, 40002);

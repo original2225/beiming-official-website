@@ -8,7 +8,7 @@
 
 面向前端开发的一体化 API 全文查阅文档见 `docs/api-reference.md`。该文档由公共契约和全部模块契约合并生成，方便前端统一检索路径、字段和响应格式。
 
-本汇总覆盖当前仓库 `docs/contracts-*.md` 中除 `contracts-common.md` 和本文档之外的 28 个业务或平台模块，以及 `business-core`、`admission-core`、`engagement-core`、`ops-core`、`portal-core` 和 `unified-backend` 六个运行入口或候选入口契约。第一批、第二批、第三批、第四批、第五批和第六期已完成运行合并并入仓。`unified-backend-service:8135` 只作为并行候选入口，不计入当前生产入口退役结果；当前候选挂载对象扩展为 `api-gateway`、`business-core`、`admission-core`、`engagement-core`、`ops-core` 和 `portal-core`。当前契约表中的 `METHOD path` 记录总数为 780，其中第三批四个业务模块在 `engagement-core-service:8132` 中承载 149 个业务路由，第四批六个后台运维控制面模块和第六期跨平台通知控制面在 `ops-core-service:8133` 中承载 219 个业务路由，第五批后三个玩家门户体验模块在 `portal-core-service:8134` 中承载 108 个业务路由，`engagement-core` 自身提供 3 个运行单元自检和诊断路由，`ops-core` 自身提供 5 个运行单元自检、诊断和 HTTP smoke 路由，`portal-core` 自身提供 5 个运行单元自检、诊断和 HTTP smoke 路由，`api-gateway` 自身提供 8 个网关健康、路由、上游、日志和运行拓扑路由，`unified-backend` 自身提供 5 个候选入口自检、挂载和 HTTP smoke 路由，并在 readiness 中暴露真实 HTTP 演练、路由漂移、回滚窗口、入口切换开关、后端单服务准备、最终单服务后端侧收束、入口切换适配、入口切换执行、旧入口退役审批、集中配置治理和持久化审计治理预检。第二十二轮在候选入口上增加入口切换执行 evidence，证明后端侧可把外部调用目标从 `http://127.0.0.1:8125` 演练到 `http://127.0.0.1:8135` 且业务路径保持不变；仓库内没有真实前端或代理配置可更新，所以前端、外部代理、生产流量和旧入口退役仍为阻塞。
+本汇总覆盖当前仓库 `docs/contracts-*.md` 中除 `contracts-common.md`、`contracts-node-daemon.md` 和本文档之外的 27 个业务或平台模块，以及 `business-core`、`admission-core`、`engagement-core`、`ops-core`、`portal-core` 和 `unified-backend` 六个运行入口或候选入口契约。第一批、第二批、第三批、第四批、第五批和第六期已完成运行合并并入仓。外部节点执行器已出仓，当前不计入官网后端模块、路由、入口或验收命令。`unified-backend-service:8135` 只作为并行候选入口，不计入当前生产入口退役结果；当前候选挂载对象扩展为 `api-gateway`、`business-core`、`admission-core`、`engagement-core`、`ops-core` 和 `portal-core`。当前契约表中的 `METHOD path` 记录总数为 765，其中第三批四个业务模块在 `engagement-core-service:8132` 中承载 149 个业务路由，第四批六个后台运维控制面模块和第六期跨平台通知控制面在 `ops-core-service:8133` 中承载 219 个业务路由，第五批后三个玩家门户体验模块在 `portal-core-service:8134` 中承载 108 个业务路由，`engagement-core` 自身提供 3 个运行单元自检和诊断路由，`ops-core` 自身提供 5 个运行单元自检、诊断和 HTTP smoke 路由，`portal-core` 自身提供 5 个运行单元自检、诊断和 HTTP smoke 路由，`api-gateway` 自身提供 8 个网关健康、路由、上游、日志和运行拓扑路由，`unified-backend` 自身提供 5 个候选入口自检、挂载和 HTTP smoke 路由，并在 readiness 中暴露真实 HTTP 演练、路由漂移、回滚窗口、入口切换开关、后端单服务准备、最终单服务后端侧收束、入口切换适配、入口切换执行、旧入口退役审批、集中配置治理和持久化审计治理预检。第二十二轮在候选入口上增加入口切换执行 evidence，证明后端侧可把外部调用目标从 `http://127.0.0.1:8125` 演练到 `http://127.0.0.1:8135` 且业务路径保持不变；仓库内没有真实前端或代理配置可更新，所以前端、外部代理、生产流量和旧入口退役仍为阻塞。
 
 ## 全局接口规则
 
@@ -16,7 +16,7 @@
 
 受保护接口统一使用 `Authorization: Bearer <token>`。后台、运维和节点相关接口必须继续校验角色、能力点、风险等级、二次确认、幂等键和审计字段。业务服务不能自行实现登录逻辑，不能直接读取其他服务数据表，跨模块读取必须通过正式接口、网关认证上下文或受控适配层。
 
-玩家可见资源、服务器状态展示、后台运维控制和节点真实执行必须保持边界隔离。`resource` 只负责玩家资源分发，`server-status` 只负责玩家可见状态，`ops-control` 负责运维控制面，`node-daemon` 负责节点侧受控执行。
+玩家可见资源、服务器状态展示、后台运维控制和节点真实执行必须保持边界隔离。`resource` 只负责玩家资源分发，`server-status` 只负责玩家可见状态，`ops-control` 负责运维控制面，真实节点执行由出仓后的外部节点执行器独立闭环。
 
 ## 服务与契约总表
 
@@ -41,7 +41,6 @@
 | `exam` | `backend/admission-core-service` | 8131 | 28 | `docs/contracts-exam.md` | `.local-docs/tests-exam.md` | `mvn -q -f backend/admission-core-service/pom.xml test` |
 | `guide` | `backend/portal-core-service` | 8134 | 41 | `docs/contracts-guide.md` | `.local-docs/tests-guide.md` | `mvn -q -f backend/portal-core-service/pom.xml test` |
 | `material` | `backend/portal-core-service` | 8134 | 33 | `docs/contracts-material.md` | `.local-docs/tests-material.md` | `mvn -q -f backend/portal-core-service/pom.xml test` |
-| `node-daemon` | `backend/node-daemon-service` | 8117 | 15 | `docs/contracts-node-daemon.md` | `.local-docs/tests-node-daemon.md` | `mvn -q -f backend/node-daemon-service/pom.xml test` |
 | `notification` | `backend/business-core-service` | 8130 | 19 | `docs/contracts-notification.md` | `.local-docs/tests-notification.md` | `mvn -q -f backend/business-core-service/pom.xml test` |
 | `onboarding` | `backend/admission-core-service` | 8131 | 15 | `docs/contracts-onboarding.md` | `.local-docs/tests-onboarding.md` | `mvn -q -f backend/admission-core-service/pom.xml test` |
 | `online-map` | `backend/portal-core-service` | 8134 | 34 | `docs/contracts-online-map.md` | `.local-docs/tests-online-map.md` | `mvn -q -f backend/portal-core-service/pom.xml test` |
@@ -60,9 +59,9 @@
 
 当前已入仓的合并运行入口是 `business-core-service`、`admission-core-service`、`engagement-core-service`、`ops-core-service` 和 `portal-core-service`。第三批社区运营路径已经由网关统一切到 `8132`。第四批后台运维控制面路径已经由网关统一切到 `8133`。第五批玩家门户体验路径已经由网关统一切到 `8134`。旧 `backend/online-map-service` 已退役且不得恢复，不再作为当前网关上游。`engagement-core-service` 的后台自检摘要入口已经支持网关注入的可信认证上下文；149 个业务方法路由完整行为契约已经迁入当前入口，真实业务认证、真实持久化、真实跨服务 adapter、真实通知交付和真实 HTTP smoke 仍需后续独立闭环。
 
-`api-gateway` 的 8 个自有接口新增只读运行拓扑，不新增业务语义。当前后端仍保持 7 个 Maven 运行入口，未来统一后端候选为 `api-gateway` 与五个 core 运行单元，`node-daemon` 继续作为外部节点执行边界。该拓扑只用于单服务合并准备和测试守卫，不能被描述为已经完成单服务合并、动态服务发现或 in-process 挂载。
+`api-gateway` 的 8 个自有接口新增只读运行拓扑，不新增业务语义。当前官网后端仍保持 6 个 Maven 回滚入口，未来统一后端候选为 `api-gateway` 与五个 core 运行单元。外部节点执行器已出仓且未连接，只能作为生产缺口摘要展示。该拓扑只用于单服务合并准备和测试守卫，不能被描述为已经完成单服务合并、动态服务发现或 in-process 挂载。
 
-`unified-backend` 是并行候选入口，端口固定为 `8135`。它在同一进程内挂载 `api-gateway` 自有 API、`business-core` 自有 API、`admission-core` 自有 API、`engagement-core` 自有 API、`ops-core` 自有 API、`portal-core` 自有 API、第一批七个基础业务路由、第二批四个入服准入路由、第三批四个社区运营路由、第四批和第六期七个运维通知路由、`guide`、`material` 和 `online-map`，只用于验证稳定运行单元逐步 in-process 装配。当前生产入口仍是 7 个，候选入口额外增加 1 个，不替代 `api-gateway-service:8125`、`business-core-service:8130`、`admission-core-service:8131`、`engagement-core-service:8132`、`ops-core-service:8133`、`portal-core-service:8134` 或 `node-daemon-service:8117`。第二十二轮进一步补齐入口切换执行 evidence，明确本仓库只记录从 `8125` 切到 `8135` 的后端侧演练证据，业务路径不改写；旧网关和五个 core 继续作为回滚目标参加回归，前端或代理真实入口切换、生产流量入口、旧入口退役审批、真实集中配置提供方、敏感配置外置和真实持久化审计仍为阻塞项。
+`unified-backend` 是并行候选入口，端口固定为 `8135`。它在同一进程内挂载 `api-gateway` 自有 API、`business-core` 自有 API、`admission-core` 自有 API、`engagement-core` 自有 API、`ops-core` 自有 API、`portal-core` 自有 API、第一批七个基础业务路由、第二批四个入服准入路由、第三批四个社区运营路由、第四批和第六期七个运维通知路由、`guide`、`material` 和 `online-map`，只用于验证稳定运行单元逐步 in-process 装配。当前生产回滚入口仍是 6 个，候选入口额外增加 1 个，不替代 `api-gateway-service:8125`、`business-core-service:8130`、`admission-core-service:8131`、`engagement-core-service:8132`、`ops-core-service:8133` 或 `portal-core-service:8134`。第二十二轮进一步补齐入口切换执行 evidence，明确本仓库只记录从 `8125` 切到 `8135` 的后端侧演练证据，业务路径不改写；旧网关和五个 core 继续作为回滚目标参加回归，前端或代理真实入口切换、生产流量入口、旧入口退役审批、真实集中配置提供方、敏感配置外置和真实持久化审计仍为阻塞项。
 
 `engagement-core` 的 3 个自有接口只用于运行单元自检、后台装配摘要和生产就绪诊断。它不新增 community、activity、calendar 或 changelog 的业务语义。第三批 149 个业务路由签名和四个模块完整行为契约必须在 `engagement-core-service` 中自动化验证；生产就绪诊断仍必须公开真实持久化、审计持久化、真实跨服务 adapter、真实通知交付和真实 HTTP smoke 缺口。
 
@@ -78,13 +77,13 @@
 | 第四批运维控制面 | `backend/ops-core-service` | 8133 | `ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`ops-image-market` | `8116`、`8118`、`8119`、`8120`、`8122` 和 `8124` 为历史原端口，旧服务目录已退役且不得恢复 |
 | 第五批玩家门户体验 | `backend/portal-core-service` | 8134 | `guide`、`material`、`online-map` | `8127`、`8126` 和 `8121` 为历史原端口；`guide`、`material` 和 `online-map` 旧服务目录已退役且不得恢复 |
 | 第六期跨平台通知控制面 | `backend/ops-core-service` | 8133 | `cross-platform-notification` | `8123` 为历史原端口，旧服务目录退役后不得恢复 |
-| 统一后端候选入口 | `backend/unified-backend-service` | 8135 | 候选挂载 `api-gateway` 自有 API、`business-core` 自有 API、`admission-core` 自有 API、`engagement-core` 自有 API、`ops-core` 自有 API、`portal-core` 自有 API、`auth`、`profile`、`notification`、`content`、`server-status`、`resource`、`admin`、`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、`ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`cross-platform-notification`、`ops-image-market`、`guide`、`material`、`online-map` | 并行候选入口，不退役当前 7 个生产入口，`node-daemon` 保持外部 |
+| 统一后端候选入口 | `backend/unified-backend-service` | 8135 | 候选挂载 `api-gateway` 自有 API、`business-core` 自有 API、`admission-core` 自有 API、`engagement-core` 自有 API、`ops-core` 自有 API、`portal-core` 自有 API、`auth`、`profile`、`notification`、`content`、`server-status`、`resource`、`admin`、`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、`ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`cross-platform-notification`、`ops-image-market`、`guide`、`material`、`online-map` | 并行候选入口，不退役当前 6 个生产回滚入口，外部节点执行器不在仓库内挂载 |
 
 ## 依赖顺序和边界
 
 当前后端服务已经按依赖链路沉淀为独立契约和独立测试。前序服务的契约、测试、响应格式、错误码、认证方式和数据归属默认稳定。后序服务只能通过前序服务正式 API、后端入口认证上下文或受控 stub 适配，不能反向要求前序服务改结构，也不能直接读前序服务数据库。
 
-核心身份链路为 `auth`、`profile`、`onboarding`、`exam`、`whitelist`、`attendance` 和 `notification`。官网内容链路为 `content`、`server-status`、`resource`、`portal-core`、`guide`、`material` 和 `online-map`。社区运营链路为 `community`、`activity`、`calendar`、`changelog`、`admin` 和 `cross-platform-notification`。运维平台链路为 `api-gateway`、`ops-core`、`ops-control`、`node-daemon`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration` 和 `ops-image-market`。
+核心身份链路为 `auth`、`profile`、`onboarding`、`exam`、`whitelist`、`attendance` 和 `notification`。官网内容链路为 `content`、`server-status`、`resource`、`portal-core`、`guide`、`material` 和 `online-map`。社区运营链路为 `community`、`activity`、`calendar`、`changelog`、`admin` 和 `cross-platform-notification`。运维平台链路为 `api-gateway`、`ops-core`、`ops-control`、外部节点执行器、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration` 和 `ops-image-market`。
 
 ## 验收口径
 

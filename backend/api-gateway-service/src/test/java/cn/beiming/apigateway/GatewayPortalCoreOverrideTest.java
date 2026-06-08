@@ -38,8 +38,8 @@ class GatewayPortalCoreOverrideTest {
         assertRoute(routes, "guide", "GUIDE", "/api/v1/guides", "http://127.0.0.1:19034", 19034);
         assertRoute(routes, "online-map", "ONLINE_MAP", "/api/v1/online-map", "http://127.0.0.1:19034", 19034);
         assertRoute(routes, "cross-platform-notification", "CROSS_PLATFORM_NOTIFICATION", "/api/v1/cross-platform-notification", "http://127.0.0.1:8133", 8133);
-        assertRoute(routes, "node-daemon", "NODE_DAEMON", "/api/v1/node-daemon", "http://127.0.0.1:8117", 8117);
-        assertThat(routes.at("/data/items").toString()).doesNotContain("\"serviceKey\":\"PORTAL_CORE\"");
+        assertThat(routes.at("/data/items").toString())
+                .doesNotContain("\"serviceKey\":\"PORTAL_CORE\"", "node-daemon", "NODE_DAEMON", "/api/v1/node-daemon", "8117");
     }
 
     private JsonNode performJson(org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder builder) throws Exception {

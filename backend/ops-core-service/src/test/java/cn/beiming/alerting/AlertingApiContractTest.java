@@ -98,7 +98,7 @@ class AlertingApiContractTest {
                 "REAL_NOTIFICATION_DELIVERY_NOT_CONNECTED",
                 "REAL_METRIC_COLLECTION_NOT_CONNECTED",
                 "ADMIN_READ_ONLY_ENTRY_NOT_CONNECTED",
-                "NODE_DAEMON_DIRECT_CALL_FORBIDDEN");
+                "EXTERNAL_EXECUTOR_DIRECT_CALL_FORBIDDEN");
         assertNoSecrets(summary);
 
         performJson(get("/api/v1/alerting/ops/summary")

@@ -72,7 +72,7 @@ class GatewayApiContractTest {
         addRange(mapped, "GATE-AUTH", 1, 14);
         addRange(mapped, "GATE-HEALTH", 1, 6);
         addRange(mapped, "GATE-ROUTE", 1, 16);
-        addRange(mapped, "GATE-PFX", 1, 26);
+        addRange(mapped, "GATE-PFX", 1, 25);
         addRange(mapped, "GATE-BCORE", 1, 10);
         addRange(mapped, "GATE-ACORE", 1, 10);
         addRange(mapped, "GATE-ECORE", 1, 10);
@@ -86,8 +86,8 @@ class GatewayApiContractTest {
         addRange(mapped, "GATE-CORS", 1, 10);
         addRange(mapped, "GATE-SEC", 1, 11);
 
-        assertThat(mapped).hasSize(252);
-        assertThat(mapped).contains("GATE-COM-001", "GATE-PFX-026", "GATE-BCORE-010", "GATE-ACORE-010", "GATE-ECORE-010", "GATE-OCORE-010", "GATE-PCORE-010", "GATE-PCORE-011", "GATE-TOPOLOGY-012", "GATE-UNIFIED-004", "GATE-UP-020", "GATE-PROXY-049", "GATE-SEC-011");
+        assertThat(mapped).hasSize(251);
+        assertThat(mapped).contains("GATE-COM-001", "GATE-PFX-025", "GATE-BCORE-010", "GATE-ACORE-010", "GATE-ECORE-010", "GATE-OCORE-010", "GATE-PCORE-010", "GATE-PCORE-011", "GATE-TOPOLOGY-012", "GATE-UNIFIED-004", "GATE-UP-020", "GATE-PROXY-049", "GATE-SEC-011");
     }
 
     @Test
@@ -123,7 +123,7 @@ class GatewayApiContractTest {
                 .andExpect(jsonPath("$.data.service").value("api-gateway"))
                 .andExpect(jsonPath("$.data.status").value("UP"))
                 .andExpect(jsonPath("$.data.port").value(8125))
-                .andExpect(jsonPath("$.data.routesTotal").value(26))
+                .andExpect(jsonPath("$.data.routesTotal").value(25))
                 .andExpect(jsonPath("$.requestId").value("req-gateway-health"));
 
         JsonNode generated = performJson(get("/api/v1/gateway/health"), 200);
@@ -137,7 +137,7 @@ class GatewayApiContractTest {
             JsonNode summary = performJson(get("/api/v1/gateway/admin/ops/summary").header("Authorization", bearer(token)), 200);
             assertThat(summary.at("/data/service").asText()).isEqualTo("api-gateway");
             assertThat(summary.at("/data/port").asInt()).isEqualTo(8125);
-            assertThat(summary.at("/data/routesTotal").asInt()).isEqualTo(26);
+            assertThat(summary.at("/data/routesTotal").asInt()).isEqualTo(25);
             assertThat(summary.at("/data/productionGaps").toString()).contains("SERVICE_DISCOVERY_NOT_CONNECTED", "WEBSOCKET_PROXY_NOT_ENABLED");
             assertNoSecrets(summary);
         }
@@ -189,15 +189,16 @@ class GatewayApiContractTest {
                 .header("X-Request-Id", "req-runtime-topology"), 200);
 
         assertThat(topology.at("/data/service").asText()).isEqualTo("api-gateway");
-        assertThat(topology.at("/data/deploymentMode").asText()).isEqualTo("CURRENT_SEVEN_ENTRYPOINTS");
+        assertThat(topology.at("/data/deploymentMode").asText()).isEqualTo("CURRENT_SIX_ROLLBACK_ENTRYPOINTS");
         assertThat(topology.at("/data/singleServiceMergeReadiness").asText()).isEqualTo("PREPARING");
-        assertThat(topology.at("/data/currentEntrypointsTotal").asInt()).isEqualTo(7);
+        assertThat(topology.at("/data/currentEntrypointsTotal").asInt()).isEqualTo(6);
         assertThat(topology.at("/data/futureMergeCandidateEntrypointsTotal").asInt()).isEqualTo(6);
-        assertThat(topology.at("/data/businessRoutesTotal").asInt()).isEqualTo(26);
+        assertThat(topology.at("/data/businessRoutesTotal").asInt()).isEqualTo(25);
         assertThat(topology.at("/data/gatewayApiTotal").asInt()).isEqualTo(8);
-        assertThat(topology.at("/data/currentEntrypoints").size()).isEqualTo(7);
+        assertThat(topology.at("/data/currentEntrypoints").size()).isEqualTo(6);
         assertThat(topology.at("/data/futureUnifiedBackend/entrypointKey").asText()).isEqualTo("unified-backend");
-        assertThat(topology.at("/data/futureUnifiedBackend/nodeDaemonDisposition").asText()).isEqualTo("EXTERNAL_NODE_EXECUTION_BOUNDARY");
+        assertThat(topology.at("/data/futureUnifiedBackend/externalNodeExecutorBoundary").asText()).isEqualTo("EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY");
+        assertThat(topology.at("/data/futureUnifiedBackend/externalNodeExecutorConnected").asBoolean()).isFalse();
         JsonNode pilotCandidate = topology.at("/data/futureUnifiedBackend/pilotCandidate");
         assertThat(pilotCandidate.path("entrypointKey").asText()).isEqualTo("unified-backend");
         assertThat(pilotCandidate.path("serviceDirectory").asText()).isEqualTo("backend/unified-backend-service");
@@ -212,7 +213,8 @@ class GatewayApiContractTest {
                 "ops-control", "cloudreve-sync", "backup-recovery", "alerting",
                 "plugin-integration", "cross-platform-notification", "ops-image-market",
                 "guide", "material", "online-map");
-        assertThat(pilotCandidate.path("nodeDaemonDisposition").asText()).isEqualTo("KEEP_EXTERNAL");
+        assertThat(pilotCandidate.path("externalNodeExecutorBoundary").asText()).isEqualTo("EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY");
+        assertThat(pilotCandidate.path("externalNodeExecutorConnected").asBoolean()).isFalse();
         assertThat(pilotCandidate.path("readyToReplaceGateway").asBoolean()).isFalse();
         assertThat(pilotCandidate.path("readyToRetireBusinessCore").asBoolean()).isFalse();
         assertThat(pilotCandidate.path("readyToRetireAdmissionCore").asBoolean()).isFalse();
@@ -239,21 +241,48 @@ class GatewayApiContractTest {
             assertThat(entrypoint.path("hostedRouteIds").size()).isEqualTo(expected.getValue());
         }
 
-        JsonNode nodeDaemon = findByText(topology.at("/data/currentEntrypoints"), "entrypointKey", "node-daemon");
-        assertThat(nodeDaemon.path("port").asInt()).isEqualTo(8117);
-        assertThat(nodeDaemon.path("mergeDisposition").asText()).isEqualTo("KEEP_EXTERNAL");
-        assertThat(nodeDaemon.path("routesTotal").asInt()).isEqualTo(1);
-        assertThat(nodeDaemon.path("keptExternalReason").asText()).contains("node");
 
         JsonNode checks = topology.at("/data/mergePreparationChecks");
         assertCheck(checks, "ROUTE_PREFIX_PRESERVED", "PASS");
         assertCheck(checks, "GATEWAY_AS_INGRESS_CANDIDATE", "PASS");
         assertCheck(checks, "CORE_ROUTES_GROUPED", "PASS");
-        assertCheck(checks, "NODE_DAEMON_EXTERNAL_BOUNDARY", "PASS");
+        assertCheck(checks, "EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY", "PASS");
         assertCheck(checks, "LEGACY_ENTRYPOINTS_NOT_RESTORED", "PASS");
         assertCheck(checks, "STATIC_SERVICE_DISCOVERY_ONLY", "BLOCKED");
         assertCheck(checks, "IN_PROCESS_MOUNT_NOT_IMPLEMENTED", "NOT_IMPLEMENTED");
 
+        assertNoSecrets(topology);
+    }
+
+    @Test
+    void excludesNodeDaemonRouteAfterOfficialBackendExtraction() throws Exception {
+        JsonNode health = performJson(get("/api/v1/gateway/health").header("X-Request-Id", "req-gateway-extract-health"), 200);
+        assertThat(health.at("/data/routesTotal").asInt()).isEqualTo(25);
+
+        JsonNode routes = performJson(get("/api/v1/gateway/admin/routes")
+                .header("Authorization", bearer("owner-token"))
+                .param("pageSize", "100")
+                .param("sort", "routeId_asc"), 200);
+        String routesText = routes.toString();
+        assertThat(routes.at("/data/total").asInt()).isEqualTo(25);
+        assertThat(routesText)
+                .doesNotContain("node-daemon")
+                .doesNotContain("NODE_DAEMON")
+                .doesNotContain("/api/v1/node-daemon")
+                .doesNotContain("\"upstreamPort\":8117");
+        performJson(get("/api/v1/gateway/admin/routes/node-daemon").header("Authorization", bearer("owner-token")), 404, 43000);
+
+        JsonNode topology = performJson(get("/api/v1/gateway/admin/runtime-topology")
+                .header("Authorization", bearer("owner-token")), 200);
+        assertThat(topology.at("/data/deploymentMode").asText()).isEqualTo("CURRENT_SIX_ROLLBACK_ENTRYPOINTS");
+        assertThat(topology.at("/data/currentEntrypointsTotal").asInt()).isEqualTo(6);
+        assertThat(topology.at("/data/businessRoutesTotal").asInt()).isEqualTo(25);
+        assertThat(topology.toString())
+                .contains("EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY")
+                .doesNotContain("node-daemon")
+                .doesNotContain("NODE_DAEMON")
+                .doesNotContain("backend/node-daemon-service")
+                .doesNotContain("8117");
         assertNoSecrets(topology);
     }
 
@@ -264,7 +293,7 @@ class GatewayApiContractTest {
                 .header("Authorization", bearer("helper-token"))
                 .param("pageSize", "100")
                 .param("sort", "upstreamPort_asc"), 200);
-        assertThat(routes.at("/data/total").asInt()).isEqualTo(26);
+        assertThat(routes.at("/data/total").asInt()).isEqualTo(25);
         assertRoute(routes, "auth", "AUTH", "/api/v1/auth", 8130);
         assertRoute(routes, "profile", "PROFILE", "/api/v1/profile", 8130);
         assertRoute(routes, "notification", "NOTIFICATION", "/api/v1/notifications", 8130);
@@ -281,7 +310,6 @@ class GatewayApiContractTest {
         assertRoute(routes, "calendar", "CALENDAR", "/api/v1/calendar", 8132);
         assertRoute(routes, "changelog", "CHANGELOG", "/api/v1/changelog", 8132);
         assertRoute(routes, "ops-control", "OPS_CONTROL", "/api/v1/ops-control", 8133);
-        assertRoute(routes, "node-daemon", "NODE_DAEMON", "/api/v1/node-daemon", 8117);
         assertRoute(routes, "cloudreve-sync", "CLOUDREVE_SYNC", "/api/v1/cloudreve-sync", 8133);
         assertRoute(routes, "backup-recovery", "BACKUP_RECOVERY", "/api/v1/backup-recovery", 8133);
         assertRoute(routes, "alerting", "ALERTING", "/api/v1/alerting", 8133);
@@ -320,7 +348,7 @@ class GatewayApiContractTest {
         JsonNode initial = performJson(get("/api/v1/gateway/admin/upstreams")
                 .header("Authorization", bearer("helper-token"))
                 .param("pageSize", "100"), 200);
-        assertThat(initial.at("/data/total").asInt()).isEqualTo(26);
+        assertThat(initial.at("/data/total").asInt()).isEqualTo(25);
         assertThat(initial.at("/data/items/0/status").asText()).isEqualTo("UNKNOWN");
 
         fakeClient.respond("AUTH", 401, body(41000, "not logged in", null));
@@ -884,7 +912,6 @@ class GatewayApiContractTest {
         assertThat(findRoute(routes, "guide").path("healthCheckPath").asText()).isEqualTo("/api/v1/guides/categories");
         assertThat(findRoute(routes, "online-map").path("healthCheckPath").asText()).isEqualTo("/api/v1/online-map/health");
         assertThat(findRoute(routes, "cross-platform-notification").path("upstreamPort").asInt()).isEqualTo(8133);
-        assertThat(findRoute(routes, "node-daemon").path("upstreamPort").asInt()).isEqualTo(8117);
         assertThat(findRoute(routes, "ops-control").path("upstreamPort").asInt()).isEqualTo(8133);
     }
 

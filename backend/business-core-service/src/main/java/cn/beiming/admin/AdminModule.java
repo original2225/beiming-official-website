@@ -154,7 +154,7 @@ class AdminStore {
     private static final List<String> MODULE_KEYS = List.of(
             "AUTH", "PROFILE", "NOTIFICATION", "CONTENT", "SERVER_STATUS", "RESOURCE", "ADMIN",
             "ONBOARDING", "EXAM", "WHITELIST", "ATTENDANCE", "COMMUNITY", "ACTIVITY", "CALENDAR",
-            "CHANGELOG", "OPS_CONTROL", "NODE_DAEMON", "CLOUDREVE_SYNC", "BACKUP_RECOVERY", "ALERTING",
+            "CHANGELOG", "OPS_CONTROL", "CLOUDREVE_SYNC", "BACKUP_RECOVERY", "ALERTING",
             "ONLINE_MAP", "PLUGIN_INTEGRATION", "CROSS_PLATFORM_NOTIFICATION", "OPS_IMAGE_MARKET",
             "MATERIAL", "GUIDE");
     private static final Set<String> IMPLEMENTED = new LinkedHashSet<>(MODULE_KEYS);
@@ -230,6 +230,7 @@ class AdminStore {
         data.put("recentAudits", recentAudits);
         data.put("degradedModules", degraded);
         data.put("notImplementedModules", new ArrayList<>(NOT_IMPLEMENTED));
+        data.put("externalExecutorStatus", "EXTERNAL_EXECUTOR_NOT_CONNECTED");
         data.put("platformDependencies", platformDependencies(request));
         data.put("generatedAt", NOW);
         return data;
@@ -341,7 +342,6 @@ class AdminStore {
         addMetric(metrics, "calendar.pendingEvents", "Pending calendar events", "CALENDAR", 1, "/admin/calendar", request);
         addMetric(metrics, "changelog.pendingRelease", "Pending changelog", "CHANGELOG", 1, "/admin/changelog", request);
         addMetric(metrics, "opsControl.pendingTasks", "Ops tasks", "OPS_CONTROL", 1, "/admin/ops-control", request);
-        addMetric(metrics, "nodeDaemon.connectedNodes", "Connected daemons", "NODE_DAEMON", 1, "/admin/node-daemon", request);
         addMetric(metrics, "cloudreveSync.providers", "Cloudreve providers", "CLOUDREVE_SYNC", 1, "/admin/cloudreve-sync", request);
         addMetric(metrics, "backupRecovery.activePolicies", "Backup policies", "BACKUP_RECOVERY", 2, "/admin/backup-recovery", request);
         addMetric(metrics, "alerting.openAlerts", "Open alerts", "ALERTING", 1, "/admin/alerting", request);
@@ -448,7 +448,8 @@ class AdminStore {
         data.put("settingsTotal", settings.size());
         data.put("idempotencyRecordsTotal", idempotency.size());
         data.put("lastAggregatedAt", NOW);
-        data.put("productionGaps", List.of("persistent storage not enabled", "real auth adapter not enabled", "real module HTTP adapters not enabled", "real audit index sync not enabled", "scheduled aggregation not enabled"));
+        data.put("externalExecutorStatus", "EXTERNAL_EXECUTOR_NOT_CONNECTED");
+        data.put("productionGaps", List.of("persistent storage not enabled", "real auth adapter not enabled", "real module HTTP adapters not enabled", "real audit index sync not enabled", "scheduled aggregation not enabled", "EXTERNAL_EXECUTOR_NOT_CONNECTED"));
         data.put("moduleHealth", health);
         data.put("platformDependencies", platformDependencies(request));
         return data;
@@ -708,11 +709,7 @@ class AdminStore {
                 || route.startsWith("/admin/ops-control/nodes")
                 || route.startsWith("/admin/ops-control/tasks")
                 || route.startsWith("/admin/ops-control/approvals")
-                || route.startsWith("/admin/ops-control/logs")
-                || route.startsWith("/admin/node-daemon/nodes")
-                || route.startsWith("/admin/node-daemon/keys")
-                || route.startsWith("/admin/node-daemon/tasks")
-                || route.startsWith("/admin/node-daemon/logs");
+                || route.startsWith("/admin/ops-control/logs");
     }
 
     private String moduleKeyForRoute(String route) {
@@ -921,7 +918,6 @@ class AdminStore {
             case "CALENDAR" -> "/api/v1/calendar/admin";
             case "CHANGELOG" -> "/api/v1/changelog/admin";
             case "OPS_CONTROL" -> "/api/v1/ops-control";
-            case "NODE_DAEMON" -> "/api/v1/node-daemon";
             case "CLOUDREVE_SYNC" -> "/api/v1/cloudreve-sync";
             case "BACKUP_RECOVERY" -> "/api/v1/backup-recovery";
             case "ALERTING" -> "/api/v1/alerting";
@@ -950,7 +946,6 @@ class AdminStore {
     private String moduleName(String key) {
         return switch (key) {
             case "SERVER_STATUS" -> "Server Status";
-            case "NODE_DAEMON" -> "Node Daemon";
             case "OPS_CONTROL" -> "Ops Control";
             case "CLOUDREVE_SYNC" -> "Cloudreve Sync";
             case "BACKUP_RECOVERY" -> "Backup Recovery";
@@ -977,7 +972,6 @@ class AdminStore {
             case "CALENDAR" -> 8114;
             case "CHANGELOG" -> 8115;
             case "OPS_CONTROL" -> 8116;
-            case "NODE_DAEMON" -> 8117;
             case "CLOUDREVE_SYNC" -> 8118;
             case "BACKUP_RECOVERY" -> 8119;
             case "ALERTING" -> 8120;
@@ -996,14 +990,14 @@ class AdminStore {
     }
 
     private List<String> requiredRoles(String key) {
-        if (Set.of("OPS_CONTROL", "NODE_DAEMON").contains(key)) {
+        if (Set.of("OPS_CONTROL").contains(key)) {
             return List.of("OWNER");
         }
         return List.of("HELPER", "ADMIN", "OWNER");
     }
 
     private List<String> requiredPermissions(String key) {
-        if (Set.of("OPS_CONTROL", "NODE_DAEMON", "ONLINE_MAP", "PLUGIN_INTEGRATION", "OPS_IMAGE_MARKET").contains(key)) {
+        if (Set.of("OPS_CONTROL", "ONLINE_MAP", "PLUGIN_INTEGRATION", "OPS_IMAGE_MARKET").contains(key)) {
             return List.of("NODE_READ");
         }
         return List.of();
@@ -1044,7 +1038,7 @@ class AdminStore {
         row.put("port", 8125);
         row.put("targetApiBase", "/api/v1/gateway/admin");
         row.put("frontendRoute", "/admin/platform/api-gateway");
-        row.put("routeCount", degraded ? 0 : 26);
+        row.put("routeCount", degraded ? 0 : 25);
         row.put("lastCheckedAt", NOW);
         row.put("degraded", degraded);
         row.put("degradeReason", degraded ? "api gateway adapter degraded" : null);
@@ -1154,7 +1148,6 @@ class AdminStore {
         todoSeeds.add(todo("todo-material-1", "MATERIAL", "MATERIAL_REVIEW", "material-1", "REVIEW", "HIGH", "READ_ONLY", "Material pending review", "Review material submission in source module.", "/admin/materials", "/api/v1/materials/admin/items/material-1"));
         todoSeeds.add(todo("todo-guide-1", "GUIDE", "GUIDE_REVIEW", "guide-1", "REVIEW", "MEDIUM", "READ_ONLY", "Guide article pending review", "Review guide article in source module.", "/admin/guides", "/api/v1/guides/admin/articles/guide-1"));
         todoSeeds.add(todo("todo-ops-control-1", "OPS_CONTROL", "OPS_CONTROL_HEALTH", "ops-health", "HEALTH", "MEDIUM", "READ_ONLY", "Ops control health needs review", "Inspect ops control summary.", "/admin/ops-control", "/api/v1/ops-control/ops/summary"));
-        todoSeeds.add(todo("todo-node-daemon-1", "NODE_DAEMON", "NODE_DAEMON_HEALTH", "node-health", "HEALTH", "MEDIUM", "READ_ONLY", "Node daemon health needs review", "Inspect node daemon summary.", "/admin/node-daemon", "/api/v1/node-daemon/ops/summary"));
         todoSeeds.add(todo("todo-cloudreve-sync-1", "CLOUDREVE_SYNC", "CLOUDREVE_SYNC_HEALTH", "cloudreve-health", "HEALTH", "LOW", "READ_ONLY", "Cloudreve sync health summary", "Inspect Cloudreve sync module.", "/admin/cloudreve-sync", "/api/v1/cloudreve-sync/ops/summary"));
         todoSeeds.add(todo("todo-backup-recovery-1", "BACKUP_RECOVERY", "BACKUP_RECOVERY_DRILL", "backup-drill", "FOLLOW_UP", "MEDIUM", "READ_ONLY", "Backup drill needs review", "Inspect backup recovery module.", "/admin/backup-recovery", "/api/v1/backup-recovery/restore-drills"));
         todoSeeds.add(todo("todo-alerting-1", "ALERTING", "ALERTING_OPEN_ALERT", "alert-1", "HEALTH", "HIGH", "READ_ONLY", "Open alert needs acknowledgement", "Inspect alerting module.", "/admin/alerting", "/api/v1/alerting/alerts/alert-1"));
@@ -1201,7 +1194,6 @@ class AdminStore {
         auditSeeds.add(audit("audit-calendar-1", "CALENDAR", "CALENDAR_EVENT_PUBLISHED", "admin", "CALENDAR_EVENT", "calendar-1", "LOW", "SUCCESS"));
         auditSeeds.add(audit("audit-changelog-1", "CHANGELOG", "CHANGELOG_PUBLISHED", "admin", "CHANGELOG", "release-1", "LOW", "SUCCESS"));
         auditSeeds.add(audit("audit-ops-control-1", "OPS_CONTROL", "OPS_TASK_INDEXED", "admin", "OPS_TASK", "task-1", "LOW", "SUCCESS"));
-        auditSeeds.add(audit("audit-node-daemon-1", "NODE_DAEMON", "NODE_HEARTBEAT_INDEXED", "admin", "NODE", "node-1", "LOW", "SUCCESS"));
         auditSeeds.add(audit("audit-cloudreve-sync-1", "CLOUDREVE_SYNC", "CLOUDREVE_SYNC_JOB_INDEXED", "admin", "SYNC_JOB", "sync-1", "LOW", "SUCCESS"));
         auditSeeds.add(audit("audit-backup-recovery-1", "BACKUP_RECOVERY", "BACKUP_POLICY_INDEXED", "admin", "BACKUP_POLICY", "backup-1", "LOW", "SUCCESS"));
         auditSeeds.add(audit("audit-alerting-1", "ALERTING", "ALERT_ACKNOWLEDGED", "admin", "ALERT", "alert-1", "LOW", "SUCCESS"));

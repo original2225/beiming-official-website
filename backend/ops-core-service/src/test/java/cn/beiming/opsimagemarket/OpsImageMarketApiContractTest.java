@@ -92,8 +92,9 @@ class OpsImageMarketApiContractTest {
         assertThat(summary.at("/data/storageMode").asText()).isEqualTo("IN_MEMORY");
         assertThat(summary.at("/data/registryAdapterMode").asText()).isEqualTo("SIMULATION_ONLY");
         assertThat(summary.at("/data/scannerAdapterMode").asText()).isEqualTo("SIMULATION_ONLY");
+        assertThat(summary.at("/data/externalExecutorAdapterMode").asText()).isEqualTo("DISCONNECTED");
         assertThat(summary.at("/data/testControlsEnabled").asBoolean()).isTrue();
-        assertThat(summary.at("/data/productionGaps").toString()).contains("REAL_REGISTRY_DISABLED", "REAL_PULL_DISABLED");
+        assertThat(summary.at("/data/productionGaps").toString()).contains("REAL_REGISTRY_DISABLED", "EXTERNAL_EXECUTOR_NOT_CONNECTED");
         assertNoSecrets(summary);
 
         performJson(get("/api/v1/ops-image-market/admin/ops/summary")

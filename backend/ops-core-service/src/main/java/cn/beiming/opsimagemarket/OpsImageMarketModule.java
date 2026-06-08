@@ -1111,7 +1111,7 @@ class OimStore {
 
     Map<String, Object> summary(boolean controls) {
         return map("service", "ops-image-market", "port", 8133, "legacyPort", 8124, "storageMode", "IN_MEMORY", "authMode", "TEST_STUB",
-                "opsControlAdapterMode", "TEST_STUB", "nodeDaemonAdapterMode", "DISCONNECTED",
+                "opsControlAdapterMode", "TEST_STUB", "externalExecutorAdapterMode", "DISCONNECTED",
                 "registryAdapterMode", "SIMULATION_ONLY", "scannerAdapterMode", "SIMULATION_ONLY",
                 "alertingAdapterMode", "TEST_STUB", "notificationAdapterMode", "TEST_STUB",
                 "testControlsEnabled", controls, "providersTotal", providers.size(),
@@ -1122,7 +1122,7 @@ class OimStore {
                 "cacheSnapshotsTotal", caches.size(), "auditsTotal", audits.size(), "idempotencyRecordsTotal", idempotency.size(),
                 "lastScanAt", scans.values().stream().map(item -> text(item.get("finishedAt"))).filter(value -> !value.isBlank()).max(String::compareTo).orElse(null),
                 "lastPlanAt", plans.values().stream().map(item -> text(item.get("createdAt"))).filter(value -> !value.isBlank()).max(String::compareTo).orElse(null),
-                "degradedReasons", List.of(), "productionGaps", controls ? List.of("REAL_REGISTRY_DISABLED", "REAL_SCANNER_DISABLED", "REAL_PULL_DISABLED") : List.of("TEST_CONTROLS_DISABLED_OUTSIDE_TEST", "REAL_REGISTRY_DISABLED", "REAL_PULL_DISABLED"));
+                "degradedReasons", List.of(), "productionGaps", controls ? List.of("REAL_REGISTRY_DISABLED", "REAL_SCANNER_DISABLED", "EXTERNAL_EXECUTOR_NOT_CONNECTED") : List.of("TEST_CONTROLS_DISABLED_OUTSIDE_TEST", "REAL_REGISTRY_DISABLED", "EXTERNAL_EXECUTOR_NOT_CONNECTED"));
     }
 
     synchronized ResponseEntity<Map<String, Object>> idempotent(HttpServletRequest request, Actor actor, String scope, Map<String, Object> body, Supplier<WriteResult> action) {
@@ -1460,7 +1460,7 @@ class OimSupport {
     }
 
     static void validateSourceModules(List<Object> modules) {
-        Set<String> allowed = Set.of("ops-control", "node-daemon", "alerting", "cross-platform-notification", "plugin-integration", "custom");
+        Set<String> allowed = Set.of("ops-control", "external-executor", "alerting", "cross-platform-notification", "plugin-integration", "custom");
         if (modules.stream().map(String::valueOf).anyMatch(module -> !allowed.contains(module))) {
             throw new OimApiException(HttpStatus.BAD_REQUEST, 40001, "source module rejected");
         }
@@ -1651,7 +1651,7 @@ class OimSupport {
     }
 
     static Map<String, Object> dependencySummary() {
-        return map("opsControl", map("status", "AVAILABLE"), "nodeDaemon", map("status", "SKIPPED"), "registry", map("status", "AVAILABLE"), "scanner", map("status", "AVAILABLE"));
+        return map("opsControl", map("status", "AVAILABLE"), "externalExecutor", map("status", "SKIPPED"), "registry", map("status", "AVAILABLE"), "scanner", map("status", "AVAILABLE"));
     }
 
     static String riskFromSeverity(String severity) {

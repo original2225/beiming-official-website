@@ -14,7 +14,7 @@
 
 `ops-core` 不新增七个业务模块的业务语义，不把七套 store、状态机、错误码、审计对象或主数据揉成一个大模块，不直接读取前序服务数据库，不绕过正式 API 适配前序服务，也不执行真实宿主机、容器、节点、Cloudreve、registry、scanner、插件命令或真实外部消息发送。
 
-`api-gateway-service` 仍保持独立。`node-daemon-service` 仍保持独立。第六期完成后 `cross-platform-notification` 只保留独立模块契约身份，不再保留独立 Maven 运行入口。`ops-core` 可以展示真实能力未接入的缺口，但不能把模拟、stub、fake 或 blocked 状态伪造成生产完成。
+`api-gateway-service` 仍保持独立。外部节点执行器已出仓，不再作为官网仓库内 `ops-core` 合并对象。第六期完成后 `cross-platform-notification` 只保留独立模块契约身份，不再保留独立 Maven 运行入口。`ops-core` 可以展示真实能力未接入的缺口，但不能把模拟、stub、fake 或 blocked 状态伪造成生产完成。
 
 ## 基础路径、端口和认证
 
@@ -55,7 +55,7 @@
 | 真实数据库持久化 | `BLOCKED` | 七个继承模块仍以本地内存或契约 stub 为主。 |
 | 真实跨服务 HTTP adapter | `BLOCKED` | 前序服务依赖仍以本地安全快照或测试适配器表示。 |
 | 真实审计持久化 | `BLOCKED` | 审计闭环已覆盖回滚和脱敏，但未接持久化审计库。 |
-| 真实节点执行 | `BLOCKED` | 控制面不得直连宿主机命令，真实执行仍由独立 `node-daemon` 后续闭环。 |
+| 外部节点执行器连接 | `BLOCKED` | 控制面不得直连宿主机命令，真实执行由独立外部项目后续闭环。 |
 | 真实 Cloudreve API | `BLOCKED` | `cloudreve-sync` 只保存 provider、文件、分享和同步摘要，不保存真实 token。 |
 | 真实 registry | `BLOCKED` | `ops-image-market` 不保存 registry 凭据，不执行真实镜像拉取。 |
 | 真实 scanner | `BLOCKED` | 风险扫描只保存安全摘要，不运行真实 scanner。 |
@@ -155,4 +155,4 @@
 
 `ops-core` API 文档按 `docs/contracts-ops-core.md` 独立存在，并由 `.local-docs/tests-ops-core.md` 记录本地测试闭环。
 
-完成时必须满足以下条件：`ops-core-service:8133` 单进程承载七个控制面模块的全部既有 API 路径；七个模块原契约仍有效；`ops-core` 自有四个接口全覆盖；`.local-docs/tests-ops-core.md` 中的完备用例都有自动化验证；自动化测试先红灯；实现后 `mvn -q -f backend/ops-core-service/pom.xml test` 通过；第四批和第六期旧服务 Maven 入口已退役且不得恢复；`api-gateway-service` 已按契约切换并通过测试；`business-core-service`、`admission-core-service`、`engagement-core-service`、`portal-core-service` 和 `node-daemon-service` 回归通过；旧服务目录没有恢复；`node-daemon` 和 `api-gateway` 仍保持独立；生产 readiness 明确暴露剩余生产缺口；测试过程完整写入 `.local-docs/tests-ops-core.md`、`.local-docs/tests-api-gateway.md` 和 `.local-docs/tests-business-core.md`。
+完成时必须满足以下条件：`ops-core-service:8133` 单进程承载七个控制面模块的全部既有 API 路径；七个模块原契约仍有效；`ops-core` 自有四个接口全覆盖；`.local-docs/tests-ops-core.md` 中的完备用例都有自动化验证；自动化测试先红灯；实现后 `mvn -q -f backend/ops-core-service/pom.xml test` 通过；第四批和第六期旧服务 Maven 入口已退役且不得恢复；`api-gateway-service` 已按契约切换并通过测试；`business-core-service`、`admission-core-service`、`engagement-core-service` 和 `portal-core-service` 回归通过；旧服务目录没有恢复；外部节点执行器不并入 `ops-core` 或 `unified-backend`；生产 readiness 明确暴露剩余生产缺口；测试过程完整写入 `.local-docs/tests-ops-core.md`、`.local-docs/tests-api-gateway.md` 和 `.local-docs/tests-business-core.md`。

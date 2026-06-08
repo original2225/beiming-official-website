@@ -84,7 +84,6 @@
 | `calendar` | `CALENDAR` | `/api/v1/calendar` | `8132` | `/api/v1/calendar/upcoming` |
 | `changelog` | `CHANGELOG` | `/api/v1/changelog` | `8132` | `/api/v1/changelog/versions/latest` |
 | `ops-control` | `OPS_CONTROL` | `/api/v1/ops-control` | `8133` | `/api/v1/ops-control/overview` |
-| `node-daemon` | `NODE_DAEMON` | `/api/v1/node-daemon` | `8117` | `/api/v1/node-daemon/health` |
 | `cloudreve-sync` | `CLOUDREVE_SYNC` | `/api/v1/cloudreve-sync` | `8133` | `/api/v1/cloudreve-sync/health` |
 | `backup-recovery` | `BACKUP_RECOVERY` | `/api/v1/backup-recovery` | `8133` | `/api/v1/backup-recovery/health` |
 | `alerting` | `ALERTING` | `/api/v1/alerting` | `8133` | `/api/v1/alerting/health` |
@@ -101,19 +100,19 @@
 
 `community`、`activity`、`calendar` 和 `changelog` 已完成第三批运行合并。网关必须把这四个路由的上游统一切到 `engagement-core-service` 的 `8132`，但路由 ID、服务键、路径前缀、请求路径、认证透传、可信身份头剥离与注入、请求日志、错误码和响应透传规则都保持原样。端口 `8112` 到 `8115` 只作为第三批模块历史原服务端口记录，不再作为网关第三批业务路由的默认上游，当前仓库也不再保留对应旧服务 Maven 运行入口。
 
-`ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration` 和 `ops-image-market` 已完成第四批运行合并。`cross-platform-notification` 已完成第六期运行合并。网关必须把这七个路由的上游统一切到 `ops-core-service` 的 `8133`，但路由 ID、服务键、路径前缀、请求路径、认证透传、可信身份头剥离与注入、请求日志、错误码和响应透传规则都保持原样。端口 `8116`、`8118`、`8119`、`8120`、`8122`、`8124` 和 `8123` 只作为模块历史原服务端口记录，不再作为网关后台运维与通知控制面路由的默认上游，当前仓库也不再保留对应旧服务 Maven 运行入口。`node-daemon` 继续保持独立，不并入 `ops-core`。
+`ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration` 和 `ops-image-market` 已完成第四批运行合并。`cross-platform-notification` 已完成第六期运行合并。网关必须把这七个路由的上游统一切到 `ops-core-service` 的 `8133`，但路由 ID、服务键、路径前缀、请求路径、认证透传、可信身份头剥离与注入、请求日志、错误码和响应透传规则都保持原样。端口 `8116`、`8118`、`8119`、`8120`、`8122`、`8124` 和 `8123` 只作为模块历史原服务端口记录，不再作为网关后台运维与通知控制面路由的默认上游，当前仓库也不再保留对应旧服务 Maven 运行入口。外部节点执行器已出仓，不再作为官网网关业务路由。
 
-`guide`、`material` 和 `online-map` 已完成第五批后续门户体验运行合并。网关必须把这三个路由的上游统一切到 `portal-core-service` 的 `8134`，但路由 ID、服务键、路径前缀、请求路径、认证透传、可信身份头剥离与注入、请求日志、错误码和响应透传规则都保持原样。端口 `8127`、`8126` 和 `8121` 只作为第五批模块历史原服务端口记录，不再作为网关第五批玩家门户体验路由的默认上游。`node-daemon`、`api-gateway`、`ops-core` 和已经由 `ops-core` 承载的 `cross-platform-notification` 继续不并入 `portal-core`。
+`guide`、`material` 和 `online-map` 已完成第五批后续门户体验运行合并。网关必须把这三个路由的上游统一切到 `portal-core-service` 的 `8134`，但路由 ID、服务键、路径前缀、请求路径、认证透传、可信身份头剥离与注入、请求日志、错误码和响应透传规则都保持原样。端口 `8127`、`8126` 和 `8121` 只作为第五批模块历史原服务端口记录，不再作为网关第五批玩家门户体验路由的默认上游。`api-gateway`、`ops-core` 和已经由 `ops-core` 承载的 `cross-platform-notification` 继续不并入 `portal-core`，外部节点执行器不属于 `portal-core` 合并范围。
 
-本地真实 HTTP 联调允许通过配置项 `api-gateway.upstreams.portal-core-base-url` 临时覆盖 `guide`、`material` 和 `online-map` 三个路由的上游基础地址。该配置只改变这三个路由的 `upstreamBaseUrl` 和由 URL 推导出的 `upstreamPort`，不得新增 `PORTAL_CORE` 业务路由，不得改写 `/api/v1/guides`、`/api/v1/materials` 或 `/api/v1/online-map` 路径前缀，不得影响 `cross-platform-notification`、`node-daemon`、`ops-core` 或其他上游。默认值仍为 `http://127.0.0.1:8134`。
+本地真实 HTTP 联调允许通过配置项 `api-gateway.upstreams.portal-core-base-url` 临时覆盖 `guide`、`material` 和 `online-map` 三个路由的上游基础地址。该配置只改变这三个路由的 `upstreamBaseUrl` 和由 URL 推导出的 `upstreamPort`，不得新增 `PORTAL_CORE` 业务路由，不得改写 `/api/v1/guides`、`/api/v1/materials` 或 `/api/v1/online-map` 路径前缀，不得影响 `cross-platform-notification`、`ops-core` 或其他上游。默认值仍为 `http://127.0.0.1:8134`。
 
-本地真实 HTTP 联调允许通过配置项 `api-gateway.upstreams.ops-core-base-url` 临时覆盖 `ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`ops-image-market` 和 `cross-platform-notification` 七个路由的上游基础地址。该配置只改变这七个路由的 `upstreamBaseUrl` 和由 URL 推导出的 `upstreamPort`，不得新增 `OPS_CORE` 业务路由，不得改写任一业务路径前缀，不得影响 `node-daemon`、`portal-core`、`business-core`、`admission-core`、`engagement-core` 或其他上游。默认值仍为 `http://127.0.0.1:8133`。
+本地真实 HTTP 联调允许通过配置项 `api-gateway.upstreams.ops-core-base-url` 临时覆盖 `ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`ops-image-market` 和 `cross-platform-notification` 七个路由的上游基础地址。该配置只改变这七个路由的 `upstreamBaseUrl` 和由 URL 推导出的 `upstreamPort`，不得新增 `OPS_CORE` 业务路由，不得改写任一业务路径前缀，不得影响 `portal-core`、`business-core`、`admission-core`、`engagement-core` 或其他上游。默认值仍为 `http://127.0.0.1:8133`。
 
 这两个覆盖能力只用于本地真实 HTTP smoke 和显式环境配置，不代表已接入动态服务发现或集中配置中心。
 
-第八轮单服务合并准备层只允许在网关公开只读运行拓扑。当前运行入口仍是 `api-gateway-service:8125`、`business-core-service:8130`、`admission-core-service:8131`、`engagement-core-service:8132`、`ops-core-service:8133`、`portal-core-service:8134` 和 `node-daemon-service:8117`。未来可合并候选只包含 `api-gateway` 与五个 core 运行单元，`node-daemon` 继续作为外部节点执行边界。该准备层不得新增业务路由，不得改写 26 条业务路径，不得动态挂载业务模块，不得恢复已退役旧 Maven 入口，不得把节点守护进程并入统一后端。
+第八轮单服务合并准备层只允许在网关公开只读运行拓扑。当前官网后端回滚入口是 `api-gateway-service:8125`、`business-core-service:8130`、`admission-core-service:8131`、`engagement-core-service:8132`、`ops-core-service:8133` 和 `portal-core-service:8134`。未来可合并候选只包含 `api-gateway` 与五个 core 运行单元。外部节点执行器已出仓且未接入，当前网关不得再公开 `/api/v1/node-daemon` 业务路由。该准备层不得新增业务路由，不得改写 25 条业务路径，不得动态挂载业务模块，不得恢复已退役旧 Maven 入口，不得把外部节点执行器并入统一后端。
 
-第九轮新增 `unified-backend-service:8135` 作为并行候选入口。当前网关仍保持 `CURRENT_SEVEN_ENTRYPOINTS` 和 `IN_PROCESS_MOUNT_NOT_IMPLEMENTED=NOT_IMPLEMENTED`，但运行拓扑必须识别 `unified-backend` 试点候选。候选入口第一阶段挂载对象为 `api-gateway` 和 `portal-core`，第二阶段挂载对象扩展为 `business-core`，第三阶段挂载对象扩展为 `admission-core`，第四阶段挂载对象扩展为 `engagement-core`，第五阶段挂载对象扩展为 `ops-core`，候选挂载路由为 `auth`、`profile`、`notification`、`content`、`server-status`、`resource`、`admin`、`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、`ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`cross-platform-notification`、`ops-image-market`、`guide`、`material` 和 `online-map`。该字段只用于后续装配验收，不能让当前 `api-gateway-service:8125` 冒充已经完成 in-process。
+第九轮新增 `unified-backend-service:8135` 作为并行候选入口。当前网关保持 `CURRENT_SIX_ROLLBACK_ENTRYPOINTS`，运行拓扑必须识别 `unified-backend` 试点候选和外部节点执行器出仓状态。候选入口第一阶段挂载对象为 `api-gateway` 和 `portal-core`，第二阶段挂载对象扩展为 `business-core`，第三阶段挂载对象扩展为 `admission-core`，第四阶段挂载对象扩展为 `engagement-core`，第五阶段挂载对象扩展为 `ops-core`，候选挂载路由为 `auth`、`profile`、`notification`、`content`、`server-status`、`resource`、`admin`、`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、`ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`cross-platform-notification`、`ops-image-market`、`guide`、`material` 和 `online-map`。该字段只用于后续装配验收，不能让当前 `api-gateway-service:8125` 冒充已经完成 in-process。
 
 路径匹配规则为最长前缀优先。`/api/v1/resources` 和 `/api/v1/resources/**` 都必须命中 `resource`。未知路径返回网关错误，不转发到任何上游。
 
@@ -178,22 +177,22 @@
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `service` | string | 是 | 固定为 `api-gateway`。 |
-| `deploymentMode` | string | 是 | 固定为 `CURRENT_SEVEN_ENTRYPOINTS`。 |
+| `deploymentMode` | string | 是 | 固定为 `CURRENT_SIX_ROLLBACK_ENTRYPOINTS`。 |
 | `singleServiceMergeReadiness` | string | 是 | 固定为 `PREPARING`。 |
-| `currentEntrypointsTotal` | integer | 是 | 当前 Maven 运行入口数量，固定为 `7`。 |
-| `futureMergeCandidateEntrypointsTotal` | integer | 是 | 未来统一后端候选入口数量，固定为 `6`，不包含 `node-daemon`。 |
-| `businessRoutesTotal` | integer | 是 | 当前业务转发路由数量，固定为 `26`。 |
+| `currentEntrypointsTotal` | integer | 是 | 当前官网后端回滚入口数量，固定为 `6`。 |
+| `futureMergeCandidateEntrypointsTotal` | integer | 是 | 未来统一后端候选入口数量，固定为 `6`，不包含外部节点执行器。 |
+| `businessRoutesTotal` | integer | 是 | 当前业务转发路由数量，固定为 `25`。 |
 | `gatewayApiTotal` | integer | 是 | 当前网关自有 API 数量，固定为 `8`。 |
 | `currentEntrypoints` | object[] | 是 | 当前运行入口清单。 |
 | `futureUnifiedBackend` | object | 是 | 未来统一后端目标摘要。 |
 | `mergePreparationChecks` | object[] | 是 | 合并准备守卫检查。 |
 | `generatedAt` | string | 是 | 生成时间。 |
 
-`currentEntrypoints` 每项必须包含 `entrypointKey`、`serviceDirectory`、`port`、`role`、`mergeDisposition`、`hostedRouteIds`、`hostedPathPrefixes`、`routesTotal` 和 `keptExternalReason`。`api-gateway` 的 `mergeDisposition` 为 `INGRESS_CANDIDATE`，五个 core 运行单元为 `IN_PROCESS_CANDIDATE`，`node-daemon` 为 `KEEP_EXTERNAL`。`node-daemon.keptExternalReason` 固定说明其负责节点侧受控执行，不并入统一后端进程。
+`currentEntrypoints` 每项必须包含 `entrypointKey`、`serviceDirectory`、`port`、`role`、`mergeDisposition`、`hostedRouteIds`、`hostedPathPrefixes` 和 `routesTotal`。`api-gateway` 的 `mergeDisposition` 为 `INGRESS_CANDIDATE`，五个 core 运行单元为 `IN_PROCESS_CANDIDATE`。外部节点执行器不在 `currentEntrypoints` 中返回，只能在拓扑摘要中以 `externalNodeExecutorOutOfRepository=true` 和 `externalNodeExecutorConnected=false` 表达。
 
-`mergePreparationChecks` 至少包含 `ROUTE_PREFIX_PRESERVED`、`GATEWAY_AS_INGRESS_CANDIDATE`、`CORE_ROUTES_GROUPED`、`NODE_DAEMON_EXTERNAL_BOUNDARY`、`LEGACY_ENTRYPOINTS_NOT_RESTORED`、`STATIC_SERVICE_DISCOVERY_ONLY` 和 `IN_PROCESS_MOUNT_NOT_IMPLEMENTED`。前五项为 `PASS`，后两项必须保持 `BLOCKED` 或 `NOT_IMPLEMENTED`，防止把静态路由表误称为动态服务发现或把准备层误称为真正单服务合并。
+`mergePreparationChecks` 至少包含 `ROUTE_PREFIX_PRESERVED`、`GATEWAY_AS_INGRESS_CANDIDATE`、`CORE_ROUTES_GROUPED`、`EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY`、`LEGACY_ENTRYPOINTS_NOT_RESTORED`、`STATIC_SERVICE_DISCOVERY_ONLY` 和 `IN_PROCESS_MOUNT_NOT_IMPLEMENTED`。前五项为 `PASS`，后两项必须保持 `BLOCKED` 或 `NOT_IMPLEMENTED`，防止把静态路由表误称为动态服务发现或把准备层误称为真正单服务合并。
 
-`futureUnifiedBackend` 必须额外包含 `pilotCandidate`。该对象固定声明 `entrypointKey=unified-backend`、`serviceDirectory=backend/unified-backend-service`、`candidatePort=8135`、`deploymentMode=CANDIDATE_PARALLEL_ENTRYPOINT`、`pilotMountedEntrypoints=["api-gateway","business-core","admission-core","engagement-core","ops-core","portal-core"]`、`pilotMountedRouteIds=["auth","profile","notification","content","server-status","resource","admin","onboarding","exam","whitelist","attendance","community","activity","calendar","changelog","ops-control","cloudreve-sync","backup-recovery","alerting","plugin-integration","cross-platform-notification","ops-image-market","guide","material","online-map"]`、`nodeDaemonDisposition=KEEP_EXTERNAL`、`readyToReplaceGateway=false`、`readyToRetireBusinessCore=false`、`readyToRetireAdmissionCore=false`、`readyToRetireEngagementCore=false`、`readyToRetireOpsCore=false` 和 `readyToRetirePortalCore=false`。
+`futureUnifiedBackend` 必须额外包含 `pilotCandidate`。该对象固定声明 `entrypointKey=unified-backend`、`serviceDirectory=backend/unified-backend-service`、`candidatePort=8135`、`deploymentMode=CANDIDATE_PARALLEL_ENTRYPOINT`、`pilotMountedEntrypoints=["api-gateway","business-core","admission-core","engagement-core","ops-core","portal-core"]`、`pilotMountedRouteIds=["auth","profile","notification","content","server-status","resource","admin","onboarding","exam","whitelist","attendance","community","activity","calendar","changelog","ops-control","cloudreve-sync","backup-recovery","alerting","plugin-integration","cross-platform-notification","ops-image-market","guide","material","online-map"]`、`externalNodeExecutorOutOfRepository=true`、`externalNodeExecutorConnected=false`、`readyToReplaceGateway=false`、`readyToRetireBusinessCore=false`、`readyToRetireAdmissionCore=false`、`readyToRetireEngagementCore=false`、`readyToRetireOpsCore=false` 和 `readyToRetirePortalCore=false`。
 
 ## 网关错误码
 
@@ -429,7 +428,7 @@
 
 ## 生产化差距
 
-P0 `api-gateway` 是本地契约实现，必须在自检摘要中明确以下生产化差距：尚未接入真实服务发现，尚未接入集中配置，尚未接入分布式限流，认证上下文已支持通过 `auth` 会话校验注入和内部签名，但尚未接入签名密钥集中托管、密钥轮换和缓存，尚未接入持久化审计，尚未代理 WebSocket 和大文件流，统一后端入口尚未实现，网关 in-process 挂载尚未实现，动态服务发现尚未接入，`node-daemon` 仍保持外部节点执行边界。`api-gateway.upstreams.portal-core-base-url` 和 `api-gateway.upstreams.ops-core-base-url` 只是本地静态配置覆盖，不得在自检摘要中被描述为动态服务发现或集中配置已经完成。
+P0 `api-gateway` 是本地契约实现，必须在自检摘要中明确以下生产化差距：尚未接入真实服务发现，尚未接入集中配置，尚未接入分布式限流，认证上下文已支持通过 `auth` 会话校验注入和内部签名，但尚未接入签名密钥集中托管、密钥轮换和缓存，尚未接入持久化审计，尚未代理 WebSocket 和大文件流，统一后端入口尚未替换当前入口，网关 in-process 挂载尚未替换生产入口，动态服务发现尚未接入，外部节点执行器已出仓且未连接。`api-gateway.upstreams.portal-core-base-url` 和 `api-gateway.upstreams.ops-core-base-url` 只是本地静态配置覆盖，不得在自检摘要中被描述为动态服务发现或集中配置已经完成。
 
 这些差距不得影响 P0 的路径转发、请求编号、认证透传、可信身份头剥离、可验证认证上下文注入、内部签名注入、错误降级、路由表、运行拓扑和测试闭环。
 
@@ -437,6 +436,6 @@ P0 `api-gateway` 是本地契约实现，必须在自检摘要中明确以下生
 
 `api-gateway` API 文档按 `docs/contracts-api-gateway.md` 独立存在，并由 `.local-docs/tests-api-gateway.md` 记录本地测试闭环。
 
-本文档列出的每个网关自有接口都有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、分页排序、状态刷新、失败降级、日志脱敏和验收口径。运行拓扑测试必须确认当前 7 个 Maven 入口、未来 6 个统一后端候选、`node-daemon` 外部执行边界、26 条业务转发路由、8 个网关自有 API、5 个 core 运行单元归属、已退役旧入口未恢复、静态服务发现和当前网关自身 in-process 挂载仍未实现，并确认 `unified-backend-service:8135` 候选画像已把 `business-core`、`admission-core`、`engagement-core`、`ops-core` 和 `portal-core` 标为试点挂载对象。业务转发测试必须覆盖 26 个已接入路径前缀，确认路由表端口准确、第一批七个路由统一指向 `business-core-service:8130`、第二批四个路由统一指向 `admission-core-service:8131`、第三批四个路由统一指向 `engagement-core-service:8132`、第四批六个路由和第六期 `cross-platform-notification` 统一指向 `ops-core-service:8133`、第五批后三个门户体验路由统一指向 `portal-core-service:8134`、原业务路径不被改写为 core 服务前缀、`api-gateway.upstreams.ops-core-base-url` 只覆盖七个 ops-core 承载路由、请求编号透传、请求编号非法拒绝、认证头透传、可信身份头剥离、客户端伪造签名头剥离、`auth` 会话校验成功后的可信身份和内部签名注入、`auth` 校验失败后的不注入降级、查询参数透传、JSON body 透传、请求体大小限制、响应头白名单、上游 2xx 透传、上游 4xx 透传、上游 5xx 透传、未知路径、非法方法、CORS 预检、上游不可用、上游超时和敏感字段不落日志。
+本文档列出的每个网关自有接口都有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、分页排序、状态刷新、失败降级、日志脱敏和验收口径。运行拓扑测试必须确认当前 6 个官网后端回滚入口、未来 6 个统一后端候选、外部节点执行器出仓且未接入、25 条业务转发路由、8 个网关自有 API、5 个 core 运行单元归属、已退役旧入口未恢复、静态服务发现和当前网关自身 in-process 挂载仍未实现，并确认 `unified-backend-service:8135` 候选画像已把 `business-core`、`admission-core`、`engagement-core`、`ops-core` 和 `portal-core` 标为试点挂载对象。业务转发测试必须覆盖 25 个已接入路径前缀，确认路由表端口准确、第一批七个路由统一指向 `business-core-service:8130`、第二批四个路由统一指向 `admission-core-service:8131`、第三批四个路由统一指向 `engagement-core-service:8132`、第四批六个路由和第六期 `cross-platform-notification` 统一指向 `ops-core-service:8133`、第五批后三个门户体验路由统一指向 `portal-core-service:8134`、原业务路径不被改写为 core 服务前缀、`api-gateway.upstreams.ops-core-base-url` 只覆盖七个 ops-core 承载路由、请求编号透传、请求编号非法拒绝、认证头透传、可信身份头剥离、客户端伪造签名头剥离、`auth` 会话校验成功后的可信身份和内部签名注入、`auth` 校验失败后的不注入降级、查询参数透传、JSON body 透传、请求体大小限制、响应头白名单、上游 2xx 透传、上游 4xx 透传、上游 5xx 透传、未知路径、非法方法、CORS 预检、上游不可用、上游超时和敏感字段不落日志。
 
-开发完成后必须执行 `mvn -f backend/api-gateway-service/pom.xml test`、`mvn -f backend/business-core-service/pom.xml test`、`mvn -f backend/admission-core-service/pom.xml test`、`mvn -f backend/engagement-core-service/pom.xml test`、`mvn -f backend/ops-core-service/pom.xml test`、`mvn -f backend/portal-core-service/pom.xml test` 和 `mvn -f backend/node-daemon-service/pom.xml test`。涉及 `portal-core` smoke 的生产化增强还必须覆盖真实 `api-gateway-service` 与真实 `portal-core-service` 启动后的 HTTP 联调，确认 `api-gateway.upstreams.portal-core-base-url` 只临时覆盖第五批后三个原业务路由。第一批、第二批和第三批旧服务清理后，不得为了网关回归恢复对应旧服务目录、旧 Maven 入口、旧启动类或旧测试命令。第四批和第五批旧服务目录退役后，不得为了网关回归恢复旧 Maven 入口。旧 `backend/online-map-service` 已退役且不得恢复。测试过程必须写入 `.local-docs/tests-api-gateway.md`。
+开发完成后必须执行 `mvn -f backend/api-gateway-service/pom.xml test`、`mvn -f backend/business-core-service/pom.xml test`、`mvn -f backend/admission-core-service/pom.xml test`、`mvn -f backend/engagement-core-service/pom.xml test`、`mvn -f backend/ops-core-service/pom.xml test` 和 `mvn -f backend/portal-core-service/pom.xml test`。涉及 `portal-core` smoke 的生产化增强还必须覆盖真实 `api-gateway-service` 与真实 `portal-core-service` 启动后的 HTTP 联调，确认 `api-gateway.upstreams.portal-core-base-url` 只临时覆盖第五批后三个原业务路由。第一批、第二批和第三批旧服务清理后，不得为了网关回归恢复对应旧服务目录、旧 Maven 入口、旧启动类或旧测试命令。第四批和第五批旧服务目录退役后，不得为了网关回归恢复旧 Maven 入口。旧 `backend/online-map-service` 已退役且不得恢复。外部节点执行器测试不再作为官网仓库网关闭环命令。测试过程必须写入 `.local-docs/tests-api-gateway.md`。

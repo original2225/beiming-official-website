@@ -223,7 +223,7 @@ class OpsCoreApiContractTest {
                 .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'REAL_PERSISTENCE' && @.status == 'BLOCKED')]").exists())
                 .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'REAL_CROSS_SERVICE_HTTP' && @.status == 'BLOCKED')]").exists())
                 .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'REAL_AUDIT_PERSISTENCE' && @.status == 'BLOCKED')]").exists())
-                .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'REAL_NODE_EXECUTION' && @.status == 'BLOCKED')]").exists())
+                .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'EXTERNAL_EXECUTOR_CONNECTION' && @.status == 'BLOCKED')]").exists())
                 .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'REAL_CLOUDREVE_API' && @.status == 'BLOCKED')]").exists())
                 .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'REAL_REGISTRY' && @.status == 'BLOCKED')]").exists())
                 .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'REAL_SCANNER' && @.status == 'BLOCKED')]").exists())
@@ -242,7 +242,7 @@ class OpsCoreApiContractTest {
                 .andExpect(jsonPath("$.data.checks[?(@.checkKey == 'GATEWAY_ROUTE_SWITCH' && @.status == 'PASS')]").exists())
                 .andExpect(jsonPath("$.data.moduleReadiness.length()").value(7))
                 .andExpect(jsonPath("$.data.productionBlockers[?(@ == 'real persistence is not connected')]").exists())
-                .andExpect(jsonPath("$.data.productionBlockers[?(@ == 'real node execution stays in node-daemon and is not connected here')]").exists());
+                .andExpect(jsonPath("$.data.productionBlockers[?(@ == 'external node executor is out of repository and not connected')]").exists());
     }
 
     @Test

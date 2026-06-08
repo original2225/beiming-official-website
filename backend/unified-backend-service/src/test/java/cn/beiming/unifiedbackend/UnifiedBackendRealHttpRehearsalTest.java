@@ -85,23 +85,20 @@ class UnifiedBackendRealHttpRehearsalTest {
 
         Map<String, JsonNode> gatewayById = itemsByRouteId(gatewayRoutes.at("/data/items"));
         Map<String, JsonNode> unifiedById = itemsByRouteId(unifiedMounts.at("/data/items"));
-        assertThat(gatewayById).hasSize(26);
+        assertThat(gatewayById).hasSize(25);
+        assertThat(gatewayById).doesNotContainKey("node-daemon");
 
         for (Map.Entry<String, JsonNode> gateway : gatewayById.entrySet()) {
             JsonNode unified = unifiedById.get(gateway.getKey());
             assertThat(unified).as(gateway.getKey()).isNotNull();
             assertThat(unified.path("serviceKey").asText()).isEqualTo(gateway.getValue().path("serviceKey").asText());
             assertThat(unified.path("pathPrefix").asText()).isEqualTo(gateway.getValue().path("pathPrefix").asText());
-            if ("node-daemon".equals(gateway.getKey())) {
-                assertThat(unified.path("mountDisposition").asText()).isEqualTo("KEEP_EXTERNAL");
-                assertThat(unified.path("currentPort").asInt()).isEqualTo(8117);
-            } else {
-                assertThat(unified.path("mountDisposition").asText()).isEqualTo("IN_PROCESS");
-                assertThat(unified.path("candidatePort").asInt()).isEqualTo(8135);
-            }
+            assertThat(unified.path("mountDisposition").asText()).isEqualTo("IN_PROCESS");
+            assertThat(unified.path("candidatePort").asInt()).isEqualTo(8135);
         }
 
-        assertThat(unifiedMounts.at("/data/items").toString()).doesNotContain("HTTP_UPSTREAM_FALLBACK");
+        assertThat(unifiedMounts.at("/data/items").toString())
+                .doesNotContain("HTTP_UPSTREAM_FALLBACK", "node-daemon", "KEEP_EXTERNAL", "8117");
         JsonNode malformedAuth = getWithAuth("/api/v1/unified-backend/admin/mounts", "Token bad");
         assertThat(malformedAuth.at("/code").asInt()).isEqualTo(41003);
         assertNoSensitiveFields(gatewayRoutes);

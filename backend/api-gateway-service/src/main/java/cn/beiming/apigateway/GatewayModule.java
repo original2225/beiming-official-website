@@ -640,7 +640,7 @@ class GatewayController {
                 "UNIFIED_BACKEND_ENTRYPOINT_NOT_IMPLEMENTED",
                 "IN_PROCESS_GATEWAY_MOUNT_NOT_IMPLEMENTED",
                 "DYNAMIC_SERVICE_DISCOVERY_NOT_CONNECTED",
-                "NODE_DAEMON_REMAINS_EXTERNAL_BOUNDARY"
+                "EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY"
         );
     }
 
@@ -700,7 +700,6 @@ class GatewayState {
     private static final Set<String> ENGAGEMENT_CORE_ROUTES = Set.of("community", "activity", "calendar", "changelog");
     private static final Set<String> OPS_CORE_ROUTES = Set.of("ops-control", "cloudreve-sync", "backup-recovery", "alerting", "plugin-integration", "cross-platform-notification", "ops-image-market");
     private static final Set<String> PORTAL_CORE_ROUTES = Set.of("online-map", "material", "guide");
-    private static final Set<String> NODE_DAEMON_ROUTES = Set.of("node-daemon");
     private final String portalCoreBaseUrl;
     private final String opsCoreBaseUrl;
     private final List<GatewayRoute> routes;
@@ -777,9 +776,9 @@ class GatewayState {
     Map<String, Object> runtimeTopology(String generatedAt) {
         return map(
                 "service", "api-gateway",
-                "deploymentMode", "CURRENT_SEVEN_ENTRYPOINTS",
+                "deploymentMode", "CURRENT_SIX_ROLLBACK_ENTRYPOINTS",
                 "singleServiceMergeReadiness", "PREPARING",
-                "currentEntrypointsTotal", 7,
+                "currentEntrypointsTotal", 6,
                 "futureMergeCandidateEntrypointsTotal", UNIFIED_BACKEND_CANDIDATES.size(),
                 "businessRoutesTotal", routes.size(),
                 "gatewayApiTotal", GATEWAY_SELF_APIS.size(),
@@ -789,13 +788,13 @@ class GatewayState {
                         entrypoint("admission-core", "backend/admission-core-service", 8131, "admission core", "IN_PROCESS_CANDIDATE", routesByIds(ADMISSION_CORE_ROUTES), null),
                         entrypoint("engagement-core", "backend/engagement-core-service", 8132, "engagement core", "IN_PROCESS_CANDIDATE", routesByIds(ENGAGEMENT_CORE_ROUTES), null),
                         entrypoint("ops-core", "backend/ops-core-service", 8133, "ops control core", "IN_PROCESS_CANDIDATE", routesByIds(OPS_CORE_ROUTES), null),
-                        entrypoint("portal-core", "backend/portal-core-service", 8134, "portal experience core", "IN_PROCESS_CANDIDATE", routesByIds(PORTAL_CORE_ROUTES), null),
-                        entrypoint("node-daemon", "backend/node-daemon-service", 8117, "external node execution", "KEEP_EXTERNAL", routesByIds(NODE_DAEMON_ROUTES), "node-daemon executes controlled node-side tasks and remains outside the unified backend process")
+                        entrypoint("portal-core", "backend/portal-core-service", 8134, "portal experience core", "IN_PROCESS_CANDIDATE", routesByIds(PORTAL_CORE_ROUTES), null)
                 ),
                 "futureUnifiedBackend", map(
                         "entrypointKey", "unified-backend",
                         "candidateEntrypoints", UNIFIED_BACKEND_CANDIDATES,
-                        "nodeDaemonDisposition", "EXTERNAL_NODE_EXECUTION_BOUNDARY",
+                        "externalNodeExecutorBoundary", "EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY",
+                        "externalNodeExecutorConnected", false,
                         "currentBusinessRoutePreserved", true,
                         "currentBusinessRoutesTotal", routes.size(),
                         "gatewayApiTotal", GATEWAY_SELF_APIS.size(),
@@ -808,7 +807,7 @@ class GatewayState {
                         check("ROUTE_PREFIX_PRESERVED", "PASS", "business route prefixes remain unchanged"),
                         check("GATEWAY_AS_INGRESS_CANDIDATE", "PASS", "api-gateway is the future ingress candidate"),
                         check("CORE_ROUTES_GROUPED", "PASS", "business routes stay grouped under five core entrypoints"),
-                        check("NODE_DAEMON_EXTERNAL_BOUNDARY", "PASS", "node-daemon remains external"),
+                        check("EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY", "PASS", "EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY"),
                         check("LEGACY_ENTRYPOINTS_NOT_RESTORED", "PASS", "retired legacy service entrypoints are not part of the topology"),
                         check("STATIC_SERVICE_DISCOVERY_ONLY", "BLOCKED", "current upstreams are still static route registrations"),
                         check("IN_PROCESS_MOUNT_NOT_IMPLEMENTED", "NOT_IMPLEMENTED", "business modules are not mounted in-process through the gateway")
@@ -835,7 +834,6 @@ class GatewayState {
         items.add(route("calendar", "CALENDAR", "calendar", "/api/v1/calendar", 8132, "/api/v1/calendar/upcoming"));
         items.add(route("changelog", "CHANGELOG", "changelog", "/api/v1/changelog", 8132, "/api/v1/changelog/versions/latest"));
         items.add(route("ops-control", "OPS_CONTROL", "ops-control", "/api/v1/ops-control", opsCoreBaseUrl, "/api/v1/ops-control/overview"));
-        items.add(route("node-daemon", "NODE_DAEMON", "node-daemon", "/api/v1/node-daemon", 8117, "/api/v1/node-daemon/health"));
         items.add(route("cloudreve-sync", "CLOUDREVE_SYNC", "cloudreve-sync", "/api/v1/cloudreve-sync", opsCoreBaseUrl, "/api/v1/cloudreve-sync/health"));
         items.add(route("backup-recovery", "BACKUP_RECOVERY", "backup-recovery", "/api/v1/backup-recovery", opsCoreBaseUrl, "/api/v1/backup-recovery/health"));
         items.add(route("alerting", "ALERTING", "alerting", "/api/v1/alerting", opsCoreBaseUrl, "/api/v1/alerting/health"));
@@ -901,7 +899,8 @@ class GatewayState {
                         "cross-platform-notification", "ops-image-market",
                         "guide", "material", "online-map"
                 ),
-                "nodeDaemonDisposition", "KEEP_EXTERNAL",
+                "externalNodeExecutorBoundary", "EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY",
+                "externalNodeExecutorConnected", false,
                 "readyToReplaceGateway", false,
                 "readyToRetireBusinessCore", false,
                 "readyToRetireAdmissionCore", false,

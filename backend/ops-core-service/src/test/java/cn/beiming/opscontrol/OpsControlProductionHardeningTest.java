@@ -48,7 +48,9 @@ class OpsControlProductionHardeningTest {
 
         JsonNode ops = performJson(get("/api/v1/ops-control/ops/summary").header("Authorization", bearer("ops-viewer-token")), 200);
         assertThat(ops.at("/data/testControlsEnabled").asBoolean()).isFalse();
-        assertThat(ops.toString()).contains("TEST_CONTROLS_DISABLED_OUTSIDE_TEST", "NODE_DAEMON_NOT_CONNECTED");
+        assertThat(ops.toString())
+                .contains("TEST_CONTROLS_DISABLED_OUTSIDE_TEST", "EXTERNAL_EXECUTOR_NOT_CONNECTED")
+                .doesNotContain("NODE_DAEMON_NOT_CONNECTED", "nodeDaemonConnected");
         assertThat(ops.toString()).doesNotContain("node-secret-token", "Authorization", "stackTrace", "cloudreveToken");
     }
 

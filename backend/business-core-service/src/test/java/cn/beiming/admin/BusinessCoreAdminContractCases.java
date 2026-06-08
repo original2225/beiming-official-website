@@ -43,12 +43,12 @@ abstract class BusinessCoreAdminContractCases {
         Set<String> mapped = new TreeSet<>();
         addRange(mapped, "ADM-COM", 1, 30);
         addRange(mapped, "ADM-OVERVIEW", 1, 30);
-        addRange(mapped, "ADM-MODULES", 1, 26);
+        addRange(mapped, "ADM-MODULES", 1, 25);
         addRange(mapped, "ADM-MODULE-DETAIL", 1, 18);
         addRange(mapped, "ADM-TODOS", 1, 30);
         addRange(mapped, "ADM-TODO-DETAIL", 1, 18);
         addRange(mapped, "ADM-METRICS", 1, 22);
-        addRange(mapped, "ADM-AUDIT", 1, 26);
+        addRange(mapped, "ADM-AUDIT", 1, 25);
         addRange(mapped, "ADM-SETTINGS-READ", 1, 18);
         addRange(mapped, "ADM-SETTINGS-WRITE", 1, 34);
         addRange(mapped, "ADM-OPS", 1, 16);
@@ -61,7 +61,7 @@ abstract class BusinessCoreAdminContractCases {
         addRange(mapped, "ADM-PROD", 1, 20);
         addRange(mapped, "ADM-CYCLE", 1, 18);
         assertThat(mapped).contains("ADM-COM-001", "ADM-OVERVIEW-030", "ADM-SETTINGS-WRITE-034", "ADM-MODULE-REFRESH-034", "ADM-GATEWAY-014", "ADM-PROD-020", "ADM-CYCLE-018");
-        assertThat(mapped).hasSize(434);
+        assertThat(mapped).hasSize(432);
     }
 
     @Test
@@ -108,7 +108,7 @@ abstract class BusinessCoreAdminContractCases {
                 .param("todoLimit", "3")
                 .param("auditLimit", "2"), 200);
         assertThat(valuesAt(owner, "/data/modules", "moduleKey")).containsAll(expectedImplementedModules()).doesNotContain("API_GATEWAY");
-        assertThat(valuesAt(owner, "/data/modules", "moduleKey")).hasSize(26);
+        assertThat(valuesAt(owner, "/data/modules", "moduleKey")).hasSize(25);
         assertThat(owner.at("/data/notImplementedModules").toString()).doesNotContain("ONBOARDING", "OPS_CONTROL", "NODE_DAEMON", "MATERIAL", "GUIDE");
         assertThat(owner.at("/data/platformDependencies").toString()).contains("API_GATEWAY", "/api/v1/gateway/admin", "\"port\":8125");
         assertThat(owner.at("/data/recentAudits").size()).isLessThanOrEqualTo(2);
@@ -136,7 +136,7 @@ abstract class BusinessCoreAdminContractCases {
                 .param("includeNotImplemented", "true")
                 .param("sort", "moduleKey_asc"), 200);
         assertThat(valuesAt(modules, "/data/items", "moduleKey")).containsAll(expectedImplementedModules()).doesNotContain("API_GATEWAY");
-        assertThat(valuesAt(modules, "/data/items", "moduleKey")).hasSize(26);
+        assertThat(valuesAt(modules, "/data/items", "moduleKey")).hasSize(25);
         assertThat(modules.toString()).contains("\"targetApiBase\":\"/api/v1/content/admin\"", "\"targetApiBase\":\"/api/v1/resources/admin\"", "\"targetApiBase\":\"/api/v1/materials/admin\"", "\"targetApiBase\":\"/api/v1/guides/admin\"");
         assertThat(modules.toString()).doesNotContain("\"status\":\"NOT_IMPLEMENTED\"", "\"targetApiBase\":null");
         assertThat(modules.toString()).doesNotContain("/api/v1/admin/users", "/api/v1/admin/resources");
@@ -181,6 +181,50 @@ abstract class BusinessCoreAdminContractCases {
         performJson(get("/api/v1/admin/modules").header("Authorization", bearer("admin-token")).param("status", "BAD"), 400, 40001);
         performJson(get("/api/v1/admin/modules").header("Authorization", bearer("admin-token")).param("sort", "bad"), 400, 40003);
         performJson(get("/api/v1/admin/modules").header("Authorization", bearer("user-token")), 403, 42001);
+    }
+
+    @Test
+    void excludesNodeDaemonAfterOfficialBackendExtraction() throws Exception {
+        JsonNode overview = performJson(get("/api/v1/admin/overview")
+                .header("Authorization", bearer("owner-token"))
+                .param("moduleLimit", "50"), 200);
+        assertThat(valuesAt(overview, "/data/modules", "moduleKey"))
+                .contains("OPS_CONTROL")
+                .doesNotContain("NODE_DAEMON");
+        assertThat(overview.toString())
+                .contains("EXTERNAL_EXECUTOR_NOT_CONNECTED")
+                .doesNotContain("nodeDaemon")
+                .doesNotContain("Node Daemon")
+                .doesNotContain("/admin/node-daemon")
+                .doesNotContain("/api/v1/node-daemon");
+
+        JsonNode modules = performJson(get("/api/v1/admin/modules")
+                .header("Authorization", bearer("owner-token"))
+                .param("includeNotImplemented", "true")
+                .param("sort", "moduleKey_asc"), 200);
+        assertThat(valuesAt(modules, "/data/items", "moduleKey")).doesNotContain("NODE_DAEMON");
+        assertThat(modules.at("/data/items").size()).isEqualTo(25);
+        assertThat(modules.toString())
+                .doesNotContain("NODE_DAEMON")
+                .doesNotContain("/api/v1/node-daemon")
+                .doesNotContain("\"port\":8117");
+        performJson(get("/api/v1/admin/modules/NODE_DAEMON").header("Authorization", bearer("owner-token")), 400, 40001);
+
+        JsonNode todos = performJson(get("/api/v1/admin/todos")
+                .header("Authorization", bearer("owner-token"))
+                .param("pageSize", "100"), 200);
+        assertThat(valuesAt(todos, "/data/items", "sourceModule")).doesNotContain("NODE_DAEMON");
+        assertThat(todos.toString()).doesNotContain("/admin/node-daemon", "/api/v1/node-daemon");
+
+        JsonNode metrics = performJson(get("/api/v1/admin/metrics/summary")
+                .header("Authorization", bearer("owner-token")), 200);
+        assertThat(valuesAt(metrics, "/data/items", "sourceModule")).doesNotContain("NODE_DAEMON");
+        assertThat(metrics.toString()).doesNotContain("nodeDaemon", "/admin/node-daemon");
+
+        JsonNode audit = performJson(get("/api/v1/admin/audit-logs")
+                .header("Authorization", bearer("owner-token"))
+                .param("pageSize", "100"), 200);
+        assertThat(valuesAt(audit, "/data/items", "sourceModule")).doesNotContain("NODE_DAEMON");
     }
 
     @Test
@@ -316,7 +360,7 @@ abstract class BusinessCoreAdminContractCases {
         performJson(get("/api/v1/admin/settings").header("Authorization", bearer("owner-token")).param("includeHighImpact", "true"), 200);
         performJson(get("/api/v1/admin/settings").header("Authorization", bearer("admin-token")).param("scope", "BAD"), 400, 40001);
 
-        Map<String, Object> body = settingsPatchBody("settings-idem-1", "update navigation", List.of("AUTH", "CONTENT", "RESOURCE", "ADMIN"), List.of("NODE_DAEMON"));
+        Map<String, Object> body = settingsPatchBody("settings-idem-1", "update navigation", List.of("AUTH", "CONTENT", "RESOURCE", "ADMIN"), List.of("OPS_CONTROL"));
         JsonNode updated = performJson(patch("/api/v1/admin/settings").header("Authorization", bearer("admin-token")), body, 200);
         assertThat(updated.at("/data/layout/navigationModuleOrder").toString()).contains("AUTH", "CONTENT", "RESOURCE");
 
@@ -382,8 +426,8 @@ abstract class BusinessCoreAdminContractCases {
         JsonNode ops = performJson(get("/api/v1/admin/ops/summary").header("Authorization", bearer("admin-token")), 200);
         assertThat(ops.at("/data/service").asText()).isEqualTo("admin");
         assertThat(ops.at("/data/port").asInt()).isEqualTo(8107);
-        assertThat(ops.at("/data/modulesTotal").asInt()).isEqualTo(26);
-        assertThat(ops.at("/data/availableModulesTotal").asInt()).isEqualTo(26);
+        assertThat(ops.at("/data/modulesTotal").asInt()).isEqualTo(25);
+        assertThat(ops.at("/data/availableModulesTotal").asInt()).isEqualTo(25);
         assertThat(ops.at("/data/notImplementedModulesTotal").asInt()).isZero();
         assertThat(ops.at("/data/platformDependencies").toString()).contains("API_GATEWAY", "/api/v1/gateway/admin", "\"port\":8125");
         assertThat(ops.toString()).contains("IN_MEMORY", "TEST_STUB", "productionGaps", "moduleHealth");
@@ -435,7 +479,7 @@ abstract class BusinessCoreAdminContractCases {
                 .header("Authorization", bearer("owner-token"))
                 .param("sort", "moduleKey_asc"), 200);
         List<String> keys = valuesAt(modules, "/data/items", "moduleKey");
-        assertThat(keys).containsAll(expectedImplementedModules()).hasSize(26);
+        assertThat(keys).containsAll(expectedImplementedModules()).hasSize(25);
         assertThat(modules.toString()).doesNotContain("NOT_IMPLEMENTED", "API_GATEWAY", "\"targetApiBase\":null", "rawInvitationCode", "cloudrevePassword", "registryToken");
 
         JsonNode overview = performJson(get("/api/v1/admin/overview")
@@ -443,7 +487,7 @@ abstract class BusinessCoreAdminContractCases {
                 .param("moduleLimit", "50"), 200);
         assertThat(valuesAt(overview, "/data/modules", "moduleKey")).containsAll(expectedImplementedModules()).doesNotContain("API_GATEWAY");
         assertThat(overview.at("/data/notImplementedModules").toString()).doesNotContain("AUTH", "ONBOARDING", "OPS_CONTROL", "MATERIAL", "GUIDE");
-        assertThat(overview.at("/data/platformDependencies").toString()).contains("API_GATEWAY", "\"routeCount\":26");
+        assertThat(overview.at("/data/platformDependencies").toString()).contains("API_GATEWAY", "\"routeCount\":25");
 
         JsonNode gatewayDegraded = performJson(get("/api/v1/admin/overview")
                 .header("Authorization", bearer("owner-token"))
@@ -505,7 +549,7 @@ abstract class BusinessCoreAdminContractCases {
     private List<String> expectedImplementedModules() {
         return List.of("AUTH", "PROFILE", "NOTIFICATION", "CONTENT", "SERVER_STATUS", "RESOURCE", "ADMIN",
                 "ONBOARDING", "EXAM", "WHITELIST", "ATTENDANCE", "COMMUNITY", "ACTIVITY", "CALENDAR",
-                "CHANGELOG", "OPS_CONTROL", "NODE_DAEMON", "CLOUDREVE_SYNC", "BACKUP_RECOVERY", "ALERTING",
+                "CHANGELOG", "OPS_CONTROL", "CLOUDREVE_SYNC", "BACKUP_RECOVERY", "ALERTING",
                 "ONLINE_MAP", "PLUGIN_INTEGRATION", "CROSS_PLATFORM_NOTIFICATION", "OPS_IMAGE_MARKET",
                 "MATERIAL", "GUIDE");
     }

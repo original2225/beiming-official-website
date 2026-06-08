@@ -943,7 +943,7 @@ class PluginStore {
                 "storageMode", "IN_MEMORY",
                 "authMode", "TEST_STUB",
                 "opsControlAdapterMode", "TEST_STUB",
-                "nodeDaemonAdapterMode", "SIMULATED",
+                "externalExecutorAdapterMode", "SIMULATED",
                 "onlineMapAdapterMode", "TEST_STUB",
                 "notificationAdapterMode", "TEST_STUB",
                 "alertingAdapterMode", "TEST_STUB",
@@ -962,7 +962,7 @@ class PluginStore {
                 "lastSyncAt", providers.values().stream().map(provider -> provider.lastSyncAt).filter(Objects::nonNull).findFirst().orElse(null),
                 "degraded", false,
                 "degradeReasons", List.of(),
-                "productionGaps", List.of("REAL_PLUGIN_RUNTIME_NOT_CONNECTED", "REAL_NODE_DAEMON_NOT_CONNECTED",
+                "productionGaps", List.of("REAL_PLUGIN_RUNTIME_NOT_CONNECTED", "EXTERNAL_EXECUTOR_NOT_CONNECTED",
                         "REAL_ONLINE_MAP_SYNC_NOT_CONNECTED", "RAW_PAYLOAD_STORAGE_DISABLED", "TEST_CONTROLS_DISABLED_OUTSIDE_TEST"));
     }
 

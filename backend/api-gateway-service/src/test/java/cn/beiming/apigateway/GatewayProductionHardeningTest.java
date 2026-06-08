@@ -71,7 +71,8 @@ class GatewayProductionHardeningTest {
             assertThat(route.path("pathPrefix").asText()).doesNotStartWith("/api/v1/ops-core");
         }
 
-        assertThat(findRoute(routes, "node-daemon").path("upstreamPort").asInt()).isEqualTo(8117);
+        assertThat(routes.at("/data/items").toString())
+                .doesNotContain("node-daemon", "NODE_DAEMON", "/api/v1/node-daemon", "8117");
         assertThat(findRoute(routes, "material").path("upstreamPort").asInt()).isEqualTo(8134);
         assertThat(findRoute(routes, "guide").path("upstreamPort").asInt()).isEqualTo(8134);
     }

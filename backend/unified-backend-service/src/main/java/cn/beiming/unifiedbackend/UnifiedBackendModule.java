@@ -92,7 +92,7 @@ class UnifiedBackendController {
                 "readyToRetireEngagementCore", false,
                 "readyToRetireOpsCore", false,
                 "readyToRetirePortalCore", false,
-                "currentProductionEntrypointsTotal", 7,
+                "currentProductionEntrypointsTotal", 6,
                 "candidateEntrypointsTotal", 1,
                 "checks", readinessChecks(),
                 "lastHttpSmokeStatus", lastHttpSmokeStatus,
@@ -195,8 +195,8 @@ class UnifiedBackendController {
                 check("GUIDE_IN_PROCESS", hasRoute("/api/v1/guides/categories") ? "PASS" : "BLOCKED", "guide is served by local controller"),
                 check("MATERIAL_IN_PROCESS", hasRoute("/api/v1/materials/featured") ? "PASS" : "BLOCKED", "material is served by local controller"),
                 check("ONLINE_MAP_IN_PROCESS", hasRoute("/api/v1/online-map/health") ? "PASS" : "BLOCKED", "online-map is served by local controller"),
-                check("CURRENT_ENTRYPOINTS_PRESERVED", "PASS", "current seven entrypoints remain stable"),
-                check("NODE_DAEMON_EXTERNAL_BOUNDARY", "PASS", "node-daemon remains external"),
+                check("CURRENT_ENTRYPOINTS_PRESERVED", "PASS", "current six rollback entrypoints remain stable"),
+                check("EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY", "PASS", "external node executor is out of repository and not connected"),
                 check("PRODUCTION_TRAFFIC_SWITCH_NOT_RUN", "BLOCKED", "candidate entrypoint is not production traffic entrypoint"),
                 check("CENTRAL_CONFIG_NOT_CONNECTED", "BLOCKED", "centralized config is not connected"),
                 check("PRODUCTION_AUDIT_NOT_CONNECTED", "BLOCKED", "persistent audit is not connected")
@@ -331,14 +331,16 @@ class UnifiedBackendRegistry {
                 "deploymentMode", "CANDIDATE_PARALLEL_ENTRYPOINT",
                 "port", 8135,
                 "candidatePort", 8135,
-                "currentProductionEntrypointsTotal", 7,
+                "currentProductionEntrypointsTotal", 6,
                 "candidateEntrypointsTotal", 1,
                 "mountedEntrypoints", MOUNTED_ENTRYPOINTS,
                 "mountedRouteIds", MOUNTED_ROUTE_IDS,
                 "inProcessRoutesTotal", 25,
                 "httpFallbackRoutesTotal", 0,
-                "externalRoutesTotal", 1,
-                "nodeDaemonDisposition", "KEEP_EXTERNAL",
+                "externalRoutesTotal", 0,
+                "externalNodeExecutorOutOfRepository", true,
+                "externalNodeExecutorConnected", false,
+                "externalNodeExecutorProject", "separate-project",
                 "readyToReplaceGateway", false,
                 "readyToRetireBusinessCore", false,
                 "readyToRetireAdmissionCore", false,
@@ -350,7 +352,6 @@ class UnifiedBackendRegistry {
 
     List<Map<String, Object>> mounts() {
         List<Map<String, Object>> items = new ArrayList<>();
-        items.add(selfMount("unified-backend", "UNIFIED_BACKEND", "/api/v1/unified-backend", "unified-backend", 8135, "candidate self API"));
         items.add(selfMount("api-gateway", "API_GATEWAY", "/api/v1/gateway", "api-gateway", 8125, "api-gateway self API mounted in candidate process"));
         items.add(selfMount("business-core", "BUSINESS_CORE", "/api/v1/business-core", "business-core", 8130, "business-core self API mounted in candidate process"));
         items.add(selfMount("admission-core", "ADMISSION_CORE", "/api/v1/admission-core", "admission-core", 8131, "admission-core self API mounted in candidate process"));
@@ -412,13 +413,13 @@ class UnifiedBackendRegistry {
                 "centralized config is not connected",
                 "persistent audit is not connected",
                 "real production traffic rehearsal is not completed",
-                "node-daemon remains external"
+                "external node executor is out of repository and not connected"
         );
     }
 
     List<String> productionBlockers() {
         return List.of(
-                "node-daemon remains external",
+                "external node executor is out of repository and not connected",
                 "dynamic service discovery is not connected",
                 "centralized config is not connected",
                 "persistent audit is not connected",
@@ -428,10 +429,10 @@ class UnifiedBackendRegistry {
 
     List<Map<String, Object>> productionSwitchChecks() {
         return List.of(
-                switchCheck("ALL_CURRENT_BUSINESS_ROUTES_IN_PROCESS", "PASS", "all current business routes except node-daemon are mounted in-process", true),
-                switchCheck("CURRENT_ENTRYPOINTS_PRESERVED", "PASS", "current seven production entrypoints remain available for rollback", true),
+                switchCheck("ALL_CURRENT_BUSINESS_ROUTES_IN_PROCESS", "PASS", "all current official backend business routes are mounted in-process", true),
+                switchCheck("CURRENT_ENTRYPOINTS_PRESERVED", "PASS", "current six production entrypoints remain available for rollback", true),
                 switchCheck("ROUTE_PREFIX_AND_RESPONSE_PRESERVED", "PASS", "candidate preserves existing route prefixes and response envelope", true),
-                switchCheck("NODE_DAEMON_EXTERNAL_BOUNDARY", "PASS", "node-daemon remains the external node execution boundary", true),
+                switchCheck("EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY", "PASS", "external node executor is out of repository and not connected", true),
                 switchCheck("LEGACY_ENTRYPOINTS_NOT_RESTORED", "PASS", "retired legacy service entrypoints are not restored", true),
                 switchCheck("CENTRAL_CONFIG_READY", "BLOCKED", "centralized production configuration is not connected", true),
                 switchCheck("PERSISTENT_AUDIT_READY", "BLOCKED", "persistent production audit is not connected", true),
@@ -447,7 +448,7 @@ class UnifiedBackendRegistry {
                 switchCheck("CANDIDATE_PORT_FIXED", "PASS", "candidate port remains fixed at 8135", true),
                 switchCheck("CURRENT_ENTRYPOINT_PORTS_DOCUMENTED", "PASS", "current entrypoint ports are documented and preserved", true),
                 switchCheck("IN_PROCESS_ROUTE_REGISTRY_FIXED", "PASS", "in-process route registry remains fixed for the candidate", true),
-                switchCheck("NODE_DAEMON_EXTERNAL_PORT_DOCUMENTED", "PASS", "node-daemon external port remains documented as 8117", true),
+                switchCheck("EXTERNAL_NODE_EXECUTOR_CONFIG_BOUNDARY", "PASS", "external node executor config remains outside the official backend repository", true),
                 switchCheck("DANGEROUS_TEST_CONTROLS_DISABLED", "PASS", "dangerous test controls remain disabled in the candidate", true),
                 switchCheck("CENTRAL_CONFIG_PROVIDER_CONNECTED", "BLOCKED", "centralized production configuration is not connected", true),
                 switchCheck("PRODUCTION_PROFILE_BOUND", "BLOCKED", "production profile binding is not available yet", true),
@@ -465,7 +466,7 @@ class UnifiedBackendRegistry {
                 switchCheck("CONFIG_DRIFT_SCAN_AUTOMATED", "PASS", "config drift scan is automated through readiness assertions", true),
                 switchCheck("CONFIG_ROLLBACK_SOURCE_DEFINED", "PASS", "rollback source is the preserved current entrypoint set", true),
                 switchCheck("SENSITIVE_VALUE_REDACTION_ENFORCED", "PASS", "readiness evidence is covered by redaction assertions", true),
-                switchCheck("NODE_DAEMON_CONFIG_BOUNDARY_PRESERVED", "PASS", "node-daemon config remains outside unified-backend candidate", true),
+                switchCheck("EXTERNAL_NODE_EXECUTOR_CONFIG_BOUNDARY", "PASS", "external node executor config remains outside unified-backend candidate", true),
                 switchCheck("CONFIG_GOVERNANCE_EVIDENCE_RECORDED", "PASS", "central config governance evidence is recorded without production connection", true),
                 switchCheck("CENTRAL_CONFIG_PROVIDER_CONNECTED", "BLOCKED", "centralized production configuration provider is not connected", true),
                 switchCheck("PRODUCTION_PROFILE_BOUND", "BLOCKED", "production profile is not bound to the candidate", true),
@@ -487,7 +488,6 @@ class UnifiedBackendRegistry {
                         "engagement-core:8132",
                         "ops-core:8133",
                         "portal-core:8134",
-                        "node-daemon:8117",
                         "unified-backend:8135"
                 ),
                 "configProviderStatus", "BLOCKED",
@@ -500,7 +500,8 @@ class UnifiedBackendRegistry {
                 "trafficSwitchApplied", false,
                 "frontendEntrypointSwitched", false,
                 "externalProxySwitched", false,
-                "nodeDaemonDisposition", "KEEP_EXTERNAL",
+                "externalNodeExecutorOutOfRepository", true,
+                "externalNodeExecutorConnected", false,
                 "status", "GOVERNANCE_EVIDENCE_RECORDED_NOT_CONNECTED"
         );
     }
@@ -530,7 +531,7 @@ class UnifiedBackendRegistry {
                 switchCheck("AUDIT_REPLAY_SCOPE_DOCUMENTED", "PASS", "audit replay scope is documented", true),
                 switchCheck("AUDIT_CONFIG_ROLLBACK_SOURCE_DEFINED", "PASS", "audit config rollback source remains the documented current entrypoint set", true),
                 switchCheck("AUDIT_REDACTION_ENFORCED", "PASS", "readiness audit evidence is covered by redaction assertions", true),
-                switchCheck("NODE_DAEMON_AUDIT_BOUNDARY_PRESERVED", "PASS", "node-daemon audit boundary remains outside unified-backend candidate", true),
+                switchCheck("EXTERNAL_NODE_EXECUTOR_AUDIT_BOUNDARY", "PASS", "external node executor audit boundary remains outside unified-backend candidate", true),
                 switchCheck("PERSISTENT_AUDIT_GOVERNANCE_EVIDENCE_RECORDED", "PASS", "persistent audit governance evidence is recorded without production connection", true),
                 switchCheck("PERSISTENT_AUDIT_SINK_CONNECTED", "BLOCKED", "persistent audit sink is not connected", true),
                 switchCheck("AUDIT_WRITE_PATH_CONNECTED", "BLOCKED", "audit write path is not connected", true),
@@ -560,7 +561,8 @@ class UnifiedBackendRegistry {
                 "trafficSwitchApplied", false,
                 "frontendEntrypointSwitched", false,
                 "externalProxySwitched", false,
-                "nodeDaemonDisposition", "KEEP_EXTERNAL",
+                "externalNodeExecutorOutOfRepository", true,
+                "externalNodeExecutorConnected", false,
                 "status", "GOVERNANCE_EVIDENCE_RECORDED_NOT_CONNECTED"
         );
     }
@@ -570,7 +572,7 @@ class UnifiedBackendRegistry {
                 switchCheck("CANDIDATE_HTTP_PORT_FIXED", "PASS", "candidate HTTP port remains fixed at 8135", true),
                 switchCheck("REAL_HTTP_TARGETS_DOCUMENTED", "PASS", "real HTTP rehearsal targets are documented", true),
                 switchCheck("AUTH_FAILURE_PATH_INCLUDED", "PASS", "auth failure path is included in rehearsal scope", true),
-                switchCheck("NODE_DAEMON_EXCLUDED_FROM_REHEARSAL", "PASS", "node-daemon remains outside unified rehearsal execution", true),
+                switchCheck("EXTERNAL_NODE_EXECUTOR_EXCLUDED_FROM_REHEARSAL", "PASS", "external node executor remains outside unified rehearsal execution", true),
                 switchCheck("SMOKE_RESULT_REDACTION_FIXED", "PASS", "smoke result redaction fields are fixed", true),
                 switchCheck("CANDIDATE_PROCESS_STARTED_FOR_REHEARSAL", "PASS", "candidate process is started in real Web environment rehearsal tests", true),
                 switchCheck("ALL_REAL_HTTP_TARGETS_PASSED", "PASS", "real HTTP rehearsal covers candidate health, six entrypoint health checks, business targets and auth failure path", true),
@@ -585,7 +587,7 @@ class UnifiedBackendRegistry {
                 switchCheck("CURRENT_GATEWAY_ROUTES_DOCUMENTED", "PASS", "current gateway routes are documented", true),
                 switchCheck("UNIFIED_MOUNT_ROUTES_DOCUMENTED", "PASS", "unified mount routes are documented", true),
                 switchCheck("ROUTE_PREFIX_PRESERVED", "PASS", "candidate keeps existing business path prefixes", true),
-                switchCheck("NODE_DAEMON_ROUTE_KEPT_EXTERNAL", "PASS", "node-daemon route remains external", true),
+                switchCheck("EXTERNAL_NODE_EXECUTOR_ROUTE_ABSENT", "PASS", "external node executor route is absent from the official backend route set", true),
                 switchCheck("NO_HTTP_UPSTREAM_FALLBACK_IN_CANDIDATE", "PASS", "candidate mount list has no HTTP fallback route", true),
                 switchCheck("REAL_GATEWAY_TO_UNIFIED_DIFF_SCAN_AUTOMATED", "PASS", "gateway route registry and unified mount list are compared by automated real HTTP scan", true),
                 switchCheck("AUTH_BEHAVIOR_DIFF_SCAN_AUTOMATED", "PASS", "admin auth failure and malformed token behavior are covered by automated scan", true),
@@ -597,11 +599,11 @@ class UnifiedBackendRegistry {
 
     List<Map<String, Object>> rollbackWindowPrecheckChecks() {
         return List.of(
-                switchCheck("CURRENT_ENTRYPOINTS_STILL_PRESENT", "PASS", "current seven entrypoints remain present", true),
+                switchCheck("CURRENT_ENTRYPOINTS_STILL_PRESENT", "PASS", "current six rollback entrypoints remain present", true),
                 switchCheck("CURRENT_ENTRYPOINT_TESTS_STILL_REQUIRED", "PASS", "current entrypoint tests remain required", true),
                 switchCheck("API_GATEWAY_ROLLBACK_TARGET_DOCUMENTED", "PASS", "api-gateway rollback target remains documented", true),
                 switchCheck("CORE_ENTRYPOINTS_ROLLBACK_TARGETS_DOCUMENTED", "PASS", "core rollback targets remain documented", true),
-                switchCheck("NODE_DAEMON_UNAFFECTED_BY_CANDIDATE", "PASS", "node-daemon external boundary is unaffected by candidate", true),
+                switchCheck("EXTERNAL_NODE_EXECUTOR_UNAFFECTED_BY_CANDIDATE", "PASS", "external node executor remains out of repository and unaffected by candidate", true),
                 switchCheck("ROLLBACK_WINDOW_DURATION_DEFINED", "PASS", "rollback window duration is defined as at least 24 hours", true),
                 switchCheck("ROLLBACK_TRIGGER_CRITERIA_DEFINED", "PASS", "rollback trigger criteria are defined for rehearsal and regression failures", true),
                 switchCheck("ROLLBACK_RECHECK_AUTOMATED", "PASS", "rollback recheck commands are recorded for candidate and current entrypoints", true),
@@ -615,7 +617,7 @@ class UnifiedBackendRegistry {
                 "windowDuration", map(
                         "status", "DEFINED",
                         "minimumHours", 24,
-                        "scope", "keep current seven production entrypoints available after candidate entrypoint switch"
+                        "scope", "keep current six rollback entrypoints available after candidate entrypoint switch"
                 ),
                 "triggerCriteria", map(
                         "items", List.of(
@@ -624,7 +626,7 @@ class UnifiedBackendRegistry {
                                 "AUTH_ERROR_CODE_DRIFT",
                                 "CURRENT_ENTRYPOINT_REGRESSION_FAILURE",
                                 "BOUNDARY_SCAN_MATCH",
-                                "NODE_DAEMON_BOUNDARY_CHANGED"
+                                "EXTERNAL_NODE_EXECUTOR_BOUNDARY_CHANGED"
                         )
                 ),
                 "recheckAutomation", map(
@@ -636,7 +638,6 @@ class UnifiedBackendRegistry {
                                 "mvn -q -f backend/admission-core-service/pom.xml test",
                                 "mvn -q -f backend/engagement-core-service/pom.xml test",
                                 "mvn -q -f backend/portal-core-service/pom.xml test",
-                                "mvn -q -f backend/node-daemon-service/pom.xml test",
                                 "git diff --check",
                                 "rg -n production-boundary-scan backend/*/src/main/java"
                         )
@@ -648,8 +649,7 @@ class UnifiedBackendRegistry {
                         rollbackTarget("engagement-core", 8132, "CURRENT_CORE_ENTRYPOINT"),
                         rollbackTarget("ops-core", 8133, "CURRENT_CORE_ENTRYPOINT"),
                         rollbackTarget("portal-core", 8134, "CURRENT_CORE_ENTRYPOINT"),
-                        rollbackTarget("unified-backend", 8135, "CANDIDATE_PARALLEL_ENTRYPOINT"),
-                        rollbackTarget("node-daemon", 8117, "KEEP_EXTERNAL")
+                        rollbackTarget("unified-backend", 8135, "CANDIDATE_PARALLEL_ENTRYPOINT")
                 ),
                 "recordingStatus", "COMPLETED",
                 "retirementApprovalStatus", "BLOCKED"
@@ -711,15 +711,15 @@ class UnifiedBackendRegistry {
     List<Map<String, Object>> backendSingleServicePrecheckChecks() {
         return List.of(
                 switchCheck("UNIFIED_BACKEND_COVERS_BACKEND_ENTRYPOINT_APIS", "PASS", "candidate exposes api-gateway and five core self APIs in one backend process", true),
-                switchCheck("ALL_NON_NODE_DAEMON_ROUTES_IN_PROCESS", "PASS", "all 25 non-node-daemon business routes are mounted in-process", true),
+                switchCheck("ALL_OFFICIAL_BACKEND_ROUTES_IN_PROCESS", "PASS", "all 25 official backend business routes are mounted in-process", true),
                 switchCheck("PATH_AUTH_ENVELOPE_AND_ERROR_CODES_PRESERVED", "PASS", "existing paths, auth behavior, response envelope and error codes remain preserved", true),
                 switchCheck("REAL_HTTP_REHEARSAL_PASSED", "PASS", "real Web environment HTTP rehearsal passed for candidate targets", true),
                 switchCheck("ROUTE_DRIFT_SCAN_PASSED", "PASS", "gateway routes and unified mounts have no route drift", true),
                 switchCheck("SENSITIVE_FIELD_SCAN_PASSED", "PASS", "readiness and route evidence remain redacted", true),
                 switchCheck("ROLLBACK_WINDOW_EVIDENCE_COMPLETED", "PASS", "rollback window evidence is recorded for current entrypoints", true),
-                switchCheck("CURRENT_ENTRYPOINTS_PRESERVED_AS_ROLLBACK", "PASS", "current seven backend entrypoints remain available as rollback targets", true),
+                switchCheck("CURRENT_ENTRYPOINTS_PRESERVED_AS_ROLLBACK", "PASS", "current six backend entrypoints remain available as rollback targets", true),
                 switchCheck("CURRENT_ENTRYPOINT_REGRESSION_REQUIRED", "PASS", "current entrypoint regression remains required before completion", true),
-                switchCheck("NODE_DAEMON_EXTERNAL_BOUNDARY", "PASS", "node-daemon remains the external node execution boundary", true),
+                switchCheck("EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY", "PASS", "external node executor is out of repository and not connected", true),
                 switchCheck("BACKEND_SINGLE_SERVICE_EVIDENCE_RECORDED", "PASS", "backend single-service candidate evidence is recorded without applying traffic switch", true),
                 switchCheck("FRONTEND_ENTRYPOINT_SWITCH_IMPLEMENTED", "BLOCKED", "frontend entrypoint is not switched to unified-backend", true),
                 switchCheck("EXTERNAL_PROXY_SWITCH_IMPLEMENTED", "BLOCKED", "external proxy target is not switched to unified-backend", true),
@@ -740,7 +740,8 @@ class UnifiedBackendRegistry {
                         "ops-core:8133",
                         "portal-core:8134"
                 ),
-                "nodeDaemonDisposition", "KEEP_EXTERNAL",
+                "externalNodeExecutorOutOfRepository", true,
+                "externalNodeExecutorConnected", false,
                 "businessPathsRemainUnchanged", true,
                 "inProcessRoutesTotal", 25,
                 "httpFallbackRoutesTotal", 0,
@@ -764,13 +765,13 @@ class UnifiedBackendRegistry {
     List<Map<String, Object>> finalBackendSingleServicePrecheckChecks() {
         return List.of(
                 switchCheck("BACKEND_APPLICATION_ENTRYPOINT_COVERAGE", "PASS", "unified-backend covers api-gateway and five core self APIs as the future backend application entrypoint", true),
-                switchCheck("ALL_NON_NODE_DAEMON_ROUTES_IN_PROCESS", "PASS", "all 25 non-node-daemon business routes remain mounted in-process", true),
+                switchCheck("ALL_OFFICIAL_BACKEND_ROUTES_IN_PROCESS", "PASS", "all 25 official backend business routes remain mounted in-process", true),
                 switchCheck("REAL_HTTP_REHEARSAL_PASSED", "PASS", "real Web environment HTTP rehearsal passed for the candidate entrypoint", true),
                 switchCheck("ROUTE_DRIFT_SCAN_PASSED", "PASS", "gateway routes and unified mounts have no route drift", true),
                 switchCheck("LEGACY_ENTRYPOINT_REGRESSION_PASSED", "PASS", "current legacy rollback entrypoints remain in the Maven regression gate", true),
                 switchCheck("PRODUCTION_SOURCE_BOUNDARY_SCAN_PASSED", "PASS", "production source boundary scan has no dangerous node execution or deletion matches", true),
                 switchCheck("LEGACY_ROLLBACK_ENTRYPOINTS_PROTECTED", "PASS", "api-gateway and five core entrypoints remain protected rollback targets", true),
-                switchCheck("NODE_DAEMON_EXTERNAL_BOUNDARY", "PASS", "node-daemon remains the external node execution boundary", true),
+                switchCheck("EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY", "PASS", "external node executor is out of repository and not connected", true),
                 switchCheck("FINAL_BACKEND_SINGLE_SERVICE_EVIDENCE_RECORDED", "PASS", "final backend single-service cutover rehearsal evidence is recorded without applying traffic switch", true),
                 switchCheck("FRONTEND_ENTRYPOINT_SWITCH_IMPLEMENTED", "BLOCKED", "frontend entrypoint is not switched to unified-backend", true),
                 switchCheck("EXTERNAL_PROXY_SWITCH_IMPLEMENTED", "BLOCKED", "external proxy target is not switched to unified-backend", true),
@@ -784,7 +785,8 @@ class UnifiedBackendRegistry {
     Map<String, Object> finalBackendSingleServiceEvidence() {
         return map(
                 "targetBackendApplicationEntrypoint", "unified-backend:8135",
-                "externalNodeExecutionEntrypoint", "node-daemon:8117",
+                "externalNodeExecutorProject", "separate-project",
+                "externalNodeExecutorConnected", false,
                 "legacyRollbackEntrypoints", List.of(
                         "api-gateway:8125",
                         "business-core:8130",
@@ -794,7 +796,7 @@ class UnifiedBackendRegistry {
                         "portal-core:8134"
                 ),
                 "backendApplicationEntrypointsRequiredForFutureRuntime", List.of("unified-backend:8135"),
-                "nodeDaemonDisposition", "KEEP_EXTERNAL",
+                "externalNodeExecutorOutOfRepository", true,
                 "businessPathsRemainUnchanged", true,
                 "inProcessRoutesTotal", 25,
                 "httpFallbackRoutesTotal", 0,
@@ -856,9 +858,9 @@ class UnifiedBackendRegistry {
                 switchCheck("RETIREMENT_SCOPE_DOCUMENTED", "PASS", "current production entrypoints and rollback targets are documented", true),
                 switchCheck("SEQUENTIAL_ENTRYPOINT_RETIREMENT_REQUIRED", "PASS", "old entrypoints require sequential approval and verification", true),
                 switchCheck("BULK_RETIREMENT_FORBIDDEN", "PASS", "bulk entrypoint retirement and bulk deletion remain forbidden", true),
-                switchCheck("CURRENT_ENTRYPOINT_REGRESSION_REQUIRED", "PASS", "current eight backend Maven entrypoints remain in the regression gate", true),
+                switchCheck("CURRENT_ENTRYPOINT_REGRESSION_REQUIRED", "PASS", "current six rollback backend Maven entrypoints remain in the regression gate", true),
                 switchCheck("ROLLBACK_TARGETS_STILL_PROTECTED", "PASS", "api-gateway and five core entrypoints remain protected rollback targets", true),
-                switchCheck("NODE_DAEMON_EXTERNAL_BOUNDARY", "PASS", "node-daemon remains the external node execution boundary", true),
+                switchCheck("EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY", "PASS", "external node executor is out of repository and not connected", true),
                 switchCheck("RETIREMENT_APPROVAL_EVIDENCE_RECORDED", "PASS", "old entrypoint retirement approval evidence is recorded without retiring entrypoints", true),
                 switchCheck("FRONTEND_ENTRYPOINT_SWITCH_IMPLEMENTED", "BLOCKED", "frontend entrypoint is not switched to unified-backend", true),
                 switchCheck("EXTERNAL_PROXY_SWITCH_IMPLEMENTED", "BLOCKED", "external proxy target is not switched to unified-backend", true),
@@ -876,7 +878,8 @@ class UnifiedBackendRegistry {
                 "bulkRetirementAllowed", false,
                 "directoryDeletionAllowed", false,
                 "mavenRegressionRequired", true,
-                "nodeDaemonDisposition", "KEEP_EXTERNAL",
+                "externalNodeExecutorOutOfRepository", true,
+                "externalNodeExecutorConnected", false,
                 "retirementApprovalStatus", "BLOCKED",
                 "approvedEntrypoints", List.of(),
                 "currentProductionEntrypoints", List.of(
@@ -885,8 +888,7 @@ class UnifiedBackendRegistry {
                         "admission-core:8131",
                         "engagement-core:8132",
                         "ops-core:8133",
-                        "portal-core:8134",
-                        "node-daemon:8117"
+                        "portal-core:8134"
                 ),
                 "protectedRollbackEntrypoints", List.of(
                         "api-gateway:8125",
@@ -917,7 +919,7 @@ class UnifiedBackendRegistry {
                 switchCheck("ROUTE_DRIFT_SCAN_PASSED", "PASS", "gateway routes and unified mounts have no route drift", true),
                 switchCheck("LEGACY_ROLLBACK_ENTRYPOINTS_PROTECTED", "PASS", "api-gateway and five core entrypoints remain protected rollback targets", true),
                 switchCheck("ROLLBACK_RECHECK_PASSED", "PASS", "current backend Maven entrypoint regression remains in the cutover gate", true),
-                switchCheck("NODE_DAEMON_EXTERNAL_BOUNDARY", "PASS", "node-daemon remains the external node execution boundary", true),
+                switchCheck("EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY", "PASS", "external node executor is out of repository and not connected", true),
                 switchCheck("FRONTEND_OR_PROXY_CONFIG_PRESENT", "BLOCKED", "repository does not contain frontend or proxy config to update", true),
                 switchCheck("FRONTEND_OR_PROXY_CONFIG_UPDATED", "BLOCKED", "frontend or proxy target is not updated to unified-backend in this repository", true),
                 switchCheck("TARGET_ENTRYPOINT_SET_TO_UNIFIED_BACKEND", "BLOCKED", "effective API base URL still points at the current gateway", true),
@@ -943,7 +945,8 @@ class UnifiedBackendRegistry {
                 "rollbackTarget", "http://127.0.0.1:8125",
                 "trafficSwitchApplied", false,
                 "oldEntrypointRetirementApproved", false,
-                "nodeDaemonDisposition", "KEEP_EXTERNAL",
+                "externalNodeExecutorOutOfRepository", true,
+                "externalNodeExecutorConnected", false,
                 "readyToReplaceGateway", false,
                 "readyForProduction", false,
                 "remainingBlockers", List.of(
@@ -963,9 +966,10 @@ class UnifiedBackendRegistry {
                 "canReplaceGateway", false,
                 "canRetireIndependentCoreEntrypoints", false,
                 "canRetireApiGateway", false,
-                "nodeDaemonDisposition", "KEEP_EXTERNAL",
+                "externalNodeExecutorOutOfRepository", true,
+                "externalNodeExecutorConnected", false,
                 "candidateCoverageStatus", "PASS",
-                "reason", "production cutover prerequisites are still blocked; node-daemon remains external"
+                "reason", "production cutover prerequisites are still blocked; external node executor is out of repository and not connected"
         );
     }
 
@@ -1021,7 +1025,6 @@ class UnifiedBackendRegistry {
         items.add(inProcess("calendar", "CALENDAR", "/api/v1/calendar", "engagement-core", 8132));
         items.add(inProcess("changelog", "CHANGELOG", "/api/v1/changelog", "engagement-core", 8132));
         items.add(inProcess("ops-control", "OPS_CONTROL", "/api/v1/ops-control", "ops-core", 8133));
-        items.add(external("node-daemon", "NODE_DAEMON", "/api/v1/node-daemon", 8117));
         items.add(inProcess("cloudreve-sync", "CLOUDREVE_SYNC", "/api/v1/cloudreve-sync", "ops-core", 8133));
         items.add(inProcess("backup-recovery", "BACKUP_RECOVERY", "/api/v1/backup-recovery", "ops-core", 8133));
         items.add(inProcess("alerting", "ALERTING", "/api/v1/alerting", "ops-core", 8133));
@@ -1042,11 +1045,6 @@ class UnifiedBackendRegistry {
     private UnifiedMount fallback(String routeId, String serviceKey, String pathPrefix, String sourceEntrypoint, int currentPort) {
         return new UnifiedMount(routeId, serviceKey, pathPrefix, sourceEntrypoint, "HTTP_UPSTREAM_FALLBACK", currentPort, 8135,
                 sourceEntrypoint + " is not mounted in candidate process");
-    }
-
-    private UnifiedMount external(String routeId, String serviceKey, String pathPrefix, int currentPort) {
-        return new UnifiedMount(routeId, serviceKey, pathPrefix, "node-daemon", "KEEP_EXTERNAL", currentPort, null,
-                "node-daemon remains the external node execution boundary");
     }
 
     private Map<String, Object> map(Object... pairs) {

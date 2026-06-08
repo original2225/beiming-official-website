@@ -60,7 +60,7 @@ class OpsControlController {
         data.put("assetsTotal", store.assets.size());
         data.put("pendingApprovalsTotal", store.approvals.values().stream().filter(approval -> "PENDING".equals(approval.status)).count());
         data.put("runningTasksTotal", store.tasks.values().stream().filter(task -> List.of("QUEUED", "DISPATCHED", "RUNNING").contains(task.status)).count());
-        data.put("degradedModules", List.of("NODE_DAEMON"));
+        data.put("degradedModules", List.of("EXTERNAL_EXECUTOR"));
         data.put("recentAudits", store.audits.stream().limit(10).map(OpsAudit::view).toList());
         data.put("generatedFor", actor.userId);
         return ok(request, data);
@@ -609,7 +609,7 @@ class OpsControlController {
                 approval.reviewComment = text(body, "reviewComment", null);
                 approval.reviewedAt = now();
                 task.status = approved ? "FAILED" : "FAILED";
-                task.failureReason = approved ? "NODE_DAEMON_NOT_CONNECTED" : "APPROVAL_REJECTED";
+                task.failureReason = approved ? "EXTERNAL_EXECUTOR_NOT_CONNECTED" : "APPROVAL_REJECTED";
                 task.updatedAt = now();
                 try {
                     store.failAuditIfRequested(request);
@@ -1027,7 +1027,7 @@ class OpsStore {
         data.put("authMode", "TEST_STUB");
         data.put("adminAdapterMode", "TEST_STUB");
         data.put("nodeAdapterMode", "SIMULATED");
-        data.put("nodeDaemonConnected", false);
+        data.put("externalExecutorConnected", false);
         data.put("testControlsEnabled", testControlsEnabled);
         data.put("nodesTotal", nodes.size());
         data.put("assetsTotal", assets.size());
@@ -1037,7 +1037,7 @@ class OpsStore {
         data.put("idempotencyRecordsTotal", idempotency.size());
         data.put("lastHeartbeatAt", nodes.values().stream().map(node -> node.lastHeartbeatAt).filter(Objects::nonNull).max(String::compareTo).orElse(null));
         data.put("lastAuditAt", audits.isEmpty() ? null : audits.get(0).createdAt);
-        data.put("productionGaps", List.of("P1_IN_MEMORY_STORAGE", "P1_AUTH_STUB", "P1_ADMIN_STUB", "NODE_DAEMON_NOT_CONNECTED",
+        data.put("productionGaps", List.of("P1_IN_MEMORY_STORAGE", "P1_AUTH_STUB", "P1_ADMIN_STUB", "EXTERNAL_EXECUTOR_NOT_CONNECTED",
                 "REAL_DOCKER_NOT_CONNECTED", "REAL_VM_PLATFORM_NOT_CONNECTED", "REAL_MCSMANAGER_NOT_CONNECTED", "TEST_CONTROLS_DISABLED_OUTSIDE_TEST"));
         return data;
     }

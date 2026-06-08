@@ -167,12 +167,13 @@ class UnifiedBackendApiContractTest {
         JsonNode summary = performJson(get("/api/v1/unified-backend/admin/ops/summary")
                 .header("Authorization", "Bearer admin-token"));
         assertThat(summary.at("/data/service").asText()).isEqualTo("unified-backend");
-        assertThat(summary.at("/data/currentProductionEntrypointsTotal").asInt()).isEqualTo(7);
+        assertThat(summary.at("/data/currentProductionEntrypointsTotal").asInt()).isEqualTo(6);
         assertThat(summary.at("/data/candidateEntrypointsTotal").asInt()).isEqualTo(1);
         assertThat(summary.at("/data/inProcessRoutesTotal").asInt()).isEqualTo(25);
         assertThat(summary.at("/data/httpFallbackRoutesTotal").asInt()).isEqualTo(0);
-        assertThat(summary.at("/data/externalRoutesTotal").asInt()).isEqualTo(1);
-        assertThat(summary.at("/data/nodeDaemonDisposition").asText()).isEqualTo("KEEP_EXTERNAL");
+        assertThat(summary.at("/data/externalRoutesTotal").asInt()).isZero();
+        assertThat(summary.at("/data/externalNodeExecutorOutOfRepository").asBoolean()).isTrue();
+        assertThat(summary.at("/data/externalNodeExecutorConnected").asBoolean()).isFalse();
         assertThat(summary.at("/data/readyToReplaceGateway").asBoolean()).isFalse();
         assertThat(summary.at("/data/readyToRetireBusinessCore").asBoolean()).isFalse();
         assertThat(summary.at("/data/readyToRetireAdmissionCore").asBoolean()).isFalse();
@@ -212,7 +213,6 @@ class UnifiedBackendApiContractTest {
         assertMount(mounts, "plugin-integration", "PLUGIN_INTEGRATION", "/api/v1/plugin-integration", "IN_PROCESS");
         assertMount(mounts, "cross-platform-notification", "CROSS_PLATFORM_NOTIFICATION", "/api/v1/cross-platform-notification", "IN_PROCESS");
         assertMount(mounts, "ops-image-market", "OPS_IMAGE_MARKET", "/api/v1/ops-image-market", "IN_PROCESS");
-        assertMount(mounts, "node-daemon", "NODE_DAEMON", "/api/v1/node-daemon", "KEEP_EXTERNAL");
         assertThat(mounts.at("/data/items").toString()).doesNotContain("HTTP_UPSTREAM_FALLBACK");
         assertNoSecrets(mounts);
 
@@ -227,9 +227,48 @@ class UnifiedBackendApiContractTest {
         assertThat(readiness.at("/data/readyToRetirePortalCore").asBoolean()).isFalse();
         assertThat(readiness.at("/data/productionBlockers").toString())
                 .contains("candidate entrypoint is not production traffic entrypoint")
-                .contains("node-daemon remains external")
+                .contains("external node executor is out of repository and not connected")
                 .doesNotContain("ops-core entrypoint is not mounted in-process");
         assertNoSecrets(readiness);
+    }
+
+    @Test
+    void excludesNodeDaemonAfterOfficialBackendExtraction() throws Exception {
+        JsonNode mounts = performJson(get("/api/v1/unified-backend/admin/mounts")
+                .header("Authorization", "Bearer owner-token"));
+        String mountsText = mounts.toString();
+        assertThat(mountsText)
+                .doesNotContain("node-daemon")
+                .doesNotContain("NODE_DAEMON")
+                .doesNotContain("/api/v1/node-daemon")
+                .doesNotContain("KEEP_EXTERNAL");
+        assertThat(mounts.at("/data/items").size()).isEqualTo(31);
+        assertNoSecrets(mounts);
+
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token"));
+        String readinessText = readiness.toString();
+        assertThat(readiness.at("/data/currentProductionEntrypointsTotal").asInt()).isEqualTo(6);
+        assertThat(readiness.at("/data/candidateEntrypointsTotal").asInt()).isEqualTo(1);
+        assertThat(readiness.at("/data/replacementDecision/canReplaceGateway").asBoolean()).isFalse();
+        assertThat(readinessText)
+                .contains("external node executor is out of repository and not connected")
+                .doesNotContain("node-daemon remains external")
+                .doesNotContain("nodeDaemonDisposition")
+                .doesNotContain("KEEP_EXTERNAL")
+                .doesNotContain("/api/v1/node-daemon")
+                .doesNotContain("NODE_DAEMON");
+        assertNoSecrets(readiness);
+
+        JsonNode summary = performJson(get("/api/v1/unified-backend/admin/ops/summary")
+                .header("Authorization", "Bearer owner-token"));
+        assertThat(summary.at("/data/currentProductionEntrypointsTotal").asInt()).isEqualTo(6);
+        assertThat(summary.at("/data/externalRoutesTotal").asInt()).isZero();
+        assertThat(summary.toString())
+                .doesNotContain("node-daemon")
+                .doesNotContain("NODE_DAEMON")
+                .doesNotContain("KEEP_EXTERNAL");
+        assertNoSecrets(summary);
     }
 
     @Test
@@ -242,7 +281,7 @@ class UnifiedBackendApiContractTest {
         assertSwitchCheck(readiness, "ALL_CURRENT_BUSINESS_ROUTES_IN_PROCESS", "PASS", true);
         assertSwitchCheck(readiness, "CURRENT_ENTRYPOINTS_PRESERVED", "PASS", true);
         assertSwitchCheck(readiness, "ROUTE_PREFIX_AND_RESPONSE_PRESERVED", "PASS", true);
-        assertSwitchCheck(readiness, "NODE_DAEMON_EXTERNAL_BOUNDARY", "PASS", true);
+        assertSwitchCheck(readiness, "EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY", "PASS", true);
         assertSwitchCheck(readiness, "LEGACY_ENTRYPOINTS_NOT_RESTORED", "PASS", true);
         assertSwitchCheck(readiness, "CENTRAL_CONFIG_READY", "BLOCKED", true);
         assertSwitchCheck(readiness, "PERSISTENT_AUDIT_READY", "BLOCKED", true);
@@ -255,7 +294,8 @@ class UnifiedBackendApiContractTest {
         assertThat(decision.at("/canReplaceGateway").asBoolean()).isFalse();
         assertThat(decision.at("/canRetireIndependentCoreEntrypoints").asBoolean()).isFalse();
         assertThat(decision.at("/canRetireApiGateway").asBoolean()).isFalse();
-        assertThat(decision.at("/nodeDaemonDisposition").asText()).isEqualTo("KEEP_EXTERNAL");
+        assertThat(decision.at("/externalNodeExecutorOutOfRepository").asBoolean()).isTrue();
+        assertThat(decision.at("/externalNodeExecutorConnected").asBoolean()).isFalse();
         assertThat(decision.at("/candidateCoverageStatus").asText()).isEqualTo("PASS");
         assertThat(decision.at("/reason").asText())
                 .contains("production cutover prerequisites are still blocked")
@@ -273,7 +313,7 @@ class UnifiedBackendApiContractTest {
         assertCentralConfigCheck(readiness, "CANDIDATE_PORT_FIXED", "PASS", true);
         assertCentralConfigCheck(readiness, "CURRENT_ENTRYPOINT_PORTS_DOCUMENTED", "PASS", true);
         assertCentralConfigCheck(readiness, "IN_PROCESS_ROUTE_REGISTRY_FIXED", "PASS", true);
-        assertCentralConfigCheck(readiness, "NODE_DAEMON_EXTERNAL_PORT_DOCUMENTED", "PASS", true);
+        assertCentralConfigCheck(readiness, "EXTERNAL_NODE_EXECUTOR_CONFIG_BOUNDARY", "PASS", true);
         assertCentralConfigCheck(readiness, "DANGEROUS_TEST_CONTROLS_DISABLED", "PASS", true);
         assertCentralConfigCheck(readiness, "CENTRAL_CONFIG_PROVIDER_CONNECTED", "BLOCKED", true);
         assertCentralConfigCheck(readiness, "PRODUCTION_PROFILE_BOUND", "BLOCKED", true);
@@ -300,7 +340,7 @@ class UnifiedBackendApiContractTest {
         assertPrecheck(readiness, "/data/centralConfigGovernancePrecheckChecks", "CONFIG_DRIFT_SCAN_AUTOMATED", "PASS", true);
         assertPrecheck(readiness, "/data/centralConfigGovernancePrecheckChecks", "CONFIG_ROLLBACK_SOURCE_DEFINED", "PASS", true);
         assertPrecheck(readiness, "/data/centralConfigGovernancePrecheckChecks", "SENSITIVE_VALUE_REDACTION_ENFORCED", "PASS", true);
-        assertPrecheck(readiness, "/data/centralConfigGovernancePrecheckChecks", "NODE_DAEMON_CONFIG_BOUNDARY_PRESERVED", "PASS", true);
+        assertPrecheck(readiness, "/data/centralConfigGovernancePrecheckChecks", "EXTERNAL_NODE_EXECUTOR_CONFIG_BOUNDARY", "PASS", true);
         assertPrecheck(readiness, "/data/centralConfigGovernancePrecheckChecks", "CONFIG_GOVERNANCE_EVIDENCE_RECORDED", "PASS", true);
         assertPrecheck(readiness, "/data/centralConfigGovernancePrecheckChecks", "CENTRAL_CONFIG_PROVIDER_CONNECTED", "BLOCKED", true);
         assertPrecheck(readiness, "/data/centralConfigGovernancePrecheckChecks", "PRODUCTION_PROFILE_BOUND", "BLOCKED", true);
@@ -319,8 +359,7 @@ class UnifiedBackendApiContractTest {
                 .contains("engagement-core:8132")
                 .contains("ops-core:8133")
                 .contains("portal-core:8134")
-                .contains("node-daemon:8117")
-                .contains("unified-backend:8135");
+                                .contains("unified-backend:8135");
         assertThat(evidence.at("/configProviderStatus").asText()).isEqualTo("BLOCKED");
         assertThat(evidence.at("/productionProfileBound").asBoolean()).isFalse();
         assertThat(evidence.at("/sensitiveValuesExternalized").asBoolean()).isFalse();
@@ -331,7 +370,8 @@ class UnifiedBackendApiContractTest {
         assertThat(evidence.at("/trafficSwitchApplied").asBoolean()).isFalse();
         assertThat(evidence.at("/frontendEntrypointSwitched").asBoolean()).isFalse();
         assertThat(evidence.at("/externalProxySwitched").asBoolean()).isFalse();
-        assertThat(evidence.at("/nodeDaemonDisposition").asText()).isEqualTo("KEEP_EXTERNAL");
+        assertThat(evidence.at("/externalNodeExecutorOutOfRepository").asBoolean()).isTrue();
+        assertThat(evidence.at("/externalNodeExecutorConnected").asBoolean()).isFalse();
         assertThat(evidence.at("/status").asText()).isEqualTo("GOVERNANCE_EVIDENCE_RECORDED_NOT_CONNECTED");
         assertThat(readiness.at("/data/centralConfigPrecheckStatus").asText()).isEqualTo("BLOCKED");
         assertThat(readiness.at("/data/readyToReplaceGateway").asBoolean()).isFalse();
@@ -388,7 +428,7 @@ class UnifiedBackendApiContractTest {
         assertPrecheck(readiness, "/data/persistentAuditGovernancePrecheckChecks", "AUDIT_REPLAY_SCOPE_DOCUMENTED", "PASS", true);
         assertPrecheck(readiness, "/data/persistentAuditGovernancePrecheckChecks", "AUDIT_CONFIG_ROLLBACK_SOURCE_DEFINED", "PASS", true);
         assertPrecheck(readiness, "/data/persistentAuditGovernancePrecheckChecks", "AUDIT_REDACTION_ENFORCED", "PASS", true);
-        assertPrecheck(readiness, "/data/persistentAuditGovernancePrecheckChecks", "NODE_DAEMON_AUDIT_BOUNDARY_PRESERVED", "PASS", true);
+        assertPrecheck(readiness, "/data/persistentAuditGovernancePrecheckChecks", "EXTERNAL_NODE_EXECUTOR_AUDIT_BOUNDARY", "PASS", true);
         assertPrecheck(readiness, "/data/persistentAuditGovernancePrecheckChecks", "PERSISTENT_AUDIT_GOVERNANCE_EVIDENCE_RECORDED", "PASS", true);
         assertPrecheck(readiness, "/data/persistentAuditGovernancePrecheckChecks", "PERSISTENT_AUDIT_SINK_CONNECTED", "BLOCKED", true);
         assertPrecheck(readiness, "/data/persistentAuditGovernancePrecheckChecks", "AUDIT_WRITE_PATH_CONNECTED", "BLOCKED", true);
@@ -415,7 +455,8 @@ class UnifiedBackendApiContractTest {
         assertThat(evidence.at("/trafficSwitchApplied").asBoolean()).isFalse();
         assertThat(evidence.at("/frontendEntrypointSwitched").asBoolean()).isFalse();
         assertThat(evidence.at("/externalProxySwitched").asBoolean()).isFalse();
-        assertThat(evidence.at("/nodeDaemonDisposition").asText()).isEqualTo("KEEP_EXTERNAL");
+        assertThat(evidence.at("/externalNodeExecutorOutOfRepository").asBoolean()).isTrue();
+        assertThat(evidence.at("/externalNodeExecutorConnected").asBoolean()).isFalse();
         assertThat(evidence.at("/status").asText()).isEqualTo("GOVERNANCE_EVIDENCE_RECORDED_NOT_CONNECTED");
         assertThat(readiness.at("/data/persistentAuditPrecheckStatus").asText()).isEqualTo("BLOCKED");
         assertThat(readiness.at("/data/readyToReplaceGateway").asBoolean()).isFalse();
@@ -441,7 +482,7 @@ class UnifiedBackendApiContractTest {
         assertPrecheck(readiness, "/data/realHttpRehearsalPrecheckChecks", "CANDIDATE_HTTP_PORT_FIXED", "PASS", true);
         assertPrecheck(readiness, "/data/realHttpRehearsalPrecheckChecks", "REAL_HTTP_TARGETS_DOCUMENTED", "PASS", true);
         assertPrecheck(readiness, "/data/realHttpRehearsalPrecheckChecks", "AUTH_FAILURE_PATH_INCLUDED", "PASS", true);
-        assertPrecheck(readiness, "/data/realHttpRehearsalPrecheckChecks", "NODE_DAEMON_EXCLUDED_FROM_REHEARSAL", "PASS", true);
+        assertPrecheck(readiness, "/data/realHttpRehearsalPrecheckChecks", "EXTERNAL_NODE_EXECUTOR_EXCLUDED_FROM_REHEARSAL", "PASS", true);
         assertPrecheck(readiness, "/data/realHttpRehearsalPrecheckChecks", "SMOKE_RESULT_REDACTION_FIXED", "PASS", true);
         assertPrecheck(readiness, "/data/realHttpRehearsalPrecheckChecks", "CANDIDATE_PROCESS_STARTED_FOR_REHEARSAL", "PASS", true);
         assertPrecheck(readiness, "/data/realHttpRehearsalPrecheckChecks", "ALL_REAL_HTTP_TARGETS_PASSED", "PASS", true);
@@ -464,7 +505,7 @@ class UnifiedBackendApiContractTest {
         assertPrecheck(readiness, "/data/routeDriftPrecheckChecks", "CURRENT_GATEWAY_ROUTES_DOCUMENTED", "PASS", true);
         assertPrecheck(readiness, "/data/routeDriftPrecheckChecks", "UNIFIED_MOUNT_ROUTES_DOCUMENTED", "PASS", true);
         assertPrecheck(readiness, "/data/routeDriftPrecheckChecks", "ROUTE_PREFIX_PRESERVED", "PASS", true);
-        assertPrecheck(readiness, "/data/routeDriftPrecheckChecks", "NODE_DAEMON_ROUTE_KEPT_EXTERNAL", "PASS", true);
+        assertPrecheck(readiness, "/data/routeDriftPrecheckChecks", "EXTERNAL_NODE_EXECUTOR_ROUTE_ABSENT", "PASS", true);
         assertPrecheck(readiness, "/data/routeDriftPrecheckChecks", "NO_HTTP_UPSTREAM_FALLBACK_IN_CANDIDATE", "PASS", true);
         assertPrecheck(readiness, "/data/routeDriftPrecheckChecks", "REAL_GATEWAY_TO_UNIFIED_DIFF_SCAN_AUTOMATED", "PASS", true);
         assertPrecheck(readiness, "/data/routeDriftPrecheckChecks", "AUTH_BEHAVIOR_DIFF_SCAN_AUTOMATED", "PASS", true);
@@ -486,7 +527,7 @@ class UnifiedBackendApiContractTest {
         assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "CURRENT_ENTRYPOINT_TESTS_STILL_REQUIRED", "PASS", true);
         assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "API_GATEWAY_ROLLBACK_TARGET_DOCUMENTED", "PASS", true);
         assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "CORE_ENTRYPOINTS_ROLLBACK_TARGETS_DOCUMENTED", "PASS", true);
-        assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "NODE_DAEMON_UNAFFECTED_BY_CANDIDATE", "PASS", true);
+        assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "EXTERNAL_NODE_EXECUTOR_UNAFFECTED_BY_CANDIDATE", "PASS", true);
         assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "ROLLBACK_WINDOW_DURATION_DEFINED", "PASS", true);
         assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "ROLLBACK_TRIGGER_CRITERIA_DEFINED", "PASS", true);
         assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "ROLLBACK_RECHECK_AUTOMATED", "PASS", true);
@@ -520,11 +561,10 @@ class UnifiedBackendApiContractTest {
                 .contains("AUTH_ERROR_CODE_DRIFT")
                 .contains("CURRENT_ENTRYPOINT_REGRESSION_FAILURE")
                 .contains("BOUNDARY_SCAN_MATCH")
-                .contains("NODE_DAEMON_BOUNDARY_CHANGED");
+                .contains("EXTERNAL_NODE_EXECUTOR_BOUNDARY_CHANGED");
         assertThat(evidence.at("/recheckAutomation/commands").toString())
                 .contains("mvn -q -f backend/unified-backend-service/pom.xml test")
-                .contains("backend/node-daemon-service/pom.xml")
-                .contains("git diff --check")
+                                .contains("git diff --check")
                 .contains("rg -n");
         assertThat(evidence.at("/rollbackTargets").toString())
                 .contains("\"entrypoint\":\"api-gateway\"")
@@ -541,9 +581,9 @@ class UnifiedBackendApiContractTest {
                 .contains("\"port\":8134")
                 .contains("\"entrypoint\":\"unified-backend\"")
                 .contains("\"port\":8135")
-                .contains("\"entrypoint\":\"node-daemon\"")
-                .contains("\"port\":8117")
-                .contains("\"disposition\":\"KEEP_EXTERNAL\"");
+                .doesNotContain("node-daemon")
+                .doesNotContain("8117")
+                .doesNotContain("KEEP_EXTERNAL");
         assertThat(evidence.at("/recordingStatus").asText()).isEqualTo("COMPLETED");
         assertThat(evidence.at("/retirementApprovalStatus").asText()).isEqualTo("BLOCKED");
         assertThat(readiness.at("/data/replacementDecision/canRetireIndependentCoreEntrypoints").asBoolean()).isFalse();
@@ -653,7 +693,7 @@ class UnifiedBackendApiContractTest {
 
         assertThat(readiness.at("/data/backendSingleServicePrecheckStatus").asText()).isEqualTo("PASS");
         assertPrecheck(readiness, "/data/backendSingleServicePrecheckChecks", "UNIFIED_BACKEND_COVERS_BACKEND_ENTRYPOINT_APIS", "PASS", true);
-        assertPrecheck(readiness, "/data/backendSingleServicePrecheckChecks", "ALL_NON_NODE_DAEMON_ROUTES_IN_PROCESS", "PASS", true);
+        assertPrecheck(readiness, "/data/backendSingleServicePrecheckChecks", "ALL_OFFICIAL_BACKEND_ROUTES_IN_PROCESS", "PASS", true);
         assertPrecheck(readiness, "/data/backendSingleServicePrecheckChecks", "PATH_AUTH_ENVELOPE_AND_ERROR_CODES_PRESERVED", "PASS", true);
         assertPrecheck(readiness, "/data/backendSingleServicePrecheckChecks", "REAL_HTTP_REHEARSAL_PASSED", "PASS", true);
         assertPrecheck(readiness, "/data/backendSingleServicePrecheckChecks", "ROUTE_DRIFT_SCAN_PASSED", "PASS", true);
@@ -661,7 +701,7 @@ class UnifiedBackendApiContractTest {
         assertPrecheck(readiness, "/data/backendSingleServicePrecheckChecks", "ROLLBACK_WINDOW_EVIDENCE_COMPLETED", "PASS", true);
         assertPrecheck(readiness, "/data/backendSingleServicePrecheckChecks", "CURRENT_ENTRYPOINTS_PRESERVED_AS_ROLLBACK", "PASS", true);
         assertPrecheck(readiness, "/data/backendSingleServicePrecheckChecks", "CURRENT_ENTRYPOINT_REGRESSION_REQUIRED", "PASS", true);
-        assertPrecheck(readiness, "/data/backendSingleServicePrecheckChecks", "NODE_DAEMON_EXTERNAL_BOUNDARY", "PASS", true);
+        assertPrecheck(readiness, "/data/backendSingleServicePrecheckChecks", "EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY", "PASS", true);
         assertPrecheck(readiness, "/data/backendSingleServicePrecheckChecks", "BACKEND_SINGLE_SERVICE_EVIDENCE_RECORDED", "PASS", true);
         assertPrecheck(readiness, "/data/backendSingleServicePrecheckChecks", "FRONTEND_ENTRYPOINT_SWITCH_IMPLEMENTED", "BLOCKED", true);
         assertPrecheck(readiness, "/data/backendSingleServicePrecheckChecks", "EXTERNAL_PROXY_SWITCH_IMPLEMENTED", "BLOCKED", true);
@@ -678,7 +718,8 @@ class UnifiedBackendApiContractTest {
                 .contains("engagement-core:8132")
                 .contains("ops-core:8133")
                 .contains("portal-core:8134");
-        assertThat(evidence.at("/nodeDaemonDisposition").asText()).isEqualTo("KEEP_EXTERNAL");
+        assertThat(evidence.at("/externalNodeExecutorOutOfRepository").asBoolean()).isTrue();
+        assertThat(evidence.at("/externalNodeExecutorConnected").asBoolean()).isFalse();
         assertThat(evidence.at("/businessPathsRemainUnchanged").asBoolean()).isTrue();
         assertThat(evidence.at("/inProcessRoutesTotal").asInt()).isEqualTo(25);
         assertThat(evidence.at("/httpFallbackRoutesTotal").asInt()).isEqualTo(0);
@@ -716,13 +757,13 @@ class UnifiedBackendApiContractTest {
 
         assertThat(readiness.at("/data/finalBackendSingleServicePrecheckStatus").asText()).isEqualTo("PASS");
         assertPrecheck(readiness, "/data/finalBackendSingleServicePrecheckChecks", "BACKEND_APPLICATION_ENTRYPOINT_COVERAGE", "PASS", true);
-        assertPrecheck(readiness, "/data/finalBackendSingleServicePrecheckChecks", "ALL_NON_NODE_DAEMON_ROUTES_IN_PROCESS", "PASS", true);
+        assertPrecheck(readiness, "/data/finalBackendSingleServicePrecheckChecks", "ALL_OFFICIAL_BACKEND_ROUTES_IN_PROCESS", "PASS", true);
         assertPrecheck(readiness, "/data/finalBackendSingleServicePrecheckChecks", "REAL_HTTP_REHEARSAL_PASSED", "PASS", true);
         assertPrecheck(readiness, "/data/finalBackendSingleServicePrecheckChecks", "ROUTE_DRIFT_SCAN_PASSED", "PASS", true);
         assertPrecheck(readiness, "/data/finalBackendSingleServicePrecheckChecks", "LEGACY_ENTRYPOINT_REGRESSION_PASSED", "PASS", true);
         assertPrecheck(readiness, "/data/finalBackendSingleServicePrecheckChecks", "PRODUCTION_SOURCE_BOUNDARY_SCAN_PASSED", "PASS", true);
         assertPrecheck(readiness, "/data/finalBackendSingleServicePrecheckChecks", "LEGACY_ROLLBACK_ENTRYPOINTS_PROTECTED", "PASS", true);
-        assertPrecheck(readiness, "/data/finalBackendSingleServicePrecheckChecks", "NODE_DAEMON_EXTERNAL_BOUNDARY", "PASS", true);
+        assertPrecheck(readiness, "/data/finalBackendSingleServicePrecheckChecks", "EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY", "PASS", true);
         assertPrecheck(readiness, "/data/finalBackendSingleServicePrecheckChecks", "FINAL_BACKEND_SINGLE_SERVICE_EVIDENCE_RECORDED", "PASS", true);
         assertPrecheck(readiness, "/data/finalBackendSingleServicePrecheckChecks", "FRONTEND_ENTRYPOINT_SWITCH_IMPLEMENTED", "BLOCKED", true);
         assertPrecheck(readiness, "/data/finalBackendSingleServicePrecheckChecks", "EXTERNAL_PROXY_SWITCH_IMPLEMENTED", "BLOCKED", true);
@@ -733,7 +774,8 @@ class UnifiedBackendApiContractTest {
 
         JsonNode evidence = readiness.at("/data/finalBackendSingleServiceEvidence");
         assertThat(evidence.at("/targetBackendApplicationEntrypoint").asText()).isEqualTo("unified-backend:8135");
-        assertThat(evidence.at("/externalNodeExecutionEntrypoint").asText()).isEqualTo("node-daemon:8117");
+        assertThat(evidence.at("/externalNodeExecutorProject").asText()).isEqualTo("separate-project");
+        assertThat(evidence.at("/externalNodeExecutorConnected").asBoolean()).isFalse();
         assertThat(evidence.at("/legacyRollbackEntrypoints").toString())
                 .contains("api-gateway:8125")
                 .contains("business-core:8130")
@@ -747,7 +789,8 @@ class UnifiedBackendApiContractTest {
                 .doesNotContain("api-gateway:8125")
                 .doesNotContain("business-core:8130")
                 .doesNotContain("node-daemon:8117");
-        assertThat(evidence.at("/nodeDaemonDisposition").asText()).isEqualTo("KEEP_EXTERNAL");
+        assertThat(evidence.at("/externalNodeExecutorOutOfRepository").asBoolean()).isTrue();
+        assertThat(evidence.at("/externalNodeExecutorConnected").asBoolean()).isFalse();
         assertThat(evidence.at("/businessPathsRemainUnchanged").asBoolean()).isTrue();
         assertThat(evidence.at("/inProcessRoutesTotal").asInt()).isEqualTo(25);
         assertThat(evidence.at("/httpFallbackRoutesTotal").asInt()).isEqualTo(0);
@@ -836,7 +879,7 @@ class UnifiedBackendApiContractTest {
         assertPrecheck(readiness, "/data/entrypointCutoverExecutionPrecheckChecks", "ROUTE_DRIFT_SCAN_PASSED", "PASS", true);
         assertPrecheck(readiness, "/data/entrypointCutoverExecutionPrecheckChecks", "LEGACY_ROLLBACK_ENTRYPOINTS_PROTECTED", "PASS", true);
         assertPrecheck(readiness, "/data/entrypointCutoverExecutionPrecheckChecks", "ROLLBACK_RECHECK_PASSED", "PASS", true);
-        assertPrecheck(readiness, "/data/entrypointCutoverExecutionPrecheckChecks", "NODE_DAEMON_EXTERNAL_BOUNDARY", "PASS", true);
+        assertPrecheck(readiness, "/data/entrypointCutoverExecutionPrecheckChecks", "EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY", "PASS", true);
         assertPrecheck(readiness, "/data/entrypointCutoverExecutionPrecheckChecks", "FRONTEND_OR_PROXY_CONFIG_PRESENT", "BLOCKED", true);
         assertPrecheck(readiness, "/data/entrypointCutoverExecutionPrecheckChecks", "FRONTEND_OR_PROXY_CONFIG_UPDATED", "BLOCKED", true);
         assertPrecheck(readiness, "/data/entrypointCutoverExecutionPrecheckChecks", "TARGET_ENTRYPOINT_SET_TO_UNIFIED_BACKEND", "BLOCKED", true);
@@ -859,7 +902,8 @@ class UnifiedBackendApiContractTest {
         assertThat(evidence.at("/rollbackTarget").asText()).isEqualTo("http://127.0.0.1:8125");
         assertThat(evidence.at("/trafficSwitchApplied").asBoolean()).isFalse();
         assertThat(evidence.at("/oldEntrypointRetirementApproved").asBoolean()).isFalse();
-        assertThat(evidence.at("/nodeDaemonDisposition").asText()).isEqualTo("KEEP_EXTERNAL");
+        assertThat(evidence.at("/externalNodeExecutorOutOfRepository").asBoolean()).isTrue();
+        assertThat(evidence.at("/externalNodeExecutorConnected").asBoolean()).isFalse();
         assertThat(evidence.at("/readyToReplaceGateway").asBoolean()).isFalse();
         assertThat(evidence.at("/readyForProduction").asBoolean()).isFalse();
         assertThat(evidence.at("/remainingBlockers").toString())
@@ -894,7 +938,7 @@ class UnifiedBackendApiContractTest {
         assertPrecheck(readiness, "/data/oldEntrypointRetirementPrecheckChecks", "BULK_RETIREMENT_FORBIDDEN", "PASS", true);
         assertPrecheck(readiness, "/data/oldEntrypointRetirementPrecheckChecks", "CURRENT_ENTRYPOINT_REGRESSION_REQUIRED", "PASS", true);
         assertPrecheck(readiness, "/data/oldEntrypointRetirementPrecheckChecks", "ROLLBACK_TARGETS_STILL_PROTECTED", "PASS", true);
-        assertPrecheck(readiness, "/data/oldEntrypointRetirementPrecheckChecks", "NODE_DAEMON_EXTERNAL_BOUNDARY", "PASS", true);
+        assertPrecheck(readiness, "/data/oldEntrypointRetirementPrecheckChecks", "EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY", "PASS", true);
         assertPrecheck(readiness, "/data/oldEntrypointRetirementPrecheckChecks", "RETIREMENT_APPROVAL_EVIDENCE_RECORDED", "PASS", true);
         assertPrecheck(readiness, "/data/oldEntrypointRetirementPrecheckChecks", "FRONTEND_ENTRYPOINT_SWITCH_IMPLEMENTED", "BLOCKED", true);
         assertPrecheck(readiness, "/data/oldEntrypointRetirementPrecheckChecks", "EXTERNAL_PROXY_SWITCH_IMPLEMENTED", "BLOCKED", true);
@@ -909,7 +953,8 @@ class UnifiedBackendApiContractTest {
         assertThat(evidence.at("/bulkRetirementAllowed").asBoolean()).isFalse();
         assertThat(evidence.at("/directoryDeletionAllowed").asBoolean()).isFalse();
         assertThat(evidence.at("/mavenRegressionRequired").asBoolean()).isTrue();
-        assertThat(evidence.at("/nodeDaemonDisposition").asText()).isEqualTo("KEEP_EXTERNAL");
+        assertThat(evidence.at("/externalNodeExecutorOutOfRepository").asBoolean()).isTrue();
+        assertThat(evidence.at("/externalNodeExecutorConnected").asBoolean()).isFalse();
         assertThat(evidence.at("/retirementApprovalStatus").asText()).isEqualTo("BLOCKED");
         assertThat(evidence.at("/approvedEntrypoints").size()).isEqualTo(0);
         assertThat(evidence.at("/currentProductionEntrypoints").toString())
@@ -919,7 +964,7 @@ class UnifiedBackendApiContractTest {
                 .contains("engagement-core:8132")
                 .contains("ops-core:8133")
                 .contains("portal-core:8134")
-                .contains("node-daemon:8117");
+                .doesNotContain("node-daemon:8117");
         assertThat(evidence.at("/protectedRollbackEntrypoints").toString())
                 .contains("api-gateway:8125")
                 .contains("business-core:8130")
