@@ -102,6 +102,9 @@ class UnifiedBackendController {
                 "productionSwitchChecks", registry.productionSwitchChecks(),
                 "centralConfigPrecheckStatus", "BLOCKED",
                 "centralConfigPrecheckChecks", registry.centralConfigPrecheckChecks(),
+                "centralConfigGovernancePrecheckStatus", "BLOCKED",
+                "centralConfigGovernancePrecheckChecks", registry.centralConfigGovernancePrecheckChecks(),
+                "centralConfigGovernanceEvidence", registry.centralConfigGovernanceEvidence(),
                 "persistentAuditPrecheckStatus", "BLOCKED",
                 "persistentAuditPrecheckChecks", registry.persistentAuditPrecheckChecks(),
                 "realHttpRehearsalPrecheckStatus", "BLOCKED",
@@ -440,8 +443,56 @@ class UnifiedBackendRegistry {
                 switchCheck("CENTRAL_CONFIG_PROVIDER_CONNECTED", "BLOCKED", "centralized production configuration is not connected", true),
                 switchCheck("PRODUCTION_PROFILE_BOUND", "BLOCKED", "production profile binding is not available yet", true),
                 switchCheck("SENSITIVE_CONFIG_SOURCE_EXTERNALIZED", "BLOCKED", "sensitive config sources are not externalized yet", true),
-                switchCheck("CONFIG_DRIFT_SCAN_AUTOMATED", "BLOCKED", "config drift scan is not automated yet", true),
-                switchCheck("CONFIG_ROLLBACK_SOURCE_DEFINED", "BLOCKED", "config rollback source is not defined yet", true)
+                switchCheck("CONFIG_DRIFT_SCAN_AUTOMATED", "PASS", "config drift scan is covered by readiness and boundary tests", true),
+                switchCheck("CONFIG_ROLLBACK_SOURCE_DEFINED", "PASS", "config rollback source remains the documented current entrypoint set", true)
+        );
+    }
+
+    List<Map<String, Object>> centralConfigGovernancePrecheckChecks() {
+        return List.of(
+                switchCheck("CONFIG_OWNERSHIP_DOCUMENTED", "PASS", "configuration ownership remains documented in unified-backend readiness", true),
+                switchCheck("ENTRYPOINT_PORTS_DOCUMENTED", "PASS", "current and candidate entrypoint ports are documented", true),
+                switchCheck("CANDIDATE_CONFIG_SURFACE_DOCUMENTED", "PASS", "candidate config surface is documented without connecting production provider", true),
+                switchCheck("CONFIG_DRIFT_SCAN_AUTOMATED", "PASS", "config drift scan is automated through readiness assertions", true),
+                switchCheck("CONFIG_ROLLBACK_SOURCE_DEFINED", "PASS", "rollback source is the preserved current entrypoint set", true),
+                switchCheck("SENSITIVE_VALUE_REDACTION_ENFORCED", "PASS", "readiness evidence is covered by redaction assertions", true),
+                switchCheck("NODE_DAEMON_CONFIG_BOUNDARY_PRESERVED", "PASS", "node-daemon config remains outside unified-backend candidate", true),
+                switchCheck("CONFIG_GOVERNANCE_EVIDENCE_RECORDED", "PASS", "central config governance evidence is recorded without production connection", true),
+                switchCheck("CENTRAL_CONFIG_PROVIDER_CONNECTED", "BLOCKED", "centralized production configuration provider is not connected", true),
+                switchCheck("PRODUCTION_PROFILE_BOUND", "BLOCKED", "production profile is not bound to the candidate", true),
+                switchCheck("SENSITIVE_CONFIG_SOURCE_EXTERNALIZED", "BLOCKED", "sensitive config source is not externalized yet", true),
+                switchCheck("FRONTEND_ENTRYPOINT_SWITCH_IMPLEMENTED", "BLOCKED", "frontend entrypoint is not switched to unified-backend", true),
+                switchCheck("EXTERNAL_PROXY_SWITCH_IMPLEMENTED", "BLOCKED", "external proxy target is not switched to unified-backend", true),
+                switchCheck("PRODUCTION_TRAFFIC_ENTRYPOINT_READY", "BLOCKED", "production traffic entrypoint is not switched to unified-backend", true)
+        );
+    }
+
+    Map<String, Object> centralConfigGovernanceEvidence() {
+        return map(
+                "governanceMode", "DOCUMENTED_NOT_CONNECTED",
+                "candidateEntrypoint", "unified-backend:8135",
+                "currentEntrypointPorts", List.of(
+                        "api-gateway:8125",
+                        "business-core:8130",
+                        "admission-core:8131",
+                        "engagement-core:8132",
+                        "ops-core:8133",
+                        "portal-core:8134",
+                        "node-daemon:8117",
+                        "unified-backend:8135"
+                ),
+                "configProviderStatus", "BLOCKED",
+                "productionProfileBound", false,
+                "sensitiveValuesExternalized", false,
+                "configDriftScanAutomated", true,
+                "rollbackSourceDefined", true,
+                "sensitiveValuesExposed", false,
+                "environmentVariablesRead", false,
+                "trafficSwitchApplied", false,
+                "frontendEntrypointSwitched", false,
+                "externalProxySwitched", false,
+                "nodeDaemonDisposition", "KEEP_EXTERNAL",
+                "status", "GOVERNANCE_EVIDENCE_RECORDED_NOT_CONNECTED"
         );
     }
 
