@@ -45,7 +45,7 @@ class UnifiedBackendApiContractTest {
         addRange(mapped, "UBACK-AUTH", 1, 2);
         addRange(mapped, "UBACK-MOUNT", 1, 22);
         addRange(mapped, "UBACK-GATE", 1, 1);
-        addRange(mapped, "UBACK-READY", 1, 10);
+        addRange(mapped, "UBACK-READY", 1, 11);
         addRange(mapped, "UBACK-SMOKE", 1, 1);
         addRange(mapped, "UBACK-HTTP", 1, 1);
         addRange(mapped, "UBACK-DRIFT", 1, 1);
@@ -67,13 +67,14 @@ class UnifiedBackendApiContractTest {
                 "UBACK-READY-008",
                 "UBACK-READY-009",
                 "UBACK-READY-010",
+                "UBACK-READY-011",
                 "UBACK-SMOKE-001",
                 "UBACK-HTTP-001",
                 "UBACK-DRIFT-001",
                 "UBACK-BOUNDARY-001",
                 "UBACK-REGRESS-001"
         );
-        assertThat(mapped).hasSize(41);
+        assertThat(mapped).hasSize(42);
     }
 
     @Test
@@ -438,7 +439,7 @@ class UnifiedBackendApiContractTest {
         assertPrecheck(readiness, "/data/entrypointSwitchPrecheckChecks", "SWITCH_REQUIRES_ROLLBACK_WINDOW", "PASS", true);
         assertPrecheck(readiness, "/data/entrypointSwitchPrecheckChecks", "FRONTEND_ENTRYPOINT_SWITCH_IMPLEMENTED", "BLOCKED", true);
         assertPrecheck(readiness, "/data/entrypointSwitchPrecheckChecks", "EXTERNAL_PROXY_SWITCH_IMPLEMENTED", "BLOCKED", true);
-        assertPrecheck(readiness, "/data/entrypointSwitchPrecheckChecks", "PRODUCTION_TRAFFIC_CANARY_DEFINED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/entrypointSwitchPrecheckChecks", "PRODUCTION_TRAFFIC_CANARY_DEFINED", "PASS", true);
         assertPrecheck(readiness, "/data/entrypointSwitchPrecheckChecks", "ENTRYPOINT_SWITCH_TESTS_AUTOMATED", "PASS", true);
         assertPrecheck(readiness, "/data/entrypointSwitchPrecheckChecks", "SWITCH_AUDIT_RECORDING_READY", "PASS", true);
         assertSwitchCheck(readiness, "FRONTEND_ENTRYPOINT_SWITCH_READY", "BLOCKED", true);
@@ -457,7 +458,7 @@ class UnifiedBackendApiContractTest {
         assertPrecheck(readiness, "/data/entrypointSwitchPrecheckChecks", "SWITCH_AUDIT_RECORDING_READY", "PASS", true);
         assertPrecheck(readiness, "/data/entrypointSwitchPrecheckChecks", "FRONTEND_ENTRYPOINT_SWITCH_IMPLEMENTED", "BLOCKED", true);
         assertPrecheck(readiness, "/data/entrypointSwitchPrecheckChecks", "EXTERNAL_PROXY_SWITCH_IMPLEMENTED", "BLOCKED", true);
-        assertPrecheck(readiness, "/data/entrypointSwitchPrecheckChecks", "PRODUCTION_TRAFFIC_CANARY_DEFINED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/entrypointSwitchPrecheckChecks", "PRODUCTION_TRAFFIC_CANARY_DEFINED", "PASS", true);
         assertSwitchCheck(readiness, "FRONTEND_ENTRYPOINT_SWITCH_READY", "BLOCKED", true);
         assertSwitchCheck(readiness, "PRODUCTION_TRAFFIC_ENTRYPOINT_READY", "BLOCKED", true);
 
@@ -476,6 +477,46 @@ class UnifiedBackendApiContractTest {
                 .doesNotContain("/api/v1/unified-backend/auth")
                 .doesNotContain("FRONTEND_ENTRYPOINT_SWITCH_READY\":\"PASS")
                 .doesNotContain("PRODUCTION_TRAFFIC_ENTRYPOINT_READY\":\"PASS");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void exposesProductionTrafficCanaryPlanWithoutSendingProductionTraffic() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-production-canary-plan"));
+
+        assertThat(readiness.at("/data/entrypointSwitchPrecheckStatus").asText()).isEqualTo("BLOCKED");
+        assertPrecheck(readiness, "/data/entrypointSwitchPrecheckChecks", "PRODUCTION_TRAFFIC_CANARY_DEFINED", "PASS", true);
+        assertPrecheck(readiness, "/data/entrypointSwitchPrecheckChecks", "FRONTEND_ENTRYPOINT_SWITCH_IMPLEMENTED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/entrypointSwitchPrecheckChecks", "EXTERNAL_PROXY_SWITCH_IMPLEMENTED", "BLOCKED", true);
+        assertSwitchCheck(readiness, "PRODUCTION_TRAFFIC_ENTRYPOINT_READY", "BLOCKED", true);
+
+        JsonNode evidence = readiness.at("/data/productionTrafficCanaryEvidence");
+        assertThat(evidence.at("/strategy").asText()).isEqualTo("CANARY_WITH_PAUSE_AND_ROLLBACK");
+        assertThat(evidence.at("/plannedWeights").toString()).isEqualTo("[0,5,25,50,100]");
+        assertThat(evidence.at("/initialWeightPercent").asInt()).isEqualTo(0);
+        assertThat(evidence.at("/currentProductionTrafficPercent").asInt()).isEqualTo(0);
+        assertThat(evidence.at("/candidateProductionTrafficPercent").asInt()).isEqualTo(0);
+        assertThat(evidence.at("/manualPromotionRequired").asBoolean()).isTrue();
+        assertThat(evidence.at("/rollbackTarget").asText()).isEqualTo("api-gateway:8125");
+        assertThat(evidence.at("/rollbackWindowMinimumHours").asInt()).isEqualTo(24);
+        assertThat(evidence.at("/trafficSwitchApplied").asBoolean()).isFalse();
+        assertThat(evidence.at("/status").asText()).isEqualTo("PLAN_DEFINED_NOT_APPLIED");
+        assertThat(evidence.at("/gates").toString())
+                .contains("REAL_HTTP_REHEARSAL_PASSED")
+                .contains("ROUTE_DRIFT_SCAN_PASSED")
+                .contains("ROLLBACK_WINDOW_EVIDENCE_COMPLETED")
+                .contains("CURRENT_ENTRYPOINT_REGRESSION_PASSED")
+                .contains("BOUNDARY_SCAN_CLEAR")
+                .contains("FRONTEND_ENTRYPOINT_SWITCH_READY")
+                .contains("EXTERNAL_PROXY_SWITCH_READY");
+        assertThat(readiness.at("/data/readyToReplaceGateway").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/replacementDecision/canReplaceGateway").asBoolean()).isFalse();
+        assertThat(readiness.toString())
+                .doesNotContain("PRODUCTION_TRAFFIC_ENTRYPOINT_READY\":\"PASS")
+                .doesNotContain("trafficSwitchApplied\":true")
+                .doesNotContain("/api/v1/unified-backend/auth");
         assertNoSecrets(readiness);
     }
 
