@@ -24,7 +24,7 @@ Zustand 更适合本项目第一版，因为登录态、当前用户、权限、
 
 ## 后端入口和端口
 
-本地联调优先走网关，前端默认 API 地址为 `http://127.0.0.1:8125`。业务路径保持原样，例如登录为 `POST /api/v1/auth/login`，不是 `/api/v1/gateway/auth/login`。
+本地联调默认仍走网关，前端默认 API 地址为 `http://127.0.0.1:8125`。第十七轮开始，后端候选入口已暴露入口切换适配证据；在不改页面、不改业务路径的前提下，后续前端或代理联调可以把 `VITE_API_BASE_URL` 从 `http://127.0.0.1:8125` 覆盖为 `http://127.0.0.1:8135`。业务路径保持原样，例如登录为 `POST /api/v1/auth/login`，不是 `/api/v1/gateway/auth/login`，也不是 `/api/v1/unified-backend/auth/login`。
 
 单服务直连只用于排障，不应写在业务页面里。端口统一放在前端常量文件中，便于联调和排障页读取。
 
@@ -197,7 +197,7 @@ export interface FieldError {
 
 `src/constants/api.ts` 保存默认网关地址、模块端口、接口前缀和请求超时。`src/constants/permissions.ts` 保存基础角色和运维能力点。`src/constants/status.ts` 保存通用状态、风险等级和前端展示文案。`src/constants/routes.ts` 保存前端路由路径和权限要求。
 
-环境变量建议使用 `VITE_API_BASE_URL` 覆盖默认网关地址。没有配置时默认使用 `http://127.0.0.1:8125`。
+环境变量建议使用 `VITE_API_BASE_URL` 覆盖默认网关地址。没有配置时默认使用 `http://127.0.0.1:8125`。需要演练统一后端候选入口时，将该变量设置为 `http://127.0.0.1:8135`，并保持所有 `/api/v1/**` 业务路径不变。
 
 ## 状态管理
 

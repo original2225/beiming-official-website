@@ -10,7 +10,7 @@
 
 ## 请求入口
 
-本地联调优先走网关：`http://127.0.0.1:8125`。所有业务路径保持 `/api/v1/...` 原样，例如登录请求是 `POST /api/v1/auth/login`，不是 `/api/v1/gateway/auth/login`。
+本地联调默认走网关：`http://127.0.0.1:8125`。第十七轮开始，统一后端候选入口提供入口切换适配证据，后续前端或代理联调可以把 API base URL 覆盖为 `http://127.0.0.1:8135`。所有业务路径保持 `/api/v1/...` 原样，例如登录请求是 `POST /api/v1/auth/login`，不是 `/api/v1/gateway/auth/login`，也不是 `/api/v1/unified-backend/auth/login`。
 
 单服务直连只用于排查问题。服务端口见本文后面的模块表。前端代码不要把单服务端口写死进业务页面，统一通过 API client 的 baseURL 管理。
 

@@ -45,7 +45,7 @@ class UnifiedBackendApiContractTest {
         addRange(mapped, "UBACK-AUTH", 1, 2);
         addRange(mapped, "UBACK-MOUNT", 1, 22);
         addRange(mapped, "UBACK-GATE", 1, 1);
-        addRange(mapped, "UBACK-READY", 1, 12);
+        addRange(mapped, "UBACK-READY", 1, 13);
         addRange(mapped, "UBACK-SMOKE", 1, 1);
         addRange(mapped, "UBACK-HTTP", 1, 1);
         addRange(mapped, "UBACK-DRIFT", 1, 1);
@@ -69,13 +69,14 @@ class UnifiedBackendApiContractTest {
                 "UBACK-READY-010",
                 "UBACK-READY-011",
                 "UBACK-READY-012",
+                "UBACK-READY-013",
                 "UBACK-SMOKE-001",
                 "UBACK-HTTP-001",
                 "UBACK-DRIFT-001",
                 "UBACK-BOUNDARY-001",
                 "UBACK-REGRESS-001"
         );
-        assertThat(mapped).hasSize(43);
+        assertThat(mapped).hasSize(44);
     }
 
     @Test
@@ -580,6 +581,54 @@ class UnifiedBackendApiContractTest {
                 .doesNotContain("externalProxySwitched\":true")
                 .doesNotContain("trafficSwitchApplied\":true")
                 .doesNotContain("oldEntrypointRetirementApproved\":true")
+                .doesNotContain("/api/v1/unified-backend/auth");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void exposesEntrypointCutoverAdapterEvidenceWithoutApplyingTraffic() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-entrypoint-cutover-adapter-evidence"));
+
+        assertThat(readiness.at("/data/entrypointCutoverAdapterPrecheckStatus").asText()).isEqualTo("BLOCKED");
+        assertPrecheck(readiness, "/data/entrypointCutoverAdapterPrecheckChecks", "FRONTEND_API_BASE_URL_CONTRACT_DOCUMENTED", "PASS", true);
+        assertPrecheck(readiness, "/data/entrypointCutoverAdapterPrecheckChecks", "BUSINESS_PATHS_REMAIN_UNCHANGED", "PASS", true);
+        assertPrecheck(readiness, "/data/entrypointCutoverAdapterPrecheckChecks", "CANDIDATE_BASE_URL_DOCUMENTED", "PASS", true);
+        assertPrecheck(readiness, "/data/entrypointCutoverAdapterPrecheckChecks", "ROLLBACK_TARGET_DOCUMENTED", "PASS", true);
+        assertPrecheck(readiness, "/data/entrypointCutoverAdapterPrecheckChecks", "NO_FRONTEND_SOURCE_TO_MODIFY_IN_REPOSITORY", "PASS", true);
+        assertPrecheck(readiness, "/data/entrypointCutoverAdapterPrecheckChecks", "NO_PROXY_CONFIG_TO_MODIFY_IN_REPOSITORY", "PASS", true);
+        assertPrecheck(readiness, "/data/entrypointCutoverAdapterPrecheckChecks", "CUTOVER_REQUIRES_EXTERNAL_FRONTEND_OR_PROXY_CHANGE", "PASS", true);
+        assertPrecheck(readiness, "/data/entrypointCutoverAdapterPrecheckChecks", "CUTOVER_ADAPTER_EVIDENCE_RECORDED", "PASS", true);
+        assertPrecheck(readiness, "/data/entrypointCutoverAdapterPrecheckChecks", "FRONTEND_ENTRYPOINT_SWITCH_IMPLEMENTED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/entrypointCutoverAdapterPrecheckChecks", "EXTERNAL_PROXY_SWITCH_IMPLEMENTED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/entrypointCutoverAdapterPrecheckChecks", "PRODUCTION_TRAFFIC_ENTRYPOINT_READY", "BLOCKED", true);
+
+        JsonNode evidence = readiness.at("/data/entrypointCutoverAdapterEvidence");
+        assertThat(evidence.at("/currentGatewayBaseUrl").asText()).isEqualTo("http://127.0.0.1:8125");
+        assertThat(evidence.at("/candidateBaseUrl").asText()).isEqualTo("http://127.0.0.1:8135");
+        assertThat(evidence.at("/switchMode").asText()).isEqualTo("ENTRYPOINT_TARGET_ONLY");
+        assertThat(evidence.at("/businessPathsRemainUnchanged").asBoolean()).isTrue();
+        assertThat(evidence.at("/forbiddenPathPrefix").asText()).isEqualTo("/api/v1/unified-backend/<module>");
+        assertThat(evidence.at("/frontendSourcePresent").asBoolean()).isFalse();
+        assertThat(evidence.at("/proxyConfigPresent").asBoolean()).isFalse();
+        assertThat(evidence.at("/repositoryCutoverConfigApplied").asBoolean()).isFalse();
+        assertThat(evidence.at("/requiredFrontendEnvVar").asText()).isEqualTo("VITE_API_BASE_URL");
+        assertThat(evidence.at("/recommendedNextValue").asText()).isEqualTo("http://127.0.0.1:8135");
+        assertThat(evidence.at("/rollbackTarget").asText()).isEqualTo("http://127.0.0.1:8125");
+        assertThat(evidence.at("/trafficSwitchApplied").asBoolean()).isFalse();
+        assertThat(evidence.at("/frontendEntrypointSwitched").asBoolean()).isFalse();
+        assertThat(evidence.at("/externalProxySwitched").asBoolean()).isFalse();
+        assertThat(evidence.at("/status").asText()).isEqualTo("ADAPTER_EVIDENCE_RECORDED_NOT_APPLIED");
+        assertThat(readiness.at("/data/readyToReplaceGateway").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/replacementDecision/canReplaceGateway").asBoolean()).isFalse();
+        assertSwitchCheck(readiness, "FRONTEND_ENTRYPOINT_SWITCH_READY", "BLOCKED", true);
+        assertSwitchCheck(readiness, "PRODUCTION_TRAFFIC_ENTRYPOINT_READY", "BLOCKED", true);
+        assertThat(readiness.toString())
+                .doesNotContain("repositoryCutoverConfigApplied\":true")
+                .doesNotContain("frontendEntrypointSwitched\":true")
+                .doesNotContain("externalProxySwitched\":true")
+                .doesNotContain("trafficSwitchApplied\":true")
                 .doesNotContain("/api/v1/unified-backend/auth");
         assertNoSecrets(readiness);
     }
