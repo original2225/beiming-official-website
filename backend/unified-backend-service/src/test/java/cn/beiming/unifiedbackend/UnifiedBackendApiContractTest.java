@@ -45,7 +45,7 @@ class UnifiedBackendApiContractTest {
         addRange(mapped, "UBACK-AUTH", 1, 2);
         addRange(mapped, "UBACK-MOUNT", 1, 22);
         addRange(mapped, "UBACK-GATE", 1, 1);
-        addRange(mapped, "UBACK-READY", 1, 4);
+        addRange(mapped, "UBACK-READY", 1, 8);
         addRange(mapped, "UBACK-SMOKE", 1, 1);
         addRange(mapped, "UBACK-BOUNDARY", 1, 1);
         addRange(mapped, "UBACK-REGRESS", 1, 1);
@@ -59,11 +59,15 @@ class UnifiedBackendApiContractTest {
                 "UBACK-READY-002",
                 "UBACK-READY-003",
                 "UBACK-READY-004",
+                "UBACK-READY-005",
+                "UBACK-READY-006",
+                "UBACK-READY-007",
+                "UBACK-READY-008",
                 "UBACK-SMOKE-001",
                 "UBACK-BOUNDARY-001",
                 "UBACK-REGRESS-001"
         );
-        assertThat(mapped).hasSize(33);
+        assertThat(mapped).hasSize(37);
     }
 
     @Test
@@ -296,6 +300,94 @@ class UnifiedBackendApiContractTest {
     }
 
     @Test
+    void exposesRealHttpRehearsalPrecheckWithoutAllowingProductionSwitch() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer admin-token")
+                .header("X-Request-Id", "req-real-http-rehearsal-precheck"));
+
+        assertThat(readiness.at("/data/realHttpRehearsalPrecheckStatus").asText()).isEqualTo("BLOCKED");
+        assertPrecheck(readiness, "/data/realHttpRehearsalPrecheckChecks", "CANDIDATE_HTTP_PORT_FIXED", "PASS", true);
+        assertPrecheck(readiness, "/data/realHttpRehearsalPrecheckChecks", "REAL_HTTP_TARGETS_DOCUMENTED", "PASS", true);
+        assertPrecheck(readiness, "/data/realHttpRehearsalPrecheckChecks", "AUTH_FAILURE_PATH_INCLUDED", "PASS", true);
+        assertPrecheck(readiness, "/data/realHttpRehearsalPrecheckChecks", "NODE_DAEMON_EXCLUDED_FROM_REHEARSAL", "PASS", true);
+        assertPrecheck(readiness, "/data/realHttpRehearsalPrecheckChecks", "SMOKE_RESULT_REDACTION_FIXED", "PASS", true);
+        assertPrecheck(readiness, "/data/realHttpRehearsalPrecheckChecks", "CANDIDATE_PROCESS_STARTED_FOR_REHEARSAL", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/realHttpRehearsalPrecheckChecks", "ALL_REAL_HTTP_TARGETS_PASSED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/realHttpRehearsalPrecheckChecks", "REHEARSAL_RESULT_RECORDED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/realHttpRehearsalPrecheckChecks", "REHEARSAL_RUNBOOK_DEFINED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/realHttpRehearsalPrecheckChecks", "REHEARSAL_ROLLBACK_RECHECKED", "BLOCKED", true);
+        assertSwitchCheck(readiness, "REAL_HTTP_SMOKE_REHEARSAL_READY", "BLOCKED", true);
+        assertThat(readiness.at("/data/readyToReplaceGateway").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/replacementDecision/canReplaceGateway").asBoolean()).isFalse();
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void exposesRouteDriftPrecheckWithoutChangingRoutes() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-route-drift-precheck"));
+
+        assertThat(readiness.at("/data/routeDriftPrecheckStatus").asText()).isEqualTo("BLOCKED");
+        assertPrecheck(readiness, "/data/routeDriftPrecheckChecks", "CURRENT_GATEWAY_ROUTES_DOCUMENTED", "PASS", true);
+        assertPrecheck(readiness, "/data/routeDriftPrecheckChecks", "UNIFIED_MOUNT_ROUTES_DOCUMENTED", "PASS", true);
+        assertPrecheck(readiness, "/data/routeDriftPrecheckChecks", "ROUTE_PREFIX_PRESERVED", "PASS", true);
+        assertPrecheck(readiness, "/data/routeDriftPrecheckChecks", "NODE_DAEMON_ROUTE_KEPT_EXTERNAL", "PASS", true);
+        assertPrecheck(readiness, "/data/routeDriftPrecheckChecks", "NO_HTTP_UPSTREAM_FALLBACK_IN_CANDIDATE", "PASS", true);
+        assertPrecheck(readiness, "/data/routeDriftPrecheckChecks", "REAL_GATEWAY_TO_UNIFIED_DIFF_SCAN_AUTOMATED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/routeDriftPrecheckChecks", "AUTH_BEHAVIOR_DIFF_SCAN_AUTOMATED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/routeDriftPrecheckChecks", "ERROR_CODE_DIFF_SCAN_AUTOMATED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/routeDriftPrecheckChecks", "SENSITIVE_FIELD_DIFF_SCAN_AUTOMATED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/routeDriftPrecheckChecks", "DRIFT_SCAN_RESULT_RECORDED", "BLOCKED", true);
+        assertThat(readiness.at("/data/routeDriftPrecheckChecks").toString()).doesNotContain("/api/v1/unified-backend/auth");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void exposesRollbackWindowPrecheckBeforeRetiringEntrypoints() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer admin-token")
+                .header("X-Request-Id", "req-rollback-window-precheck"));
+
+        assertThat(readiness.at("/data/rollbackWindowPrecheckStatus").asText()).isEqualTo("BLOCKED");
+        assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "CURRENT_ENTRYPOINTS_STILL_PRESENT", "PASS", true);
+        assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "CURRENT_ENTRYPOINT_TESTS_STILL_REQUIRED", "PASS", true);
+        assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "API_GATEWAY_ROLLBACK_TARGET_DOCUMENTED", "PASS", true);
+        assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "CORE_ENTRYPOINTS_ROLLBACK_TARGETS_DOCUMENTED", "PASS", true);
+        assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "NODE_DAEMON_UNAFFECTED_BY_CANDIDATE", "PASS", true);
+        assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "ROLLBACK_WINDOW_DURATION_DEFINED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "ROLLBACK_TRIGGER_CRITERIA_DEFINED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "ROLLBACK_RECHECK_AUTOMATED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "OLD_ENTRYPOINT_RETIREMENT_APPROVAL_READY", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "ROLLBACK_RECORDING_COMPLETED", "BLOCKED", true);
+        assertSwitchCheck(readiness, "ROLLBACK_WINDOW_READY", "BLOCKED", true);
+        assertThat(readiness.at("/data/replacementDecision/canRetireIndependentCoreEntrypoints").asBoolean()).isFalse();
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void exposesEntrypointSwitchPrecheckWithoutChangingFrontend() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-entrypoint-switch-precheck"));
+
+        assertThat(readiness.at("/data/entrypointSwitchPrecheckStatus").asText()).isEqualTo("BLOCKED");
+        assertPrecheck(readiness, "/data/entrypointSwitchPrecheckChecks", "BUSINESS_PATHS_REMAIN_UNCHANGED", "PASS", true);
+        assertPrecheck(readiness, "/data/entrypointSwitchPrecheckChecks", "CANDIDATE_BASE_URL_DOCUMENTED", "PASS", true);
+        assertPrecheck(readiness, "/data/entrypointSwitchPrecheckChecks", "FRONTEND_NOT_MODIFIED_IN_THIS_ROUND", "PASS", true);
+        assertPrecheck(readiness, "/data/entrypointSwitchPrecheckChecks", "PROXY_SWITCH_SCOPE_DOCUMENTED", "PASS", true);
+        assertPrecheck(readiness, "/data/entrypointSwitchPrecheckChecks", "SWITCH_REQUIRES_ROLLBACK_WINDOW", "PASS", true);
+        assertPrecheck(readiness, "/data/entrypointSwitchPrecheckChecks", "FRONTEND_ENTRYPOINT_SWITCH_IMPLEMENTED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/entrypointSwitchPrecheckChecks", "EXTERNAL_PROXY_SWITCH_IMPLEMENTED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/entrypointSwitchPrecheckChecks", "PRODUCTION_TRAFFIC_CANARY_DEFINED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/entrypointSwitchPrecheckChecks", "ENTRYPOINT_SWITCH_TESTS_AUTOMATED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/entrypointSwitchPrecheckChecks", "SWITCH_AUDIT_RECORDING_READY", "BLOCKED", true);
+        assertSwitchCheck(readiness, "FRONTEND_ENTRYPOINT_SWITCH_READY", "BLOCKED", true);
+        assertThat(readiness.at("/data/entrypointSwitchPrecheckChecks").toString()).doesNotContain("/api/v1/unified-backend/auth");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
     void runsUnifiedBackendHttpSmokeWithoutHidingDegradedTargets() throws Exception {
         JsonNode smoke = performJson(post("/api/v1/unified-backend/admin/http-smoke/run")
                 .header("Authorization", "Bearer admin-token")
@@ -375,6 +467,14 @@ class UnifiedBackendApiContractTest {
 
     private void assertPersistentAuditCheck(JsonNode response, String check, String status, boolean requiredForReplacement) {
         String checks = response.at("/data/persistentAuditPrecheckChecks").toString();
+        assertThat(checks)
+                .contains("\"check\":\"" + check + "\"")
+                .contains("\"status\":\"" + status + "\"")
+                .contains("\"requiredForReplacement\":" + requiredForReplacement);
+    }
+
+    private void assertPrecheck(JsonNode response, String path, String check, String status, boolean requiredForReplacement) {
+        String checks = response.at(path).toString();
         assertThat(checks)
                 .contains("\"check\":\"" + check + "\"")
                 .contains("\"status\":\"" + status + "\"")
