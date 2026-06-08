@@ -45,7 +45,7 @@ class UnifiedBackendApiContractTest {
         addRange(mapped, "UBACK-AUTH", 1, 2);
         addRange(mapped, "UBACK-MOUNT", 1, 22);
         addRange(mapped, "UBACK-GATE", 1, 1);
-        addRange(mapped, "UBACK-READY", 1, 15);
+        addRange(mapped, "UBACK-READY", 1, 16);
         addRange(mapped, "UBACK-SMOKE", 1, 1);
         addRange(mapped, "UBACK-HTTP", 1, 1);
         addRange(mapped, "UBACK-DRIFT", 1, 1);
@@ -72,13 +72,14 @@ class UnifiedBackendApiContractTest {
                 "UBACK-READY-013",
                 "UBACK-READY-014",
                 "UBACK-READY-015",
+                "UBACK-READY-016",
                 "UBACK-SMOKE-001",
                 "UBACK-HTTP-001",
                 "UBACK-DRIFT-001",
                 "UBACK-BOUNDARY-001",
                 "UBACK-REGRESS-001"
         );
-        assertThat(mapped).hasSize(46);
+        assertThat(mapped).hasSize(47);
     }
 
     @Test
@@ -360,13 +361,71 @@ class UnifiedBackendApiContractTest {
         assertPersistentAuditCheck(readiness, "AUDIT_WRITE_PATH_CONNECTED", "BLOCKED", true);
         assertPersistentAuditCheck(readiness, "AUDIT_REPLAY_PATH_CONNECTED", "BLOCKED", true);
         assertPersistentAuditCheck(readiness, "AUDIT_RETENTION_JOB_CONNECTED", "BLOCKED", true);
-        assertPersistentAuditCheck(readiness, "AUDIT_CONFIG_ROLLBACK_SOURCE_DEFINED", "BLOCKED", true);
+        assertPersistentAuditCheck(readiness, "AUDIT_CONFIG_ROLLBACK_SOURCE_DEFINED", "PASS", true);
         assertSwitchCheck(readiness, "PERSISTENT_AUDIT_READY", "BLOCKED", true);
         assertThat(readiness.at("/data/persistentAuditPrecheckChecks").toString())
                 .contains("\"check\":\"AUDIT_SINK_FIXED\"")
                 .contains("\"check\":\"PERSISTENT_AUDIT_SINK_CONNECTED\"")
                 .doesNotContain("C:\\Users\\")
                 .doesNotContain("Authorization");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void exposesPersistentAuditGovernanceEvidenceWithoutConnectingAuditSink() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-persistent-audit-governance-evidence"));
+
+        assertThat(readiness.at("/data/persistentAuditGovernancePrecheckStatus").asText()).isEqualTo("BLOCKED");
+        assertPrecheck(readiness, "/data/persistentAuditGovernancePrecheckChecks", "AUDIT_OWNERSHIP_DOCUMENTED", "PASS", true);
+        assertPrecheck(readiness, "/data/persistentAuditGovernancePrecheckChecks", "AUDIT_EVENT_SCHEMA_DOCUMENTED", "PASS", true);
+        assertPrecheck(readiness, "/data/persistentAuditGovernancePrecheckChecks", "AUDIT_REQUEST_ID_PRESERVED", "PASS", true);
+        assertPrecheck(readiness, "/data/persistentAuditGovernancePrecheckChecks", "AUDIT_RETENTION_WINDOW_DOCUMENTED", "PASS", true);
+        assertPrecheck(readiness, "/data/persistentAuditGovernancePrecheckChecks", "AUDIT_EXPORT_PATH_DOCUMENTED", "PASS", true);
+        assertPrecheck(readiness, "/data/persistentAuditGovernancePrecheckChecks", "AUDIT_REPLAY_SCOPE_DOCUMENTED", "PASS", true);
+        assertPrecheck(readiness, "/data/persistentAuditGovernancePrecheckChecks", "AUDIT_CONFIG_ROLLBACK_SOURCE_DEFINED", "PASS", true);
+        assertPrecheck(readiness, "/data/persistentAuditGovernancePrecheckChecks", "AUDIT_REDACTION_ENFORCED", "PASS", true);
+        assertPrecheck(readiness, "/data/persistentAuditGovernancePrecheckChecks", "NODE_DAEMON_AUDIT_BOUNDARY_PRESERVED", "PASS", true);
+        assertPrecheck(readiness, "/data/persistentAuditGovernancePrecheckChecks", "PERSISTENT_AUDIT_GOVERNANCE_EVIDENCE_RECORDED", "PASS", true);
+        assertPrecheck(readiness, "/data/persistentAuditGovernancePrecheckChecks", "PERSISTENT_AUDIT_SINK_CONNECTED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/persistentAuditGovernancePrecheckChecks", "AUDIT_WRITE_PATH_CONNECTED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/persistentAuditGovernancePrecheckChecks", "AUDIT_REPLAY_PATH_CONNECTED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/persistentAuditGovernancePrecheckChecks", "AUDIT_RETENTION_JOB_CONNECTED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/persistentAuditGovernancePrecheckChecks", "FRONTEND_ENTRYPOINT_SWITCH_IMPLEMENTED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/persistentAuditGovernancePrecheckChecks", "EXTERNAL_PROXY_SWITCH_IMPLEMENTED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/persistentAuditGovernancePrecheckChecks", "PRODUCTION_TRAFFIC_ENTRYPOINT_READY", "BLOCKED", true);
+
+        JsonNode evidence = readiness.at("/data/persistentAuditGovernanceEvidence");
+        assertThat(evidence.at("/governanceMode").asText()).isEqualTo("DOCUMENTED_NOT_CONNECTED");
+        assertThat(evidence.at("/candidateEntrypoint").asText()).isEqualTo("unified-backend:8135");
+        assertThat(evidence.at("/auditSinkStatus").asText()).isEqualTo("BLOCKED");
+        assertThat(evidence.at("/auditWritePathConnected").asBoolean()).isFalse();
+        assertThat(evidence.at("/auditReplayPathConnected").asBoolean()).isFalse();
+        assertThat(evidence.at("/auditRetentionJobConnected").asBoolean()).isFalse();
+        assertThat(evidence.at("/auditConfigRollbackSourceDefined").asBoolean()).isTrue();
+        assertThat(evidence.at("/requestIdPreserved").asBoolean()).isTrue();
+        assertThat(evidence.at("/eventSchemaDocumented").asBoolean()).isTrue();
+        assertThat(evidence.at("/retentionWindowDocumented").asBoolean()).isTrue();
+        assertThat(evidence.at("/exportPathDocumented").asBoolean()).isTrue();
+        assertThat(evidence.at("/replayScopeDocumented").asBoolean()).isTrue();
+        assertThat(evidence.at("/redactionEnforced").asBoolean()).isTrue();
+        assertThat(evidence.at("/trafficSwitchApplied").asBoolean()).isFalse();
+        assertThat(evidence.at("/frontendEntrypointSwitched").asBoolean()).isFalse();
+        assertThat(evidence.at("/externalProxySwitched").asBoolean()).isFalse();
+        assertThat(evidence.at("/nodeDaemonDisposition").asText()).isEqualTo("KEEP_EXTERNAL");
+        assertThat(evidence.at("/status").asText()).isEqualTo("GOVERNANCE_EVIDENCE_RECORDED_NOT_CONNECTED");
+        assertThat(readiness.at("/data/persistentAuditPrecheckStatus").asText()).isEqualTo("BLOCKED");
+        assertThat(readiness.at("/data/readyToReplaceGateway").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/replacementDecision/canReplaceGateway").asBoolean()).isFalse();
+        assertThat(readiness.toString())
+                .doesNotContain("auditWritePathConnected\":true")
+                .doesNotContain("auditReplayPathConnected\":true")
+                .doesNotContain("auditRetentionJobConnected\":true")
+                .doesNotContain("trafficSwitchApplied\":true")
+                .doesNotContain("frontendEntrypointSwitched\":true")
+                .doesNotContain("externalProxySwitched\":true")
+                .doesNotContain("node-daemon can be merged");
         assertNoSecrets(readiness);
     }
 
