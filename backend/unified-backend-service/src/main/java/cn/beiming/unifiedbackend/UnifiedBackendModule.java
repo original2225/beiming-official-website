@@ -114,6 +114,7 @@ class UnifiedBackendController {
                 "entrypointSwitchPrecheckStatus", "BLOCKED",
                 "entrypointSwitchPrecheckChecks", registry.entrypointSwitchPrecheckChecks(),
                 "entrypointSwitchEvidence", registry.entrypointSwitchEvidence(),
+                "productionTrafficCanaryEvidence", registry.productionTrafficCanaryEvidence(),
                 "replacementDecision", registry.replacementDecision(),
                 "generatedAt", now()
         ));
@@ -550,7 +551,7 @@ class UnifiedBackendRegistry {
                 switchCheck("SWITCH_REQUIRES_ROLLBACK_WINDOW", "PASS", "entrypoint switch still requires rollback window", true),
                 switchCheck("FRONTEND_ENTRYPOINT_SWITCH_IMPLEMENTED", "BLOCKED", "frontend entrypoint switch is not implemented", true),
                 switchCheck("EXTERNAL_PROXY_SWITCH_IMPLEMENTED", "BLOCKED", "external proxy switch is not implemented", true),
-                switchCheck("PRODUCTION_TRAFFIC_CANARY_DEFINED", "BLOCKED", "production traffic canary is not defined", true),
+                switchCheck("PRODUCTION_TRAFFIC_CANARY_DEFINED", "PASS", "production traffic canary plan is defined without applying traffic switch", true),
                 switchCheck("ENTRYPOINT_SWITCH_TESTS_AUTOMATED", "PASS", "entrypoint switch rehearsal is covered by automated readiness tests", true),
                 switchCheck("SWITCH_AUDIT_RECORDING_READY", "PASS", "switch audit recording is ready for rehearsal evidence", true)
         );
@@ -566,6 +567,30 @@ class UnifiedBackendRegistry {
                 "rollbackTarget", "api-gateway:8125",
                 "rehearsalStatus", "PASS",
                 "auditRecordingStatus", "READY_FOR_REHEARSAL"
+        );
+    }
+
+    Map<String, Object> productionTrafficCanaryEvidence() {
+        return map(
+                "strategy", "CANARY_WITH_PAUSE_AND_ROLLBACK",
+                "plannedWeights", List.of(0, 5, 25, 50, 100),
+                "initialWeightPercent", 0,
+                "currentProductionTrafficPercent", 0,
+                "candidateProductionTrafficPercent", 0,
+                "manualPromotionRequired", true,
+                "rollbackTarget", "api-gateway:8125",
+                "rollbackWindowMinimumHours", 24,
+                "trafficSwitchApplied", false,
+                "status", "PLAN_DEFINED_NOT_APPLIED",
+                "gates", List.of(
+                        "REAL_HTTP_REHEARSAL_PASSED",
+                        "ROUTE_DRIFT_SCAN_PASSED",
+                        "ROLLBACK_WINDOW_EVIDENCE_COMPLETED",
+                        "CURRENT_ENTRYPOINT_REGRESSION_PASSED",
+                        "BOUNDARY_SCAN_CLEAR",
+                        "FRONTEND_ENTRYPOINT_SWITCH_READY",
+                        "EXTERNAL_PROXY_SWITCH_READY"
+                )
         );
     }
 
