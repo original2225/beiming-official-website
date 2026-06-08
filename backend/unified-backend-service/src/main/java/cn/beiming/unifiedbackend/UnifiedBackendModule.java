@@ -107,6 +107,9 @@ class UnifiedBackendController {
                 "centralConfigGovernanceEvidence", registry.centralConfigGovernanceEvidence(),
                 "persistentAuditPrecheckStatus", "BLOCKED",
                 "persistentAuditPrecheckChecks", registry.persistentAuditPrecheckChecks(),
+                "persistentAuditGovernancePrecheckStatus", "BLOCKED",
+                "persistentAuditGovernancePrecheckChecks", registry.persistentAuditGovernancePrecheckChecks(),
+                "persistentAuditGovernanceEvidence", registry.persistentAuditGovernanceEvidence(),
                 "realHttpRehearsalPrecheckStatus", "BLOCKED",
                 "realHttpRehearsalPrecheckChecks", registry.realHttpRehearsalPrecheckChecks(),
                 "routeDriftPrecheckStatus", "PASS",
@@ -507,7 +510,52 @@ class UnifiedBackendRegistry {
                 switchCheck("AUDIT_WRITE_PATH_CONNECTED", "BLOCKED", "audit write path is not connected", true),
                 switchCheck("AUDIT_REPLAY_PATH_CONNECTED", "BLOCKED", "audit replay path is not connected", true),
                 switchCheck("AUDIT_RETENTION_JOB_CONNECTED", "BLOCKED", "audit retention job is not connected", true),
-                switchCheck("AUDIT_CONFIG_ROLLBACK_SOURCE_DEFINED", "BLOCKED", "audit config rollback source is not defined", true)
+                switchCheck("AUDIT_CONFIG_ROLLBACK_SOURCE_DEFINED", "PASS", "audit config rollback source remains the documented current entrypoint set", true)
+        );
+    }
+
+    List<Map<String, Object>> persistentAuditGovernancePrecheckChecks() {
+        return List.of(
+                switchCheck("AUDIT_OWNERSHIP_DOCUMENTED", "PASS", "audit ownership remains documented for the unified-backend candidate", true),
+                switchCheck("AUDIT_EVENT_SCHEMA_DOCUMENTED", "PASS", "audit event schema remains documented", true),
+                switchCheck("AUDIT_REQUEST_ID_PRESERVED", "PASS", "audit request id is preserved", true),
+                switchCheck("AUDIT_RETENTION_WINDOW_DOCUMENTED", "PASS", "audit retention window is documented", true),
+                switchCheck("AUDIT_EXPORT_PATH_DOCUMENTED", "PASS", "audit export path is documented", true),
+                switchCheck("AUDIT_REPLAY_SCOPE_DOCUMENTED", "PASS", "audit replay scope is documented", true),
+                switchCheck("AUDIT_CONFIG_ROLLBACK_SOURCE_DEFINED", "PASS", "audit config rollback source remains the documented current entrypoint set", true),
+                switchCheck("AUDIT_REDACTION_ENFORCED", "PASS", "readiness audit evidence is covered by redaction assertions", true),
+                switchCheck("NODE_DAEMON_AUDIT_BOUNDARY_PRESERVED", "PASS", "node-daemon audit boundary remains outside unified-backend candidate", true),
+                switchCheck("PERSISTENT_AUDIT_GOVERNANCE_EVIDENCE_RECORDED", "PASS", "persistent audit governance evidence is recorded without production connection", true),
+                switchCheck("PERSISTENT_AUDIT_SINK_CONNECTED", "BLOCKED", "persistent audit sink is not connected", true),
+                switchCheck("AUDIT_WRITE_PATH_CONNECTED", "BLOCKED", "audit write path is not connected", true),
+                switchCheck("AUDIT_REPLAY_PATH_CONNECTED", "BLOCKED", "audit replay path is not connected", true),
+                switchCheck("AUDIT_RETENTION_JOB_CONNECTED", "BLOCKED", "audit retention job is not connected", true),
+                switchCheck("FRONTEND_ENTRYPOINT_SWITCH_IMPLEMENTED", "BLOCKED", "frontend entrypoint is not switched to unified-backend", true),
+                switchCheck("EXTERNAL_PROXY_SWITCH_IMPLEMENTED", "BLOCKED", "external proxy target is not switched to unified-backend", true),
+                switchCheck("PRODUCTION_TRAFFIC_ENTRYPOINT_READY", "BLOCKED", "production traffic entrypoint is not switched to unified-backend", true)
+        );
+    }
+
+    Map<String, Object> persistentAuditGovernanceEvidence() {
+        return map(
+                "governanceMode", "DOCUMENTED_NOT_CONNECTED",
+                "candidateEntrypoint", "unified-backend:8135",
+                "auditSinkStatus", "BLOCKED",
+                "auditWritePathConnected", false,
+                "auditReplayPathConnected", false,
+                "auditRetentionJobConnected", false,
+                "auditConfigRollbackSourceDefined", true,
+                "requestIdPreserved", true,
+                "eventSchemaDocumented", true,
+                "retentionWindowDocumented", true,
+                "exportPathDocumented", true,
+                "replayScopeDocumented", true,
+                "redactionEnforced", true,
+                "trafficSwitchApplied", false,
+                "frontendEntrypointSwitched", false,
+                "externalProxySwitched", false,
+                "nodeDaemonDisposition", "KEEP_EXTERNAL",
+                "status", "GOVERNANCE_EVIDENCE_RECORDED_NOT_CONNECTED"
         );
     }
 
