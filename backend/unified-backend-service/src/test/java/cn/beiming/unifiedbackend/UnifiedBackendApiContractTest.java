@@ -47,6 +47,8 @@ class UnifiedBackendApiContractTest {
         addRange(mapped, "UBACK-GATE", 1, 1);
         addRange(mapped, "UBACK-READY", 1, 8);
         addRange(mapped, "UBACK-SMOKE", 1, 1);
+        addRange(mapped, "UBACK-HTTP", 1, 1);
+        addRange(mapped, "UBACK-DRIFT", 1, 1);
         addRange(mapped, "UBACK-BOUNDARY", 1, 1);
         addRange(mapped, "UBACK-REGRESS", 1, 1);
 
@@ -64,10 +66,12 @@ class UnifiedBackendApiContractTest {
                 "UBACK-READY-007",
                 "UBACK-READY-008",
                 "UBACK-SMOKE-001",
+                "UBACK-HTTP-001",
+                "UBACK-DRIFT-001",
                 "UBACK-BOUNDARY-001",
                 "UBACK-REGRESS-001"
         );
-        assertThat(mapped).hasSize(37);
+        assertThat(mapped).hasSize(39);
     }
 
     @Test
@@ -311,9 +315,9 @@ class UnifiedBackendApiContractTest {
         assertPrecheck(readiness, "/data/realHttpRehearsalPrecheckChecks", "AUTH_FAILURE_PATH_INCLUDED", "PASS", true);
         assertPrecheck(readiness, "/data/realHttpRehearsalPrecheckChecks", "NODE_DAEMON_EXCLUDED_FROM_REHEARSAL", "PASS", true);
         assertPrecheck(readiness, "/data/realHttpRehearsalPrecheckChecks", "SMOKE_RESULT_REDACTION_FIXED", "PASS", true);
-        assertPrecheck(readiness, "/data/realHttpRehearsalPrecheckChecks", "CANDIDATE_PROCESS_STARTED_FOR_REHEARSAL", "BLOCKED", true);
-        assertPrecheck(readiness, "/data/realHttpRehearsalPrecheckChecks", "ALL_REAL_HTTP_TARGETS_PASSED", "BLOCKED", true);
-        assertPrecheck(readiness, "/data/realHttpRehearsalPrecheckChecks", "REHEARSAL_RESULT_RECORDED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/realHttpRehearsalPrecheckChecks", "CANDIDATE_PROCESS_STARTED_FOR_REHEARSAL", "PASS", true);
+        assertPrecheck(readiness, "/data/realHttpRehearsalPrecheckChecks", "ALL_REAL_HTTP_TARGETS_PASSED", "PASS", true);
+        assertPrecheck(readiness, "/data/realHttpRehearsalPrecheckChecks", "REHEARSAL_RESULT_RECORDED", "PASS", true);
         assertPrecheck(readiness, "/data/realHttpRehearsalPrecheckChecks", "REHEARSAL_RUNBOOK_DEFINED", "BLOCKED", true);
         assertPrecheck(readiness, "/data/realHttpRehearsalPrecheckChecks", "REHEARSAL_ROLLBACK_RECHECKED", "BLOCKED", true);
         assertSwitchCheck(readiness, "REAL_HTTP_SMOKE_REHEARSAL_READY", "BLOCKED", true);
@@ -328,17 +332,17 @@ class UnifiedBackendApiContractTest {
                 .header("Authorization", "Bearer owner-token")
                 .header("X-Request-Id", "req-route-drift-precheck"));
 
-        assertThat(readiness.at("/data/routeDriftPrecheckStatus").asText()).isEqualTo("BLOCKED");
+        assertThat(readiness.at("/data/routeDriftPrecheckStatus").asText()).isEqualTo("PASS");
         assertPrecheck(readiness, "/data/routeDriftPrecheckChecks", "CURRENT_GATEWAY_ROUTES_DOCUMENTED", "PASS", true);
         assertPrecheck(readiness, "/data/routeDriftPrecheckChecks", "UNIFIED_MOUNT_ROUTES_DOCUMENTED", "PASS", true);
         assertPrecheck(readiness, "/data/routeDriftPrecheckChecks", "ROUTE_PREFIX_PRESERVED", "PASS", true);
         assertPrecheck(readiness, "/data/routeDriftPrecheckChecks", "NODE_DAEMON_ROUTE_KEPT_EXTERNAL", "PASS", true);
         assertPrecheck(readiness, "/data/routeDriftPrecheckChecks", "NO_HTTP_UPSTREAM_FALLBACK_IN_CANDIDATE", "PASS", true);
-        assertPrecheck(readiness, "/data/routeDriftPrecheckChecks", "REAL_GATEWAY_TO_UNIFIED_DIFF_SCAN_AUTOMATED", "BLOCKED", true);
-        assertPrecheck(readiness, "/data/routeDriftPrecheckChecks", "AUTH_BEHAVIOR_DIFF_SCAN_AUTOMATED", "BLOCKED", true);
-        assertPrecheck(readiness, "/data/routeDriftPrecheckChecks", "ERROR_CODE_DIFF_SCAN_AUTOMATED", "BLOCKED", true);
-        assertPrecheck(readiness, "/data/routeDriftPrecheckChecks", "SENSITIVE_FIELD_DIFF_SCAN_AUTOMATED", "BLOCKED", true);
-        assertPrecheck(readiness, "/data/routeDriftPrecheckChecks", "DRIFT_SCAN_RESULT_RECORDED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/routeDriftPrecheckChecks", "REAL_GATEWAY_TO_UNIFIED_DIFF_SCAN_AUTOMATED", "PASS", true);
+        assertPrecheck(readiness, "/data/routeDriftPrecheckChecks", "AUTH_BEHAVIOR_DIFF_SCAN_AUTOMATED", "PASS", true);
+        assertPrecheck(readiness, "/data/routeDriftPrecheckChecks", "ERROR_CODE_DIFF_SCAN_AUTOMATED", "PASS", true);
+        assertPrecheck(readiness, "/data/routeDriftPrecheckChecks", "SENSITIVE_FIELD_DIFF_SCAN_AUTOMATED", "PASS", true);
+        assertPrecheck(readiness, "/data/routeDriftPrecheckChecks", "DRIFT_SCAN_RESULT_RECORDED", "PASS", true);
         assertThat(readiness.at("/data/routeDriftPrecheckChecks").toString()).doesNotContain("/api/v1/unified-backend/auth");
         assertNoSecrets(readiness);
     }
