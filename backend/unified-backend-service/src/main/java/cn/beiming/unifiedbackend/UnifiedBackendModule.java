@@ -104,6 +104,14 @@ class UnifiedBackendController {
                 "centralConfigPrecheckChecks", registry.centralConfigPrecheckChecks(),
                 "persistentAuditPrecheckStatus", "BLOCKED",
                 "persistentAuditPrecheckChecks", registry.persistentAuditPrecheckChecks(),
+                "realHttpRehearsalPrecheckStatus", "BLOCKED",
+                "realHttpRehearsalPrecheckChecks", registry.realHttpRehearsalPrecheckChecks(),
+                "routeDriftPrecheckStatus", "BLOCKED",
+                "routeDriftPrecheckChecks", registry.routeDriftPrecheckChecks(),
+                "rollbackWindowPrecheckStatus", "BLOCKED",
+                "rollbackWindowPrecheckChecks", registry.rollbackWindowPrecheckChecks(),
+                "entrypointSwitchPrecheckStatus", "BLOCKED",
+                "entrypointSwitchPrecheckChecks", registry.entrypointSwitchPrecheckChecks(),
                 "replacementDecision", registry.replacementDecision(),
                 "generatedAt", now()
         ));
@@ -437,6 +445,66 @@ class UnifiedBackendRegistry {
                 switchCheck("AUDIT_REPLAY_PATH_CONNECTED", "BLOCKED", "audit replay path is not connected", true),
                 switchCheck("AUDIT_RETENTION_JOB_CONNECTED", "BLOCKED", "audit retention job is not connected", true),
                 switchCheck("AUDIT_CONFIG_ROLLBACK_SOURCE_DEFINED", "BLOCKED", "audit config rollback source is not defined", true)
+        );
+    }
+
+    List<Map<String, Object>> realHttpRehearsalPrecheckChecks() {
+        return List.of(
+                switchCheck("CANDIDATE_HTTP_PORT_FIXED", "PASS", "candidate HTTP port remains fixed at 8135", true),
+                switchCheck("REAL_HTTP_TARGETS_DOCUMENTED", "PASS", "real HTTP rehearsal targets are documented", true),
+                switchCheck("AUTH_FAILURE_PATH_INCLUDED", "PASS", "auth failure path is included in rehearsal scope", true),
+                switchCheck("NODE_DAEMON_EXCLUDED_FROM_REHEARSAL", "PASS", "node-daemon remains outside unified rehearsal execution", true),
+                switchCheck("SMOKE_RESULT_REDACTION_FIXED", "PASS", "smoke result redaction fields are fixed", true),
+                switchCheck("CANDIDATE_PROCESS_STARTED_FOR_REHEARSAL", "BLOCKED", "candidate process has not been started for recorded real HTTP rehearsal", true),
+                switchCheck("ALL_REAL_HTTP_TARGETS_PASSED", "BLOCKED", "all real HTTP targets have not passed a recorded rehearsal", true),
+                switchCheck("REHEARSAL_RESULT_RECORDED", "BLOCKED", "real HTTP rehearsal result is not recorded yet", true),
+                switchCheck("REHEARSAL_RUNBOOK_DEFINED", "BLOCKED", "real HTTP rehearsal runbook is not defined yet", true),
+                switchCheck("REHEARSAL_ROLLBACK_RECHECKED", "BLOCKED", "rollback recheck after rehearsal is not verified yet", true)
+        );
+    }
+
+    List<Map<String, Object>> routeDriftPrecheckChecks() {
+        return List.of(
+                switchCheck("CURRENT_GATEWAY_ROUTES_DOCUMENTED", "PASS", "current gateway routes are documented", true),
+                switchCheck("UNIFIED_MOUNT_ROUTES_DOCUMENTED", "PASS", "unified mount routes are documented", true),
+                switchCheck("ROUTE_PREFIX_PRESERVED", "PASS", "candidate keeps existing business path prefixes", true),
+                switchCheck("NODE_DAEMON_ROUTE_KEPT_EXTERNAL", "PASS", "node-daemon route remains external", true),
+                switchCheck("NO_HTTP_UPSTREAM_FALLBACK_IN_CANDIDATE", "PASS", "candidate mount list has no HTTP fallback route", true),
+                switchCheck("REAL_GATEWAY_TO_UNIFIED_DIFF_SCAN_AUTOMATED", "BLOCKED", "real gateway to unified diff scan is not automated yet", true),
+                switchCheck("AUTH_BEHAVIOR_DIFF_SCAN_AUTOMATED", "BLOCKED", "auth behavior diff scan is not automated yet", true),
+                switchCheck("ERROR_CODE_DIFF_SCAN_AUTOMATED", "BLOCKED", "error code diff scan is not automated yet", true),
+                switchCheck("SENSITIVE_FIELD_DIFF_SCAN_AUTOMATED", "BLOCKED", "sensitive field diff scan is not automated yet", true),
+                switchCheck("DRIFT_SCAN_RESULT_RECORDED", "BLOCKED", "route drift scan result is not recorded yet", true)
+        );
+    }
+
+    List<Map<String, Object>> rollbackWindowPrecheckChecks() {
+        return List.of(
+                switchCheck("CURRENT_ENTRYPOINTS_STILL_PRESENT", "PASS", "current seven entrypoints remain present", true),
+                switchCheck("CURRENT_ENTRYPOINT_TESTS_STILL_REQUIRED", "PASS", "current entrypoint tests remain required", true),
+                switchCheck("API_GATEWAY_ROLLBACK_TARGET_DOCUMENTED", "PASS", "api-gateway rollback target remains documented", true),
+                switchCheck("CORE_ENTRYPOINTS_ROLLBACK_TARGETS_DOCUMENTED", "PASS", "core rollback targets remain documented", true),
+                switchCheck("NODE_DAEMON_UNAFFECTED_BY_CANDIDATE", "PASS", "node-daemon external boundary is unaffected by candidate", true),
+                switchCheck("ROLLBACK_WINDOW_DURATION_DEFINED", "BLOCKED", "rollback window duration is not defined yet", true),
+                switchCheck("ROLLBACK_TRIGGER_CRITERIA_DEFINED", "BLOCKED", "rollback trigger criteria are not defined yet", true),
+                switchCheck("ROLLBACK_RECHECK_AUTOMATED", "BLOCKED", "rollback recheck is not automated yet", true),
+                switchCheck("OLD_ENTRYPOINT_RETIREMENT_APPROVAL_READY", "BLOCKED", "old entrypoint retirement approval is not ready", true),
+                switchCheck("ROLLBACK_RECORDING_COMPLETED", "BLOCKED", "rollback recording is not completed yet", true)
+        );
+    }
+
+    List<Map<String, Object>> entrypointSwitchPrecheckChecks() {
+        return List.of(
+                switchCheck("BUSINESS_PATHS_REMAIN_UNCHANGED", "PASS", "business paths remain unchanged", true),
+                switchCheck("CANDIDATE_BASE_URL_DOCUMENTED", "PASS", "candidate base URL target is documented as port 8135", true),
+                switchCheck("FRONTEND_NOT_MODIFIED_IN_THIS_ROUND", "PASS", "frontend is not modified in this round", true),
+                switchCheck("PROXY_SWITCH_SCOPE_DOCUMENTED", "PASS", "proxy switch scope is documented", true),
+                switchCheck("SWITCH_REQUIRES_ROLLBACK_WINDOW", "PASS", "entrypoint switch still requires rollback window", true),
+                switchCheck("FRONTEND_ENTRYPOINT_SWITCH_IMPLEMENTED", "BLOCKED", "frontend entrypoint switch is not implemented", true),
+                switchCheck("EXTERNAL_PROXY_SWITCH_IMPLEMENTED", "BLOCKED", "external proxy switch is not implemented", true),
+                switchCheck("PRODUCTION_TRAFFIC_CANARY_DEFINED", "BLOCKED", "production traffic canary is not defined", true),
+                switchCheck("ENTRYPOINT_SWITCH_TESTS_AUTOMATED", "BLOCKED", "entrypoint switch tests are not automated yet", true),
+                switchCheck("SWITCH_AUDIT_RECORDING_READY", "BLOCKED", "switch audit recording is not ready", true)
         );
     }
 
