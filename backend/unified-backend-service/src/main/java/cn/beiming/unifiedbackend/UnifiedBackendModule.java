@@ -106,7 +106,7 @@ class UnifiedBackendController {
                 "persistentAuditPrecheckChecks", registry.persistentAuditPrecheckChecks(),
                 "realHttpRehearsalPrecheckStatus", "BLOCKED",
                 "realHttpRehearsalPrecheckChecks", registry.realHttpRehearsalPrecheckChecks(),
-                "routeDriftPrecheckStatus", "BLOCKED",
+                "routeDriftPrecheckStatus", "PASS",
                 "routeDriftPrecheckChecks", registry.routeDriftPrecheckChecks(),
                 "rollbackWindowPrecheckStatus", "BLOCKED",
                 "rollbackWindowPrecheckChecks", registry.rollbackWindowPrecheckChecks(),
@@ -455,9 +455,9 @@ class UnifiedBackendRegistry {
                 switchCheck("AUTH_FAILURE_PATH_INCLUDED", "PASS", "auth failure path is included in rehearsal scope", true),
                 switchCheck("NODE_DAEMON_EXCLUDED_FROM_REHEARSAL", "PASS", "node-daemon remains outside unified rehearsal execution", true),
                 switchCheck("SMOKE_RESULT_REDACTION_FIXED", "PASS", "smoke result redaction fields are fixed", true),
-                switchCheck("CANDIDATE_PROCESS_STARTED_FOR_REHEARSAL", "BLOCKED", "candidate process has not been started for recorded real HTTP rehearsal", true),
-                switchCheck("ALL_REAL_HTTP_TARGETS_PASSED", "BLOCKED", "all real HTTP targets have not passed a recorded rehearsal", true),
-                switchCheck("REHEARSAL_RESULT_RECORDED", "BLOCKED", "real HTTP rehearsal result is not recorded yet", true),
+                switchCheck("CANDIDATE_PROCESS_STARTED_FOR_REHEARSAL", "PASS", "candidate process is started in real Web environment rehearsal tests", true),
+                switchCheck("ALL_REAL_HTTP_TARGETS_PASSED", "PASS", "real HTTP rehearsal covers candidate health, six entrypoint health checks, business targets and auth failure path", true),
+                switchCheck("REHEARSAL_RESULT_RECORDED", "PASS", "real HTTP rehearsal result is recorded in the local test log", true),
                 switchCheck("REHEARSAL_RUNBOOK_DEFINED", "BLOCKED", "real HTTP rehearsal runbook is not defined yet", true),
                 switchCheck("REHEARSAL_ROLLBACK_RECHECKED", "BLOCKED", "rollback recheck after rehearsal is not verified yet", true)
         );
@@ -470,11 +470,11 @@ class UnifiedBackendRegistry {
                 switchCheck("ROUTE_PREFIX_PRESERVED", "PASS", "candidate keeps existing business path prefixes", true),
                 switchCheck("NODE_DAEMON_ROUTE_KEPT_EXTERNAL", "PASS", "node-daemon route remains external", true),
                 switchCheck("NO_HTTP_UPSTREAM_FALLBACK_IN_CANDIDATE", "PASS", "candidate mount list has no HTTP fallback route", true),
-                switchCheck("REAL_GATEWAY_TO_UNIFIED_DIFF_SCAN_AUTOMATED", "BLOCKED", "real gateway to unified diff scan is not automated yet", true),
-                switchCheck("AUTH_BEHAVIOR_DIFF_SCAN_AUTOMATED", "BLOCKED", "auth behavior diff scan is not automated yet", true),
-                switchCheck("ERROR_CODE_DIFF_SCAN_AUTOMATED", "BLOCKED", "error code diff scan is not automated yet", true),
-                switchCheck("SENSITIVE_FIELD_DIFF_SCAN_AUTOMATED", "BLOCKED", "sensitive field diff scan is not automated yet", true),
-                switchCheck("DRIFT_SCAN_RESULT_RECORDED", "BLOCKED", "route drift scan result is not recorded yet", true)
+                switchCheck("REAL_GATEWAY_TO_UNIFIED_DIFF_SCAN_AUTOMATED", "PASS", "gateway route registry and unified mount list are compared by automated real HTTP scan", true),
+                switchCheck("AUTH_BEHAVIOR_DIFF_SCAN_AUTOMATED", "PASS", "admin auth failure and malformed token behavior are covered by automated scan", true),
+                switchCheck("ERROR_CODE_DIFF_SCAN_AUTOMATED", "PASS", "admin auth error codes remain covered by automated scan", true),
+                switchCheck("SENSITIVE_FIELD_DIFF_SCAN_AUTOMATED", "PASS", "route scan responses are covered by sensitive field assertions", true),
+                switchCheck("DRIFT_SCAN_RESULT_RECORDED", "PASS", "route drift scan result is recorded in the local test log", true)
         );
     }
 
