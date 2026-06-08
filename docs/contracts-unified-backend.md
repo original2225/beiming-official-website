@@ -1,6 +1,6 @@
 # 北冥官网 unified-backend API 契约
 
-版本：0.8
+版本：0.9
 
 ## 文档定位
 
@@ -66,7 +66,7 @@
 
 `GET /api/v1/unified-backend/admin/readiness`
 
-成功响应 HTTP `200`。`data` 必须包含 `readyForProduction=false`、`readyToReplaceGateway=false`、`readyToRetireBusinessCore=false`、`readyToRetireAdmissionCore=false`、`readyToRetireEngagementCore=false`、`readyToRetireOpsCore=false`、`readyToRetirePortalCore=false`、`currentProductionEntrypointsTotal=7`、`candidateEntrypointsTotal=1`、`checks`、`lastHttpSmokeStatus`、`productionBlockers`、`productionSwitchReadinessStatus`、`productionSwitchChecks`、`centralConfigPrecheckStatus`、`centralConfigPrecheckChecks`、`persistentAuditPrecheckStatus`、`persistentAuditPrecheckChecks`、`replacementDecision` 和 `generatedAt`。
+成功响应 HTTP `200`。`data` 必须包含 `readyForProduction=false`、`readyToReplaceGateway=false`、`readyToRetireBusinessCore=false`、`readyToRetireAdmissionCore=false`、`readyToRetireEngagementCore=false`、`readyToRetireOpsCore=false`、`readyToRetirePortalCore=false`、`currentProductionEntrypointsTotal=7`、`candidateEntrypointsTotal=1`、`checks`、`lastHttpSmokeStatus`、`productionBlockers`、`productionSwitchReadinessStatus`、`productionSwitchChecks`、`centralConfigPrecheckStatus`、`centralConfigPrecheckChecks`、`persistentAuditPrecheckStatus`、`persistentAuditPrecheckChecks`、`realHttpRehearsalPrecheckStatus`、`realHttpRehearsalPrecheckChecks`、`routeDriftPrecheckStatus`、`routeDriftPrecheckChecks`、`rollbackWindowPrecheckStatus`、`rollbackWindowPrecheckChecks`、`entrypointSwitchPrecheckStatus`、`entrypointSwitchPrecheckChecks`、`replacementDecision` 和 `generatedAt`。
 
 本阶段即便所有测试通过，readiness 也不能声明可替换当前入口。`checks` 必须把 `api-gateway` 自有 API 挂载、`business-core` 自有 API 挂载、`admission-core` 自有 API 挂载、`engagement-core` 自有 API 挂载、`ops-core` 自有 API 挂载、`portal-core` 自有 API 挂载、第一批七个业务路由 in-process、第二批四个入服准入路由 in-process、第三批四个社区运营路由 in-process、第四批和第六期七个运维通知路由 in-process、第五批三个门户体验路由 in-process、旧入口保留、`node-daemon` 外部边界、路径前缀保留和响应格式保留列为通过或待验证项；动态服务发现未接入、集中配置未接入、生产审计未接入和真实生产流量演练未完成必须保留为阻塞。
 
@@ -75,6 +75,14 @@
 为避免后续切换单服务时配置漂移，readiness 必须额外暴露集中配置预检摘要。`centralConfigPrecheckStatus` 在本阶段固定为 `BLOCKED`。`centralConfigPrecheckChecks` 每项必须包含 `check`、`status`、`detail` 和 `requiredForReplacement`。其中 `CANDIDATE_PORT_FIXED`、`CURRENT_ENTRYPOINT_PORTS_DOCUMENTED`、`IN_PROCESS_ROUTE_REGISTRY_FIXED`、`NODE_DAEMON_EXTERNAL_PORT_DOCUMENTED` 和 `DANGEROUS_TEST_CONTROLS_DISABLED` 必须为 `PASS`；`CENTRAL_CONFIG_PROVIDER_CONNECTED`、`PRODUCTION_PROFILE_BOUND`、`SENSITIVE_CONFIG_SOURCE_EXTERNALIZED`、`CONFIG_DRIFT_SCAN_AUTOMATED` 和 `CONFIG_ROLLBACK_SOURCE_DEFINED` 必须为 `BLOCKED`。集中配置预检只判断候选入口是否具备进入生产配置治理的基础，不得读取或返回真实密钥、token、Cookie、内部签名明文、本地用户目录或完整环境变量。
 
 为避免后续切换单服务时审计链路漂移，readiness 必须额外暴露持久化审计预检摘要。`persistentAuditPrecheckStatus` 在本阶段固定为 `BLOCKED`。`persistentAuditPrecheckChecks` 每项必须包含 `check`、`status`、`detail` 和 `requiredForReplacement`。其中 `AUDIT_SINK_FIXED`、`AUDIT_REQUEST_ID_PRESERVED`、`AUDIT_EVENT_SCHEMA_FIXED`、`AUDIT_RETENTION_WINDOW_DOCUMENTED` 和 `AUDIT_BACKUP_EXPORT_PATH_DOCUMENTED` 必须为 `PASS`；`PERSISTENT_AUDIT_SINK_CONNECTED`、`AUDIT_WRITE_PATH_CONNECTED`、`AUDIT_REPLAY_PATH_CONNECTED`、`AUDIT_RETENTION_JOB_CONNECTED` 和 `AUDIT_CONFIG_ROLLBACK_SOURCE_DEFINED` 必须为 `BLOCKED`。持久化审计预检只判断候选入口是否具备稳定审计治理的前置条件，不得把模拟日志、内存队列、请求摘要或测试记录误报为真实持久化审计。
+
+为进入生产替换预演阶段，readiness 必须额外暴露真实 HTTP 演练预检摘要。`realHttpRehearsalPrecheckStatus` 在本阶段固定为 `BLOCKED`。`realHttpRehearsalPrecheckChecks` 每项必须包含 `check`、`status`、`detail` 和 `requiredForReplacement`。其中 `CANDIDATE_HTTP_PORT_FIXED`、`REAL_HTTP_TARGETS_DOCUMENTED`、`AUTH_FAILURE_PATH_INCLUDED`、`NODE_DAEMON_EXCLUDED_FROM_REHEARSAL` 和 `SMOKE_RESULT_REDACTION_FIXED` 必须为 `PASS`；`CANDIDATE_PROCESS_STARTED_FOR_REHEARSAL`、`ALL_REAL_HTTP_TARGETS_PASSED`、`REHEARSAL_RESULT_RECORDED`、`REHEARSAL_RUNBOOK_DEFINED` 和 `REHEARSAL_ROLLBACK_RECHECKED` 必须为 `BLOCKED`。真实 HTTP 演练预检不得因为 MockMvc、路由注册表或静态 smoke 目标存在就把 `REAL_HTTP_SMOKE_REHEARSAL_READY` 改为 `PASS`。
+
+为避免生产入口切换时出现路由漂移，readiness 必须额外暴露路由漂移预检摘要。`routeDriftPrecheckStatus` 在本阶段固定为 `BLOCKED`。`routeDriftPrecheckChecks` 每项必须包含 `check`、`status`、`detail` 和 `requiredForReplacement`。其中 `CURRENT_GATEWAY_ROUTES_DOCUMENTED`、`UNIFIED_MOUNT_ROUTES_DOCUMENTED`、`ROUTE_PREFIX_PRESERVED`、`NODE_DAEMON_ROUTE_KEPT_EXTERNAL` 和 `NO_HTTP_UPSTREAM_FALLBACK_IN_CANDIDATE` 必须为 `PASS`；`REAL_GATEWAY_TO_UNIFIED_DIFF_SCAN_AUTOMATED`、`AUTH_BEHAVIOR_DIFF_SCAN_AUTOMATED`、`ERROR_CODE_DIFF_SCAN_AUTOMATED`、`SENSITIVE_FIELD_DIFF_SCAN_AUTOMATED` 和 `DRIFT_SCAN_RESULT_RECORDED` 必须为 `BLOCKED`。路由漂移预检只判断切流前的对比门槛，不新增业务路径，不改写任何原路径前缀。
+
+为保留旧入口回退能力，readiness 必须额外暴露回滚窗口预检摘要。`rollbackWindowPrecheckStatus` 在本阶段固定为 `BLOCKED`。`rollbackWindowPrecheckChecks` 每项必须包含 `check`、`status`、`detail` 和 `requiredForReplacement`。其中 `CURRENT_ENTRYPOINTS_STILL_PRESENT`、`CURRENT_ENTRYPOINT_TESTS_STILL_REQUIRED`、`API_GATEWAY_ROLLBACK_TARGET_DOCUMENTED`、`CORE_ENTRYPOINTS_ROLLBACK_TARGETS_DOCUMENTED` 和 `NODE_DAEMON_UNAFFECTED_BY_CANDIDATE` 必须为 `PASS`；`ROLLBACK_WINDOW_DURATION_DEFINED`、`ROLLBACK_TRIGGER_CRITERIA_DEFINED`、`ROLLBACK_RECHECK_AUTOMATED`、`OLD_ENTRYPOINT_RETIREMENT_APPROVAL_READY` 和 `ROLLBACK_RECORDING_COMPLETED` 必须为 `BLOCKED`。回滚窗口预检不得把当前 7 个生产入口描述为可删除。
+
+为下一轮入口切换做准备，readiness 必须额外暴露入口切换开关画像。`entrypointSwitchPrecheckStatus` 在本阶段固定为 `BLOCKED`。`entrypointSwitchPrecheckChecks` 每项必须包含 `check`、`status`、`detail` 和 `requiredForReplacement`。其中 `BUSINESS_PATHS_REMAIN_UNCHANGED`、`CANDIDATE_BASE_URL_DOCUMENTED`、`FRONTEND_NOT_MODIFIED_IN_THIS_ROUND`、`PROXY_SWITCH_SCOPE_DOCUMENTED` 和 `SWITCH_REQUIRES_ROLLBACK_WINDOW` 必须为 `PASS`；`FRONTEND_ENTRYPOINT_SWITCH_IMPLEMENTED`、`EXTERNAL_PROXY_SWITCH_IMPLEMENTED`、`PRODUCTION_TRAFFIC_CANARY_DEFINED`、`ENTRYPOINT_SWITCH_TESTS_AUTOMATED` 和 `SWITCH_AUDIT_RECORDING_READY` 必须为 `BLOCKED`。入口切换开关画像只记录未来从 `8125` 切到 `8135` 的入口目标，不允许把业务路径改成 `/api/v1/unified-backend/<module>`。
 
 ## 候选 HTTP smoke
 
