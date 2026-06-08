@@ -133,6 +133,9 @@ class UnifiedBackendController {
                 "oldEntrypointRetirementPrecheckStatus", "BLOCKED",
                 "oldEntrypointRetirementPrecheckChecks", registry.oldEntrypointRetirementPrecheckChecks(),
                 "oldEntrypointRetirementEvidence", registry.oldEntrypointRetirementEvidence(),
+                "entrypointCutoverExecutionPrecheckStatus", "BLOCKED",
+                "entrypointCutoverExecutionPrecheckChecks", registry.entrypointCutoverExecutionPrecheckChecks(),
+                "entrypointCutoverExecutionEvidence", registry.entrypointCutoverExecutionEvidence(),
                 "replacementDecision", registry.replacementDecision(),
                 "generatedAt", now()
         ));
@@ -903,6 +906,55 @@ class UnifiedBackendRegistry {
                 "frontendEntrypointSwitched", false,
                 "externalProxySwitched", false,
                 "status", "RETIREMENT_APPROVAL_NOT_GRANTED"
+        );
+    }
+
+    List<Map<String, Object>> entrypointCutoverExecutionPrecheckChecks() {
+        return List.of(
+                switchCheck("BUSINESS_PATHS_REMAIN_UNCHANGED", "PASS", "business paths keep their existing /api/v1 prefixes", true),
+                switchCheck("FORBIDDEN_UNIFIED_BUSINESS_PREFIX_ABSENT", "PASS", "business paths are not rewritten under /api/v1/unified-backend/<module>", true),
+                switchCheck("REAL_HTTP_REHEARSAL_PASSED", "PASS", "real HTTP rehearsal passed for the candidate entrypoint", true),
+                switchCheck("ROUTE_DRIFT_SCAN_PASSED", "PASS", "gateway routes and unified mounts have no route drift", true),
+                switchCheck("LEGACY_ROLLBACK_ENTRYPOINTS_PROTECTED", "PASS", "api-gateway and five core entrypoints remain protected rollback targets", true),
+                switchCheck("ROLLBACK_RECHECK_PASSED", "PASS", "current backend Maven entrypoint regression remains in the cutover gate", true),
+                switchCheck("NODE_DAEMON_EXTERNAL_BOUNDARY", "PASS", "node-daemon remains the external node execution boundary", true),
+                switchCheck("FRONTEND_OR_PROXY_CONFIG_PRESENT", "BLOCKED", "repository does not contain frontend or proxy config to update", true),
+                switchCheck("FRONTEND_OR_PROXY_CONFIG_UPDATED", "BLOCKED", "frontend or proxy target is not updated to unified-backend in this repository", true),
+                switchCheck("TARGET_ENTRYPOINT_SET_TO_UNIFIED_BACKEND", "BLOCKED", "effective API base URL still points at the current gateway", true),
+                switchCheck("PRODUCTION_TRAFFIC_SWITCH_APPLIED", "BLOCKED", "production traffic is not switched to unified-backend", true),
+                switchCheck("OLD_ENTRYPOINT_RETIREMENT_APPROVED", "BLOCKED", "old entrypoint retirement is not approved", true),
+                switchCheck("CENTRAL_CONFIG_PROVIDER_CONNECTED", "BLOCKED", "centralized production configuration is not connected", true),
+                switchCheck("PERSISTENT_AUDIT_SINK_CONNECTED", "BLOCKED", "persistent production audit sink is not connected", true)
+        );
+    }
+
+    Map<String, Object> entrypointCutoverExecutionEvidence() {
+        return map(
+                "currentGatewayBaseUrl", "http://127.0.0.1:8125",
+                "candidateBaseUrl", "http://127.0.0.1:8135",
+                "effectiveApiBaseUrl", "http://127.0.0.1:8125",
+                "switchMode", "ENTRYPOINT_TARGET_ONLY",
+                "businessPathsRemainUnchanged", true,
+                "forbiddenPathPrefix", "/api/v1/unified-backend/<module>",
+                "frontendConfigPresent", false,
+                "proxyConfigPresent", false,
+                "repositoryCutoverConfigApplied", false,
+                "externalCutoverRequired", true,
+                "rollbackTarget", "http://127.0.0.1:8125",
+                "trafficSwitchApplied", false,
+                "oldEntrypointRetirementApproved", false,
+                "nodeDaemonDisposition", "KEEP_EXTERNAL",
+                "readyToReplaceGateway", false,
+                "readyForProduction", false,
+                "remainingBlockers", List.of(
+                        "FRONTEND_OR_PROXY_CONFIG_ABSENT",
+                        "TARGET_ENTRYPOINT_NOT_SET_TO_UNIFIED_BACKEND",
+                        "PRODUCTION_TRAFFIC_NOT_SWITCHED",
+                        "OLD_ENTRYPOINT_RETIREMENT_NOT_APPROVED",
+                        "CENTRAL_CONFIG_NOT_CONNECTED",
+                        "PERSISTENT_AUDIT_NOT_CONNECTED"
+                ),
+                "status", "CUTOVER_EXECUTION_BLOCKED_BY_EXTERNAL_ENTRYPOINT_CONFIG"
         );
     }
 

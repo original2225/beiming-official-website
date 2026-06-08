@@ -45,7 +45,7 @@ class UnifiedBackendApiContractTest {
         addRange(mapped, "UBACK-AUTH", 1, 2);
         addRange(mapped, "UBACK-MOUNT", 1, 22);
         addRange(mapped, "UBACK-GATE", 1, 1);
-        addRange(mapped, "UBACK-READY", 1, 17);
+        addRange(mapped, "UBACK-READY", 1, 18);
         addRange(mapped, "UBACK-SMOKE", 1, 1);
         addRange(mapped, "UBACK-HTTP", 1, 1);
         addRange(mapped, "UBACK-DRIFT", 1, 1);
@@ -74,13 +74,14 @@ class UnifiedBackendApiContractTest {
                 "UBACK-READY-015",
                 "UBACK-READY-016",
                 "UBACK-READY-017",
+                "UBACK-READY-018",
                 "UBACK-SMOKE-001",
                 "UBACK-HTTP-001",
                 "UBACK-DRIFT-001",
                 "UBACK-BOUNDARY-001",
                 "UBACK-REGRESS-001"
         );
-        assertThat(mapped).hasSize(48);
+        assertThat(mapped).hasSize(49);
     }
 
     @Test
@@ -819,6 +820,65 @@ class UnifiedBackendApiContractTest {
                 .doesNotContain("externalProxySwitched\":true")
                 .doesNotContain("trafficSwitchApplied\":true")
                 .doesNotContain("/api/v1/unified-backend/auth");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void exposesEntrypointCutoverExecutionEvidenceWithoutChangingBusinessPathsOrRetiringEntrypoints() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-entrypoint-cutover-execution-evidence"));
+
+        assertThat(readiness.at("/data/entrypointCutoverExecutionPrecheckStatus").asText()).isEqualTo("BLOCKED");
+        assertPrecheck(readiness, "/data/entrypointCutoverExecutionPrecheckChecks", "BUSINESS_PATHS_REMAIN_UNCHANGED", "PASS", true);
+        assertPrecheck(readiness, "/data/entrypointCutoverExecutionPrecheckChecks", "FORBIDDEN_UNIFIED_BUSINESS_PREFIX_ABSENT", "PASS", true);
+        assertPrecheck(readiness, "/data/entrypointCutoverExecutionPrecheckChecks", "REAL_HTTP_REHEARSAL_PASSED", "PASS", true);
+        assertPrecheck(readiness, "/data/entrypointCutoverExecutionPrecheckChecks", "ROUTE_DRIFT_SCAN_PASSED", "PASS", true);
+        assertPrecheck(readiness, "/data/entrypointCutoverExecutionPrecheckChecks", "LEGACY_ROLLBACK_ENTRYPOINTS_PROTECTED", "PASS", true);
+        assertPrecheck(readiness, "/data/entrypointCutoverExecutionPrecheckChecks", "ROLLBACK_RECHECK_PASSED", "PASS", true);
+        assertPrecheck(readiness, "/data/entrypointCutoverExecutionPrecheckChecks", "NODE_DAEMON_EXTERNAL_BOUNDARY", "PASS", true);
+        assertPrecheck(readiness, "/data/entrypointCutoverExecutionPrecheckChecks", "FRONTEND_OR_PROXY_CONFIG_PRESENT", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/entrypointCutoverExecutionPrecheckChecks", "FRONTEND_OR_PROXY_CONFIG_UPDATED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/entrypointCutoverExecutionPrecheckChecks", "TARGET_ENTRYPOINT_SET_TO_UNIFIED_BACKEND", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/entrypointCutoverExecutionPrecheckChecks", "PRODUCTION_TRAFFIC_SWITCH_APPLIED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/entrypointCutoverExecutionPrecheckChecks", "OLD_ENTRYPOINT_RETIREMENT_APPROVED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/entrypointCutoverExecutionPrecheckChecks", "CENTRAL_CONFIG_PROVIDER_CONNECTED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/entrypointCutoverExecutionPrecheckChecks", "PERSISTENT_AUDIT_SINK_CONNECTED", "BLOCKED", true);
+
+        JsonNode evidence = readiness.at("/data/entrypointCutoverExecutionEvidence");
+        assertThat(evidence.at("/currentGatewayBaseUrl").asText()).isEqualTo("http://127.0.0.1:8125");
+        assertThat(evidence.at("/candidateBaseUrl").asText()).isEqualTo("http://127.0.0.1:8135");
+        assertThat(evidence.at("/effectiveApiBaseUrl").asText()).isEqualTo("http://127.0.0.1:8125");
+        assertThat(evidence.at("/switchMode").asText()).isEqualTo("ENTRYPOINT_TARGET_ONLY");
+        assertThat(evidence.at("/businessPathsRemainUnchanged").asBoolean()).isTrue();
+        assertThat(evidence.at("/forbiddenPathPrefix").asText()).isEqualTo("/api/v1/unified-backend/<module>");
+        assertThat(evidence.at("/frontendConfigPresent").asBoolean()).isFalse();
+        assertThat(evidence.at("/proxyConfigPresent").asBoolean()).isFalse();
+        assertThat(evidence.at("/repositoryCutoverConfigApplied").asBoolean()).isFalse();
+        assertThat(evidence.at("/externalCutoverRequired").asBoolean()).isTrue();
+        assertThat(evidence.at("/rollbackTarget").asText()).isEqualTo("http://127.0.0.1:8125");
+        assertThat(evidence.at("/trafficSwitchApplied").asBoolean()).isFalse();
+        assertThat(evidence.at("/oldEntrypointRetirementApproved").asBoolean()).isFalse();
+        assertThat(evidence.at("/nodeDaemonDisposition").asText()).isEqualTo("KEEP_EXTERNAL");
+        assertThat(evidence.at("/readyToReplaceGateway").asBoolean()).isFalse();
+        assertThat(evidence.at("/readyForProduction").asBoolean()).isFalse();
+        assertThat(evidence.at("/remainingBlockers").toString())
+                .contains("FRONTEND_OR_PROXY_CONFIG_ABSENT")
+                .contains("TARGET_ENTRYPOINT_NOT_SET_TO_UNIFIED_BACKEND")
+                .contains("PRODUCTION_TRAFFIC_NOT_SWITCHED")
+                .contains("OLD_ENTRYPOINT_RETIREMENT_NOT_APPROVED")
+                .contains("CENTRAL_CONFIG_NOT_CONNECTED")
+                .contains("PERSISTENT_AUDIT_NOT_CONNECTED");
+        assertThat(evidence.at("/status").asText()).isEqualTo("CUTOVER_EXECUTION_BLOCKED_BY_EXTERNAL_ENTRYPOINT_CONFIG");
+        assertThat(readiness.at("/data/readyToReplaceGateway").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/replacementDecision/canReplaceGateway").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/readyForProduction").asBoolean()).isFalse();
+        assertThat(readiness.toString())
+                .doesNotContain("/api/v1/unified-backend/auth")
+                .doesNotContain("/api/v1/unified-backend/content")
+                .doesNotContain("/api/v1/unified-backend/ops-control")
+                .doesNotContain("trafficSwitchApplied\":true")
+                .doesNotContain("oldEntrypointRetirementApproved\":true");
         assertNoSecrets(readiness);
     }
 
