@@ -45,7 +45,7 @@ class UnifiedBackendApiContractTest {
         addRange(mapped, "UBACK-AUTH", 1, 2);
         addRange(mapped, "UBACK-MOUNT", 1, 22);
         addRange(mapped, "UBACK-GATE", 1, 1);
-        addRange(mapped, "UBACK-READY", 1, 14);
+        addRange(mapped, "UBACK-READY", 1, 15);
         addRange(mapped, "UBACK-SMOKE", 1, 1);
         addRange(mapped, "UBACK-HTTP", 1, 1);
         addRange(mapped, "UBACK-DRIFT", 1, 1);
@@ -71,13 +71,14 @@ class UnifiedBackendApiContractTest {
                 "UBACK-READY-012",
                 "UBACK-READY-013",
                 "UBACK-READY-014",
+                "UBACK-READY-015",
                 "UBACK-SMOKE-001",
                 "UBACK-HTTP-001",
                 "UBACK-DRIFT-001",
                 "UBACK-BOUNDARY-001",
                 "UBACK-REGRESS-001"
         );
-        assertThat(mapped).hasSize(45);
+        assertThat(mapped).hasSize(46);
     }
 
     @Test
@@ -274,12 +275,72 @@ class UnifiedBackendApiContractTest {
         assertCentralConfigCheck(readiness, "CENTRAL_CONFIG_PROVIDER_CONNECTED", "BLOCKED", true);
         assertCentralConfigCheck(readiness, "PRODUCTION_PROFILE_BOUND", "BLOCKED", true);
         assertCentralConfigCheck(readiness, "SENSITIVE_CONFIG_SOURCE_EXTERNALIZED", "BLOCKED", true);
-        assertCentralConfigCheck(readiness, "CONFIG_DRIFT_SCAN_AUTOMATED", "BLOCKED", true);
-        assertCentralConfigCheck(readiness, "CONFIG_ROLLBACK_SOURCE_DEFINED", "BLOCKED", true);
+        assertCentralConfigCheck(readiness, "CONFIG_DRIFT_SCAN_AUTOMATED", "PASS", true);
+        assertCentralConfigCheck(readiness, "CONFIG_ROLLBACK_SOURCE_DEFINED", "PASS", true);
         assertThat(readiness.at("/data/centralConfigPrecheckChecks").toString())
                 .contains("\"check\":\"CANDIDATE_PORT_FIXED\"")
                 .contains("\"check\":\"CENTRAL_CONFIG_PROVIDER_CONNECTED\"")
                 .doesNotContain("C:\\Users\\");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void exposesCentralConfigGovernanceEvidenceWithoutConnectingProductionConfig() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-central-config-governance-evidence"));
+
+        assertThat(readiness.at("/data/centralConfigGovernancePrecheckStatus").asText()).isEqualTo("BLOCKED");
+        assertPrecheck(readiness, "/data/centralConfigGovernancePrecheckChecks", "CONFIG_OWNERSHIP_DOCUMENTED", "PASS", true);
+        assertPrecheck(readiness, "/data/centralConfigGovernancePrecheckChecks", "ENTRYPOINT_PORTS_DOCUMENTED", "PASS", true);
+        assertPrecheck(readiness, "/data/centralConfigGovernancePrecheckChecks", "CANDIDATE_CONFIG_SURFACE_DOCUMENTED", "PASS", true);
+        assertPrecheck(readiness, "/data/centralConfigGovernancePrecheckChecks", "CONFIG_DRIFT_SCAN_AUTOMATED", "PASS", true);
+        assertPrecheck(readiness, "/data/centralConfigGovernancePrecheckChecks", "CONFIG_ROLLBACK_SOURCE_DEFINED", "PASS", true);
+        assertPrecheck(readiness, "/data/centralConfigGovernancePrecheckChecks", "SENSITIVE_VALUE_REDACTION_ENFORCED", "PASS", true);
+        assertPrecheck(readiness, "/data/centralConfigGovernancePrecheckChecks", "NODE_DAEMON_CONFIG_BOUNDARY_PRESERVED", "PASS", true);
+        assertPrecheck(readiness, "/data/centralConfigGovernancePrecheckChecks", "CONFIG_GOVERNANCE_EVIDENCE_RECORDED", "PASS", true);
+        assertPrecheck(readiness, "/data/centralConfigGovernancePrecheckChecks", "CENTRAL_CONFIG_PROVIDER_CONNECTED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/centralConfigGovernancePrecheckChecks", "PRODUCTION_PROFILE_BOUND", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/centralConfigGovernancePrecheckChecks", "SENSITIVE_CONFIG_SOURCE_EXTERNALIZED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/centralConfigGovernancePrecheckChecks", "FRONTEND_ENTRYPOINT_SWITCH_IMPLEMENTED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/centralConfigGovernancePrecheckChecks", "EXTERNAL_PROXY_SWITCH_IMPLEMENTED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/centralConfigGovernancePrecheckChecks", "PRODUCTION_TRAFFIC_ENTRYPOINT_READY", "BLOCKED", true);
+
+        JsonNode evidence = readiness.at("/data/centralConfigGovernanceEvidence");
+        assertThat(evidence.at("/governanceMode").asText()).isEqualTo("DOCUMENTED_NOT_CONNECTED");
+        assertThat(evidence.at("/candidateEntrypoint").asText()).isEqualTo("unified-backend:8135");
+        assertThat(evidence.at("/currentEntrypointPorts").toString())
+                .contains("api-gateway:8125")
+                .contains("business-core:8130")
+                .contains("admission-core:8131")
+                .contains("engagement-core:8132")
+                .contains("ops-core:8133")
+                .contains("portal-core:8134")
+                .contains("node-daemon:8117")
+                .contains("unified-backend:8135");
+        assertThat(evidence.at("/configProviderStatus").asText()).isEqualTo("BLOCKED");
+        assertThat(evidence.at("/productionProfileBound").asBoolean()).isFalse();
+        assertThat(evidence.at("/sensitiveValuesExternalized").asBoolean()).isFalse();
+        assertThat(evidence.at("/configDriftScanAutomated").asBoolean()).isTrue();
+        assertThat(evidence.at("/rollbackSourceDefined").asBoolean()).isTrue();
+        assertThat(evidence.at("/sensitiveValuesExposed").asBoolean()).isFalse();
+        assertThat(evidence.at("/environmentVariablesRead").asBoolean()).isFalse();
+        assertThat(evidence.at("/trafficSwitchApplied").asBoolean()).isFalse();
+        assertThat(evidence.at("/frontendEntrypointSwitched").asBoolean()).isFalse();
+        assertThat(evidence.at("/externalProxySwitched").asBoolean()).isFalse();
+        assertThat(evidence.at("/nodeDaemonDisposition").asText()).isEqualTo("KEEP_EXTERNAL");
+        assertThat(evidence.at("/status").asText()).isEqualTo("GOVERNANCE_EVIDENCE_RECORDED_NOT_CONNECTED");
+        assertThat(readiness.at("/data/centralConfigPrecheckStatus").asText()).isEqualTo("BLOCKED");
+        assertThat(readiness.at("/data/readyToReplaceGateway").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/replacementDecision/canReplaceGateway").asBoolean()).isFalse();
+        assertThat(readiness.toString())
+                .doesNotContain("productionProfileBound\":true")
+                .doesNotContain("sensitiveValuesExternalized\":true")
+                .doesNotContain("sensitiveValuesExposed\":true")
+                .doesNotContain("environmentVariablesRead\":true")
+                .doesNotContain("trafficSwitchApplied\":true")
+                .doesNotContain("frontendEntrypointSwitched\":true")
+                .doesNotContain("externalProxySwitched\":true");
         assertNoSecrets(readiness);
     }
 
