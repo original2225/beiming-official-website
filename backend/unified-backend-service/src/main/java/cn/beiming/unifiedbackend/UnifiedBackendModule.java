@@ -121,6 +121,9 @@ class UnifiedBackendController {
                 "entrypointCutoverAdapterPrecheckStatus", "BLOCKED",
                 "entrypointCutoverAdapterPrecheckChecks", registry.entrypointCutoverAdapterPrecheckChecks(),
                 "entrypointCutoverAdapterEvidence", registry.entrypointCutoverAdapterEvidence(),
+                "oldEntrypointRetirementPrecheckStatus", "BLOCKED",
+                "oldEntrypointRetirementPrecheckChecks", registry.oldEntrypointRetirementPrecheckChecks(),
+                "oldEntrypointRetirementEvidence", registry.oldEntrypointRetirementEvidence(),
                 "replacementDecision", registry.replacementDecision(),
                 "generatedAt", now()
         ));
@@ -686,6 +689,64 @@ class UnifiedBackendRegistry {
                 "frontendEntrypointSwitched", false,
                 "externalProxySwitched", false,
                 "status", "ADAPTER_EVIDENCE_RECORDED_NOT_APPLIED"
+        );
+    }
+
+    List<Map<String, Object>> oldEntrypointRetirementPrecheckChecks() {
+        return List.of(
+                switchCheck("RETIREMENT_SCOPE_DOCUMENTED", "PASS", "current production entrypoints and rollback targets are documented", true),
+                switchCheck("SEQUENTIAL_ENTRYPOINT_RETIREMENT_REQUIRED", "PASS", "old entrypoints require sequential approval and verification", true),
+                switchCheck("BULK_RETIREMENT_FORBIDDEN", "PASS", "bulk entrypoint retirement and bulk deletion remain forbidden", true),
+                switchCheck("CURRENT_ENTRYPOINT_REGRESSION_REQUIRED", "PASS", "current eight backend Maven entrypoints remain in the regression gate", true),
+                switchCheck("ROLLBACK_TARGETS_STILL_PROTECTED", "PASS", "api-gateway and five core entrypoints remain protected rollback targets", true),
+                switchCheck("NODE_DAEMON_EXTERNAL_BOUNDARY", "PASS", "node-daemon remains the external node execution boundary", true),
+                switchCheck("RETIREMENT_APPROVAL_EVIDENCE_RECORDED", "PASS", "old entrypoint retirement approval evidence is recorded without retiring entrypoints", true),
+                switchCheck("FRONTEND_ENTRYPOINT_SWITCH_IMPLEMENTED", "BLOCKED", "frontend entrypoint is not switched to unified-backend", true),
+                switchCheck("EXTERNAL_PROXY_SWITCH_IMPLEMENTED", "BLOCKED", "external proxy target is not switched to unified-backend", true),
+                switchCheck("PRODUCTION_TRAFFIC_ENTRYPOINT_READY", "BLOCKED", "production traffic is not switched to unified-backend", true),
+                switchCheck("API_GATEWAY_RETIREMENT_APPROVED", "BLOCKED", "api-gateway retirement is not approved", true),
+                switchCheck("CORE_ENTRYPOINT_RETIREMENT_APPROVED", "BLOCKED", "core entrypoint retirement is not approved", true),
+                switchCheck("CENTRAL_CONFIG_PROVIDER_CONNECTED", "BLOCKED", "centralized production configuration is not connected", true),
+                switchCheck("PERSISTENT_AUDIT_SINK_CONNECTED", "BLOCKED", "persistent production audit sink is not connected", true)
+        );
+    }
+
+    Map<String, Object> oldEntrypointRetirementEvidence() {
+        return map(
+                "retirementMode", "SEQUENTIAL_APPROVAL_ONLY",
+                "bulkRetirementAllowed", false,
+                "directoryDeletionAllowed", false,
+                "mavenRegressionRequired", true,
+                "nodeDaemonDisposition", "KEEP_EXTERNAL",
+                "retirementApprovalStatus", "BLOCKED",
+                "approvedEntrypoints", List.of(),
+                "currentProductionEntrypoints", List.of(
+                        "api-gateway:8125",
+                        "business-core:8130",
+                        "admission-core:8131",
+                        "engagement-core:8132",
+                        "ops-core:8133",
+                        "portal-core:8134",
+                        "node-daemon:8117"
+                ),
+                "protectedRollbackEntrypoints", List.of(
+                        "api-gateway:8125",
+                        "business-core:8130",
+                        "admission-core:8131",
+                        "engagement-core:8132",
+                        "ops-core:8133",
+                        "portal-core:8134"
+                ),
+                "blockedEntrypoints", List.of(
+                        "API_GATEWAY_RETIREMENT_APPROVAL_BLOCKED",
+                        "CORE_ENTRYPOINT_RETIREMENT_APPROVAL_BLOCKED",
+                        "PRODUCTION_TRAFFIC_ENTRYPOINT_BLOCKED"
+                ),
+                "nextEligibleEntrypoint", "NONE_UNTIL_TRAFFIC_SWITCH",
+                "trafficSwitchApplied", false,
+                "frontendEntrypointSwitched", false,
+                "externalProxySwitched", false,
+                "status", "RETIREMENT_APPROVAL_NOT_GRANTED"
         );
     }
 
