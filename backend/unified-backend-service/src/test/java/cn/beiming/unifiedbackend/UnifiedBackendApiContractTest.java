@@ -45,7 +45,7 @@ class UnifiedBackendApiContractTest {
         addRange(mapped, "UBACK-AUTH", 1, 2);
         addRange(mapped, "UBACK-MOUNT", 1, 22);
         addRange(mapped, "UBACK-GATE", 1, 1);
-        addRange(mapped, "UBACK-READY", 1, 13);
+        addRange(mapped, "UBACK-READY", 1, 14);
         addRange(mapped, "UBACK-SMOKE", 1, 1);
         addRange(mapped, "UBACK-HTTP", 1, 1);
         addRange(mapped, "UBACK-DRIFT", 1, 1);
@@ -70,13 +70,14 @@ class UnifiedBackendApiContractTest {
                 "UBACK-READY-011",
                 "UBACK-READY-012",
                 "UBACK-READY-013",
+                "UBACK-READY-014",
                 "UBACK-SMOKE-001",
                 "UBACK-HTTP-001",
                 "UBACK-DRIFT-001",
                 "UBACK-BOUNDARY-001",
                 "UBACK-REGRESS-001"
         );
-        assertThat(mapped).hasSize(44);
+        assertThat(mapped).hasSize(45);
     }
 
     @Test
@@ -630,6 +631,70 @@ class UnifiedBackendApiContractTest {
                 .doesNotContain("externalProxySwitched\":true")
                 .doesNotContain("trafficSwitchApplied\":true")
                 .doesNotContain("/api/v1/unified-backend/auth");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void exposesOldEntrypointRetirementApprovalEvidenceWithoutRetiringEntrypoints() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-old-entrypoint-retirement-evidence"));
+
+        assertThat(readiness.at("/data/oldEntrypointRetirementPrecheckStatus").asText()).isEqualTo("BLOCKED");
+        assertPrecheck(readiness, "/data/oldEntrypointRetirementPrecheckChecks", "RETIREMENT_SCOPE_DOCUMENTED", "PASS", true);
+        assertPrecheck(readiness, "/data/oldEntrypointRetirementPrecheckChecks", "SEQUENTIAL_ENTRYPOINT_RETIREMENT_REQUIRED", "PASS", true);
+        assertPrecheck(readiness, "/data/oldEntrypointRetirementPrecheckChecks", "BULK_RETIREMENT_FORBIDDEN", "PASS", true);
+        assertPrecheck(readiness, "/data/oldEntrypointRetirementPrecheckChecks", "CURRENT_ENTRYPOINT_REGRESSION_REQUIRED", "PASS", true);
+        assertPrecheck(readiness, "/data/oldEntrypointRetirementPrecheckChecks", "ROLLBACK_TARGETS_STILL_PROTECTED", "PASS", true);
+        assertPrecheck(readiness, "/data/oldEntrypointRetirementPrecheckChecks", "NODE_DAEMON_EXTERNAL_BOUNDARY", "PASS", true);
+        assertPrecheck(readiness, "/data/oldEntrypointRetirementPrecheckChecks", "RETIREMENT_APPROVAL_EVIDENCE_RECORDED", "PASS", true);
+        assertPrecheck(readiness, "/data/oldEntrypointRetirementPrecheckChecks", "FRONTEND_ENTRYPOINT_SWITCH_IMPLEMENTED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/oldEntrypointRetirementPrecheckChecks", "EXTERNAL_PROXY_SWITCH_IMPLEMENTED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/oldEntrypointRetirementPrecheckChecks", "PRODUCTION_TRAFFIC_ENTRYPOINT_READY", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/oldEntrypointRetirementPrecheckChecks", "API_GATEWAY_RETIREMENT_APPROVED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/oldEntrypointRetirementPrecheckChecks", "CORE_ENTRYPOINT_RETIREMENT_APPROVED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/oldEntrypointRetirementPrecheckChecks", "CENTRAL_CONFIG_PROVIDER_CONNECTED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/oldEntrypointRetirementPrecheckChecks", "PERSISTENT_AUDIT_SINK_CONNECTED", "BLOCKED", true);
+
+        JsonNode evidence = readiness.at("/data/oldEntrypointRetirementEvidence");
+        assertThat(evidence.at("/retirementMode").asText()).isEqualTo("SEQUENTIAL_APPROVAL_ONLY");
+        assertThat(evidence.at("/bulkRetirementAllowed").asBoolean()).isFalse();
+        assertThat(evidence.at("/directoryDeletionAllowed").asBoolean()).isFalse();
+        assertThat(evidence.at("/mavenRegressionRequired").asBoolean()).isTrue();
+        assertThat(evidence.at("/nodeDaemonDisposition").asText()).isEqualTo("KEEP_EXTERNAL");
+        assertThat(evidence.at("/retirementApprovalStatus").asText()).isEqualTo("BLOCKED");
+        assertThat(evidence.at("/approvedEntrypoints").size()).isEqualTo(0);
+        assertThat(evidence.at("/currentProductionEntrypoints").toString())
+                .contains("api-gateway:8125")
+                .contains("business-core:8130")
+                .contains("admission-core:8131")
+                .contains("engagement-core:8132")
+                .contains("ops-core:8133")
+                .contains("portal-core:8134")
+                .contains("node-daemon:8117");
+        assertThat(evidence.at("/protectedRollbackEntrypoints").toString())
+                .contains("api-gateway:8125")
+                .contains("business-core:8130")
+                .contains("portal-core:8134")
+                .doesNotContain("node-daemon:8117");
+        assertThat(evidence.at("/blockedEntrypoints").toString())
+                .contains("API_GATEWAY_RETIREMENT_APPROVAL_BLOCKED")
+                .contains("CORE_ENTRYPOINT_RETIREMENT_APPROVAL_BLOCKED")
+                .contains("PRODUCTION_TRAFFIC_ENTRYPOINT_BLOCKED");
+        assertThat(evidence.at("/nextEligibleEntrypoint").asText()).isEqualTo("NONE_UNTIL_TRAFFIC_SWITCH");
+        assertThat(evidence.at("/trafficSwitchApplied").asBoolean()).isFalse();
+        assertThat(evidence.at("/frontendEntrypointSwitched").asBoolean()).isFalse();
+        assertThat(evidence.at("/externalProxySwitched").asBoolean()).isFalse();
+        assertThat(evidence.at("/status").asText()).isEqualTo("RETIREMENT_APPROVAL_NOT_GRANTED");
+        assertThat(readiness.at("/data/readyToReplaceGateway").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/replacementDecision/canRetireApiGateway").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/replacementDecision/canRetireIndependentCoreEntrypoints").asBoolean()).isFalse();
+        assertThat(readiness.toString())
+                .doesNotContain("retirementApprovalStatus\":\"APPROVED")
+                .doesNotContain("bulkRetirementAllowed\":true")
+                .doesNotContain("directoryDeletionAllowed\":true")
+                .doesNotContain("trafficSwitchApplied\":true")
+                .doesNotContain("node-daemon can be merged");
         assertNoSecrets(readiness);
     }
 
