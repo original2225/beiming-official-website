@@ -360,11 +360,11 @@ class UnifiedBackendApiContractTest {
         assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "API_GATEWAY_ROLLBACK_TARGET_DOCUMENTED", "PASS", true);
         assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "CORE_ENTRYPOINTS_ROLLBACK_TARGETS_DOCUMENTED", "PASS", true);
         assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "NODE_DAEMON_UNAFFECTED_BY_CANDIDATE", "PASS", true);
-        assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "ROLLBACK_WINDOW_DURATION_DEFINED", "BLOCKED", true);
-        assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "ROLLBACK_TRIGGER_CRITERIA_DEFINED", "BLOCKED", true);
-        assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "ROLLBACK_RECHECK_AUTOMATED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "ROLLBACK_WINDOW_DURATION_DEFINED", "PASS", true);
+        assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "ROLLBACK_TRIGGER_CRITERIA_DEFINED", "PASS", true);
+        assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "ROLLBACK_RECHECK_AUTOMATED", "PASS", true);
         assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "OLD_ENTRYPOINT_RETIREMENT_APPROVAL_READY", "BLOCKED", true);
-        assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "ROLLBACK_RECORDING_COMPLETED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "ROLLBACK_RECORDING_COMPLETED", "PASS", true);
         assertSwitchCheck(readiness, "ROLLBACK_WINDOW_READY", "BLOCKED", true);
         assertThat(readiness.at("/data/replacementDecision/canRetireIndependentCoreEntrypoints").asBoolean()).isFalse();
         assertNoSecrets(readiness);
