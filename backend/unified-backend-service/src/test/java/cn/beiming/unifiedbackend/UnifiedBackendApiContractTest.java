@@ -45,7 +45,7 @@ class UnifiedBackendApiContractTest {
         addRange(mapped, "UBACK-AUTH", 1, 2);
         addRange(mapped, "UBACK-MOUNT", 1, 22);
         addRange(mapped, "UBACK-GATE", 1, 1);
-        addRange(mapped, "UBACK-READY", 1, 8);
+        addRange(mapped, "UBACK-READY", 1, 9);
         addRange(mapped, "UBACK-SMOKE", 1, 1);
         addRange(mapped, "UBACK-HTTP", 1, 1);
         addRange(mapped, "UBACK-DRIFT", 1, 1);
@@ -65,13 +65,14 @@ class UnifiedBackendApiContractTest {
                 "UBACK-READY-006",
                 "UBACK-READY-007",
                 "UBACK-READY-008",
+                "UBACK-READY-009",
                 "UBACK-SMOKE-001",
                 "UBACK-HTTP-001",
                 "UBACK-DRIFT-001",
                 "UBACK-BOUNDARY-001",
                 "UBACK-REGRESS-001"
         );
-        assertThat(mapped).hasSize(39);
+        assertThat(mapped).hasSize(40);
     }
 
     @Test
@@ -365,6 +366,59 @@ class UnifiedBackendApiContractTest {
         assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "OLD_ENTRYPOINT_RETIREMENT_APPROVAL_READY", "BLOCKED", true);
         assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "ROLLBACK_RECORDING_COMPLETED", "BLOCKED", true);
         assertSwitchCheck(readiness, "ROLLBACK_WINDOW_READY", "BLOCKED", true);
+        assertThat(readiness.at("/data/replacementDecision/canRetireIndependentCoreEntrypoints").asBoolean()).isFalse();
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void exposesRollbackWindowEvidenceWithoutApprovingRetirement() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer admin-token")
+                .header("X-Request-Id", "req-rollback-window-evidence"));
+
+        assertThat(readiness.at("/data/rollbackWindowPrecheckStatus").asText()).isEqualTo("BLOCKED");
+        assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "ROLLBACK_WINDOW_DURATION_DEFINED", "PASS", true);
+        assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "ROLLBACK_TRIGGER_CRITERIA_DEFINED", "PASS", true);
+        assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "ROLLBACK_RECHECK_AUTOMATED", "PASS", true);
+        assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "ROLLBACK_RECORDING_COMPLETED", "PASS", true);
+        assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "OLD_ENTRYPOINT_RETIREMENT_APPROVAL_READY", "BLOCKED", true);
+        assertSwitchCheck(readiness, "ROLLBACK_WINDOW_READY", "BLOCKED", true);
+
+        JsonNode evidence = readiness.at("/data/rollbackWindowEvidence");
+        assertThat(evidence.at("/windowDuration/status").asText()).isEqualTo("DEFINED");
+        assertThat(evidence.at("/windowDuration/minimumHours").asInt()).isEqualTo(24);
+        assertThat(evidence.at("/triggerCriteria/items").toString())
+                .contains("REAL_HTTP_REHEARSAL_FAILURE")
+                .contains("ROUTE_DRIFT_DETECTED")
+                .contains("AUTH_ERROR_CODE_DRIFT")
+                .contains("CURRENT_ENTRYPOINT_REGRESSION_FAILURE")
+                .contains("BOUNDARY_SCAN_MATCH")
+                .contains("NODE_DAEMON_BOUNDARY_CHANGED");
+        assertThat(evidence.at("/recheckAutomation/commands").toString())
+                .contains("mvn -q -f backend/unified-backend-service/pom.xml test")
+                .contains("backend/node-daemon-service/pom.xml")
+                .contains("git diff --check")
+                .contains("rg -n");
+        assertThat(evidence.at("/rollbackTargets").toString())
+                .contains("\"entrypoint\":\"api-gateway\"")
+                .contains("\"port\":8125")
+                .contains("\"entrypoint\":\"business-core\"")
+                .contains("\"port\":8130")
+                .contains("\"entrypoint\":\"admission-core\"")
+                .contains("\"port\":8131")
+                .contains("\"entrypoint\":\"engagement-core\"")
+                .contains("\"port\":8132")
+                .contains("\"entrypoint\":\"ops-core\"")
+                .contains("\"port\":8133")
+                .contains("\"entrypoint\":\"portal-core\"")
+                .contains("\"port\":8134")
+                .contains("\"entrypoint\":\"unified-backend\"")
+                .contains("\"port\":8135")
+                .contains("\"entrypoint\":\"node-daemon\"")
+                .contains("\"port\":8117")
+                .contains("\"disposition\":\"KEEP_EXTERNAL\"");
+        assertThat(evidence.at("/recordingStatus").asText()).isEqualTo("COMPLETED");
+        assertThat(evidence.at("/retirementApprovalStatus").asText()).isEqualTo("BLOCKED");
         assertThat(readiness.at("/data/replacementDecision/canRetireIndependentCoreEntrypoints").asBoolean()).isFalse();
         assertNoSecrets(readiness);
     }
