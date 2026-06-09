@@ -71,7 +71,7 @@
 
 `plugin-integration` 是插件事件来源方。`cross-platform-notification` 可以保存插件事件通知摘要和模拟投递结果，不能修改插件 provider、事件、路由规则、同步任务或对象映射。plugin-integration 不可用返回 `47140`，超时返回 `47141`，schema 不兼容返回 `47142`。
 
-其他业务来源模块包括 `ops-control`、`node-daemon`、`community`、`activity`、`calendar`、`changelog`、`whitelist`、`attendance`、`resource` 和 `server-status`。本服务只能保存来源模块传入或正式 API 返回的安全摘要。来源模块不可用返回 `47160`，超时返回 `47161`，schema 不兼容返回 `47162`。`node-daemon` 只能作为来源摘要出现，本服务不得直连节点，不得执行命令。
+其他业务来源模块包括 `ops-control`、`external-node-executor`、`community`、`activity`、`calendar`、`changelog`、`whitelist`、`attendance`、`resource` 和 `server-status`。本服务只能保存来源模块传入或正式 API 返回的安全摘要。来源模块不可用返回 `47160`，超时返回 `47161`，schema 不兼容返回 `47162`。`external-node-executor` 只能作为来源摘要出现，本服务不得直连节点，不得执行命令。
 
 ## 枚举
 
@@ -89,7 +89,7 @@
 | `ExternalDependencyStatus` | `AVAILABLE`、`UNAVAILABLE`、`TIMEOUT`、`BAD_SCHEMA`、`STALE`、`SKIPPED` | 依赖摘要状态。 |
 | `ExternalNotificationAuditResult` | `SUCCESS`、`FAILED` | 审计结果。 |
 
-`sourceModule` 使用模块英文名，例如 `notification`、`alerting`、`plugin-integration`、`ops-control`、`community`、`activity`、`calendar`、`changelog`、`whitelist`、`attendance`、`resource`、`server-status` 和 `custom`。第一版不允许浏览器伪装为 `auth`、`node-daemon` 或内部系统用户。浏览器传入未列入本契约的来源模块、`auth`、`node-daemon` 或以 `internal`、`system` 开头的来源模块时必须返回 `40001`，不得创建投递、路由、模板映射或审计记录。`sourceModule=alerting` 可以由后台接口或同进程受控适配器创建，但必须继续执行 provider、模板、路由、receiver、payload 白名单、幂等和审计校验。
+`sourceModule` 使用模块英文名，例如 `notification`、`alerting`、`plugin-integration`、`ops-control`、`community`、`activity`、`calendar`、`changelog`、`whitelist`、`attendance`、`resource`、`server-status` 和 `custom`。第一版不允许浏览器伪装为 `auth`、`external-node-executor` 或内部系统用户。浏览器传入未列入本契约的来源模块、`auth`、`external-node-executor` 或以 `internal`、`system` 开头的来源模块时必须返回 `40001`，不得创建投递、路由、模板映射或审计记录。`sourceModule=alerting` 可以由后台接口或同进程受控适配器创建，但必须继续执行 provider、模板、路由、receiver、payload 白名单、幂等和审计校验。
 
 ## 通用对象
 
@@ -454,4 +454,4 @@ receiver 摘要必须按类型脱敏。邮箱最多显示域名和首尾字符�
 
 `cross-platform-notification` API 文档必须按 `docs/contracts-cross-platform-notification.md` 独立存在，并由 `.local-docs/tests-cross-platform-notification.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、能力点不足、高风险确认缺失、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求、敏感字段脱敏、测试控制头默认关闭和模块验收口径。
 
-`cross-platform-notification` 完成时必须满足以下条件：当前运行入口为 `ops-core-service:8133`，历史端口 `8123` 只作为 `legacyPort` 返回；健康检查公开且不泄露敏感信息；后台接口按角色和能力点限制；provider、渠道能力、模板映射、路由策略、投递请求、投递尝试、receiver 摘要、审计、幂等、状态流转、依赖降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；自动化测试必须先红灯；实现后在 `ops-core-service` 中全量测试通过；当前后端运行入口回归通过；边界扫描无违规命中；不修改前序服务稳定接口；不直接读取前序服务数据库；不导入前序服务 Java package；不调用真实 `node-daemon`；不执行真实外部通知发送；不保存真实外部 token、完整 webhook、SMTP 密码、短信 token、机器人 token、设备 token、RCON 密码或完整请求头；不把站内通知主数据、告警规则、插件事件、社区工单、活动、日历、白名单、考勤、资源下载、运维任务、节点文件管理或终端能力塞进本服务；不得恢复 `backend/cross-platform-notification-service` 独立 Maven 入口。
+`cross-platform-notification` 完成时必须满足以下条件：当前运行入口为 `ops-core-service:8133`，历史端口 `8123` 只作为 `legacyPort` 返回；健康检查公开且不泄露敏感信息；后台接口按角色和能力点限制；provider、渠道能力、模板映射、路由策略、投递请求、投递尝试、receiver 摘要、审计、幂等、状态流转、依赖降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；自动化测试必须先红灯；实现后在 `ops-core-service` 中全量测试通过；当前后端运行入口回归通过；边界扫描无违规命中；不修改前序服务稳定接口；不直接读取前序服务数据库；不导入前序服务 Java package；不调用真实 `external-node-executor`；不执行真实外部通知发送；不保存真实外部 token、完整 webhook、SMTP 密码、短信 token、机器人 token、设备 token、RCON 密码或完整请求头；不把站内通知主数据、告警规则、插件事件、社区工单、活动、日历、白名单、考勤、资源下载、运维任务、节点文件管理或终端能力塞进本服务；不得恢复 `backend/cross-platform-notification-service` 独立 Maven 入口。

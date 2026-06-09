@@ -80,7 +80,7 @@ notification 需要消费的网关上下文字段如下。
 | `TemplateStatus` | `ENABLED`、`DISABLED` | 模板状态。禁用模板不可用于投递。 |
 | `NotificationAuditResult` | `SUCCESS`、`FAILED` | notification 审计执行结果。 |
 
-`sourceModule` 使用模块英文名，例如 `auth`、`profile`、`notification`、`content`、`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、`admin`、`ops-control`、`node-daemon`。P0 允许 `sourceModule` 为空，但后台创建通知时建议提供来源，便于后续追踪。
+`sourceModule` 使用模块英文名，例如 `auth`、`profile`、`notification`、`content`、`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、`admin`、`ops-control`、`external-node-executor`。P0 允许 `sourceModule` 为空，但后台创建通知时建议提供来源，便于后续追踪。
 
 ## 通用对象
 

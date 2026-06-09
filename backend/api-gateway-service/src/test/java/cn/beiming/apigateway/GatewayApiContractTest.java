@@ -79,15 +79,15 @@ class GatewayApiContractTest {
         addRange(mapped, "GATE-OCORE", 1, 10);
         addRange(mapped, "GATE-PCORE", 1, 11);
         addRange(mapped, "GATE-TOPOLOGY", 1, 12);
-        addRange(mapped, "GATE-UNIFIED", 1, 5);
+        addRange(mapped, "GATE-UNIFIED", 1, 6);
         addRange(mapped, "GATE-UP", 1, 20);
         addRange(mapped, "GATE-LOG", 1, 20);
         addRange(mapped, "GATE-PROXY", 1, 49);
         addRange(mapped, "GATE-CORS", 1, 10);
         addRange(mapped, "GATE-SEC", 1, 11);
 
-        assertThat(mapped).hasSize(251);
-        assertThat(mapped).contains("GATE-COM-001", "GATE-PFX-025", "GATE-BCORE-010", "GATE-ACORE-010", "GATE-ECORE-010", "GATE-OCORE-010", "GATE-PCORE-010", "GATE-PCORE-011", "GATE-TOPOLOGY-012", "GATE-UNIFIED-004", "GATE-UP-020", "GATE-PROXY-049", "GATE-SEC-011");
+        assertThat(mapped).hasSize(252);
+        assertThat(mapped).contains("GATE-COM-001", "GATE-PFX-025", "GATE-BCORE-010", "GATE-ACORE-010", "GATE-ECORE-010", "GATE-OCORE-010", "GATE-PCORE-010", "GATE-PCORE-011", "GATE-TOPOLOGY-012", "GATE-UNIFIED-004", "GATE-UNIFIED-006", "GATE-UP-020", "GATE-PROXY-049", "GATE-SEC-011");
     }
 
     @Test
@@ -224,7 +224,9 @@ class GatewayApiContractTest {
 
         JsonNode gateway = findByText(topology.at("/data/currentEntrypoints"), "entrypointKey", "api-gateway");
         assertThat(gateway.path("port").asInt()).isEqualTo(8125);
-        assertThat(gateway.path("mergeDisposition").asText()).isEqualTo("INGRESS_CANDIDATE");
+        assertThat(gateway.path("mergeDisposition").asText()).isEqualTo("ROLLBACK_ENTRYPOINT");
+        assertThat(gateway.path("rollbackEntrypointRole").asText()).isEqualTo("PROTECTED_ROLLBACK_ENTRYPOINT");
+        assertThat(gateway.path("retirementApprovalStatus").asText()).isEqualTo("BLOCKED");
         assertThat(gateway.path("routesTotal").asInt()).isEqualTo(0);
 
         Map<String, Integer> expectedCoreRouteCounts = Map.of(
@@ -244,13 +246,41 @@ class GatewayApiContractTest {
 
         JsonNode checks = topology.at("/data/mergePreparationChecks");
         assertCheck(checks, "ROUTE_PREFIX_PRESERVED", "PASS");
-        assertCheck(checks, "GATEWAY_AS_INGRESS_CANDIDATE", "PASS");
+        assertCheck(checks, "GATEWAY_AS_ROLLBACK_ENTRYPOINT", "PASS");
         assertCheck(checks, "CORE_ROUTES_GROUPED", "PASS");
         assertCheck(checks, "EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY", "PASS");
         assertCheck(checks, "LEGACY_ENTRYPOINTS_NOT_RESTORED", "PASS");
         assertCheck(checks, "STATIC_SERVICE_DISCOVERY_ONLY", "BLOCKED");
         assertCheck(checks, "IN_PROCESS_MOUNT_NOT_IMPLEMENTED", "NOT_IMPLEMENTED");
 
+        assertNoSecrets(topology);
+    }
+
+    @Test
+    void runtimeTopologyMarksGatewayAsRollbackEntrypointForUnifiedCutover() throws Exception {
+        JsonNode topology = performJson(get("/api/v1/gateway/admin/runtime-topology")
+                .header("Authorization", bearer("owner-token"))
+                .header("X-Request-Id", "req-gateway-rollback-entrypoint"), 200);
+
+        JsonNode unified = topology.at("/data/futureUnifiedBackend");
+        assertThat(unified.at("/entrypointKey").asText()).isEqualTo("unified-backend");
+        assertThat(unified.at("/pilotCandidate/candidatePort").asInt()).isEqualTo(8135);
+        assertThat(unified.at("/pilotCandidate/pilotMountedRouteIds").size()).isEqualTo(25);
+        assertThat(unified.at("/externalNodeExecutorBoundary").asText()).isEqualTo("EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY");
+        assertThat(unified.at("/externalNodeExecutorConnected").asBoolean()).isFalse();
+        assertThat(unified.at("/pilotCandidate/readyToReplaceGateway").asBoolean()).isFalse();
+
+        JsonNode gateway = findByText(topology.at("/data/currentEntrypoints"), "entrypointKey", "api-gateway");
+        assertThat(gateway.at("/mergeDisposition").asText()).isEqualTo("ROLLBACK_ENTRYPOINT");
+        assertThat(gateway.at("/rollbackEntrypointRole").asText()).isEqualTo("PROTECTED_ROLLBACK_ENTRYPOINT");
+        assertThat(gateway.at("/retirementApprovalStatus").asText()).isEqualTo("BLOCKED");
+        assertThat(gateway.at("/routesTotal").asInt()).isZero();
+
+        assertThat(topology.toString())
+                .doesNotContain("node-daemon")
+                .doesNotContain("NODE_DAEMON")
+                .doesNotContain("/api/v1/node-daemon")
+                .doesNotContain("8117");
         assertNoSecrets(topology);
     }
 

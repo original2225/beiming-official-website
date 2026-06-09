@@ -8,7 +8,7 @@
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `cloudreve-sync` 的职责边界、数据归属、路径、字段、状态、权限、错误码、幂等、同步任务流转、失败降级、审计和验收口径。
 
-`cloudreve-sync` 不是玩家资源服务，不拥有资源分类、资源条目、资源版本、可见范围或下载权限主数据。`resource` 仍然是玩家可见资源下载的唯一主数据服务。`cloudreve-sync` 不是后台服务器文件管理服务，不执行宿主机文件浏览、上传、下载、重命名、移动、删除、编辑、终端命令或备份恢复。后台服务器文件管理仍归 `ops-control` 和 `node-daemon`。
+`cloudreve-sync` 不是玩家资源服务，不拥有资源分类、资源条目、资源版本、可见范围或下载权限主数据。`resource` 仍然是玩家可见资源下载的唯一主数据服务。`cloudreve-sync` 不是后台服务器文件管理服务，不执行宿主机文件浏览、上传、下载、重命名、移动、删除、编辑、终端命令或备份恢复。后台服务器文件管理仍归 `ops-control` 和 `external-node-executor`。
 
 本文档参考 Cloudreve v4 API、Cloudreve 文件 URI、Cloudreve 文件事件、rclone、Nextcloud WebDAV 与 OCS 分享、Google Drive API、Microsoft Graph OneDrive driveItem、Dropbox API 的公开设计。Cloudreve v4 说明上游使用 `/api/v4/`、JSON 响应和文件 URI；rclone 的 remote/backend 模型说明 provider adapter 要隔离；Nextcloud WebDAV 和分享接口说明文件元数据与分享状态应分开；Google Drive、OneDrive 和 Dropbox 都把文件、权限、增量变更、分享链接与游标或任务结果拆开。本文档只吸收 provider、文件快照、分享快照、异步同步任务、增量/降级和权限边界这些思路，不接入这些平台的主数据。
 
@@ -69,7 +69,7 @@ Cloudreve 真实凭据只能通过环境变量、启动参数或受控配置注�
 
 `resource` 是玩家资源主数据。`cloudreve-sync` 可以为 `resource` 提供 Cloudreve 文件和分享快照，但不能创建、修改或发布玩家资源，不能判断 `PUBLIC`、`AUTHENTICATED`、`MEMBER_ONLY` 或 `ADMIN_ONLY` 的下载权限，不能绕过 `resource` 直接给玩家返回下载结果。resource 兼容快照不可用返回 `46720`，resource 超时返回 `46721`，字段不兼容返回 `46722`。
 
-`ops-control` 拥有 Cloudreve 服务资产和后台运维资产。`cloudreve-sync` 可以保存 Cloudreve 服务资产引用摘要，但不能把玩家资源权限当作服务器文件权限，也不能调用 `node-daemon` 执行文件操作。ops-control 资产快照不可用时，provider 仍可读取已有摘要，但创建或更新资产引用返回 `46730`。
+`ops-control` 拥有 Cloudreve 服务资产和后台运维资产。`cloudreve-sync` 可以保存 Cloudreve 服务资产引用摘要，但不能把玩家资源权限当作服务器文件权限，也不能调用 `external-node-executor` 执行文件操作。ops-control 资产快照不可用时，provider 仍可读取已有摘要，但创建或更新资产引用返回 `46730`。
 
 `notification` 只负责通知投递。同步失败、链接失效或 provider 异常是否通知由调用方策略决定。第一版只在审计中记录 `notificationHint`，不自建通知主数据。
 

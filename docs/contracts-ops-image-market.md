@@ -23,7 +23,7 @@
 | [Trivy vulnerability scanning](https://trivy.dev/latest/docs/scanner/vulnerability/) | 扫描摘要需要记录 severity、fixed version、fix availability、扫描状态和过期时间。 |
 | [Renovate Docker manager](https://docs.renovatebot.com/docker/) | tag 更新、digest pinning 和版本建议需要作为镜像版本摘要，不自动替换生产运行态。 |
 
-本文档只吸收这些生态的设计思路，不接入它们的 SDK，不保存真实 registry token，不调用真实 Docker、containerd、registry、scanner、`ops-control` 任务或 `node-daemon`，不执行镜像拉取、镜像删除、容器创建、签名验签、镜像层扫描或节点缓存写入。
+本文档只吸收这些生态的设计思路，不接入它们的 SDK，不保存真实 registry token，不调用真实 Docker、containerd、registry、scanner、`ops-control` 任务或 `external-node-executor`，不执行镜像拉取、镜像删除、容器创建、签名验签、镜像层扫描或节点缓存写入。
 
 ## 职责边界
 
@@ -31,15 +31,15 @@
 
 `ops-image-market` 不负责注册、登录、角色能力点主数据、节点注册、节点心跳、容器生命周期、虚拟机生命周期、Minecraft 实例启停、文件上传下载、终端命令、备份恢复、真实镜像拉取、真实镜像删除、真实漏洞扫描、真实签名验签、真实 registry 凭据托管、玩家资源下载、Cloudreve 文件同步、插件安装卸载、外部通知发送或告警规则管理。
 
-第一版固定为安全模拟和计划控制面。拉取计划只能进入 `DRAFT`、`RISK_REVIEW_REQUIRED`、`APPROVED`、`SIMULATED_READY`、`EXECUTION_BLOCKED`、`CANCELED`、`FAILED` 或 `SUCCEEDED_SIMULATED`。响应不得出现真实 `PULLED`、`PUSHED`、`RUNNING_ON_NODE` 或真实节点执行成功语义。后续接入真实 registry、scanner、signature verifier、`ops-control` 任务或 `node-daemon` 回写，必须重新补充正式契约、测试文档、红灯测试、实现和前序回归。
+第一版固定为安全模拟和计划控制面。拉取计划只能进入 `DRAFT`、`RISK_REVIEW_REQUIRED`、`APPROVED`、`SIMULATED_READY`、`EXECUTION_BLOCKED`、`CANCELED`、`FAILED` 或 `SUCCEEDED_SIMULATED`。响应不得出现真实 `PULLED`、`PUSHED`、`RUNNING_ON_NODE` 或真实节点执行成功语义。后续接入真实 registry、scanner、signature verifier、`ops-control` 任务或 `external-node-executor` 回写，必须重新补充正式契约、测试文档、红灯测试、实现和前序回归。
 
 ## 数据归属
 
 `ops-image-market` 拥有以下主数据：ImageRegistryProvider、OpsImage、OpsImageVersion、ImageCompatibilityProfile、ImageTemplate、ImageRiskScanSummary、ImagePullPlan、NodeImageCacheSnapshot、ImageMarketAuditLog、OpsImageMarketSummary 和幂等记录。
 
-`ops-image-market` 可以保存来自 `auth` 的操作者用户 ID、展示名、角色、能力点和状态快照；可以保存来自 `ops-control` 的节点、资产、容器运行时和 Minecraft 实例只读摘要；可以保存来自 `node-daemon` 经过 `ops-control` 或测试适配器回写的节点镜像缓存摘要；可以保存来自 `alerting` 可消费的风险事件摘要；可以保存来自 `cross-platform-notification` 的通知意图或投递结果摘要；可以保存来自 `plugin-integration` 的插件运行环境需求摘要。所有跨服务字段只能是安全快照，不得成为来源模块主数据，不得用于绕过来源模块权限，不得反向修改来源模块状态。
+`ops-image-market` 可以保存来自 `auth` 的操作者用户 ID、展示名、角色、能力点和状态快照；可以保存来自 `ops-control` 的节点、资产、容器运行时和 Minecraft 实例只读摘要；可以保存来自 `external-node-executor` 经过 `ops-control` 或测试适配器回写的节点镜像缓存摘要；可以保存来自 `alerting` 可消费的风险事件摘要；可以保存来自 `cross-platform-notification` 的通知意图或投递结果摘要；可以保存来自 `plugin-integration` 的插件运行环境需求摘要。所有跨服务字段只能是安全快照，不得成为来源模块主数据，不得用于绕过来源模块权限，不得反向修改来源模块状态。
 
-`ops-image-market` 不能直接读取其他服务数据库，不能导入前序服务 Java package，不能复用前序服务内存 store，不能修改 `ops-control` 节点、资产、任务或审批，不能直连 `node-daemon`，不能创建 `alerting` 告警实例，不能发送 `cross-platform-notification` 外部消息，不能安装插件或写入 Minecraft 配置。
+`ops-image-market` 不能直接读取其他服务数据库，不能导入前序服务 Java package，不能复用前序服务内存 store，不能修改 `ops-control` 节点、资产、任务或审批，不能直连 `external-node-executor`，不能创建 `alerting` 告警实例，不能发送 `cross-platform-notification` 外部消息，不能安装插件或写入 Minecraft 配置。
 
 ## 基础路径、端口和认证
 
@@ -53,7 +53,7 @@
 
 ## 本地测试控制头
 
-`ops-image-market` 允许在本地自动化测试中使用 `X-Test-Auth-Mode`、`X-Test-Ops-Control-Mode`、`X-Test-Node-Daemon-Mode`、`X-Test-Registry-Mode`、`X-Test-Scanner-Mode`、`X-Test-Alerting-Mode`、`X-Test-Notification-Mode`、`X-Test-Fail-Audit`、`X-Test-Fail-Store`、`X-Test-Fail-Plan` 和 `X-Test-Now` 模拟认证失败、前序依赖不可用、registry 降级、scanner 失败、审计失败、状态写入失败、计划写入失败和时间边界。
+`ops-image-market` 允许在本地自动化测试中使用 `X-Test-Auth-Mode`、`X-Test-Ops-Control-Mode`、`X-Test-External-Node-Executor-Mode`、`X-Test-Registry-Mode`、`X-Test-Scanner-Mode`、`X-Test-Alerting-Mode`、`X-Test-Notification-Mode`、`X-Test-Fail-Audit`、`X-Test-Fail-Store`、`X-Test-Fail-Plan` 和 `X-Test-Now` 模拟认证失败、前序依赖不可用、registry 降级、scanner 失败、审计失败、状态写入失败、计划写入失败和时间边界。
 
 生产和默认运行环境必须关闭测试控制头。关闭后这些请求头必须被忽略，不能触发认证失败、依赖失败、registry 失败、scanner 失败、审计失败、存储失败、计划失败或时间模拟。自检摘要必须返回 `testControlsEnabled`，并在测试控制关闭时把 `TEST_CONTROLS_DISABLED_OUTSIDE_TEST` 纳入生产化硬化项。
 
@@ -63,7 +63,7 @@
 
 `ops-control` 是节点、资产、容器运行时和后续任务控制面的主数据来源。`ops-image-market` 可以读取节点架构、运行时、实例用途和已有缓存的只读摘要，不能直接修改节点、资产、任务、审批或审计。ops-control 不可用返回 `47210`，超时返回 `47211`，schema 不兼容返回 `47212`。读取类接口可以返回已有脱敏快照并标记 `degraded=true`；创建拉取计划时如果缺少必要节点或运行时摘要，不得伪造兼容成功。
 
-`node-daemon` 是节点执行边界。第一版 `ops-image-market` 不得直接调用 `node-daemon`。节点缓存快照只能来自受控测试桩或后续经过正式接口的安全摘要。node-daemon 摘要不可用返回 `47220`，超时返回 `47221`，schema 不兼容返回 `47222`。任何需要实时节点执行的动作必须返回 `49717` 或进入 `EXECUTION_BLOCKED`，不能假装真实拉取成功。
+`external-node-executor` 是节点执行边界。第一版 `ops-image-market` 不得直接调用 `external-node-executor`。节点缓存快照只能来自受控测试桩或后续经过正式接口的安全摘要。external-node-executor 摘要不可用返回 `47220`，超时返回 `47221`，schema 不兼容返回 `47222`。任何需要实时节点执行的动作必须返回 `49717` 或进入 `EXECUTION_BLOCKED`，不能假装真实拉取成功。
 
 `alerting` 可以后续消费 registry 失联、高危镜像、扫描过期、digest 漂移和拉取失败摘要。第一版只保存告警来源摘要，不直接创建告警规则、告警实例、静默或通知策略。alerting 不可用返回 `47230`，超时返回 `47231`，schema 不兼容返回 `47232`。
 
@@ -94,7 +94,7 @@
 | `DependencyStatus` | `AVAILABLE`、`UNAVAILABLE`、`TIMEOUT`、`BAD_SCHEMA`、`STALE`、`SKIPPED` | 依赖摘要状态。 |
 | `AuditResult` | `SUCCESS`、`FAILED` | 审计结果。 |
 
-`sourceModule` 使用模块英文名，例如 `ops-control`、`node-daemon`、`alerting`、`cross-platform-notification`、`plugin-integration` 和 `custom`。浏览器传入 `auth`、`resource`、`cloudreve-sync`、`internal`、`system` 或未列入本契约的来源模块时必须返回 `40001`，不得创建 provider、镜像、模板、扫描、拉取计划或审计记录。
+`sourceModule` 使用模块英文名，例如 `ops-control`、`external-node-executor`、`alerting`、`cross-platform-notification`、`plugin-integration` 和 `custom`。浏览器传入 `auth`、`resource`、`cloudreve-sync`、`internal`、`system` 或未列入本契约的来源模块时必须返回 `40001`，不得创建 provider、镜像、模板、扫描、拉取计划或审计记录。
 
 ## 通用对象
 
@@ -263,7 +263,7 @@
 | `digestSummary` | object | 是 | digest 摘要。 |
 | `sizeSummary` | object | 是 | 大小摘要。 |
 | `lastSeenAt` | string | 是 | 最近观察时间。 |
-| `source` | string | 是 | `OPS_CONTROL_SNAPSHOT`、`NODE_DAEMON_SUMMARY`、`TEST_STUB` 或 `SIMULATED`。 |
+| `source` | string | 是 | `OPS_CONTROL_SNAPSHOT`、`EXTERNAL_NODE_EXECUTOR_SUMMARY`、`TEST_STUB` 或 `SIMULATED`。 |
 | `stale` | boolean | 是 | 是否过期。 |
 | `degradedReasons` | string[] | 是 | 降级原因。 |
 
@@ -273,7 +273,7 @@
 
 ### OpsImageMarketSummary
 
-自检摘要至少包含 `service`、`port`、`storageMode`、`authMode`、`opsControlAdapterMode`、`nodeDaemonAdapterMode`、`registryAdapterMode`、`scannerAdapterMode`、`alertingAdapterMode`、`notificationAdapterMode`、`testControlsEnabled`、`providersTotal`、`enabledProvidersTotal`、`imagesTotal`、`versionsTotal`、`templatesTotal`、`pullPlansTotal`、`simulatedReadyPlansTotal`、`blockedPlansTotal`、`cacheSnapshotsTotal`、`auditsTotal`、`idempotencyRecordsTotal`、`lastScanAt`、`lastPlanAt`、`degradedReasons` 和 `productionGaps`。
+自检摘要至少包含 `service`、`port`、`storageMode`、`authMode`、`opsControlAdapterMode`、`externalNodeExecutorAdapterMode`、`registryAdapterMode`、`scannerAdapterMode`、`alertingAdapterMode`、`notificationAdapterMode`、`testControlsEnabled`、`providersTotal`、`enabledProvidersTotal`、`imagesTotal`、`versionsTotal`、`templatesTotal`、`pullPlansTotal`、`simulatedReadyPlansTotal`、`blockedPlansTotal`、`cacheSnapshotsTotal`、`auditsTotal`、`idempotencyRecordsTotal`、`lastScanAt`、`lastPlanAt`、`degradedReasons` 和 `productionGaps`。
 
 ## 错误码
 
@@ -285,9 +285,9 @@
 | `47210` | 502 | ops-control 摘要不可用。 |
 | `47211` | 504 | ops-control 摘要调用超时。 |
 | `47212` | 502 | ops-control 摘要字段不兼容。 |
-| `47220` | 502 | node-daemon 安全摘要不可用。 |
-| `47221` | 504 | node-daemon 安全摘要调用超时。 |
-| `47222` | 502 | node-daemon 安全摘要字段不兼容。 |
+| `47220` | 502 | external-node-executor 安全摘要不可用。 |
+| `47221` | 504 | external-node-executor 安全摘要调用超时。 |
+| `47222` | 502 | external-node-executor 安全摘要字段不兼容。 |
 | `47230` | 502 | alerting 适配不可用。 |
 | `47231` | 504 | alerting 适配调用超时。 |
 | `47232` | 502 | alerting 适配字段不兼容。 |
@@ -522,4 +522,4 @@ endpoint、repository、tag、namespace 和 URL 摘要必须拒绝 `file:`、`da
 
 `ops-image-market` API 文档必须按 `docs/contracts-ops-image-market.md` 独立存在，并由 `.local-docs/tests-ops-core.md` 记录合并后的本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、能力点不足、高风险确认缺失、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求、敏感字段脱敏、测试控制头默认关闭和模块验收口径。
 
-`ops-image-market` 完成时必须满足以下条件：当前运行入口为 `ops-core-service:8133`，历史端口 `8124` 只作为 `legacyPort` 返回；健康检查公开且不泄露敏感信息；后台接口按角色、能力点、风险等级和确认文本限制；provider、镜像目录、镜像版本、兼容配置、模板、风险扫描、拉取计划、节点缓存快照、审计、幂等、状态流转、依赖降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；自动化测试必须先红灯；实现后本模块在 `ops-core-service` 中全量测试通过；当前后端运行入口回归测试通过；边界扫描无违规命中；不修改前序服务稳定接口；不直接读取前序服务数据库；不导入前序服务 Java package；不调用真实 `node-daemon`；不执行真实 Docker、containerd、registry、scanner、镜像拉取、镜像删除或容器创建；不保存真实 registry token、完整 manifest、layer URL、内部地址、宿主路径、节点凭据、完整请求头或前序服务私有数据；不把玩家资源下载、Cloudreve 文件同步、运维任务执行、节点文件管理、终端能力、告警规则、外部通知发送或插件安装塞进本服务。
+`ops-image-market` 完成时必须满足以下条件：当前运行入口为 `ops-core-service:8133`，历史端口 `8124` 只作为 `legacyPort` 返回；健康检查公开且不泄露敏感信息；后台接口按角色、能力点、风险等级和确认文本限制；provider、镜像目录、镜像版本、兼容配置、模板、风险扫描、拉取计划、节点缓存快照、审计、幂等、状态流转、依赖降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；自动化测试必须先红灯；实现后本模块在 `ops-core-service` 中全量测试通过；当前后端运行入口回归测试通过；边界扫描无违规命中；不修改前序服务稳定接口；不直接读取前序服务数据库；不导入前序服务 Java package；不调用真实 `external-node-executor`；不执行真实 Docker、containerd、registry、scanner、镜像拉取、镜像删除或容器创建；不保存真实 registry token、完整 manifest、layer URL、内部地址、宿主路径、节点凭据、完整请求头或前序服务私有数据；不把玩家资源下载、Cloudreve 文件同步、运维任务执行、节点文件管理、终端能力、告警规则、外部通知发送或插件安装塞进本服务。

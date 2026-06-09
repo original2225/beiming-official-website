@@ -12,7 +12,7 @@
 
 ## 参考口径
 
-resource 的分区参考了 MCSManager 管理面板的实例、文件、终端、监控分层，Cloudreve 的云盘分享和外链分发模式，以及 Nextcloud、Google Drive、GitHub Releases 这类资源库常见的分类、标签、版本、可见范围、分享权限和修订记录。本文档只吸收资源展示、版本管理、分享链接、权限校验和审计这些适合玩家资源库的能力。MCSManager 式实例控制、服务器文件管理、终端命令、节点注册、容器启停、日志流和监控指标全部属于后续 `ops-control` 与 `node-daemon`，不得进入 `resource`。
+resource 的分区参考了 MCSManager 管理面板的实例、文件、终端、监控分层，Cloudreve 的云盘分享和外链分发模式，以及 Nextcloud、Google Drive、GitHub Releases 这类资源库常见的分类、标签、版本、可见范围、分享权限和修订记录。本文档只吸收资源展示、版本管理、分享链接、权限校验和审计这些适合玩家资源库的能力。MCSManager 式实例控制、服务器文件管理、终端命令、节点注册、容器启停、日志流和监控指标全部属于后续 `ops-control` 与 `external-node-executor`，不得进入 `resource`。
 
 ## 职责边界
 
@@ -722,4 +722,4 @@ Cloudreve 分享链接不可用时，下载解析可以在旧快照仍合法时�
 
 `resource` API 文档按 `docs/contracts-resource.md` 独立存在，并由 `.local-docs/tests-resource.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求和模块验收口径。
 
-`resource` 完成时必须满足以下条件：全部接口按本文档实现；公开接口不泄露后台字段、Cloudreve 管理字段、分享密码、内部路径、审计字段和运维入口；后台接口按角色限制；受限下载按 `PUBLIC`、`AUTHENTICATED`、`MEMBER_ONLY` 和 `ADMIN_ONLY` 正确校验；Cloudreve 分享链接失败可测试降级；分类、资源、版本、下载入口、状态流转、幂等、审计、自检摘要、requestId、端口配置和前序服务适配都有自动化测试；`.local-docs/tests-resource.md` 中全部测试用例都有对应自动化验证；未实现时自动化测试必须先失败；实现后 `resource` 全部测试通过；`auth`、`profile`、`notification`、`content` 和 `server-status` 前序服务回归测试通过；没有修改前序服务稳定接口；没有把后台文件管理、容器、终端、日志流、节点注册、node-daemon、真实服务器操作或 ops-control 能力塞进 `resource`。
+`resource` 完成时必须满足以下条件：全部接口按本文档实现；公开接口不泄露后台字段、Cloudreve 管理字段、分享密码、内部路径、审计字段和运维入口；后台接口按角色限制；受限下载按 `PUBLIC`、`AUTHENTICATED`、`MEMBER_ONLY` 和 `ADMIN_ONLY` 正确校验；Cloudreve 分享链接失败可测试降级；分类、资源、版本、下载入口、状态流转、幂等、审计、自检摘要、requestId、端口配置和前序服务适配都有自动化测试；`.local-docs/tests-resource.md` 中全部测试用例都有对应自动化验证；未实现时自动化测试必须先失败；实现后 `resource` 全部测试通过；`auth`、`profile`、`notification`、`content` 和 `server-status` 前序服务回归测试通过；没有修改前序服务稳定接口；没有把后台文件管理、容器、终端、日志流、节点注册、external-node-executor、真实服务器操作或 ops-control 能力塞进 `resource`。

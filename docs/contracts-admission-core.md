@@ -25,7 +25,7 @@
 | 自检摘要 | 暴露 `admission-core` 自身健康检查和后台装配摘要，便于迁移验证。 |
 | 网关切换状态 | 为 `api-gateway` 第二批路径上游切换提供稳定目标和完成状态。 |
 
-`admission-core` 不负责吸收 `api-gateway`。当前阶段仍保留 `api-gateway-service` 作为统一入口。`admission-core` 不负责第一批基础业务模块，也不负责 `community`、`activity`、`calendar`、`changelog`、`ops-control`、`node-daemon`、`cloudreve-sync`、`backup-recovery`、`alerting`、`online-map`、插件集成或 P3 扩展。
+`admission-core` 不负责吸收 `api-gateway`。当前阶段仍保留 `api-gateway-service` 作为统一入口。`admission-core` 不负责第一批基础业务模块，也不负责 `community`、`activity`、`calendar`、`changelog`、`ops-control`、`external-node-executor`、`cloudreve-sync`、`backup-recovery`、`alerting`、`online-map`、插件集成或 P3 扩展。
 
 `admission-core` 不允许把真实服务器白名单命令、Minecraft 控制台、节点守护进程、容器、终端、文件管理、备份恢复或 Cloudreve 管理塞进入服链路。白名单审核通过只代表官网业务状态和成员档案激活交接，不代表真实服务器命令已执行。
 

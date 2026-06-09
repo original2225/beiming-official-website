@@ -23,7 +23,7 @@
 | 自检摘要 | 暴露 `business-core` 自身健康检查、后台装配摘要和生产就绪摘要，便于迁移验证和生产化排障。 |
 | 网关切换状态 | 为 `api-gateway` 第一批路径上游切换提供稳定目标，并在切换完成后暴露完成状态。 |
 
-`business-core` 不负责吸收 `api-gateway`。第一阶段仍保留 `api-gateway-service` 作为统一入口。`business-core` 不负责后续模块，如 `onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、`ops-control`、`node-daemon` 和 P3 扩展。
+`business-core` 不负责吸收 `api-gateway`。第一阶段仍保留 `api-gateway-service` 作为统一入口。`business-core` 不负责后续模块，如 `onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、`ops-control`、`external-node-executor` 和 P3 扩展。
 
 `business-core` 不允许把后续模块逻辑塞进第一批模块，不允许让前端直连新增路径吞掉业务，也不允许为了合并修改旧模块的稳定契约。
 

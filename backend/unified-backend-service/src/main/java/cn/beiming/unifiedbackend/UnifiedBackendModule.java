@@ -127,6 +127,9 @@ class UnifiedBackendController {
                 "finalBackendSingleServicePrecheckStatus", "PASS",
                 "finalBackendSingleServicePrecheckChecks", registry.finalBackendSingleServicePrecheckChecks(),
                 "finalBackendSingleServiceEvidence", registry.finalBackendSingleServiceEvidence(),
+                "singleServiceCutoverPrecheckStatus", "PASS_READY_FOR_EXTERNAL_CUTOVER",
+                "singleServiceCutoverPrecheckChecks", registry.singleServiceCutoverPrecheckChecks(),
+                "singleServiceCutoverEvidence", registry.singleServiceCutoverEvidence(),
                 "entrypointCutoverAdapterPrecheckStatus", "BLOCKED",
                 "entrypointCutoverAdapterPrecheckChecks", registry.entrypointCutoverAdapterPrecheckChecks(),
                 "entrypointCutoverAdapterEvidence", registry.entrypointCutoverAdapterEvidence(),
@@ -814,6 +817,55 @@ class UnifiedBackendRegistry {
                         "CENTRAL_CONFIG_NOT_CONNECTED",
                         "PERSISTENT_AUDIT_NOT_CONNECTED"
                 )
+        );
+    }
+
+    List<Map<String, Object>> singleServiceCutoverPrecheckChecks() {
+        return List.of(
+                switchCheck("UNIFIED_BACKEND_TARGET_ENTRYPOINT_READY", "PASS", "unified-backend:8135 is the target backend application entrypoint", true),
+                switchCheck("ALL_OFFICIAL_BACKEND_ROUTES_IN_PROCESS", "PASS", "all 25 official backend business routes are mounted in-process", true),
+                switchCheck("NODE_EXECUTOR_REPOSITORY_RESIDUALS_REMOVED", "PASS", "node executor repository residuals are removed from official backend scope", true),
+                switchCheck("API_REFERENCE_SYNCHRONIZED", "PASS", "official API reference is synchronized with the backend application scope", true),
+                switchCheck("OLD_ENTRYPOINTS_IN_RETIREMENT_QUEUE", "PASS", "api-gateway and five core entrypoints are protected rollback entrypoints awaiting sequential retirement", true),
+                switchCheck("EXTERNAL_TRAFFIC_SWITCH_APPLIED", "BLOCKED", "external production traffic is not switched in this repository", true),
+                switchCheck("OLD_ENTRYPOINT_RETIREMENT_APPROVED", "BLOCKED", "old entrypoint retirement is not approved", true)
+        );
+    }
+
+    Map<String, Object> singleServiceCutoverEvidence() {
+        return map(
+                "targetBackendApplicationEntrypoint", "unified-backend:8135",
+                "officialBackendEntrypointsTotal", 7,
+                "backendApplicationEntrypointsRequiredForFutureRuntime", List.of("unified-backend:8135"),
+                "rollbackEntrypoints", List.of(
+                        "api-gateway:8125",
+                        "business-core:8130",
+                        "admission-core:8131",
+                        "engagement-core:8132",
+                        "ops-core:8133",
+                        "portal-core:8134"
+                ),
+                "retirementQueue", List.of(
+                        "api-gateway",
+                        "business-core",
+                        "admission-core",
+                        "engagement-core",
+                        "ops-core",
+                        "portal-core"
+                ),
+                "businessPathsRemainUnchanged", true,
+                "inProcessRoutesTotal", 25,
+                "httpFallbackRoutesTotal", 0,
+                "externalRoutesTotal", 0,
+                "nodeExecutorRepositoryResidualsRemoved", true,
+                "apiReferenceSynchronized", true,
+                "frontendEntrypointSwitched", false,
+                "externalProxySwitched", false,
+                "trafficSwitchApplied", false,
+                "oldEntrypointRetirementApproved", false,
+                "readyForProduction", false,
+                "readyToReplaceGateway", false,
+                "status", "READY_FOR_EXTERNAL_CUTOVER_NOT_SWITCHED"
         );
     }
 

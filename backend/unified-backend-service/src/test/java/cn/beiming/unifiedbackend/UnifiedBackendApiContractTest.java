@@ -10,6 +10,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -51,6 +54,7 @@ class UnifiedBackendApiContractTest {
         addRange(mapped, "UBACK-DRIFT", 1, 1);
         addRange(mapped, "UBACK-BOUNDARY", 1, 1);
         addRange(mapped, "UBACK-REGRESS", 1, 1);
+        addRange(mapped, "UBACK-CUTOVER", 1, 2);
 
         assertThat(mapped).contains(
                 "UBACK-COM-001",
@@ -79,9 +83,11 @@ class UnifiedBackendApiContractTest {
                 "UBACK-HTTP-001",
                 "UBACK-DRIFT-001",
                 "UBACK-BOUNDARY-001",
-                "UBACK-REGRESS-001"
+                "UBACK-REGRESS-001",
+                "UBACK-CUTOVER-001",
+                "UBACK-CUTOVER-002"
         );
-        assertThat(mapped).hasSize(49);
+        assertThat(mapped).hasSize(51);
     }
 
     @Test
@@ -269,6 +275,71 @@ class UnifiedBackendApiContractTest {
                 .doesNotContain("NODE_DAEMON")
                 .doesNotContain("KEEP_EXTERNAL");
         assertNoSecrets(summary);
+    }
+
+    @Test
+    void doesNotRestoreNodeDaemonRepositoryEntrypointOrContract() {
+        assertThat(List.of(
+                Path.of("../node-daemon-service/pom.xml"),
+                Path.of("../node-daemon-service/src/main/resources/application.yml"),
+                Path.of("../node-daemon-service/src/main/java/cn/beiming/nodedaemon/NodeDaemonServiceApplication.java"),
+                Path.of("../node-daemon-service/src/test/java/cn/beiming/nodedaemon/NodeDaemonApiContractTest.java"),
+                Path.of("../node-daemon-service/src/test/java/cn/beiming/nodedaemon/NodeDaemonPortConfigTest.java"),
+                Path.of("../node-daemon-service/src/test/java/cn/beiming/nodedaemon/NodeDaemonProductionAuthTest.java"),
+                Path.of("../node-daemon-service/src/test/java/cn/beiming/nodedaemon/NodeDaemonProductionHardeningTest.java"),
+                Path.of("../../docs/contracts-node-daemon.md")
+        )).allSatisfy(path -> assertThat(Files.exists(path)).as(path.toString()).isFalse());
+    }
+
+    @Test
+    void exposesSingleServiceCutoverEvidenceAfterNodeDaemonCleanup() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-single-service-cutover"));
+
+        assertThat(readiness.at("/data/singleServiceCutoverPrecheckStatus").asText()).isEqualTo("PASS_READY_FOR_EXTERNAL_CUTOVER");
+        assertPrecheck(readiness, "/data/singleServiceCutoverPrecheckChecks", "UNIFIED_BACKEND_TARGET_ENTRYPOINT_READY", "PASS", true);
+        assertPrecheck(readiness, "/data/singleServiceCutoverPrecheckChecks", "ALL_OFFICIAL_BACKEND_ROUTES_IN_PROCESS", "PASS", true);
+        assertPrecheck(readiness, "/data/singleServiceCutoverPrecheckChecks", "NODE_EXECUTOR_REPOSITORY_RESIDUALS_REMOVED", "PASS", true);
+        assertPrecheck(readiness, "/data/singleServiceCutoverPrecheckChecks", "API_REFERENCE_SYNCHRONIZED", "PASS", true);
+        assertPrecheck(readiness, "/data/singleServiceCutoverPrecheckChecks", "OLD_ENTRYPOINTS_IN_RETIREMENT_QUEUE", "PASS", true);
+        assertPrecheck(readiness, "/data/singleServiceCutoverPrecheckChecks", "EXTERNAL_TRAFFIC_SWITCH_APPLIED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/singleServiceCutoverPrecheckChecks", "OLD_ENTRYPOINT_RETIREMENT_APPROVED", "BLOCKED", true);
+
+        JsonNode evidence = readiness.at("/data/singleServiceCutoverEvidence");
+        assertThat(evidence.at("/targetBackendApplicationEntrypoint").asText()).isEqualTo("unified-backend:8135");
+        assertThat(evidence.at("/officialBackendEntrypointsTotal").asInt()).isEqualTo(7);
+        assertThat(evidence.at("/inProcessRoutesTotal").asInt()).isEqualTo(25);
+        assertThat(evidence.at("/httpFallbackRoutesTotal").asInt()).isZero();
+        assertThat(evidence.at("/externalRoutesTotal").asInt()).isZero();
+        assertThat(evidence.at("/nodeExecutorRepositoryResidualsRemoved").asBoolean()).isTrue();
+        assertThat(evidence.at("/apiReferenceSynchronized").asBoolean()).isTrue();
+        assertThat(evidence.at("/trafficSwitchApplied").asBoolean()).isFalse();
+        assertThat(evidence.at("/frontendEntrypointSwitched").asBoolean()).isFalse();
+        assertThat(evidence.at("/externalProxySwitched").asBoolean()).isFalse();
+        assertThat(evidence.at("/oldEntrypointRetirementApproved").asBoolean()).isFalse();
+        assertThat(evidence.at("/rollbackEntrypoints").toString())
+                .contains("api-gateway:8125")
+                .contains("business-core:8130")
+                .contains("admission-core:8131")
+                .contains("engagement-core:8132")
+                .contains("ops-core:8133")
+                .contains("portal-core:8134");
+        assertThat(evidence.at("/retirementQueue").toString())
+                .contains("api-gateway")
+                .contains("business-core")
+                .contains("portal-core");
+        assertThat(readiness.at("/data/readyForProduction").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/readyToReplaceGateway").asBoolean()).isFalse();
+        assertThat(readiness.toString())
+                .doesNotContain("node-daemon")
+                .doesNotContain("NODE_DAEMON")
+                .doesNotContain("nodeDaemon")
+                .doesNotContain("KEEP_EXTERNAL")
+                .doesNotContain("8117")
+                .doesNotContain("/api/v1/node-daemon")
+                .doesNotContain("trafficSwitchApplied\":true");
+        assertNoSecrets(readiness);
     }
 
     @Test

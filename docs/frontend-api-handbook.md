@@ -10,7 +10,7 @@
 
 ## 请求入口
 
-本地联调默认走网关：`http://127.0.0.1:8125`。第十七轮开始，统一后端候选入口提供入口切换适配证据，后续前端或代理联调可以把 API base URL 覆盖为 `http://127.0.0.1:8135`。所有业务路径保持 `/api/v1/...` 原样，例如登录请求是 `POST /api/v1/auth/login`，不是 `/api/v1/gateway/auth/login`，也不是 `/api/v1/unified-backend/auth/login`。
+本地联调当前仍可走网关回滚入口 `http://127.0.0.1:8125`。第二十四轮后，官网后端单服务目标入口是 `http://127.0.0.1:8135`，前端或代理联调推荐把 API base URL 覆盖到该入口。所有业务路径保持 `/api/v1/...` 原样，例如登录请求是 `POST /api/v1/auth/login`，不是 `/api/v1/gateway/auth/login`，也不是 `/api/v1/unified-backend/auth/login`。本仓库没有真实前端或外部代理配置，所以这里只给接入口径，不代表生产流量已切换。
 
 单服务直连只用于排查问题。服务端口见本文后面的模块表。前端代码不要把单服务端口写死进业务页面，统一通过 API client 的 baseURL 管理。
 
@@ -122,7 +122,7 @@
 | `plugin-integration` | 8133 | 插件源、实例、事件、命令、同步任务和插件联动后台，由 `ops-core-service` 承载。 | `docs/contracts-plugin-integration.md` |
 | `cross-platform-notification` | 8133 | 跨平台通知渠道、模板、投递任务、回执和后台演练，由 `ops-core-service` 承载。 | `docs/contracts-cross-platform-notification.md` |
 | `ops-image-market` | 8133 | 运维镜像、仓库、版本、拉取任务、漏洞摘要和镜像后台管理，由 `ops-core-service` 承载。 | `docs/contracts-ops-image-market.md` |
-| `api-gateway` | 8125 | 统一入口、路由表、上游健康、请求日志和业务请求转发。 | `docs/contracts-api-gateway.md` |
+| `api-gateway` | 8125 | 回滚入口、路由表、上游健康、请求日志和业务请求转发对照。 | `docs/contracts-api-gateway.md` |
 | `material` | 8134 | 素材投稿、素材展示、精选、审核、授权、文件摘要和素材后台管理，由 `portal-core-service` 承载。 | `docs/contracts-material.md` |
 | `guide` | 8134 | 指南、规则、指令、外部交流入口、反馈和指南后台维护，由 `portal-core-service` 承载。 | `docs/contracts-guide.md` |
 

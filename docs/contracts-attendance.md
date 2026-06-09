@@ -4,7 +4,7 @@
 
 ## 文档定位
 
-本文档是 `attendance` 微服务的正式 API 契约。后续 `community`、`activity`、`calendar`、`changelog`、前端适配、`admin` 聚合、`ops-control` 和 `node-daemon` 只能通过本文档定义的接口读取考勤账户、积分流水、贡献记录、月度扣分、榜单、白名单移除候选、审计和自检摘要，不能直接读取或修改 `attendance` 数据库，也不能把考勤积分逻辑塞进其他服务。
+本文档是 `attendance` 微服务的正式 API 契约。后续 `community`、`activity`、`calendar`、`changelog`、前端适配、`admin` 聚合、`ops-control` 和 `external-node-executor` 只能通过本文档定义的接口读取考勤账户、积分流水、贡献记录、月度扣分、榜单、白名单移除候选、审计和自检摘要，不能直接读取或修改 `attendance` 数据库，也不能把考勤积分逻辑塞进其他服务。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `attendance` 的职责边界、数据归属、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
 

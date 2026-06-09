@@ -33,7 +33,7 @@
 
 `alerting` 拥有以下主数据：AlertSource、AlertRule、AlertEvaluation、AlertInstance、AlertSilence、AlertRoute、AlertDelivery、AlertingAuditLog、AlertingOpsSummary 和幂等记录。
 
-`alerting` 可以保存来自 `auth` 的操作者用户 ID、展示名、角色、能力点和状态快照；可以保存来自 `ops-control`、`node-daemon`、`server-status`、`cloudreve-sync` 和 `backup-recovery` 的健康或异常摘要；可以保存来自 `notification` 的站内投递引用摘要；可以保存来自 `cross-platform-notification` 的外部模拟投递摘要。所有保存内容都只能是安全摘要，不得保存访问 token、节点密钥、Cloudreve 管理凭据、内部绝对路径、完整通知正文、完整请求头、外部渠道凭据或异常堆栈。
+`alerting` 可以保存来自 `auth` 的操作者用户 ID、展示名、角色、能力点和状态快照；可以保存来自 `ops-control`、`external-node-executor`、`server-status`、`cloudreve-sync` 和 `backup-recovery` 的健康或异常摘要；可以保存来自 `notification` 的站内投递引用摘要；可以保存来自 `cross-platform-notification` 的外部模拟投递摘要。所有保存内容都只能是安全摘要，不得保存访问 token、节点密钥、Cloudreve 管理凭据、内部绝对路径、完整通知正文、完整请求头、外部渠道凭据或异常堆栈。
 
 ## 基础路径、端口和认证
 
@@ -61,7 +61,7 @@
 
 `admin` 是后台聚合入口。`alerting` 可以向 admin 暴露模块健康、待处理告警数量、严重级别摘要和审计摘要，不能让 admin 修改告警规则或告警状态。admin 尚未声明 `ALERTING` 入口时，本轮不得修改 admin 稳定接口。
 
-`ops-control` 和 `node-daemon` 是运维状态来源。`alerting` 可以消费节点离线、指标超阈值、任务失败、审批超时和心跳异常摘要，不能创建节点任务，不能执行终端、文件、容器、虚拟机或实例操作。
+`ops-control` 和 `external-node-executor` 是运维状态来源。`alerting` 可以消费节点离线、指标超阈值、任务失败、审批超时和心跳异常摘要，不能创建节点任务，不能执行终端、文件、容器、虚拟机或实例操作。
 
 `server-status` 是玩家可见状态来源。`alerting` 可以把公开服务状态异常作为来源快照，但不能替代 server-status 展示接口，不能执行线路或实例操作。
 
@@ -73,7 +73,7 @@
 
 | 枚举 | 取值 | 说明 |
 | --- | --- | --- |
-| `AlertSourceService` | `OPS_CONTROL`、`NODE_DAEMON`、`SERVER_STATUS`、`CLOUDREVE_SYNC`、`BACKUP_RECOVERY`、`NOTIFICATION`、`ADMIN` | 第一版可登记的告警来源服务。 |
+| `AlertSourceService` | `OPS_CONTROL`、`EXTERNAL_NODE_EXECUTOR`、`SERVER_STATUS`、`CLOUDREVE_SYNC`、`BACKUP_RECOVERY`、`NOTIFICATION`、`ADMIN` | 第一版可登记的告警来源服务。 |
 | `AlertSourceType` | `HEALTH`、`METRIC`、`TASK`、`QUOTA`、`SCHEDULE`、`AUDIT`、`DEPENDENCY` | 来源类型。 |
 | `AlertSeverity` | `INFO`、`WARNING`、`CRITICAL`、`BLOCKER` | 告警严重级别。 |
 | `AlertRuleStatus` | `DRAFT`、`ENABLED`、`DISABLED`、`ARCHIVED` | 规则状态。 |
@@ -349,4 +349,4 @@
 
 `alerting` API 文档必须按 `docs/contracts-alerting.md` 独立存在，并由 `.local-docs/tests-ops-core.md` 记录合并后的本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、能力点不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求、敏感字段脱敏、测试控制头默认关闭和模块验收口径。
 
-`alerting` 完成时必须满足以下条件：当前运行入口为 `ops-core-service:8133`，历史端口 `8120` 只作为 `legacyPort` 返回；健康检查不泄露敏感信息；除健康检查外全部接口要求后台认证；告警源、规则、评估、实例、确认关闭、静默、通知路由、投递摘要、审计、幂等、状态流转、去重分组、通知失败降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；不修改前序服务稳定接口；不直接调用 `node-daemon`；不执行真实外部通知发送；不把告警规则塞进 `notification`、`admin`、`ops-control`、`server-status`、`cloudreve-sync` 或 `backup-recovery`；自动化测试必须先红灯；实现后 `alerting` 在 `ops-core-service` 中全部测试通过；当前后端运行入口回归测试通过；边界扫描无违规命中；测试过程记录完整。
+`alerting` 完成时必须满足以下条件：当前运行入口为 `ops-core-service:8133`，历史端口 `8120` 只作为 `legacyPort` 返回；健康检查不泄露敏感信息；除健康检查外全部接口要求后台认证；告警源、规则、评估、实例、确认关闭、静默、通知路由、投递摘要、审计、幂等、状态流转、去重分组、通知失败降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；不修改前序服务稳定接口；不直接调用 `external-node-executor`；不执行真实外部通知发送；不把告警规则塞进 `notification`、`admin`、`ops-control`、`server-status`、`cloudreve-sync` 或 `backup-recovery`；自动化测试必须先红灯；实现后 `alerting` 在 `ops-core-service` 中全部测试通过；当前后端运行入口回归测试通过；边界扫描无违规命中；测试过程记录完整。

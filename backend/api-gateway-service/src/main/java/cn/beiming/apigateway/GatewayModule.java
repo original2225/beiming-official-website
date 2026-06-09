@@ -783,7 +783,7 @@ class GatewayState {
                 "businessRoutesTotal", routes.size(),
                 "gatewayApiTotal", GATEWAY_SELF_APIS.size(),
                 "currentEntrypoints", List.of(
-                        entrypoint("api-gateway", "backend/api-gateway-service", 8125, "gateway ingress", "INGRESS_CANDIDATE", List.of(), null),
+                        entrypoint("api-gateway", "backend/api-gateway-service", 8125, "gateway rollback", "ROLLBACK_ENTRYPOINT", List.of(), null),
                         entrypoint("business-core", "backend/business-core-service", 8130, "business core", "IN_PROCESS_CANDIDATE", routesByIds(BUSINESS_CORE_ROUTES), null),
                         entrypoint("admission-core", "backend/admission-core-service", 8131, "admission core", "IN_PROCESS_CANDIDATE", routesByIds(ADMISSION_CORE_ROUTES), null),
                         entrypoint("engagement-core", "backend/engagement-core-service", 8132, "engagement core", "IN_PROCESS_CANDIDATE", routesByIds(ENGAGEMENT_CORE_ROUTES), null),
@@ -805,7 +805,7 @@ class GatewayState {
                 ),
                 "mergePreparationChecks", List.of(
                         check("ROUTE_PREFIX_PRESERVED", "PASS", "business route prefixes remain unchanged"),
-                        check("GATEWAY_AS_INGRESS_CANDIDATE", "PASS", "api-gateway is the future ingress candidate"),
+                        check("GATEWAY_AS_ROLLBACK_ENTRYPOINT", "PASS", "api-gateway remains a protected rollback entrypoint"),
                         check("CORE_ROUTES_GROUPED", "PASS", "business routes stay grouped under five core entrypoints"),
                         check("EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY", "PASS", "EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY"),
                         check("LEGACY_ENTRYPOINTS_NOT_RESTORED", "PASS", "retired legacy service entrypoints are not part of the topology"),
@@ -863,6 +863,8 @@ class GatewayState {
                 "port", port,
                 "role", role,
                 "mergeDisposition", disposition,
+                "rollbackEntrypointRole", "ROLLBACK_ENTRYPOINT".equals(disposition) ? "PROTECTED_ROLLBACK_ENTRYPOINT" : null,
+                "retirementApprovalStatus", "BLOCKED",
                 "hostedRouteIds", hostedRoutes.stream().map(GatewayRoute::routeId).toList(),
                 "hostedPathPrefixes", hostedRoutes.stream().map(GatewayRoute::pathPrefix).toList(),
                 "routesTotal", hostedRoutes.size(),

@@ -8,7 +8,7 @@
 
 ## 文档定位
 
-本文档是 `community` 微服务的正式 API 契约。后续 `activity`、`calendar`、`changelog`、前端适配、`admin` 聚合、`ops-control` 和 `node-daemon` 只能通过本文档定义的接口读取论坛、帖子、评论、互动、投票、举报、工单、处罚、审计和自检摘要，不能直接读取或修改 `community` 数据库，也不能把社区治理逻辑塞进其他服务。
+本文档是 `community` 微服务的正式 API 契约。后续 `activity`、`calendar`、`changelog`、前端适配、`admin` 聚合、`ops-control` 和 `external-node-executor` 只能通过本文档定义的接口读取论坛、帖子、评论、互动、投票、举报、工单、处罚、审计和自检摘要，不能直接读取或修改 `community` 数据库，也不能把社区治理逻辑塞进其他服务。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `community` 的职责边界、数据归属、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
 

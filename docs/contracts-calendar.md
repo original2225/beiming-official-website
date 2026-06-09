@@ -4,7 +4,7 @@
 
 ## 文档定位
 
-本文档是 `calendar` 微服务的正式 API 契约。后续 `changelog`、前端适配、`admin` 聚合、`ops-control` 和 `node-daemon` 只能通过本文档定义的接口读取或管理日程事件、关注、提醒摘要、来源同步、审计和自检摘要，不能直接读取或修改 `calendar` 数据库，也不能把活动报名、社区投票、更新日志主数据或真实服务器运维能力塞进 `calendar`。
+本文档是 `calendar` 微服务的正式 API 契约。后续 `changelog`、前端适配、`admin` 聚合、`ops-control` 和 `external-node-executor` 只能通过本文档定义的接口读取或管理日程事件、关注、提醒摘要、来源同步、审计和自检摘要，不能直接读取或修改 `calendar` 数据库，也不能把活动报名、社区投票、更新日志主数据或真实服务器运维能力塞进 `calendar`。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `calendar` 的职责边界、数据归属、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
 
@@ -33,7 +33,7 @@
 
 `changelog` 已经由 `engagement-core-service` 承载。本轮 `calendar` 可以保存 `VERSION_RELEASE` 手工事件和 changelog 来源占位，自检摘要中必须暴露 `CHANGELOG_NOT_CONNECTED`，直到 calendar 与 changelog 的正式写入适配单独完成闭环；calendar 不能把版本更新日志正文、插件变更、规则调整和地图更新主数据塞进自己。
 
-维护窗口在本模块只是日程元数据。任何真实服务器启动、停止、重启、命令执行、日志流、文件管理、备份恢复和节点操作都属于后续 `ops-control` 与 `node-daemon`。
+维护窗口在本模块只是日程元数据。任何真实服务器启动、停止、重启、命令执行、日志流、文件管理、备份恢复和节点操作都属于后续 `ops-control` 与 `external-node-executor`。
 
 ## 数据归属
 

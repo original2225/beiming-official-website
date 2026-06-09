@@ -24,7 +24,7 @@
 | 自检摘要 | 暴露 `engagement-core` 自身健康检查和后台装配摘要，便于迁移验证。 |
 | 网关切换状态 | 为 `api-gateway` 第三批路径上游切换提供稳定目标和完成状态。 |
 
-`engagement-core` 不负责吸收 `api-gateway`。当前阶段仍保留 `api-gateway-service` 作为统一入口。`engagement-core` 不负责第一批基础业务模块、第二批入服准入模块、`ops-control`、`node-daemon`、`cloudreve-sync`、`backup-recovery`、`alerting`、`online-map`、插件集成、跨平台通知、素材、指南或 P3 扩展。
+`engagement-core` 不负责吸收 `api-gateway`。当前阶段仍保留 `api-gateway-service` 作为统一入口。`engagement-core` 不负责第一批基础业务模块、第二批入服准入模块、`ops-control`、`external-node-executor`、`cloudreve-sync`、`backup-recovery`、`alerting`、`online-map`、插件集成、跨平台通知、素材、指南或 P3 扩展。
 
 `engagement-core` 不允许把真实服务器维护、白名单命令、积分直写、Minecraft 控制台、节点守护进程、容器、终端、文件管理、备份恢复、Cloudreve 管理或公告主发布塞进社区运营域。活动奖励只能保留贡献候选，社区处罚只影响社区写权限，维护窗口只作为日程元数据，更新日志只保存发布说明和来源快照。
 

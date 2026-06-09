@@ -1,10 +1,10 @@
 # 北冥官网 api-gateway API 契约
 
-版本：0.5
+版本：0.6
 
 ## 文档定位
 
-本文档是 `api-gateway` 微服务的正式 API 契约。`api-gateway` 是北冥官网后端统一入口，只负责统一路由、请求编号、认证头透传、认证上下文注入、基础 CORS、上游超时、请求边界保护、响应头白名单透传、错误降级、路由表、自检摘要、上游健康摘要和网关级请求日志摘要。
+本文档是 `api-gateway` 微服务的正式 API 契约。当前阶段 `api-gateway` 是北冥官网后端受保护回滚入口和路由对照入口，只负责统一路由、请求编号、认证头透传、认证上下文注入、基础 CORS、上游超时、请求边界保护、响应头白名单透传、错误降级、路由表、自检摘要、上游健康摘要、运行拓扑和网关级请求日志摘要。未来正式生产入口目标是 `unified-backend-service:8135`，但真实外部代理、前端入口和生产流量尚未在本仓库切换。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、时间格式、基础角色、运维能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `api-gateway` 的路径、路由表、字段、错误码、降级、审计和验收口径。
 
@@ -110,7 +110,7 @@
 
 这两个覆盖能力只用于本地真实 HTTP smoke 和显式环境配置，不代表已接入动态服务发现或集中配置中心。
 
-第八轮单服务合并准备层只允许在网关公开只读运行拓扑。当前官网后端回滚入口是 `api-gateway-service:8125`、`business-core-service:8130`、`admission-core-service:8131`、`engagement-core-service:8132`、`ops-core-service:8133` 和 `portal-core-service:8134`。未来可合并候选只包含 `api-gateway` 与五个 core 运行单元。外部节点执行器已出仓且未接入，当前网关不得再公开 `/api/v1/node-daemon` 业务路由。该准备层不得新增业务路由，不得改写 25 条业务路径，不得动态挂载业务模块，不得恢复已退役旧 Maven 入口，不得把外部节点执行器并入统一后端。
+第八轮单服务合并准备层只允许在网关公开只读运行拓扑。当前官网后端回滚入口是 `api-gateway-service:8125`、`business-core-service:8130`、`admission-core-service:8131`、`engagement-core-service:8132`、`ops-core-service:8133` 和 `portal-core-service:8134`。未来可合并候选只包含 `api-gateway` 与五个 core 运行单元。外部节点执行器已出仓且未接入，当前网关不得再公开节点执行器业务路由。该准备层不得新增业务路由，不得改写 25 条业务路径，不得动态挂载业务模块，不得恢复已退役旧 Maven 入口，不得把外部节点执行器并入统一后端。
 
 第九轮新增 `unified-backend-service:8135` 作为并行候选入口。当前网关保持 `CURRENT_SIX_ROLLBACK_ENTRYPOINTS`，运行拓扑必须识别 `unified-backend` 试点候选和外部节点执行器出仓状态。候选入口第一阶段挂载对象为 `api-gateway` 和 `portal-core`，第二阶段挂载对象扩展为 `business-core`，第三阶段挂载对象扩展为 `admission-core`，第四阶段挂载对象扩展为 `engagement-core`，第五阶段挂载对象扩展为 `ops-core`，候选挂载路由为 `auth`、`profile`、`notification`、`content`、`server-status`、`resource`、`admin`、`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、`ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`cross-platform-notification`、`ops-image-market`、`guide`、`material` 和 `online-map`。该字段只用于后续装配验收，不能让当前 `api-gateway-service:8125` 冒充已经完成 in-process。
 
@@ -188,9 +188,9 @@
 | `mergePreparationChecks` | object[] | 是 | 合并准备守卫检查。 |
 | `generatedAt` | string | 是 | 生成时间。 |
 
-`currentEntrypoints` 每项必须包含 `entrypointKey`、`serviceDirectory`、`port`、`role`、`mergeDisposition`、`hostedRouteIds`、`hostedPathPrefixes` 和 `routesTotal`。`api-gateway` 的 `mergeDisposition` 为 `INGRESS_CANDIDATE`，五个 core 运行单元为 `IN_PROCESS_CANDIDATE`。外部节点执行器不在 `currentEntrypoints` 中返回，只能在拓扑摘要中以 `externalNodeExecutorOutOfRepository=true` 和 `externalNodeExecutorConnected=false` 表达。
+`currentEntrypoints` 每项必须包含 `entrypointKey`、`serviceDirectory`、`port`、`role`、`mergeDisposition`、`rollbackEntrypointRole`、`retirementApprovalStatus`、`hostedRouteIds`、`hostedPathPrefixes` 和 `routesTotal`。`api-gateway` 的 `mergeDisposition` 为 `ROLLBACK_ENTRYPOINT`，`rollbackEntrypointRole` 为 `PROTECTED_ROLLBACK_ENTRYPOINT`，`retirementApprovalStatus` 为 `BLOCKED`；五个 core 运行单元为 `IN_PROCESS_CANDIDATE`，同样不得被描述为已退役。外部节点执行器不在 `currentEntrypoints` 中返回，只能在拓扑摘要中以 `externalNodeExecutorOutOfRepository=true` 和 `externalNodeExecutorConnected=false` 表达。
 
-`mergePreparationChecks` 至少包含 `ROUTE_PREFIX_PRESERVED`、`GATEWAY_AS_INGRESS_CANDIDATE`、`CORE_ROUTES_GROUPED`、`EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY`、`LEGACY_ENTRYPOINTS_NOT_RESTORED`、`STATIC_SERVICE_DISCOVERY_ONLY` 和 `IN_PROCESS_MOUNT_NOT_IMPLEMENTED`。前五项为 `PASS`，后两项必须保持 `BLOCKED` 或 `NOT_IMPLEMENTED`，防止把静态路由表误称为动态服务发现或把准备层误称为真正单服务合并。
+`mergePreparationChecks` 至少包含 `ROUTE_PREFIX_PRESERVED`、`GATEWAY_AS_ROLLBACK_ENTRYPOINT`、`CORE_ROUTES_GROUPED`、`EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY`、`LEGACY_ENTRYPOINTS_NOT_RESTORED`、`STATIC_SERVICE_DISCOVERY_ONLY` 和 `IN_PROCESS_MOUNT_NOT_IMPLEMENTED`。前五项为 `PASS`，后两项必须保持 `BLOCKED` 或 `NOT_IMPLEMENTED`，防止把静态路由表误称为动态服务发现或把准备层误称为真正单服务合并。
 
 `futureUnifiedBackend` 必须额外包含 `pilotCandidate`。该对象固定声明 `entrypointKey=unified-backend`、`serviceDirectory=backend/unified-backend-service`、`candidatePort=8135`、`deploymentMode=CANDIDATE_PARALLEL_ENTRYPOINT`、`pilotMountedEntrypoints=["api-gateway","business-core","admission-core","engagement-core","ops-core","portal-core"]`、`pilotMountedRouteIds=["auth","profile","notification","content","server-status","resource","admin","onboarding","exam","whitelist","attendance","community","activity","calendar","changelog","ops-control","cloudreve-sync","backup-recovery","alerting","plugin-integration","cross-platform-notification","ops-image-market","guide","material","online-map"]`、`externalNodeExecutorOutOfRepository=true`、`externalNodeExecutorConnected=false`、`readyToReplaceGateway=false`、`readyToRetireBusinessCore=false`、`readyToRetireAdmissionCore=false`、`readyToRetireEngagementCore=false`、`readyToRetireOpsCore=false` 和 `readyToRetirePortalCore=false`。
 
@@ -240,7 +240,7 @@
     "service": "api-gateway",
     "status": "UP",
     "port": 8125,
-    "routesTotal": 26,
+    "routesTotal": 25,
     "generatedAt": "2026-05-29T00:00:00Z"
   },
   "requestId": "req_example"
@@ -428,7 +428,7 @@
 
 ## 生产化差距
 
-P0 `api-gateway` 是本地契约实现，必须在自检摘要中明确以下生产化差距：尚未接入真实服务发现，尚未接入集中配置，尚未接入分布式限流，认证上下文已支持通过 `auth` 会话校验注入和内部签名，但尚未接入签名密钥集中托管、密钥轮换和缓存，尚未接入持久化审计，尚未代理 WebSocket 和大文件流，统一后端入口尚未替换当前入口，网关 in-process 挂载尚未替换生产入口，动态服务发现尚未接入，外部节点执行器已出仓且未连接。`api-gateway.upstreams.portal-core-base-url` 和 `api-gateway.upstreams.ops-core-base-url` 只是本地静态配置覆盖，不得在自检摘要中被描述为动态服务发现或集中配置已经完成。
+P0 `api-gateway` 是本地契约实现，必须在自检摘要中明确以下生产化差距：尚未接入真实服务发现，尚未接入集中配置，尚未接入分布式限流，认证上下文已支持通过 `auth` 会话校验注入和内部签名，但尚未接入签名密钥集中托管、密钥轮换和缓存，尚未接入持久化审计，尚未代理 WebSocket 和大文件流，统一后端入口尚未接收真实生产流量，网关仍是受保护回滚入口，动态服务发现尚未接入，外部节点执行器已出仓且未连接。`api-gateway.upstreams.portal-core-base-url` 和 `api-gateway.upstreams.ops-core-base-url` 只是本地静态配置覆盖，不得在自检摘要中被描述为动态服务发现或集中配置已经完成。
 
 这些差距不得影响 P0 的路径转发、请求编号、认证透传、可信身份头剥离、可验证认证上下文注入、内部签名注入、错误降级、路由表、运行拓扑和测试闭环。
 

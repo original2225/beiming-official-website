@@ -8,7 +8,7 @@
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `backup-recovery` 的职责边界、数据归属、路径、字段、状态、权限、错误码、幂等、任务流转、恢复流转、失败降级、审计和验收口径。
 
-`backup-recovery` 不是 `ops-control` 的任务子页面，也不是 `node-daemon` 的执行器。第一版只做安全模拟和控制面快照，不执行真实数据库导出、真实文件复制、真实 Cloudreve 操作、真实备份删除、真实恢复写入、真实 shell 命令或真实节点调用。真实执行只能在后续独立闭环中，通过 `ops-control` 审批、`node-daemon` 授权任务、路径限制、完整性校验和回滚审计再打开。
+`backup-recovery` 不是 `ops-control` 的任务子页面，也不是 `external-node-executor` 的执行器。第一版只做安全模拟和控制面快照，不执行真实数据库导出、真实文件复制、真实 Cloudreve 操作、真实备份删除、真实恢复写入、真实 shell 命令或真实节点调用。真实执行只能在后续独立闭环中，通过 `ops-control` 审批、`external-node-executor` 授权任务、路径限制、完整性校验和回滚审计再打开。
 
 本文档参考 GitHub Enterprise Server Backup Utilities、GitLab 备份恢复、AWS Backup、AWS Backup Restore Testing 和 Velero 的公开设计。GitHub Enterprise Server 强调独立备份主机、异地存放和版本兼容；GitLab 强调关键数据、灾备、回滚、迁移和测试环境；AWS Backup 把备份计划、保留生命周期、恢复点和恢复测试分开；Velero 把备份、计划、恢复对象、恢复顺序和对象存储数据分开。本项目只吸收策略、恢复点、恢复演练、异地冗余、状态机、审计和非破坏性恢复这些思路，不接入这些平台的主数据。
 
@@ -63,9 +63,9 @@
 
 `admin` 目前的稳定契约尚未声明 `BACKUP_RECOVERY` 模块入口。本轮不得直接修改 admin 稳定接口或让 admin 写入备份恢复主状态。backup-recovery 完成本轮闭环后，如果需要后台聚合入口，必须作为 admin 的兼容增强单独走文档、测试红灯、实现和回归流程，且只能增加只读入口、待办摘要和审计索引摘要。
 
-`ops-control` 是运维控制面。`backup-recovery` 可以读取节点、资产、备份盘和任务摘要快照，也可以保存 `opsControlTaskRef` 摘要。第一版不得直接调用 `node-daemon`，不得通过 `ops-control` 真实执行 `BACKUP_RESTORE`。ops-control 不可用返回 `46820`，超时返回 `46821`，字段不兼容返回 `46822`。
+`ops-control` 是运维控制面。`backup-recovery` 可以读取节点、资产、备份盘和任务摘要快照，也可以保存 `opsControlTaskRef` 摘要。第一版不得直接调用 `external-node-executor`，不得通过 `ops-control` 真实执行 `BACKUP_RESTORE`。ops-control 不可用返回 `46820`，超时返回 `46821`，字段不兼容返回 `46822`。
 
-`node-daemon` 只接受 `ops-control` 已授权任务。`backup-recovery` 第一版不得直接调用 `node-daemon`。
+`external-node-executor` 只接受 `ops-control` 已授权任务。`backup-recovery` 第一版不得直接调用 `external-node-executor`。
 
 `notification` 是辅助依赖。备份失败、恢复演练失败、恢复申请待审批和高风险完成可以形成通知提示。通知失败只记录降级摘要，不能改变备份任务、备份点或恢复申请主状态。notification 不可用返回降级摘要或 `46830`，不得导致已完成的备份任务被改成失败。
 
@@ -259,7 +259,7 @@
 
 `GET /api/v1/backup-recovery/ops/summary` 成功返回 `BackupRecoveryOpsSummary`。合并后必须返回 `port=8133`、`legacyPort=8119`、`storageMode=IN_MEMORY`、`backupAdapterMode=SIMULATED`、`opsControlAdapterMode=TEST_STUB`、`notificationAdapterMode=TEST_STUB` 和生产化缺口。读取失败返回 `55400`，不得伪造健康。
 
-自检摘要必须暴露正式系统设计同步状态。`productionGaps` 在第一版至少包含真实持久化未接入、真实备份介质未接入、真实跨服务 HTTP 未接入、真实恢复执行被阻断、admin 只读入口未适配和 node-daemon 直连禁止等项。该摘要用于提醒后续闭环，不允许前端把这些缺口当作可执行能力。
+自检摘要必须暴露正式系统设计同步状态。`productionGaps` 在第一版至少包含真实持久化未接入、真实备份介质未接入、真实跨服务 HTTP 未接入、真实恢复执行被阻断、admin 只读入口未适配和 external-node-executor 直连禁止等项。该摘要用于提醒后续闭环，不允许前端把这些缺口当作可执行能力。
 
 `GET /api/v1/backup-recovery/domains` 支持 `page`、`pageSize`、`keyword`、`sourceService`、`criticality`、`enabled` 和 `sort`。`sort` 允许 `updatedAt_desc`、`displayName_asc` 和 `criticality_desc`。成功响应分页 `items` 为 `BackupDomain[]`。备份域只表达可备份范围，不读取真实数据。
 
@@ -311,7 +311,7 @@
 
 `PATCH /api/v1/backup-recovery/restore-requests/{restoreRequestId}/approve` 请求字段为 `reviewComment`、`confirmText`、`reason` 和 `idempotencyKey`。`confirmText` 必须为 `APPROVE_SIMULATED_RESTORE`。只有 `PENDING_APPROVAL` 可审批。审批人不能审批自己创建的 `CRITICAL` 申请，返回 `49810`。审批通过后第一版只进入 `COMPLETED_SIMULATED` 或 `EXECUTION_BLOCKED`，并写入审批摘要。
 
-审批通过不得创建 `ops-control` 的真实 `BACKUP_RESTORE` 任务，不得调用 `node-daemon`，不得修改任何业务模块数据。响应中的 `approvalSummary` 必须明确 `executionMode=SIMULATED_ONLY` 或 `executionMode=BLOCKED_BY_CONTRACT`，方便前端和审计区分审批完成与真实恢复完成。
+审批通过不得创建 `ops-control` 的真实 `BACKUP_RESTORE` 任务，不得调用 `external-node-executor`，不得修改任何业务模块数据。响应中的 `approvalSummary` 必须明确 `executionMode=SIMULATED_ONLY` 或 `executionMode=BLOCKED_BY_CONTRACT`，方便前端和审计区分审批完成与真实恢复完成。
 
 `PATCH /api/v1/backup-recovery/restore-requests/{restoreRequestId}/reject` 请求字段为 `reviewComment`、`reason` 和 `idempotencyKey`。只有 `PENDING_APPROVAL` 可拒绝。拒绝后状态为 `REJECTED`。
 
@@ -345,4 +345,4 @@
 
 `backup-recovery` API 文档必须按 `docs/contracts-backup-recovery.md` 独立存在，并由 `.local-docs/tests-ops-core.md` 记录合并后的本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、能力点不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求、敏感字段脱敏、测试控制头默认关闭和模块验收口径。
 
-`backup-recovery` 完成时必须满足以下条件：当前运行入口为 `ops-core-service:8133`，历史端口 `8119` 只作为 `legacyPort` 返回；健康检查不泄露敏感信息；除健康检查外全部接口要求后台认证；备份域、策略、任务、备份点、校验、恢复演练、恢复申请、审批、审计、幂等、状态流转、依赖失败降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；不修改前序服务稳定接口；不直接调用 `node-daemon`；不执行真实恢复；不把备份恢复能力塞回 `ops-control`、`admin`、`resource` 或 `cloudreve-sync`；自动化测试必须先红灯；实现后 `backup-recovery` 在 `ops-core-service` 中全部测试通过；当前后端运行入口回归测试通过；边界扫描无违规命中；测试过程记录完整。
+`backup-recovery` 完成时必须满足以下条件：当前运行入口为 `ops-core-service:8133`，历史端口 `8119` 只作为 `legacyPort` 返回；健康检查不泄露敏感信息；除健康检查外全部接口要求后台认证；备份域、策略、任务、备份点、校验、恢复演练、恢复申请、审批、审计、幂等、状态流转、依赖失败降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；不修改前序服务稳定接口；不直接调用 `external-node-executor`；不执行真实恢复；不把备份恢复能力塞回 `ops-control`、`admin`、`resource` 或 `cloudreve-sync`；自动化测试必须先红灯；实现后 `backup-recovery` 在 `ops-core-service` 中全部测试通过；当前后端运行入口回归测试通过；边界扫描无违规命中；测试过程记录完整。

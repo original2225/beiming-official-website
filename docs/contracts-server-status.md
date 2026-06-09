@@ -14,7 +14,7 @@
 
 `server-status` 负责玩家可见的 Minecraft 服务器状态、版本、MOTD、在线人数、最大人数、延迟、线路状态、历史快照、历史峰值、宕机记录和开服时长。
 
-`server-status` 不负责账号、会话、成员档案、通知投递、首页内容配置、玩家资源下载、Cloudreve 分享、后台运维控制、节点注册、容器启停、虚拟机管理、文件操作、日志流、终端命令、节点密钥、备份恢复和高风险审批。真实服务器运维操作属于后续 `ops-control` 和 `node-daemon`。
+`server-status` 不负责账号、会话、成员档案、通知投递、首页内容配置、玩家资源下载、Cloudreve 分享、后台运维控制、节点注册、容器启停、虚拟机管理、文件操作、日志流、终端命令、节点密钥、备份恢复和高风险审批。真实服务器运维操作属于后续 `ops-control` 和 `external-node-executor`。
 
 首页可以读取 `content` 的 `SERVER_ENTRY` 展示入口，也可以读取本文档的公开状态接口。`content` 不得伪造在线人数、MOTD、线路延迟或状态结果。`server-status` 也不得写入 content 首页配置。
 

@@ -4,7 +4,7 @@
 
 ## 文档定位
 
-本文档是 `plugin-integration` 微服务的正式 API 契约。后续前端插件联动页面、管理后台、`online-map`、`alerting`、`changelog`、`ops-control`、`node-daemon` 和其他业务模块只能通过本文档定义的接口读取或管理插件 provider、插件实例快照、事件 schema、事件、路由规则、同步任务、健康快照、对象映射和审计摘要，不能直接读取或修改 `plugin-integration` 数据，也不能把真实 Minecraft 插件运行、节点命令、地图主数据、告警规则、通知渠道或服务器文件操作塞进本服务。
+本文档是 `plugin-integration` 微服务的正式 API 契约。后续前端插件联动页面、管理后台、`online-map`、`alerting`、`changelog`、`ops-control`、`external-node-executor` 和其他业务模块只能通过本文档定义的接口读取或管理插件 provider、插件实例快照、事件 schema、事件、路由规则、同步任务、健康快照、对象映射和审计摘要，不能直接读取或修改 `plugin-integration` 数据，也不能把真实 Minecraft 插件运行、节点命令、地图主数据、告警规则、通知渠道或服务器文件操作塞进本服务。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、运维能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `plugin-integration` 的职责边界、数据归属、前序服务兼容、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
 
@@ -32,15 +32,15 @@
 
 `plugin-integration` 不负责注册、登录、权限主数据、站内通知主数据、告警规则主数据、地图主数据、服务器状态主数据、真实插件运行、真实插件安装卸载、真实插件命令、真实世界目录读取、真实节点命令执行、真实文件写入、真实容器或虚拟机操作、真实跨平台消息发送、玩家资源下载或官网内容发布。
 
-第一版固定为安全控制面和事件快照。它可以接收后台或测试适配器提交的插件事件，保存脱敏 payload 摘要，生成路由结果和模拟同步任务。它不能开放无鉴权公网 webhook，不能保存完整 raw payload，不能保存插件后台 token，不能调用真实 `node-daemon`，不能写真实插件配置，不能执行 Minecraft 命令，不能直接改 `online-map`、`alerting`、`notification`、`server-status` 或 `changelog` 的主数据。
+第一版固定为安全控制面和事件快照。它可以接收后台或测试适配器提交的插件事件，保存脱敏 payload 摘要，生成路由结果和模拟同步任务。它不能开放无鉴权公网 webhook，不能保存完整 raw payload，不能保存插件后台 token，不能调用真实 `external-node-executor`，不能写真实插件配置，不能执行 Minecraft 命令，不能直接改 `online-map`、`alerting`、`notification`、`server-status` 或 `changelog` 的主数据。
 
 ## 数据归属
 
 `plugin-integration` 拥有以下主数据：PluginProvider、PluginInstanceSnapshot、PluginCapability、PluginEventSchema、PluginEvent、PluginRouteRule、PluginSyncTask、PluginHealthSnapshot、PluginObjectMapping、PluginAuditLog 和幂等记录。
 
-`plugin-integration` 可以保存来自 `auth` 的操作者用户 ID、展示名、角色、能力点和用户状态快照；可以保存来自 `ops-control` 的节点和 Minecraft 实例只读摘要；可以保存来自 `node-daemon` 的安全回写摘要；可以保存来自 `server-status` 的公开实例状态摘要；可以保存来自 `online-map` 的 provider、world、layer、marker 和 region 引用摘要；可以保存来自 `changelog` 的插件版本变更摘要；可以保存来自 `notification` 的投递结果摘要；可以保存供 `alerting` 消费的插件健康和事件异常摘要。所有快照只用于展示、过滤、降级、审计和后续同步建议，不能成为来源模块主数据，也不能反写来源模块。
+`plugin-integration` 可以保存来自 `auth` 的操作者用户 ID、展示名、角色、能力点和用户状态快照；可以保存来自 `ops-control` 的节点和 Minecraft 实例只读摘要；可以保存来自 `external-node-executor` 的安全回写摘要；可以保存来自 `server-status` 的公开实例状态摘要；可以保存来自 `online-map` 的 provider、world、layer、marker 和 region 引用摘要；可以保存来自 `changelog` 的插件版本变更摘要；可以保存来自 `notification` 的投递结果摘要；可以保存供 `alerting` 消费的插件健康和事件异常摘要。所有快照只用于展示、过滤、降级、审计和后续同步建议，不能成为来源模块主数据，也不能反写来源模块。
 
-`plugin-integration` 不能直接读取其他服务数据库，不能导入前序服务 Java package，不能复用前序服务内存 store，不能调用 `node-daemon` 执行真实命令，不能读取插件目录、世界目录、服务端配置、RCON 密码或节点文件，不能保存 Cloudreve token、Webhook secret、Discord token、插件后台密码、完整请求头、内部 URL 或绝对路径。
+`plugin-integration` 不能直接读取其他服务数据库，不能导入前序服务 Java package，不能复用前序服务内存 store，不能调用 `external-node-executor` 执行真实命令，不能读取插件目录、世界目录、服务端配置、RCON 密码或节点文件，不能保存 Cloudreve token、Webhook secret、Discord token、插件后台密码、完整请求头、内部 URL 或绝对路径。
 
 ## 基础路径、端口和认证
 
@@ -54,7 +54,7 @@
 
 ## 本地测试控制头
 
-`plugin-integration` 允许在本地自动化测试中使用 `X-Test-Auth-Mode`、`X-Test-Ops-Control-Mode`、`X-Test-Node-Daemon-Mode`、`X-Test-Server-Status-Mode`、`X-Test-Online-Map-Mode`、`X-Test-Changelog-Mode`、`X-Test-Notification-Mode`、`X-Test-Alerting-Mode`、`X-Test-Fail-Audit`、`X-Test-Fail-Store` 和 `X-Test-Now` 模拟认证失败、依赖不可用、依赖超时、依赖坏 schema、通知失败、审计失败、状态写入失败和时间边界。
+`plugin-integration` 允许在本地自动化测试中使用 `X-Test-Auth-Mode`、`X-Test-Ops-Control-Mode`、`X-Test-External-Node-Executor-Mode`、`X-Test-Server-Status-Mode`、`X-Test-Online-Map-Mode`、`X-Test-Changelog-Mode`、`X-Test-Notification-Mode`、`X-Test-Alerting-Mode`、`X-Test-Fail-Audit`、`X-Test-Fail-Store` 和 `X-Test-Now` 模拟认证失败、依赖不可用、依赖超时、依赖坏 schema、通知失败、审计失败、状态写入失败和时间边界。
 
 生产和默认运行环境必须关闭测试控制头。关闭后这些请求头必须被忽略，不能触发认证失败、依赖失败、通知失败、审计失败、存储失败或时间模拟。自检摘要必须返回 `testControlsEnabled`，并在测试控制关闭时把 `TEST_CONTROLS_DISABLED_OUTSIDE_TEST` 纳入生产化硬化项。
 
@@ -64,7 +64,7 @@
 
 `ops-control` 是 Minecraft 实例、节点和资产摘要来源。`plugin-integration` 只能读取实例和节点快照，不能创建运维任务，不能通过 ops-control 执行命令，不能修改容器、文件或实例状态。ops-control 不可用返回 `47060`，超时返回 `47061`，schema 不兼容返回 `47062`。ops-control 不可用时，读取类接口可以使用已有快照并标记 `stale=true`；写入类同步任务不得假装成功。
 
-`node-daemon` 是后续真实节点执行边界。第一版只保存 node-daemon 安全摘要或使用本服务测试适配器，不直接调用真实节点，不执行插件命令，不写插件配置。node-daemon 不可用返回 `47070`，超时返回 `47071`，schema 不兼容返回 `47072`。
+`external-node-executor` 是后续真实节点执行边界。第一版只保存 external-node-executor 安全摘要或使用本服务测试适配器，不直接调用真实节点，不执行插件命令，不写插件配置。external-node-executor 不可用返回 `47070`，超时返回 `47071`，schema 不兼容返回 `47072`。
 
 `server-status` 是玩家可见状态来源。插件上报的在线人数、TPS、MOTD 或延迟不能直接覆盖 server-status 主数据，只能作为插件事件或指标摘要保存。server-status 不可用返回 `47075`，超时返回 `47076`，schema 不兼容返回 `47077`。
 
@@ -276,7 +276,7 @@
 
 ### PluginIntegrationOpsSummary
 
-自检摘要至少包含 `service`、`port`、`storageMode`、`authMode`、`opsControlAdapterMode`、`nodeDaemonAdapterMode`、`onlineMapAdapterMode`、`notificationAdapterMode`、`alertingAdapterMode`、`testControlsEnabled`、`providersTotal`、`enabledProvidersTotal`、`instancesTotal`、`schemasTotal`、`eventsTotal`、`routeRulesTotal`、`syncTasksTotal`、`objectMappingsTotal`、`auditsTotal`、`idempotencyRecordsTotal`、`lastEventAt`、`lastSyncAt`、`degraded`、`degradeReasons` 和 `productionGaps`。
+自检摘要至少包含 `service`、`port`、`storageMode`、`authMode`、`opsControlAdapterMode`、`externalNodeExecutorAdapterMode`、`onlineMapAdapterMode`、`notificationAdapterMode`、`alertingAdapterMode`、`testControlsEnabled`、`providersTotal`、`enabledProvidersTotal`、`instancesTotal`、`schemasTotal`、`eventsTotal`、`routeRulesTotal`、`syncTasksTotal`、`objectMappingsTotal`、`auditsTotal`、`idempotencyRecordsTotal`、`lastEventAt`、`lastSyncAt`、`degraded`、`degradeReasons` 和 `productionGaps`。
 
 ## 错误码
 
@@ -288,9 +288,9 @@
 | `47060` | 502 | ops-control 不可用。 |
 | `47061` | 504 | ops-control 超时。 |
 | `47062` | 502 | ops-control schema 不兼容。 |
-| `47070` | 502 | node-daemon 不可用。 |
-| `47071` | 504 | node-daemon 超时。 |
-| `47072` | 502 | node-daemon schema 不兼容。 |
+| `47070` | 502 | external-node-executor 不可用。 |
+| `47071` | 504 | external-node-executor 超时。 |
+| `47072` | 502 | external-node-executor schema 不兼容。 |
 | `47075` | 502 | server-status 不可用。 |
 | `47076` | 504 | server-status 超时。 |
 | `47077` | 502 | server-status schema 不兼容。 |
@@ -496,4 +496,4 @@ schema 状态流转为 `DRAFT` 可到 `ENABLED`、`DISABLED` 或 `ARCHIVED`；`E
 
 `plugin-integration` API 文档必须按 `docs/contracts-plugin-integration.md` 独立存在，并由 `.local-docs/tests-ops-core.md` 记录合并后的本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、能力点不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求、敏感字段脱敏、测试控制头默认关闭和模块验收口径。
 
-`plugin-integration` 完成时必须满足以下条件：当前运行入口为 `ops-core-service:8133`，历史端口 `8122` 只作为 `legacyPort` 返回；健康检查公开且不泄露敏感信息；后台接口按角色和能力点限制；provider、实例、能力、schema、事件、路由规则、同步任务、健康快照、对象映射、审计、幂等、状态流转、来源 allowlist、payload 脱敏、依赖降级、通知失败摘要、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；自动化测试必须先红灯；实现后 `plugin-integration` 在 `ops-core-service` 中全部测试通过；当前后端运行入口回归测试通过；边界扫描无违规命中；不修改前序服务稳定接口；不直接读取前序服务数据库；不导入前序服务 Java package；不调用真实 `node-daemon`；不执行真实插件命令；不写真实插件配置；不保存真实插件 token、webhook secret 或外部平台密钥；不把地图主数据、告警规则、通知渠道、资源下载、节点文件管理、终端、备份恢复或跨平台通知主数据塞进 `plugin-integration`。
+`plugin-integration` 完成时必须满足以下条件：当前运行入口为 `ops-core-service:8133`，历史端口 `8122` 只作为 `legacyPort` 返回；健康检查公开且不泄露敏感信息；后台接口按角色和能力点限制；provider、实例、能力、schema、事件、路由规则、同步任务、健康快照、对象映射、审计、幂等、状态流转、来源 allowlist、payload 脱敏、依赖降级、通知失败摘要、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；自动化测试必须先红灯；实现后 `plugin-integration` 在 `ops-core-service` 中全部测试通过；当前后端运行入口回归测试通过；边界扫描无违规命中；不修改前序服务稳定接口；不直接读取前序服务数据库；不导入前序服务 Java package；不调用真实 `external-node-executor`；不执行真实插件命令；不写真实插件配置；不保存真实插件 token、webhook secret 或外部平台密钥；不把地图主数据、告警规则、通知渠道、资源下载、节点文件管理、终端、备份恢复或跨平台通知主数据塞进 `plugin-integration`。
