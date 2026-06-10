@@ -145,6 +145,9 @@ class UnifiedBackendController {
                 "apiGatewayRetirementPrecheckStatus", "BLOCKED_BY_TRAFFIC_NOT_SWITCHED",
                 "apiGatewayRetirementPrecheckChecks", registry.apiGatewayRetirementPrecheckChecks(),
                 "apiGatewayRetirementEvidence", registry.apiGatewayRetirementEvidence(),
+                "coreEntrypointRetirementPrecheckStatus", "BLOCKED_BY_PROTECTED_ROLLBACK_ROLE",
+                "coreEntrypointRetirementPrecheckChecks", registry.coreEntrypointRetirementPrecheckChecks(),
+                "coreEntrypointRetirementEvidence", registry.coreEntrypointRetirementEvidence(),
                 "replacementDecision", registry.replacementDecision(),
                 "generatedAt", now()
         ));
@@ -1072,6 +1075,49 @@ class UnifiedBackendRegistry {
         );
     }
 
+    List<Map<String, Object>> coreEntrypointRetirementPrecheckChecks() {
+        return List.of(
+                switchCheck("UNIFIED_BACKEND_IN_PROCESS_COVERAGE", "PASS", "five core business surfaces are mounted in unified-backend", true),
+                switchCheck("CORE_SELF_APIS_MOUNTED", "PASS", "five core self APIs are mounted in unified-backend", true),
+                switchCheck("BUSINESS_PATHS_PRESERVED", "PASS", "all business paths keep existing /api/v1 prefixes", true),
+                switchCheck("REAL_HTTP_REHEARSAL_PASSED", "PASS", "real HTTP rehearsal passed for candidate business surfaces", true),
+                switchCheck("ROUTE_DRIFT_SCAN_PASSED", "PASS", "route drift scan passed before core retirement readiness", true),
+                switchCheck("INDEPENDENT_CORE_REGRESSION_REQUIRED", "PASS", "independent core Maven entrypoints remain in regression before retirement", true),
+                switchCheck("API_GATEWAY_RETIREMENT_COMPLETED", "BLOCKED", "api-gateway is still a protected rollback entrypoint", true),
+                switchCheck("EXTERNAL_ENTRYPOINT_TRAFFIC_SWITCHED", "BLOCKED", "production traffic is not switched to unified-backend", true),
+                switchCheck("ROLLBACK_WINDOW_COMPLETED", "BLOCKED", "rollback window has not completed after traffic switch", true),
+                switchCheck("USER_CORE_RETIREMENT_APPROVAL_GRANTED", "BLOCKED", "core entrypoint retirement approval has not been granted", true),
+                switchCheck("CORE_DELETE_LIST_CONFIRMED", "BLOCKED", "core deletion list is not confirmed", true)
+        );
+    }
+
+    Map<String, Object> coreEntrypointRetirementEvidence() {
+        return map(
+                "retirementApprovalStatus", "BLOCKED",
+                "deletionAllowed", false,
+                "trafficSwitchApplied", false,
+                "apiGatewayRetired", false,
+                "rollbackWindowCompleted", false,
+                "bulkRetirementAllowed", false,
+                "nextEligibleCore", "NONE_UNTIL_API_GATEWAY_RETIRED",
+                "protectedCoreEntrypoints", List.of(
+                        "business-core:8130",
+                        "admission-core:8131",
+                        "engagement-core:8132",
+                        "ops-core:8133",
+                        "portal-core:8134"
+                ),
+                "coreEntrypointMatrix", List.of(
+                        coreRetirementTarget("business-core", 8130, "backend/business-core-service", List.of("auth", "profile", "notification", "content", "server-status", "resource", "admin"), 1),
+                        coreRetirementTarget("admission-core", 8131, "backend/admission-core-service", List.of("onboarding", "exam", "whitelist", "attendance"), 2),
+                        coreRetirementTarget("engagement-core", 8132, "backend/engagement-core-service", List.of("community", "activity", "calendar", "changelog"), 3),
+                        coreRetirementTarget("ops-core", 8133, "backend/ops-core-service", List.of("ops-control", "cloudreve-sync", "backup-recovery", "alerting", "plugin-integration", "cross-platform-notification", "ops-image-market"), 4),
+                        coreRetirementTarget("portal-core", 8134, "backend/portal-core-service", List.of("online-map", "material", "guide"), 5)
+                ),
+                "status", "BLOCKED_BY_PROTECTED_ROLLBACK_ROLE"
+        );
+    }
+
     Map<String, Object> replacementDecision() {
         return map(
                 "canReplaceGateway", false,
@@ -1098,6 +1144,22 @@ class UnifiedBackendRegistry {
                 "entrypoint", entrypoint,
                 "port", port,
                 "disposition", disposition
+        );
+    }
+
+    private Map<String, Object> coreRetirementTarget(String entrypointKey, int port, String sourceDirectory,
+                                                     List<String> hostedRouteIds, int retirementOrder) {
+        return map(
+                "entrypointKey", entrypointKey,
+                "port", port,
+                "sourceDirectory", sourceDirectory,
+                "hostedRouteIds", hostedRouteIds,
+                "inProcessMountedInUnified", true,
+                "selfApisMountedInUnified", true,
+                "independentRegressionRequired", true,
+                "retirementOrder", retirementOrder,
+                "retirementStatus", "BLOCKED",
+                "blockedBy", "PROTECTED_ROLLBACK_ROLE"
         );
     }
 

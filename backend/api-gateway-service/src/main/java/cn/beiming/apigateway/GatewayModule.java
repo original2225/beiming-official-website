@@ -810,6 +810,7 @@ class GatewayState {
                         check("EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY", "PASS", "EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY"),
                         check("LEGACY_ENTRYPOINTS_NOT_RESTORED", "PASS", "retired legacy service entrypoints are not part of the topology"),
                         check("API_GATEWAY_RETIREMENT_BLOCKED_UNTIL_TRAFFIC_SWITCH", "PASS", "api-gateway retirement remains blocked until unified-backend receives proven production traffic"),
+                        check("CORE_ENTRYPOINTS_PROTECTED_UNTIL_GATEWAY_RETIRED", "PASS", "five core entrypoints remain protected until api-gateway retirement completes"),
                         check("STATIC_SERVICE_DISCOVERY_ONLY", "BLOCKED", "current upstreams are still static route registrations"),
                         check("IN_PROCESS_MOUNT_NOT_IMPLEMENTED", "NOT_IMPLEMENTED", "business modules are not mounted in-process through the gateway")
                 ),
@@ -864,16 +865,36 @@ class GatewayState {
                 "port", port,
                 "role", role,
                 "mergeDisposition", disposition,
-                "rollbackEntrypointRole", "ROLLBACK_ENTRYPOINT".equals(disposition) ? "PROTECTED_ROLLBACK_ENTRYPOINT" : null,
+                "rollbackEntrypointRole", rollbackEntrypointRole(disposition),
                 "retirementApprovalStatus", "BLOCKED",
-                "trafficSwitchRequired", "ROLLBACK_ENTRYPOINT".equals(disposition),
+                "trafficSwitchRequired", "ROLLBACK_ENTRYPOINT".equals(disposition) || "IN_PROCESS_CANDIDATE".equals(disposition),
                 "trafficSwitchProven", false,
-                "nextAction", "ROLLBACK_ENTRYPOINT".equals(disposition) ? "WAIT_FOR_UNIFIED_ENTRYPOINT_TRAFFIC_SWITCH" : "KEEP_AS_CORE_ROLLBACK_ENTRYPOINT",
+                "nextAction", entrypointNextAction(disposition),
                 "hostedRouteIds", hostedRoutes.stream().map(GatewayRoute::routeId).toList(),
                 "hostedPathPrefixes", hostedRoutes.stream().map(GatewayRoute::pathPrefix).toList(),
                 "routesTotal", hostedRoutes.size(),
                 "keptExternalReason", externalReason
         );
+    }
+
+    private String rollbackEntrypointRole(String disposition) {
+        if ("ROLLBACK_ENTRYPOINT".equals(disposition)) {
+            return "PROTECTED_ROLLBACK_ENTRYPOINT";
+        }
+        if ("IN_PROCESS_CANDIDATE".equals(disposition)) {
+            return "PROTECTED_CORE_ROLLBACK_ENTRYPOINT";
+        }
+        return null;
+    }
+
+    private String entrypointNextAction(String disposition) {
+        if ("ROLLBACK_ENTRYPOINT".equals(disposition)) {
+            return "WAIT_FOR_UNIFIED_ENTRYPOINT_TRAFFIC_SWITCH";
+        }
+        if ("IN_PROCESS_CANDIDATE".equals(disposition)) {
+            return "WAIT_FOR_API_GATEWAY_RETIREMENT_AND_CORE_RETIREMENT_APPROVAL";
+        }
+        return "KEEP_AS_CORE_ROLLBACK_ENTRYPOINT";
     }
 
     private List<GatewayRoute> routesByIds(Set<String> routeIds) {
