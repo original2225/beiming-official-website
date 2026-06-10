@@ -1,6 +1,6 @@
 # 北冥官网 api-gateway API 契约
 
-版本：0.6
+版本：0.7
 
 ## 文档定位
 
@@ -114,6 +114,8 @@
 
 第九轮新增 `unified-backend-service:8135` 作为并行候选入口。当前网关保持 `CURRENT_SIX_ROLLBACK_ENTRYPOINTS`，运行拓扑必须识别 `unified-backend` 试点候选和外部节点执行器出仓状态。候选入口第一阶段挂载对象为 `api-gateway` 和 `portal-core`，第二阶段挂载对象扩展为 `business-core`，第三阶段挂载对象扩展为 `admission-core`，第四阶段挂载对象扩展为 `engagement-core`，第五阶段挂载对象扩展为 `ops-core`，候选挂载路由为 `auth`、`profile`、`notification`、`content`、`server-status`、`resource`、`admin`、`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、`ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`cross-platform-notification`、`ops-image-market`、`guide`、`material` 和 `online-map`。该字段只用于后续装配验收，不能让当前 `api-gateway-service:8125` 冒充已经完成 in-process。
 
+第二十五轮开始，`api-gateway-service:8125` 的角色固定为受保护回滚入口。只有 `unified-backend-service:8135` 已经承接真实外部入口、回滚窗口完成、网关生产流量归零得到证明、网关自有后台 API 已由 unified 覆盖、用户明确批准退役并确认删除清单后，才允许进入实际退役。缺少任一证据时，运行拓扑必须继续返回退役阻塞状态，不得从契约、代码或测试中提前删除 `api-gateway-service`。
+
 路径匹配规则为最长前缀优先。`/api/v1/resources` 和 `/api/v1/resources/**` 都必须命中 `resource`。未知路径返回网关错误，不转发到任何上游。
 
 ## 网关自有对象
@@ -188,9 +190,9 @@
 | `mergePreparationChecks` | object[] | 是 | 合并准备守卫检查。 |
 | `generatedAt` | string | 是 | 生成时间。 |
 
-`currentEntrypoints` 每项必须包含 `entrypointKey`、`serviceDirectory`、`port`、`role`、`mergeDisposition`、`rollbackEntrypointRole`、`retirementApprovalStatus`、`hostedRouteIds`、`hostedPathPrefixes` 和 `routesTotal`。`api-gateway` 的 `mergeDisposition` 为 `ROLLBACK_ENTRYPOINT`，`rollbackEntrypointRole` 为 `PROTECTED_ROLLBACK_ENTRYPOINT`，`retirementApprovalStatus` 为 `BLOCKED`；五个 core 运行单元为 `IN_PROCESS_CANDIDATE`，同样不得被描述为已退役。外部节点执行器不在 `currentEntrypoints` 中返回，只能在拓扑摘要中以 `externalNodeExecutorOutOfRepository=true` 和 `externalNodeExecutorConnected=false` 表达。
+`currentEntrypoints` 每项必须包含 `entrypointKey`、`serviceDirectory`、`port`、`role`、`mergeDisposition`、`rollbackEntrypointRole`、`retirementApprovalStatus`、`trafficSwitchRequired`、`trafficSwitchProven`、`nextAction`、`hostedRouteIds`、`hostedPathPrefixes` 和 `routesTotal`。`api-gateway` 的 `mergeDisposition` 为 `ROLLBACK_ENTRYPOINT`，`rollbackEntrypointRole` 为 `PROTECTED_ROLLBACK_ENTRYPOINT`，`retirementApprovalStatus` 为 `BLOCKED`，`trafficSwitchRequired=true`，`trafficSwitchProven=false`，`nextAction=WAIT_FOR_UNIFIED_ENTRYPOINT_TRAFFIC_SWITCH`；五个 core 运行单元为 `IN_PROCESS_CANDIDATE`，同样不得被描述为已退役。外部节点执行器不在 `currentEntrypoints` 中返回，只能在拓扑摘要中以 `externalNodeExecutorOutOfRepository=true` 和 `externalNodeExecutorConnected=false` 表达。
 
-`mergePreparationChecks` 至少包含 `ROUTE_PREFIX_PRESERVED`、`GATEWAY_AS_ROLLBACK_ENTRYPOINT`、`CORE_ROUTES_GROUPED`、`EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY`、`LEGACY_ENTRYPOINTS_NOT_RESTORED`、`STATIC_SERVICE_DISCOVERY_ONLY` 和 `IN_PROCESS_MOUNT_NOT_IMPLEMENTED`。前五项为 `PASS`，后两项必须保持 `BLOCKED` 或 `NOT_IMPLEMENTED`，防止把静态路由表误称为动态服务发现或把准备层误称为真正单服务合并。
+`mergePreparationChecks` 至少包含 `ROUTE_PREFIX_PRESERVED`、`GATEWAY_AS_ROLLBACK_ENTRYPOINT`、`CORE_ROUTES_GROUPED`、`EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY`、`LEGACY_ENTRYPOINTS_NOT_RESTORED`、`API_GATEWAY_RETIREMENT_BLOCKED_UNTIL_TRAFFIC_SWITCH`、`STATIC_SERVICE_DISCOVERY_ONLY` 和 `IN_PROCESS_MOUNT_NOT_IMPLEMENTED`。前六项为 `PASS`，后两项必须保持 `BLOCKED` 或 `NOT_IMPLEMENTED`，防止把静态路由表误称为动态服务发现或把准备层误称为真正单服务合并。
 
 `futureUnifiedBackend` 必须额外包含 `pilotCandidate`。该对象固定声明 `entrypointKey=unified-backend`、`serviceDirectory=backend/unified-backend-service`、`candidatePort=8135`、`deploymentMode=CANDIDATE_PARALLEL_ENTRYPOINT`、`pilotMountedEntrypoints=["api-gateway","business-core","admission-core","engagement-core","ops-core","portal-core"]`、`pilotMountedRouteIds=["auth","profile","notification","content","server-status","resource","admin","onboarding","exam","whitelist","attendance","community","activity","calendar","changelog","ops-control","cloudreve-sync","backup-recovery","alerting","plugin-integration","cross-platform-notification","ops-image-market","guide","material","online-map"]`、`externalNodeExecutorOutOfRepository=true`、`externalNodeExecutorConnected=false`、`readyToReplaceGateway=false`、`readyToRetireBusinessCore=false`、`readyToRetireAdmissionCore=false`、`readyToRetireEngagementCore=false`、`readyToRetireOpsCore=false` 和 `readyToRetirePortalCore=false`。
 

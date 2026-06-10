@@ -85,8 +85,9 @@ class GatewayApiContractTest {
         addRange(mapped, "GATE-PROXY", 1, 49);
         addRange(mapped, "GATE-CORS", 1, 10);
         addRange(mapped, "GATE-SEC", 1, 11);
+        addRange(mapped, "GATE-RETIRE", 1, 8);
 
-        assertThat(mapped).hasSize(252);
+        assertThat(mapped).hasSize(260);
         assertThat(mapped).contains("GATE-COM-001", "GATE-PFX-025", "GATE-BCORE-010", "GATE-ACORE-010", "GATE-ECORE-010", "GATE-OCORE-010", "GATE-PCORE-010", "GATE-PCORE-011", "GATE-TOPOLOGY-012", "GATE-UNIFIED-004", "GATE-UNIFIED-006", "GATE-UP-020", "GATE-PROXY-049", "GATE-SEC-011");
     }
 
@@ -277,6 +278,46 @@ class GatewayApiContractTest {
         assertThat(gateway.at("/routesTotal").asInt()).isZero();
 
         assertThat(topology.toString())
+                .doesNotContain("node-daemon")
+                .doesNotContain("NODE_DAEMON")
+                .doesNotContain("/api/v1/node-daemon")
+                .doesNotContain("8117");
+        assertNoSecrets(topology);
+    }
+
+    @Test
+    void runtimeTopologyBlocksApiGatewayRetirementUntilUnifiedTrafficSwitchIsProven() throws Exception {
+        JsonNode topology = performJson(get("/api/v1/gateway/admin/runtime-topology")
+                .header("Authorization", bearer("owner-token"))
+                .header("X-Request-Id", "req-api-gateway-retirement-gate"), 200);
+
+        JsonNode unified = topology.at("/data/futureUnifiedBackend");
+        assertThat(unified.at("/entrypointKey").asText()).isEqualTo("unified-backend");
+        assertThat(unified.at("/pilotCandidate/candidatePort").asInt()).isEqualTo(8135);
+        assertThat(unified.at("/pilotCandidate/pilotMountedRouteIds").size()).isEqualTo(25);
+        assertThat(unified.at("/pilotCandidate/readyToReplaceGateway").asBoolean()).isFalse();
+
+        JsonNode gateway = findByText(topology.at("/data/currentEntrypoints"), "entrypointKey", "api-gateway");
+        assertThat(gateway.at("/port").asInt()).isEqualTo(8125);
+        assertThat(gateway.at("/mergeDisposition").asText()).isEqualTo("ROLLBACK_ENTRYPOINT");
+        assertThat(gateway.at("/rollbackEntrypointRole").asText()).isEqualTo("PROTECTED_ROLLBACK_ENTRYPOINT");
+        assertThat(gateway.at("/retirementApprovalStatus").asText()).isEqualTo("BLOCKED");
+        assertThat(gateway.at("/trafficSwitchRequired").asBoolean()).isTrue();
+        assertThat(gateway.at("/trafficSwitchProven").asBoolean()).isFalse();
+        assertThat(gateway.at("/nextAction").asText()).isEqualTo("WAIT_FOR_UNIFIED_ENTRYPOINT_TRAFFIC_SWITCH");
+        assertThat(gateway.at("/routesTotal").asInt()).isZero();
+
+        JsonNode checks = topology.at("/data/mergePreparationChecks");
+        assertCheck(checks, "GATEWAY_AS_ROLLBACK_ENTRYPOINT", "PASS");
+        assertCheck(checks, "API_GATEWAY_RETIREMENT_BLOCKED_UNTIL_TRAFFIC_SWITCH", "PASS");
+        assertCheck(checks, "STATIC_SERVICE_DISCOVERY_ONLY", "BLOCKED");
+        assertCheck(checks, "IN_PROCESS_MOUNT_NOT_IMPLEMENTED", "NOT_IMPLEMENTED");
+
+        assertThat(topology.toString())
+                .contains("api-gateway")
+                .contains("unified-backend")
+                .doesNotContain("retirementApprovalStatus\":\"APPROVED")
+                .doesNotContain("trafficSwitchProven\":true")
                 .doesNotContain("node-daemon")
                 .doesNotContain("NODE_DAEMON")
                 .doesNotContain("/api/v1/node-daemon")

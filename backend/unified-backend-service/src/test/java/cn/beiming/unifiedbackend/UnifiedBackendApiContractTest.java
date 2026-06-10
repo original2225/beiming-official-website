@@ -55,6 +55,7 @@ class UnifiedBackendApiContractTest {
         addRange(mapped, "UBACK-BOUNDARY", 1, 1);
         addRange(mapped, "UBACK-REGRESS", 1, 1);
         addRange(mapped, "UBACK-CUTOVER", 1, 2);
+        addRange(mapped, "UBACK-PROD-CUTOVER", 1, 10);
 
         assertThat(mapped).contains(
                 "UBACK-COM-001",
@@ -85,9 +86,11 @@ class UnifiedBackendApiContractTest {
                 "UBACK-BOUNDARY-001",
                 "UBACK-REGRESS-001",
                 "UBACK-CUTOVER-001",
-                "UBACK-CUTOVER-002"
+                "UBACK-CUTOVER-002",
+                "UBACK-PROD-CUTOVER-001",
+                "UBACK-PROD-CUTOVER-010"
         );
-        assertThat(mapped).hasSize(51);
+        assertThat(mapped).hasSize(61);
     }
 
     @Test
@@ -1059,6 +1062,73 @@ class UnifiedBackendApiContractTest {
                 .doesNotContain("directoryDeletionAllowed\":true")
                 .doesNotContain("trafficSwitchApplied\":true")
                 .doesNotContain("node-daemon can be merged");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void exposesProductionEntrypointCutoverGateWithoutFakingExternalSwitch() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-production-entrypoint-cutover"));
+
+        assertThat(readiness.at("/data/productionEntrypointCutoverPrecheckStatus").asText())
+                .isEqualTo("BLOCKED_BY_MISSING_EXTERNAL_ENTRYPOINT_CONFIG");
+        assertPrecheck(readiness, "/data/productionEntrypointCutoverPrecheckChecks", "UNIFIED_BACKEND_READY", "PASS", true);
+        assertPrecheck(readiness, "/data/productionEntrypointCutoverPrecheckChecks", "BUSINESS_PATHS_PRESERVED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionEntrypointCutoverPrecheckChecks", "REAL_HTTP_REHEARSAL_PASSED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionEntrypointCutoverPrecheckChecks", "API_GATEWAY_ROLLBACK_TARGET_DEFINED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionEntrypointCutoverPrecheckChecks", "EXTERNAL_ENTRYPOINT_CONFIG_PRESENT", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/productionEntrypointCutoverPrecheckChecks", "TRAFFIC_SWITCH_APPLIED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/productionEntrypointCutoverPrecheckChecks", "API_GATEWAY_RETIREMENT_APPROVED", "BLOCKED", true);
+
+        JsonNode evidence = readiness.at("/data/productionEntrypointCutoverEvidence");
+        assertThat(evidence.at("/targetEntrypoint").asText()).isEqualTo("unified-backend:8135");
+        assertThat(evidence.at("/currentEntrypoint").asText()).isEqualTo("api-gateway:8125");
+        assertThat(evidence.at("/businessPathsRemainUnchanged").asBoolean()).isTrue();
+        assertThat(evidence.at("/externalEntrypointConfigPresent").asBoolean()).isFalse();
+        assertThat(evidence.at("/trafficSwitchApplied").asBoolean()).isFalse();
+        assertThat(evidence.at("/rollbackTarget").asText()).isEqualTo("api-gateway:8125");
+        assertThat(evidence.at("/apiGatewayRetirementApproved").asBoolean()).isFalse();
+        assertThat(evidence.at("/readyForProduction").asBoolean()).isFalse();
+        assertThat(evidence.at("/readyToReplaceGateway").asBoolean()).isFalse();
+        assertThat(evidence.at("/status").asText()).isEqualTo("BLOCKED_BY_MISSING_EXTERNAL_ENTRYPOINT_CONFIG");
+        assertThat(readiness.toString())
+                .doesNotContain("/api/v1/unified-backend/auth")
+                .doesNotContain("trafficSwitchApplied\":true")
+                .doesNotContain("apiGatewayRetirementApproved\":true");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void doesNotAllowApiGatewayDeletionBeforeCutoverApproval() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-api-gateway-retirement-blocked"));
+
+        assertThat(readiness.at("/data/apiGatewayRetirementPrecheckStatus").asText())
+                .isEqualTo("BLOCKED_BY_TRAFFIC_NOT_SWITCHED");
+        assertPrecheck(readiness, "/data/apiGatewayRetirementPrecheckChecks", "API_GATEWAY_ROLLBACK_ROLE_PROTECTED", "PASS", true);
+        assertPrecheck(readiness, "/data/apiGatewayRetirementPrecheckChecks", "API_GATEWAY_SELF_APIS_MOUNTED_IN_UNIFIED", "PASS", true);
+        assertPrecheck(readiness, "/data/apiGatewayRetirementPrecheckChecks", "PRODUCTION_ENTRYPOINT_SWITCH_APPLIED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/apiGatewayRetirementPrecheckChecks", "ROLLBACK_WINDOW_COMPLETED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/apiGatewayRetirementPrecheckChecks", "API_GATEWAY_TRAFFIC_ZERO_PROVEN", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/apiGatewayRetirementPrecheckChecks", "USER_RETIREMENT_APPROVAL_GRANTED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/apiGatewayRetirementPrecheckChecks", "DELETE_LIST_CONFIRMED", "BLOCKED", true);
+
+        JsonNode evidence = readiness.at("/data/apiGatewayRetirementEvidence");
+        assertThat(evidence.at("/retirementApprovalStatus").asText()).isEqualTo("BLOCKED");
+        assertThat(evidence.at("/trafficSwitchApplied").asBoolean()).isFalse();
+        assertThat(evidence.at("/trafficSwitchProven").asBoolean()).isFalse();
+        assertThat(evidence.at("/rollbackWindowCompleted").asBoolean()).isFalse();
+        assertThat(evidence.at("/apiGatewayRetirementApproved").asBoolean()).isFalse();
+        assertThat(evidence.at("/protectedEntrypoint").asText()).isEqualTo("api-gateway:8125");
+        assertThat(evidence.at("/nextAction").asText()).isEqualTo("WAIT_FOR_UNIFIED_ENTRYPOINT_TRAFFIC_SWITCH");
+        assertThat(evidence.at("/deletionAllowed").asBoolean()).isFalse();
+        assertThat(evidence.at("/status").asText()).isEqualTo("BLOCKED_BY_TRAFFIC_NOT_SWITCHED");
+        assertThat(readiness.toString())
+                .contains("api-gateway:8125")
+                .doesNotContain("deletionAllowed\":true")
+                .doesNotContain("retirementApprovalStatus\":\"APPROVED");
         assertNoSecrets(readiness);
     }
 

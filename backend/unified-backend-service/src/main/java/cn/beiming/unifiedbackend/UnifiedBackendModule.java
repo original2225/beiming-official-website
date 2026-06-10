@@ -139,6 +139,12 @@ class UnifiedBackendController {
                 "entrypointCutoverExecutionPrecheckStatus", "BLOCKED",
                 "entrypointCutoverExecutionPrecheckChecks", registry.entrypointCutoverExecutionPrecheckChecks(),
                 "entrypointCutoverExecutionEvidence", registry.entrypointCutoverExecutionEvidence(),
+                "productionEntrypointCutoverPrecheckStatus", "BLOCKED_BY_MISSING_EXTERNAL_ENTRYPOINT_CONFIG",
+                "productionEntrypointCutoverPrecheckChecks", registry.productionEntrypointCutoverPrecheckChecks(),
+                "productionEntrypointCutoverEvidence", registry.productionEntrypointCutoverEvidence(),
+                "apiGatewayRetirementPrecheckStatus", "BLOCKED_BY_TRAFFIC_NOT_SWITCHED",
+                "apiGatewayRetirementPrecheckChecks", registry.apiGatewayRetirementPrecheckChecks(),
+                "apiGatewayRetirementEvidence", registry.apiGatewayRetirementEvidence(),
                 "replacementDecision", registry.replacementDecision(),
                 "generatedAt", now()
         ));
@@ -1010,6 +1016,59 @@ class UnifiedBackendRegistry {
                         "PERSISTENT_AUDIT_NOT_CONNECTED"
                 ),
                 "status", "CUTOVER_EXECUTION_BLOCKED_BY_EXTERNAL_ENTRYPOINT_CONFIG"
+        );
+    }
+
+    List<Map<String, Object>> productionEntrypointCutoverPrecheckChecks() {
+        return List.of(
+                switchCheck("UNIFIED_BACKEND_READY", "PASS", "unified-backend:8135 is ready as the target backend application entrypoint", true),
+                switchCheck("BUSINESS_PATHS_PRESERVED", "PASS", "all business paths keep existing /api/v1 prefixes", true),
+                switchCheck("REAL_HTTP_REHEARSAL_PASSED", "PASS", "real HTTP rehearsal passed for the candidate business surface", true),
+                switchCheck("API_GATEWAY_ROLLBACK_TARGET_DEFINED", "PASS", "api-gateway:8125 remains the rollback target", true),
+                switchCheck("EXTERNAL_ENTRYPOINT_CONFIG_PRESENT", "BLOCKED", "repository does not contain external frontend or proxy entrypoint config", true),
+                switchCheck("TRAFFIC_SWITCH_APPLIED", "BLOCKED", "production traffic is not switched to unified-backend", true),
+                switchCheck("API_GATEWAY_RETIREMENT_APPROVED", "BLOCKED", "api-gateway retirement is not approved", true)
+        );
+    }
+
+    Map<String, Object> productionEntrypointCutoverEvidence() {
+        return map(
+                "targetEntrypoint", "unified-backend:8135",
+                "currentEntrypoint", "api-gateway:8125",
+                "businessPathsRemainUnchanged", true,
+                "externalEntrypointConfigPresent", false,
+                "trafficSwitchApplied", false,
+                "rollbackTarget", "api-gateway:8125",
+                "apiGatewayRetirementApproved", false,
+                "readyForProduction", false,
+                "readyToReplaceGateway", false,
+                "status", "BLOCKED_BY_MISSING_EXTERNAL_ENTRYPOINT_CONFIG"
+        );
+    }
+
+    List<Map<String, Object>> apiGatewayRetirementPrecheckChecks() {
+        return List.of(
+                switchCheck("API_GATEWAY_ROLLBACK_ROLE_PROTECTED", "PASS", "api-gateway:8125 remains a protected rollback entrypoint", true),
+                switchCheck("API_GATEWAY_SELF_APIS_MOUNTED_IN_UNIFIED", "PASS", "api-gateway self APIs are mounted in unified-backend", true),
+                switchCheck("PRODUCTION_ENTRYPOINT_SWITCH_APPLIED", "BLOCKED", "production entrypoint is not switched to unified-backend", true),
+                switchCheck("ROLLBACK_WINDOW_COMPLETED", "BLOCKED", "rollback window is not completed after a production switch", true),
+                switchCheck("API_GATEWAY_TRAFFIC_ZERO_PROVEN", "BLOCKED", "api-gateway zero production traffic is not proven", true),
+                switchCheck("USER_RETIREMENT_APPROVAL_GRANTED", "BLOCKED", "api-gateway retirement has not been approved by the user", true),
+                switchCheck("DELETE_LIST_CONFIRMED", "BLOCKED", "api-gateway deletion list is not confirmed", true)
+        );
+    }
+
+    Map<String, Object> apiGatewayRetirementEvidence() {
+        return map(
+                "retirementApprovalStatus", "BLOCKED",
+                "trafficSwitchApplied", false,
+                "trafficSwitchProven", false,
+                "rollbackWindowCompleted", false,
+                "apiGatewayRetirementApproved", false,
+                "protectedEntrypoint", "api-gateway:8125",
+                "nextAction", "WAIT_FOR_UNIFIED_ENTRYPOINT_TRAFFIC_SWITCH",
+                "deletionAllowed", false,
+                "status", "BLOCKED_BY_TRAFFIC_NOT_SWITCHED"
         );
     }
 

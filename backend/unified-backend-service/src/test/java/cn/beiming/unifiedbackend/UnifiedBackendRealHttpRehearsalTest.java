@@ -105,6 +105,44 @@ class UnifiedBackendRealHttpRehearsalTest {
         assertNoSensitiveFields(unifiedMounts);
     }
 
+    @Test
+    void realHttpCutoverTargetsMatchGatewayBusinessSurface() throws Exception {
+        JsonNode readiness = getAdmin("/api/v1/unified-backend/admin/readiness");
+        assertThat(readiness.at("/data/entrypointCutoverExecutionEvidence/candidateBaseUrl").asText())
+                .isEqualTo("http://127.0.0.1:8135");
+        assertThat(readiness.at("/data/entrypointCutoverExecutionEvidence/currentGatewayBaseUrl").asText())
+                .isEqualTo("http://127.0.0.1:8125");
+        assertThat(readiness.at("/data/readyToReplaceGateway").asBoolean()).isFalse();
+
+        JsonNode gatewayRoutes = getAdmin("/api/v1/gateway/admin/routes?pageSize=100&sort=routeId_asc");
+        JsonNode unifiedMounts = getAdmin("/api/v1/unified-backend/admin/mounts");
+
+        Map<String, JsonNode> gatewayById = itemsByRouteId(gatewayRoutes.at("/data/items"));
+        Map<String, JsonNode> unifiedById = itemsByRouteId(unifiedMounts.at("/data/items"));
+        assertThat(gatewayById).hasSize(25);
+
+        for (Map.Entry<String, JsonNode> gateway : gatewayById.entrySet()) {
+            JsonNode unified = unifiedById.get(gateway.getKey());
+            assertThat(unified).as(gateway.getKey()).isNotNull();
+            assertThat(unified.path("pathPrefix").asText()).isEqualTo(gateway.getValue().path("pathPrefix").asText());
+            assertThat(unified.path("mountDisposition").asText()).isEqualTo("IN_PROCESS");
+            assertThat(unified.path("currentPort").asInt()).isEqualTo(gateway.getValue().path("upstreamPort").asInt());
+            assertThat(unified.path("candidatePort").asInt()).isEqualTo(8135);
+
+            JsonNode response = getMaybeAuthorized(gateway.getValue().path("healthCheckPath").asText(), authorizationFor(gateway.getKey()));
+            assertThat(response.at("/code").asInt()).as(gateway.getKey()).isIn(0, 41000);
+            assertNoSensitiveFields(response);
+        }
+
+        assertThat(unifiedMounts.toString())
+                .doesNotContain("/api/v1/unified-backend/auth")
+                .doesNotContain("HTTP_UPSTREAM_FALLBACK")
+                .doesNotContain("node-daemon")
+                .doesNotContain("8117");
+        assertNoSensitiveFields(gatewayRoutes);
+        assertNoSensitiveFields(unifiedMounts);
+    }
+
     private JsonNode get(String path) throws Exception {
         ResponseEntity<String> response = restTemplate.getForEntity(url(path), String.class);
         assertThat(response.getBody()).isNotBlank();
@@ -142,6 +180,15 @@ class UnifiedBackendRealHttpRehearsalTest {
             byId.put(item.path("routeId").asText(), item);
         }
         return byId;
+    }
+
+    private String authorizationFor(String routeId) {
+        return switch (routeId) {
+            case "notification" -> "Bearer user-token";
+            case "admin" -> "Bearer helper-token";
+            case "ops-control" -> "Bearer owner-token";
+            default -> null;
+        };
     }
 
     private void assertNoSensitiveFields(JsonNode node) {

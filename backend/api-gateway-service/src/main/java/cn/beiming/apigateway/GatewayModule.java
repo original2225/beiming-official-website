@@ -809,6 +809,7 @@ class GatewayState {
                         check("CORE_ROUTES_GROUPED", "PASS", "business routes stay grouped under five core entrypoints"),
                         check("EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY", "PASS", "EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY"),
                         check("LEGACY_ENTRYPOINTS_NOT_RESTORED", "PASS", "retired legacy service entrypoints are not part of the topology"),
+                        check("API_GATEWAY_RETIREMENT_BLOCKED_UNTIL_TRAFFIC_SWITCH", "PASS", "api-gateway retirement remains blocked until unified-backend receives proven production traffic"),
                         check("STATIC_SERVICE_DISCOVERY_ONLY", "BLOCKED", "current upstreams are still static route registrations"),
                         check("IN_PROCESS_MOUNT_NOT_IMPLEMENTED", "NOT_IMPLEMENTED", "business modules are not mounted in-process through the gateway")
                 ),
@@ -865,6 +866,9 @@ class GatewayState {
                 "mergeDisposition", disposition,
                 "rollbackEntrypointRole", "ROLLBACK_ENTRYPOINT".equals(disposition) ? "PROTECTED_ROLLBACK_ENTRYPOINT" : null,
                 "retirementApprovalStatus", "BLOCKED",
+                "trafficSwitchRequired", "ROLLBACK_ENTRYPOINT".equals(disposition),
+                "trafficSwitchProven", false,
+                "nextAction", "ROLLBACK_ENTRYPOINT".equals(disposition) ? "WAIT_FOR_UNIFIED_ENTRYPOINT_TRAFFIC_SWITCH" : "KEEP_AS_CORE_ROLLBACK_ENTRYPOINT",
                 "hostedRouteIds", hostedRoutes.stream().map(GatewayRoute::routeId).toList(),
                 "hostedPathPrefixes", hostedRoutes.stream().map(GatewayRoute::pathPrefix).toList(),
                 "routesTotal", hostedRoutes.size(),
