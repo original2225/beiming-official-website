@@ -1,6 +1,6 @@
 # 北冥官网 api-gateway API 契约
 
-版本：0.7
+版本：0.8
 
 ## 文档定位
 
@@ -190,9 +190,9 @@
 | `mergePreparationChecks` | object[] | 是 | 合并准备守卫检查。 |
 | `generatedAt` | string | 是 | 生成时间。 |
 
-`currentEntrypoints` 每项必须包含 `entrypointKey`、`serviceDirectory`、`port`、`role`、`mergeDisposition`、`rollbackEntrypointRole`、`retirementApprovalStatus`、`trafficSwitchRequired`、`trafficSwitchProven`、`nextAction`、`hostedRouteIds`、`hostedPathPrefixes` 和 `routesTotal`。`api-gateway` 的 `mergeDisposition` 为 `ROLLBACK_ENTRYPOINT`，`rollbackEntrypointRole` 为 `PROTECTED_ROLLBACK_ENTRYPOINT`，`retirementApprovalStatus` 为 `BLOCKED`，`trafficSwitchRequired=true`，`trafficSwitchProven=false`，`nextAction=WAIT_FOR_UNIFIED_ENTRYPOINT_TRAFFIC_SWITCH`；五个 core 运行单元为 `IN_PROCESS_CANDIDATE`，同样不得被描述为已退役。外部节点执行器不在 `currentEntrypoints` 中返回，只能在拓扑摘要中以 `externalNodeExecutorOutOfRepository=true` 和 `externalNodeExecutorConnected=false` 表达。
+`currentEntrypoints` 每项必须包含 `entrypointKey`、`serviceDirectory`、`port`、`role`、`mergeDisposition`、`rollbackEntrypointRole`、`retirementApprovalStatus`、`trafficSwitchRequired`、`trafficSwitchProven`、`nextAction`、`hostedRouteIds`、`hostedPathPrefixes` 和 `routesTotal`。`api-gateway` 的 `mergeDisposition` 为 `ROLLBACK_ENTRYPOINT`，`rollbackEntrypointRole` 为 `PROTECTED_ROLLBACK_ENTRYPOINT`，`retirementApprovalStatus` 为 `BLOCKED`，`trafficSwitchRequired=true`，`trafficSwitchProven=false`，`nextAction=WAIT_FOR_UNIFIED_ENTRYPOINT_TRAFFIC_SWITCH`。五个 core 运行单元的 `mergeDisposition` 为 `IN_PROCESS_CANDIDATE`，`rollbackEntrypointRole` 必须为 `PROTECTED_CORE_ROLLBACK_ENTRYPOINT`，`retirementApprovalStatus` 必须为 `BLOCKED`，`trafficSwitchRequired=true`，`trafficSwitchProven=false`，`nextAction=WAIT_FOR_API_GATEWAY_RETIREMENT_AND_CORE_RETIREMENT_APPROVAL`。五个 core 只能在 `api-gateway` 完成真实退役、外部入口切流和回滚窗口完成后，按顺序逐个进入用户确认清单，不能越过 `api-gateway` 先退役。外部节点执行器不在 `currentEntrypoints` 中返回，只能在拓扑摘要中以 `externalNodeExecutorOutOfRepository=true` 和 `externalNodeExecutorConnected=false` 表达。
 
-`mergePreparationChecks` 至少包含 `ROUTE_PREFIX_PRESERVED`、`GATEWAY_AS_ROLLBACK_ENTRYPOINT`、`CORE_ROUTES_GROUPED`、`EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY`、`LEGACY_ENTRYPOINTS_NOT_RESTORED`、`API_GATEWAY_RETIREMENT_BLOCKED_UNTIL_TRAFFIC_SWITCH`、`STATIC_SERVICE_DISCOVERY_ONLY` 和 `IN_PROCESS_MOUNT_NOT_IMPLEMENTED`。前六项为 `PASS`，后两项必须保持 `BLOCKED` 或 `NOT_IMPLEMENTED`，防止把静态路由表误称为动态服务发现或把准备层误称为真正单服务合并。
+`mergePreparationChecks` 至少包含 `ROUTE_PREFIX_PRESERVED`、`GATEWAY_AS_ROLLBACK_ENTRYPOINT`、`CORE_ROUTES_GROUPED`、`CORE_ENTRYPOINTS_PROTECTED_UNTIL_GATEWAY_RETIRED`、`EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY`、`LEGACY_ENTRYPOINTS_NOT_RESTORED`、`API_GATEWAY_RETIREMENT_BLOCKED_UNTIL_TRAFFIC_SWITCH`、`STATIC_SERVICE_DISCOVERY_ONLY` 和 `IN_PROCESS_MOUNT_NOT_IMPLEMENTED`。前七项为 `PASS`，后两项必须保持 `BLOCKED` 或 `NOT_IMPLEMENTED`，防止把静态路由表误称为动态服务发现或把准备层误称为真正单服务合并。
 
 `futureUnifiedBackend` 必须额外包含 `pilotCandidate`。该对象固定声明 `entrypointKey=unified-backend`、`serviceDirectory=backend/unified-backend-service`、`candidatePort=8135`、`deploymentMode=CANDIDATE_PARALLEL_ENTRYPOINT`、`pilotMountedEntrypoints=["api-gateway","business-core","admission-core","engagement-core","ops-core","portal-core"]`、`pilotMountedRouteIds=["auth","profile","notification","content","server-status","resource","admin","onboarding","exam","whitelist","attendance","community","activity","calendar","changelog","ops-control","cloudreve-sync","backup-recovery","alerting","plugin-integration","cross-platform-notification","ops-image-market","guide","material","online-map"]`、`externalNodeExecutorOutOfRepository=true`、`externalNodeExecutorConnected=false`、`readyToReplaceGateway=false`、`readyToRetireBusinessCore=false`、`readyToRetireAdmissionCore=false`、`readyToRetireEngagementCore=false`、`readyToRetireOpsCore=false` 和 `readyToRetirePortalCore=false`。
 

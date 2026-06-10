@@ -56,6 +56,7 @@ class UnifiedBackendApiContractTest {
         addRange(mapped, "UBACK-REGRESS", 1, 1);
         addRange(mapped, "UBACK-CUTOVER", 1, 2);
         addRange(mapped, "UBACK-PROD-CUTOVER", 1, 10);
+        addRange(mapped, "UBACK-CORE-RETIRE", 1, 10);
 
         assertThat(mapped).contains(
                 "UBACK-COM-001",
@@ -88,9 +89,11 @@ class UnifiedBackendApiContractTest {
                 "UBACK-CUTOVER-001",
                 "UBACK-CUTOVER-002",
                 "UBACK-PROD-CUTOVER-001",
-                "UBACK-PROD-CUTOVER-010"
+                "UBACK-PROD-CUTOVER-010",
+                "UBACK-CORE-RETIRE-001",
+                "UBACK-CORE-RETIRE-010"
         );
-        assertThat(mapped).hasSize(61);
+        assertThat(mapped).hasSize(71);
     }
 
     @Test
@@ -1130,6 +1133,72 @@ class UnifiedBackendApiContractTest {
                 .doesNotContain("deletionAllowed\":true")
                 .doesNotContain("retirementApprovalStatus\":\"APPROVED");
         assertNoSecrets(readiness);
+    }
+
+    @Test
+    void exposesCoreEntrypointRetirementReadinessWithoutDeletingRollbackEntrypoints() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-core-retirement-readiness"));
+
+        assertThat(readiness.at("/data/coreEntrypointRetirementPrecheckStatus").asText())
+                .isEqualTo("BLOCKED_BY_PROTECTED_ROLLBACK_ROLE");
+        assertThat(readiness.at("/data/readyToRetireBusinessCore").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/readyToRetireAdmissionCore").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/readyToRetireEngagementCore").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/readyToRetireOpsCore").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/readyToRetirePortalCore").asBoolean()).isFalse();
+
+        assertPrecheck(readiness, "/data/coreEntrypointRetirementPrecheckChecks", "UNIFIED_BACKEND_IN_PROCESS_COVERAGE", "PASS", true);
+        assertPrecheck(readiness, "/data/coreEntrypointRetirementPrecheckChecks", "CORE_SELF_APIS_MOUNTED", "PASS", true);
+        assertPrecheck(readiness, "/data/coreEntrypointRetirementPrecheckChecks", "BUSINESS_PATHS_PRESERVED", "PASS", true);
+        assertPrecheck(readiness, "/data/coreEntrypointRetirementPrecheckChecks", "REAL_HTTP_REHEARSAL_PASSED", "PASS", true);
+        assertPrecheck(readiness, "/data/coreEntrypointRetirementPrecheckChecks", "ROUTE_DRIFT_SCAN_PASSED", "PASS", true);
+        assertPrecheck(readiness, "/data/coreEntrypointRetirementPrecheckChecks", "INDEPENDENT_CORE_REGRESSION_REQUIRED", "PASS", true);
+        assertPrecheck(readiness, "/data/coreEntrypointRetirementPrecheckChecks", "API_GATEWAY_RETIREMENT_COMPLETED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/coreEntrypointRetirementPrecheckChecks", "EXTERNAL_ENTRYPOINT_TRAFFIC_SWITCHED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/coreEntrypointRetirementPrecheckChecks", "ROLLBACK_WINDOW_COMPLETED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/coreEntrypointRetirementPrecheckChecks", "USER_CORE_RETIREMENT_APPROVAL_GRANTED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/coreEntrypointRetirementPrecheckChecks", "CORE_DELETE_LIST_CONFIRMED", "BLOCKED", true);
+
+        JsonNode evidence = readiness.at("/data/coreEntrypointRetirementEvidence");
+        assertThat(evidence.at("/retirementApprovalStatus").asText()).isEqualTo("BLOCKED");
+        assertThat(evidence.at("/deletionAllowed").asBoolean()).isFalse();
+        assertThat(evidence.at("/bulkRetirementAllowed").asBoolean()).isFalse();
+        assertThat(evidence.at("/trafficSwitchApplied").asBoolean()).isFalse();
+        assertThat(evidence.at("/apiGatewayRetired").asBoolean()).isFalse();
+        assertThat(evidence.at("/rollbackWindowCompleted").asBoolean()).isFalse();
+        assertThat(evidence.at("/nextEligibleCore").asText()).isEqualTo("NONE_UNTIL_API_GATEWAY_RETIRED");
+        assertThat(evidence.at("/status").asText()).isEqualTo("BLOCKED_BY_PROTECTED_ROLLBACK_ROLE");
+
+        String matrix = evidence.at("/coreEntrypointMatrix").toString();
+        assertThat(matrix)
+                .contains("business-core", "admission-core", "engagement-core", "ops-core", "portal-core")
+                .contains("\"inProcessMountedInUnified\":true")
+                .contains("\"selfApisMountedInUnified\":true")
+                .contains("\"independentRegressionRequired\":true")
+                .contains("\"retirementStatus\":\"BLOCKED\"")
+                .contains("\"blockedBy\":\"PROTECTED_ROLLBACK_ROLE\"");
+        assertThat(readiness.toString())
+                .contains("business-core:8130")
+                .contains("portal-core:8134")
+                .doesNotContain("deletionAllowed\":true")
+                .doesNotContain("bulkRetirementAllowed\":true")
+                .doesNotContain("retirementStatus\":\"APPROVED")
+                .doesNotContain("trafficSwitchApplied\":true");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void keepsAllRollbackEntrypointFilesBeforeExternalCutover() {
+        assertThat(List.of(
+                Path.of("../api-gateway-service/pom.xml"),
+                Path.of("../business-core-service/pom.xml"),
+                Path.of("../admission-core-service/pom.xml"),
+                Path.of("../engagement-core-service/pom.xml"),
+                Path.of("../ops-core-service/pom.xml"),
+                Path.of("../portal-core-service/pom.xml")
+        )).allSatisfy(path -> assertThat(Files.exists(path)).as(path.toString()).isTrue());
     }
 
     @Test

@@ -86,9 +86,10 @@ class GatewayApiContractTest {
         addRange(mapped, "GATE-CORS", 1, 10);
         addRange(mapped, "GATE-SEC", 1, 11);
         addRange(mapped, "GATE-RETIRE", 1, 8);
+        addRange(mapped, "GATE-CORE-RETIRE", 1, 6);
 
-        assertThat(mapped).hasSize(260);
-        assertThat(mapped).contains("GATE-COM-001", "GATE-PFX-025", "GATE-BCORE-010", "GATE-ACORE-010", "GATE-ECORE-010", "GATE-OCORE-010", "GATE-PCORE-010", "GATE-PCORE-011", "GATE-TOPOLOGY-012", "GATE-UNIFIED-004", "GATE-UNIFIED-006", "GATE-UP-020", "GATE-PROXY-049", "GATE-SEC-011");
+        assertThat(mapped).hasSize(266);
+        assertThat(mapped).contains("GATE-COM-001", "GATE-PFX-025", "GATE-BCORE-010", "GATE-ACORE-010", "GATE-ECORE-010", "GATE-OCORE-010", "GATE-PCORE-010", "GATE-PCORE-011", "GATE-TOPOLOGY-012", "GATE-UNIFIED-004", "GATE-UNIFIED-006", "GATE-UP-020", "GATE-PROXY-049", "GATE-SEC-011", "GATE-CORE-RETIRE-001", "GATE-CORE-RETIRE-006");
     }
 
     @Test
@@ -316,6 +317,53 @@ class GatewayApiContractTest {
         assertThat(topology.toString())
                 .contains("api-gateway")
                 .contains("unified-backend")
+                .doesNotContain("retirementApprovalStatus\":\"APPROVED")
+                .doesNotContain("trafficSwitchProven\":true")
+                .doesNotContain("node-daemon")
+                .doesNotContain("NODE_DAEMON")
+                .doesNotContain("/api/v1/node-daemon")
+                .doesNotContain("8117");
+        assertNoSecrets(topology);
+    }
+
+    @Test
+    void runtimeTopologyKeepsCoreEntrypointsProtectedUntilGatewayRetirementCompletes() throws Exception {
+        JsonNode topology = performJson(get("/api/v1/gateway/admin/runtime-topology")
+                .header("Authorization", bearer("owner-token"))
+                .header("X-Request-Id", "req-core-retirement-topology"), 200);
+
+        JsonNode gateway = findByText(topology.at("/data/currentEntrypoints"), "entrypointKey", "api-gateway");
+        assertThat(gateway.at("/retirementApprovalStatus").asText()).isEqualTo("BLOCKED");
+        assertThat(gateway.at("/trafficSwitchRequired").asBoolean()).isTrue();
+        assertThat(gateway.at("/trafficSwitchProven").asBoolean()).isFalse();
+
+        Map<String, Integer> expectedCoreRouteCounts = Map.of(
+                "business-core", 7,
+                "admission-core", 4,
+                "engagement-core", 4,
+                "ops-core", 7,
+                "portal-core", 3
+        );
+        for (Map.Entry<String, Integer> expected : expectedCoreRouteCounts.entrySet()) {
+            JsonNode entrypoint = findByText(topology.at("/data/currentEntrypoints"), "entrypointKey", expected.getKey());
+            assertThat(entrypoint.at("/mergeDisposition").asText()).isEqualTo("IN_PROCESS_CANDIDATE");
+            assertThat(entrypoint.at("/rollbackEntrypointRole").asText()).isEqualTo("PROTECTED_CORE_ROLLBACK_ENTRYPOINT");
+            assertThat(entrypoint.at("/retirementApprovalStatus").asText()).isEqualTo("BLOCKED");
+            assertThat(entrypoint.at("/trafficSwitchRequired").asBoolean()).isTrue();
+            assertThat(entrypoint.at("/trafficSwitchProven").asBoolean()).isFalse();
+            assertThat(entrypoint.at("/nextAction").asText()).isEqualTo("WAIT_FOR_API_GATEWAY_RETIREMENT_AND_CORE_RETIREMENT_APPROVAL");
+            assertThat(entrypoint.at("/routesTotal").asInt()).isEqualTo(expected.getValue());
+            assertThat(entrypoint.at("/hostedRouteIds").size()).isEqualTo(expected.getValue());
+        }
+
+        JsonNode checks = topology.at("/data/mergePreparationChecks");
+        assertCheck(checks, "GATEWAY_AS_ROLLBACK_ENTRYPOINT", "PASS");
+        assertCheck(checks, "API_GATEWAY_RETIREMENT_BLOCKED_UNTIL_TRAFFIC_SWITCH", "PASS");
+        assertCheck(checks, "CORE_ENTRYPOINTS_PROTECTED_UNTIL_GATEWAY_RETIRED", "PASS");
+
+        assertThat(topology.toString())
+                .contains("business-core", "admission-core", "engagement-core", "ops-core", "portal-core")
+                .contains("WAIT_FOR_API_GATEWAY_RETIREMENT_AND_CORE_RETIREMENT_APPROVAL")
                 .doesNotContain("retirementApprovalStatus\":\"APPROVED")
                 .doesNotContain("trafficSwitchProven\":true")
                 .doesNotContain("node-daemon")

@@ -143,6 +143,38 @@ class UnifiedBackendRealHttpRehearsalTest {
         assertNoSensitiveFields(unifiedMounts);
     }
 
+    @Test
+    void realHttpUnifiedCandidateStillMatchesAllCoreBusinessSurfaces() throws Exception {
+        List<HttpTarget> coreTargets = List.of(
+                target("/api/v1/auth/session/verify", 41000, null),
+                target("/api/v1/resources"),
+                target("/api/v1/onboarding/me/progress", 41000, null),
+                target("/api/v1/whitelist/me/applications/current", 41000, null),
+                target("/api/v1/community/boards"),
+                target("/api/v1/calendar/upcoming"),
+                target("/api/v1/ops-control/overview", 0, "Bearer owner-token"),
+                target("/api/v1/cross-platform-notification/health"),
+                target("/api/v1/guides/categories"),
+                target("/api/v1/materials/featured"),
+                target("/api/v1/online-map/health")
+        );
+
+        for (HttpTarget target : coreTargets) {
+            JsonNode response = getMaybeAuthorized(target.path(), target.authorization());
+            assertThat(response.at("/code").asInt()).as(target.path()).isEqualTo(target.expectedCode());
+            assertNoSensitiveFields(response);
+        }
+
+        JsonNode readiness = getAdmin("/api/v1/unified-backend/admin/readiness");
+        assertThat(readiness.at("/data/coreEntrypointRetirementPrecheckStatus").asText())
+                .isEqualTo("BLOCKED_BY_PROTECTED_ROLLBACK_ROLE");
+        assertThat(readiness.at("/data/coreEntrypointRetirementEvidence/deletionAllowed").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/coreEntrypointRetirementEvidence/trafficSwitchApplied").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/coreEntrypointRetirementEvidence/coreEntrypointMatrix").toString())
+                .contains("business-core", "admission-core", "engagement-core", "ops-core", "portal-core");
+        assertNoSensitiveFields(readiness);
+    }
+
     private JsonNode get(String path) throws Exception {
         ResponseEntity<String> response = restTemplate.getForEntity(url(path), String.class);
         assertThat(response.getBody()).isNotBlank();
