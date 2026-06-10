@@ -111,6 +111,9 @@ class UnifiedBackendController {
                 "externalEntrypointCutoverPrecheckStatus", "BLOCKED_BY_EXTERNAL_ENTRYPOINT_CONFIG_NOT_PROVIDED",
                 "externalEntrypointCutoverPrecheckChecks", registry.externalEntrypointCutoverPrecheckChecks(),
                 "externalEntrypointCutoverEvidence", registry.externalEntrypointCutoverEvidence(),
+                "productionAuditSinkPrecheckStatus", "BLOCKED_BY_PERSISTENT_AUDIT_SINK_NOT_CONFIGURED",
+                "productionAuditSinkPrecheckChecks", registry.productionAuditSinkPrecheckChecks(),
+                "productionAuditSinkEvidence", registry.productionAuditSinkEvidence(),
                 "persistentAuditPrecheckStatus", "BLOCKED",
                 "persistentAuditPrecheckChecks", registry.persistentAuditPrecheckChecks(),
                 "persistentAuditGovernancePrecheckStatus", "BLOCKED",
@@ -1156,6 +1159,63 @@ class UnifiedBackendRegistry {
                 "readyForProduction", false,
                 "readyToReplaceGateway", false,
                 "status", "BLOCKED_BY_EXTERNAL_ENTRYPOINT_CONFIG_NOT_PROVIDED"
+        );
+    }
+
+    List<Map<String, Object>> productionAuditSinkPrecheckChecks() {
+        return List.of(
+                switchCheck("AUDIT_EVENT_SCHEMA_FIXED", "PASS", "production audit event fields are fixed before sink connection", true),
+                switchCheck("AUDIT_REQUEST_ID_PROPAGATED", "PASS", "request id must propagate from entrypoint to audit event", true),
+                switchCheck("AUDIT_ACTOR_FIELDS_DOCUMENTED", "PASS", "actor id, role, capabilities and source summary are documented", true),
+                switchCheck("AUDIT_TARGET_FIELDS_DOCUMENTED", "PASS", "target type, target id, action and risk level are documented", true),
+                switchCheck("AUDIT_RESULT_FIELDS_DOCUMENTED", "PASS", "result, failure reason and state summaries are documented", true),
+                switchCheck("AUDIT_REDACTION_RULES_ENFORCED", "PASS", "audit readiness evidence is covered by redaction assertions", true),
+                switchCheck("AUDIT_FAILURE_DEGRADATION_DEFINED", "PASS", "audit sink failure degradation is defined before production connection", true),
+                switchCheck("AUDIT_REPLAY_SCOPE_DEFINED", "PASS", "audit replay scope is verification-only and does not mutate business data", true),
+                switchCheck("AUDIT_RETENTION_POLICY_DEFINED", "PASS", "audit retention, archive and cleanup responsibility are documented", true),
+                switchCheck("AUDIT_ROLLBACK_SOURCE_DEFINED", "PASS", "audit config rollback source remains protected current entrypoints and contracts", true),
+                switchCheck("PERSISTENT_AUDIT_SINK_CONFIGURED", "BLOCKED", "real persistent audit sink config is not injected", true),
+                switchCheck("AUDIT_WRITE_PATH_CONNECTED", "BLOCKED", "real audit write path is not connected", true),
+                switchCheck("AUDIT_WRITE_SMOKE_PASSED", "BLOCKED", "real audit write smoke has not passed", true),
+                switchCheck("AUDIT_REPLAY_PATH_CONNECTED", "BLOCKED", "real audit replay path is not connected", true),
+                switchCheck("AUDIT_RETENTION_JOB_CONNECTED", "BLOCKED", "real audit retention job is not connected", true),
+                switchCheck("AUDIT_EXPORT_PATH_CONNECTED", "BLOCKED", "real audit export path is not connected", true),
+                switchCheck("CENTRAL_CONFIG_PROVIDER_CONNECTED", "BLOCKED", "centralized production configuration provider is not connected", true),
+                switchCheck("EXTERNAL_ENTRYPOINT_TARGETS_UNIFIED_BACKEND", "BLOCKED", "external entrypoint does not target unified-backend yet", true),
+                switchCheck("PRODUCTION_AUDIT_TRAFFIC_OBSERVED", "BLOCKED", "production audit traffic sample is not observed", true)
+        );
+    }
+
+    Map<String, Object> productionAuditSinkEvidence() {
+        return map(
+                "readinessMode", "PRODUCTION_AUDIT_SINK_CONTRACT_RECORDED_NOT_CONNECTED",
+                "candidateEntrypoint", "unified-backend:8135",
+                "currentEntrypoint", "api-gateway:8125",
+                "auditSinkConfigured", false,
+                "auditWritePathConnected", false,
+                "auditWriteSmokePassed", false,
+                "auditReplayPathConnected", false,
+                "auditRetentionJobConnected", false,
+                "auditExportPathConnected", false,
+                "auditEventSchemaFixed", true,
+                "requestIdPropagated", true,
+                "actorFieldsDocumented", true,
+                "targetFieldsDocumented", true,
+                "resultFieldsDocumented", true,
+                "failureDegradationDefined", true,
+                "redactionRulesEnforced", true,
+                "replayScopeDefined", true,
+                "retentionPolicyDefined", true,
+                "rollbackSourceDefined", true,
+                "centralConfigProviderConnected", false,
+                "externalEntrypointTargetsUnifiedBackend", false,
+                "productionAuditTrafficObserved", false,
+                "sensitiveValuesExposed", false,
+                "environmentVariablesRead", false,
+                "trafficSwitchApplied", false,
+                "readyForProduction", false,
+                "readyToReplaceGateway", false,
+                "status", "BLOCKED_BY_PERSISTENT_AUDIT_SINK_NOT_CONFIGURED"
         );
     }
 

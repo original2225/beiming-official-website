@@ -60,6 +60,7 @@ class UnifiedBackendApiContractTest {
         addRange(mapped, "UBACK-HARDEN", 1, 12);
         addRange(mapped, "UBACK-PROD-CONFIG", 1, 12);
         addRange(mapped, "UBACK-EXT-CUTOVER", 1, 12);
+        addRange(mapped, "UBACK-PROD-AUDIT", 1, 12);
 
         assertThat(mapped).contains(
                 "UBACK-COM-001",
@@ -100,9 +101,11 @@ class UnifiedBackendApiContractTest {
                 "UBACK-PROD-CONFIG-001",
                 "UBACK-PROD-CONFIG-012",
                 "UBACK-EXT-CUTOVER-001",
-                "UBACK-EXT-CUTOVER-012"
+                "UBACK-EXT-CUTOVER-012",
+                "UBACK-PROD-AUDIT-001",
+                "UBACK-PROD-AUDIT-012"
         );
-        assertThat(mapped).hasSize(107);
+        assertThat(mapped).hasSize(119);
     }
 
     @Test
@@ -1465,6 +1468,106 @@ class UnifiedBackendApiContractTest {
                 .doesNotContain("cookie")
                 .doesNotContain("secret")
                 .doesNotContain("password");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void exposesProductionAuditSinkPreflightWithoutConnectingSink() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-production-audit-sink-preflight"));
+
+        assertThat(readiness.at("/data/productionAuditSinkPrecheckStatus").asText())
+                .isEqualTo("BLOCKED_BY_PERSISTENT_AUDIT_SINK_NOT_CONFIGURED");
+        assertThat(readiness.at("/data/productionCentralConfigPrecheckStatus").asText())
+                .isEqualTo("BLOCKED_BY_PRODUCTION_CONFIG_PROVIDER_NOT_CONNECTED");
+        assertThat(readiness.at("/data/externalEntrypointCutoverPrecheckStatus").asText())
+                .isEqualTo("BLOCKED_BY_EXTERNAL_ENTRYPOINT_CONFIG_NOT_PROVIDED");
+        assertThat(readiness.at("/data/readyForProduction").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/readyToReplaceGateway").asBoolean()).isFalse();
+
+        assertPrecheck(readiness, "/data/productionAuditSinkPrecheckChecks", "AUDIT_EVENT_SCHEMA_FIXED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionAuditSinkPrecheckChecks", "AUDIT_REQUEST_ID_PROPAGATED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionAuditSinkPrecheckChecks", "AUDIT_ACTOR_FIELDS_DOCUMENTED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionAuditSinkPrecheckChecks", "AUDIT_TARGET_FIELDS_DOCUMENTED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionAuditSinkPrecheckChecks", "AUDIT_RESULT_FIELDS_DOCUMENTED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionAuditSinkPrecheckChecks", "AUDIT_REDACTION_RULES_ENFORCED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionAuditSinkPrecheckChecks", "AUDIT_FAILURE_DEGRADATION_DEFINED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionAuditSinkPrecheckChecks", "AUDIT_REPLAY_SCOPE_DEFINED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionAuditSinkPrecheckChecks", "AUDIT_RETENTION_POLICY_DEFINED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionAuditSinkPrecheckChecks", "AUDIT_ROLLBACK_SOURCE_DEFINED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionAuditSinkPrecheckChecks", "PERSISTENT_AUDIT_SINK_CONFIGURED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/productionAuditSinkPrecheckChecks", "AUDIT_WRITE_PATH_CONNECTED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/productionAuditSinkPrecheckChecks", "AUDIT_WRITE_SMOKE_PASSED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/productionAuditSinkPrecheckChecks", "AUDIT_REPLAY_PATH_CONNECTED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/productionAuditSinkPrecheckChecks", "AUDIT_RETENTION_JOB_CONNECTED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/productionAuditSinkPrecheckChecks", "AUDIT_EXPORT_PATH_CONNECTED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/productionAuditSinkPrecheckChecks", "CENTRAL_CONFIG_PROVIDER_CONNECTED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/productionAuditSinkPrecheckChecks", "EXTERNAL_ENTRYPOINT_TARGETS_UNIFIED_BACKEND", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/productionAuditSinkPrecheckChecks", "PRODUCTION_AUDIT_TRAFFIC_OBSERVED", "BLOCKED", true);
+
+        JsonNode evidence = readiness.at("/data/productionAuditSinkEvidence");
+        assertThat(evidence.at("/readinessMode").asText()).isEqualTo("PRODUCTION_AUDIT_SINK_CONTRACT_RECORDED_NOT_CONNECTED");
+        assertThat(evidence.at("/candidateEntrypoint").asText()).isEqualTo("unified-backend:8135");
+        assertThat(evidence.at("/currentEntrypoint").asText()).isEqualTo("api-gateway:8125");
+        assertThat(evidence.at("/auditSinkConfigured").asBoolean()).isFalse();
+        assertThat(evidence.at("/auditWritePathConnected").asBoolean()).isFalse();
+        assertThat(evidence.at("/auditWriteSmokePassed").asBoolean()).isFalse();
+        assertThat(evidence.at("/auditReplayPathConnected").asBoolean()).isFalse();
+        assertThat(evidence.at("/auditRetentionJobConnected").asBoolean()).isFalse();
+        assertThat(evidence.at("/auditExportPathConnected").asBoolean()).isFalse();
+        assertThat(evidence.at("/auditEventSchemaFixed").asBoolean()).isTrue();
+        assertThat(evidence.at("/requestIdPropagated").asBoolean()).isTrue();
+        assertThat(evidence.at("/actorFieldsDocumented").asBoolean()).isTrue();
+        assertThat(evidence.at("/targetFieldsDocumented").asBoolean()).isTrue();
+        assertThat(evidence.at("/resultFieldsDocumented").asBoolean()).isTrue();
+        assertThat(evidence.at("/failureDegradationDefined").asBoolean()).isTrue();
+        assertThat(evidence.at("/redactionRulesEnforced").asBoolean()).isTrue();
+        assertThat(evidence.at("/replayScopeDefined").asBoolean()).isTrue();
+        assertThat(evidence.at("/retentionPolicyDefined").asBoolean()).isTrue();
+        assertThat(evidence.at("/rollbackSourceDefined").asBoolean()).isTrue();
+        assertThat(evidence.at("/centralConfigProviderConnected").asBoolean()).isFalse();
+        assertThat(evidence.at("/externalEntrypointTargetsUnifiedBackend").asBoolean()).isFalse();
+        assertThat(evidence.at("/productionAuditTrafficObserved").asBoolean()).isFalse();
+        assertThat(evidence.at("/sensitiveValuesExposed").asBoolean()).isFalse();
+        assertThat(evidence.at("/environmentVariablesRead").asBoolean()).isFalse();
+        assertThat(evidence.at("/trafficSwitchApplied").asBoolean()).isFalse();
+        assertThat(evidence.at("/readyForProduction").asBoolean()).isFalse();
+        assertThat(evidence.at("/readyToReplaceGateway").asBoolean()).isFalse();
+        assertThat(evidence.at("/status").asText()).isEqualTo("BLOCKED_BY_PERSISTENT_AUDIT_SINK_NOT_CONFIGURED");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void productionAuditSinkEvidenceDoesNotLeakSensitiveRuntimeValues() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-production-audit-sink-redaction"));
+
+        assertThat(readiness.at("/data/productionAuditSinkPrecheckStatus").asText())
+                .isEqualTo("BLOCKED_BY_PERSISTENT_AUDIT_SINK_NOT_CONFIGURED");
+        String text = readiness.at("/data/productionAuditSinkEvidence").toString()
+                + readiness.at("/data/productionAuditSinkPrecheckChecks");
+        assertThat(text)
+                .doesNotContain("Authorization")
+                .doesNotContain("X-Gateway-Internal-Signature")
+                .doesNotContain("C:\\Users\\")
+                .doesNotContain(".env")
+                .doesNotContain("jdbc:")
+                .doesNotContain("://")
+                .doesNotContain("cmd.exe")
+                .doesNotContain("powershell")
+                .doesNotContain("kubectl")
+                .doesNotContain("docker")
+                .doesNotContain("id_rsa");
+        assertThat(text.toLowerCase())
+                .doesNotContain("token")
+                .doesNotContain("cookie")
+                .doesNotContain("secret")
+                .doesNotContain("password")
+                .doesNotContain("dsn")
+                .doesNotContain("bucket")
+                .doesNotContain("topic");
         assertNoSecrets(readiness);
     }
 
