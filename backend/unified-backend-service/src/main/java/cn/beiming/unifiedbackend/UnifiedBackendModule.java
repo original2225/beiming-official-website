@@ -108,6 +108,9 @@ class UnifiedBackendController {
                 "productionCentralConfigPrecheckStatus", "BLOCKED_BY_PRODUCTION_CONFIG_PROVIDER_NOT_CONNECTED",
                 "productionCentralConfigPrecheckChecks", registry.productionCentralConfigPrecheckChecks(),
                 "productionCentralConfigEvidence", registry.productionCentralConfigEvidence(),
+                "externalEntrypointCutoverPrecheckStatus", "BLOCKED_BY_EXTERNAL_ENTRYPOINT_CONFIG_NOT_PROVIDED",
+                "externalEntrypointCutoverPrecheckChecks", registry.externalEntrypointCutoverPrecheckChecks(),
+                "externalEntrypointCutoverEvidence", registry.externalEntrypointCutoverEvidence(),
                 "persistentAuditPrecheckStatus", "BLOCKED",
                 "persistentAuditPrecheckChecks", registry.persistentAuditPrecheckChecks(),
                 "persistentAuditGovernancePrecheckStatus", "BLOCKED",
@@ -1106,6 +1109,53 @@ class UnifiedBackendRegistry {
                 "readyForProduction", false,
                 "readyToReplaceGateway", false,
                 "status", "BLOCKED_BY_MISSING_EXTERNAL_ENTRYPOINT_CONFIG"
+        );
+    }
+
+    List<Map<String, Object>> externalEntrypointCutoverPrecheckChecks() {
+        return List.of(
+                switchCheck("UNIFIED_BACKEND_TARGET_READY", "PASS", "unified-backend:8135 is ready as the external cutover target", true),
+                switchCheck("BUSINESS_PATHS_PRESERVED", "PASS", "all business paths keep existing /api/v1 prefixes", true),
+                switchCheck("REAL_HTTP_REHEARSAL_PASSED", "PASS", "real HTTP rehearsal passed for the candidate business surface", true),
+                switchCheck("ROUTE_DRIFT_SCAN_PASSED", "PASS", "gateway routes and unified mounts have no route drift", true),
+                switchCheck("ROLLBACK_TARGET_DEFINED", "PASS", "api-gateway:8125 remains the rollback entrypoint", true),
+                switchCheck("SMOKE_EVIDENCE_FORMAT_DEFINED", "PASS", "smoke evidence format is recorded without treating it as production switch proof", true),
+                switchCheck("EXTERNAL_ENTRYPOINT_CONFIG_PROVIDED", "BLOCKED", "external frontend, proxy or deployment entrypoint config is not provided in this repository", true),
+                switchCheck("EXTERNAL_ENTRYPOINT_TARGETS_UNIFIED_BACKEND", "BLOCKED", "external entrypoint does not target unified-backend yet", true),
+                switchCheck("CONTROLLED_CUTOVER_WINDOW_APPROVED", "BLOCKED", "controlled cutover window is not approved", true),
+                switchCheck("PRODUCTION_TRAFFIC_OBSERVED_ON_UNIFIED", "BLOCKED", "production traffic is not observed on unified-backend", true),
+                switchCheck("API_GATEWAY_TRAFFIC_ZERO_PROVEN", "BLOCKED", "api-gateway zero production traffic is not proven", true),
+                switchCheck("ROLLBACK_WINDOW_COMPLETED", "BLOCKED", "rollback window is not completed after traffic switch", true),
+                switchCheck("CENTRAL_CONFIG_PROVIDER_CONNECTED", "BLOCKED", "centralized production configuration provider is not connected", true),
+                switchCheck("PERSISTENT_AUDIT_SINK_CONNECTED", "BLOCKED", "persistent production audit sink is not connected", true),
+                switchCheck("USER_RETIREMENT_APPROVAL_GRANTED", "BLOCKED", "entrypoint retirement approval has not been granted by the user", true)
+        );
+    }
+
+    Map<String, Object> externalEntrypointCutoverEvidence() {
+        return map(
+                "readinessMode", "EXTERNAL_CUTOVER_ADAPTER_RECORDED_NOT_SWITCHED",
+                "candidateEntrypoint", "unified-backend:8135",
+                "currentEntrypoint", "api-gateway:8125",
+                "effectiveEntrypoint", "api-gateway:8125",
+                "rollbackEntrypoint", "api-gateway:8125",
+                "businessPathsRemainUnchanged", true,
+                "externalEntrypointConfigProvided", false,
+                "externalEntrypointTargetsUnifiedBackend", false,
+                "repositoryCutoverConfigApplied", false,
+                "controlledCutoverWindowApproved", false,
+                "trafficSwitchApplied", false,
+                "productionTrafficObservedOnUnified", false,
+                "apiGatewayTrafficZeroProven", false,
+                "rollbackWindowCompleted", false,
+                "centralConfigProviderConnected", false,
+                "persistentAuditSinkConnected", false,
+                "apiGatewayRetirementApproved", false,
+                "coreRetirementApproved", false,
+                "deletionAllowed", false,
+                "readyForProduction", false,
+                "readyToReplaceGateway", false,
+                "status", "BLOCKED_BY_EXTERNAL_ENTRYPOINT_CONFIG_NOT_PROVIDED"
         );
     }
 

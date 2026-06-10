@@ -59,6 +59,7 @@ class UnifiedBackendApiContractTest {
         addRange(mapped, "UBACK-CORE-RETIRE", 1, 10);
         addRange(mapped, "UBACK-HARDEN", 1, 12);
         addRange(mapped, "UBACK-PROD-CONFIG", 1, 12);
+        addRange(mapped, "UBACK-EXT-CUTOVER", 1, 12);
 
         assertThat(mapped).contains(
                 "UBACK-COM-001",
@@ -97,9 +98,11 @@ class UnifiedBackendApiContractTest {
                 "UBACK-HARDEN-001",
                 "UBACK-HARDEN-012",
                 "UBACK-PROD-CONFIG-001",
-                "UBACK-PROD-CONFIG-012"
+                "UBACK-PROD-CONFIG-012",
+                "UBACK-EXT-CUTOVER-001",
+                "UBACK-EXT-CUTOVER-012"
         );
-        assertThat(mapped).hasSize(95);
+        assertThat(mapped).hasSize(107);
     }
 
     @Test
@@ -1354,6 +1357,98 @@ class UnifiedBackendApiContractTest {
 
         String text = readiness.at("/data/productionCentralConfigEvidence").toString()
                 + readiness.at("/data/productionCentralConfigPrecheckChecks");
+        assertThat(text)
+                .doesNotContain("Authorization")
+                .doesNotContain("X-Gateway-Internal-Signature")
+                .doesNotContain("C:\\Users\\")
+                .doesNotContain(".env")
+                .doesNotContain("jdbc:")
+                .doesNotContain("cmd.exe")
+                .doesNotContain("powershell")
+                .doesNotContain("kubectl")
+                .doesNotContain("docker")
+                .doesNotContain("id_rsa");
+        assertThat(text.toLowerCase())
+                .doesNotContain("token")
+                .doesNotContain("cookie")
+                .doesNotContain("secret")
+                .doesNotContain("password");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void exposesExternalEntrypointCutoverAdapterWithoutSwitchingTraffic() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-external-entrypoint-cutover-adapter"));
+
+        assertThat(readiness.at("/data/externalEntrypointCutoverPrecheckStatus").asText())
+                .isEqualTo("BLOCKED_BY_EXTERNAL_ENTRYPOINT_CONFIG_NOT_PROVIDED");
+        assertThat(readiness.at("/data/productionCentralConfigPrecheckStatus").asText())
+                .isEqualTo("BLOCKED_BY_PRODUCTION_CONFIG_PROVIDER_NOT_CONNECTED");
+        assertThat(readiness.at("/data/productionHardeningPrecheckStatus").asText())
+                .isEqualTo("BLOCKED_BY_EXTERNAL_PRODUCTION_PREREQUISITES");
+        assertThat(readiness.at("/data/readyForProduction").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/readyToReplaceGateway").asBoolean()).isFalse();
+
+        assertPrecheck(readiness, "/data/externalEntrypointCutoverPrecheckChecks", "UNIFIED_BACKEND_TARGET_READY", "PASS", true);
+        assertPrecheck(readiness, "/data/externalEntrypointCutoverPrecheckChecks", "BUSINESS_PATHS_PRESERVED", "PASS", true);
+        assertPrecheck(readiness, "/data/externalEntrypointCutoverPrecheckChecks", "REAL_HTTP_REHEARSAL_PASSED", "PASS", true);
+        assertPrecheck(readiness, "/data/externalEntrypointCutoverPrecheckChecks", "ROUTE_DRIFT_SCAN_PASSED", "PASS", true);
+        assertPrecheck(readiness, "/data/externalEntrypointCutoverPrecheckChecks", "ROLLBACK_TARGET_DEFINED", "PASS", true);
+        assertPrecheck(readiness, "/data/externalEntrypointCutoverPrecheckChecks", "SMOKE_EVIDENCE_FORMAT_DEFINED", "PASS", true);
+        assertPrecheck(readiness, "/data/externalEntrypointCutoverPrecheckChecks", "EXTERNAL_ENTRYPOINT_CONFIG_PROVIDED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/externalEntrypointCutoverPrecheckChecks", "EXTERNAL_ENTRYPOINT_TARGETS_UNIFIED_BACKEND", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/externalEntrypointCutoverPrecheckChecks", "CONTROLLED_CUTOVER_WINDOW_APPROVED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/externalEntrypointCutoverPrecheckChecks", "PRODUCTION_TRAFFIC_OBSERVED_ON_UNIFIED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/externalEntrypointCutoverPrecheckChecks", "API_GATEWAY_TRAFFIC_ZERO_PROVEN", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/externalEntrypointCutoverPrecheckChecks", "ROLLBACK_WINDOW_COMPLETED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/externalEntrypointCutoverPrecheckChecks", "CENTRAL_CONFIG_PROVIDER_CONNECTED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/externalEntrypointCutoverPrecheckChecks", "PERSISTENT_AUDIT_SINK_CONNECTED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/externalEntrypointCutoverPrecheckChecks", "USER_RETIREMENT_APPROVAL_GRANTED", "BLOCKED", true);
+
+        JsonNode evidence = readiness.at("/data/externalEntrypointCutoverEvidence");
+        assertThat(evidence.at("/readinessMode").asText()).isEqualTo("EXTERNAL_CUTOVER_ADAPTER_RECORDED_NOT_SWITCHED");
+        assertThat(evidence.at("/candidateEntrypoint").asText()).isEqualTo("unified-backend:8135");
+        assertThat(evidence.at("/currentEntrypoint").asText()).isEqualTo("api-gateway:8125");
+        assertThat(evidence.at("/effectiveEntrypoint").asText()).isEqualTo("api-gateway:8125");
+        assertThat(evidence.at("/rollbackEntrypoint").asText()).isEqualTo("api-gateway:8125");
+        assertThat(evidence.at("/businessPathsRemainUnchanged").asBoolean()).isTrue();
+        assertThat(evidence.at("/externalEntrypointConfigProvided").asBoolean()).isFalse();
+        assertThat(evidence.at("/externalEntrypointTargetsUnifiedBackend").asBoolean()).isFalse();
+        assertThat(evidence.at("/repositoryCutoverConfigApplied").asBoolean()).isFalse();
+        assertThat(evidence.at("/controlledCutoverWindowApproved").asBoolean()).isFalse();
+        assertThat(evidence.at("/trafficSwitchApplied").asBoolean()).isFalse();
+        assertThat(evidence.at("/productionTrafficObservedOnUnified").asBoolean()).isFalse();
+        assertThat(evidence.at("/apiGatewayTrafficZeroProven").asBoolean()).isFalse();
+        assertThat(evidence.at("/rollbackWindowCompleted").asBoolean()).isFalse();
+        assertThat(evidence.at("/centralConfigProviderConnected").asBoolean()).isFalse();
+        assertThat(evidence.at("/persistentAuditSinkConnected").asBoolean()).isFalse();
+        assertThat(evidence.at("/apiGatewayRetirementApproved").asBoolean()).isFalse();
+        assertThat(evidence.at("/coreRetirementApproved").asBoolean()).isFalse();
+        assertThat(evidence.at("/deletionAllowed").asBoolean()).isFalse();
+        assertThat(evidence.at("/readyForProduction").asBoolean()).isFalse();
+        assertThat(evidence.at("/readyToReplaceGateway").asBoolean()).isFalse();
+        assertThat(evidence.at("/status").asText()).isEqualTo("BLOCKED_BY_EXTERNAL_ENTRYPOINT_CONFIG_NOT_PROVIDED");
+        assertThat(readiness.toString())
+                .doesNotContain("/api/v1/unified-backend/auth")
+                .doesNotContain("trafficSwitchApplied\":true")
+                .doesNotContain("deletionAllowed\":true")
+                .doesNotContain("externalEntrypointConfigProvided\":true")
+                .doesNotContain("externalEntrypointTargetsUnifiedBackend\":true");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void externalEntrypointCutoverEvidenceDoesNotLeakSensitiveRuntimeValues() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-external-entrypoint-cutover-redaction"));
+
+        assertThat(readiness.at("/data/externalEntrypointCutoverPrecheckStatus").asText())
+                .isEqualTo("BLOCKED_BY_EXTERNAL_ENTRYPOINT_CONFIG_NOT_PROVIDED");
+        String text = readiness.at("/data/externalEntrypointCutoverEvidence").toString()
+                + readiness.at("/data/externalEntrypointCutoverPrecheckChecks");
         assertThat(text)
                 .doesNotContain("Authorization")
                 .doesNotContain("X-Gateway-Internal-Signature")
