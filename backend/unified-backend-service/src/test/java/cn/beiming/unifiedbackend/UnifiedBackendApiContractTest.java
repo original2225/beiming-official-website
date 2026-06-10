@@ -57,6 +57,7 @@ class UnifiedBackendApiContractTest {
         addRange(mapped, "UBACK-CUTOVER", 1, 2);
         addRange(mapped, "UBACK-PROD-CUTOVER", 1, 10);
         addRange(mapped, "UBACK-CORE-RETIRE", 1, 10);
+        addRange(mapped, "UBACK-HARDEN", 1, 12);
 
         assertThat(mapped).contains(
                 "UBACK-COM-001",
@@ -91,9 +92,11 @@ class UnifiedBackendApiContractTest {
                 "UBACK-PROD-CUTOVER-001",
                 "UBACK-PROD-CUTOVER-010",
                 "UBACK-CORE-RETIRE-001",
-                "UBACK-CORE-RETIRE-010"
+                "UBACK-CORE-RETIRE-010",
+                "UBACK-HARDEN-001",
+                "UBACK-HARDEN-012"
         );
-        assertThat(mapped).hasSize(71);
+        assertThat(mapped).hasSize(83);
     }
 
     @Test
@@ -1186,6 +1189,94 @@ class UnifiedBackendApiContractTest {
                 .doesNotContain("bulkRetirementAllowed\":true")
                 .doesNotContain("retirementStatus\":\"APPROVED")
                 .doesNotContain("trafficSwitchApplied\":true");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void exposesProductionHardeningPrerequisitesWithoutFakingCutover() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-production-hardening-precheck"));
+
+        assertThat(readiness.at("/data/productionHardeningPrecheckStatus").asText())
+                .isEqualTo("BLOCKED_BY_EXTERNAL_PRODUCTION_PREREQUISITES");
+        assertThat(readiness.at("/data/readyForProduction").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/readyToReplaceGateway").asBoolean()).isFalse();
+
+        assertPrecheck(readiness, "/data/productionHardeningPrecheckChecks", "UNIFIED_BACKEND_CANDIDATE_READY", "PASS", true);
+        assertPrecheck(readiness, "/data/productionHardeningPrecheckChecks", "BUSINESS_PATHS_PRESERVED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionHardeningPrecheckChecks", "REAL_HTTP_REHEARSAL_PASSED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionHardeningPrecheckChecks", "ROUTE_DRIFT_SCAN_PASSED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionHardeningPrecheckChecks", "ROLLBACK_ENTRYPOINTS_PROTECTED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionHardeningPrecheckChecks", "CENTRAL_CONFIG_CONTRACT_DEFINED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionHardeningPrecheckChecks", "AUDIT_TRAIL_CONTRACT_DEFINED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionHardeningPrecheckChecks", "CUTOVER_RUNBOOK_DEFINED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionHardeningPrecheckChecks", "ROLLBACK_RECHECK_COMMANDS_DEFINED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionHardeningPrecheckChecks", "SMOKE_EVIDENCE_FORMAT_DEFINED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionHardeningPrecheckChecks", "CENTRAL_CONFIG_PROVIDER_CONNECTED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/productionHardeningPrecheckChecks", "SENSITIVE_CONFIG_SOURCE_EXTERNALIZED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/productionHardeningPrecheckChecks", "PERSISTENT_AUDIT_SINK_CONNECTED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/productionHardeningPrecheckChecks", "AUDIT_WRITE_PATH_CONNECTED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/productionHardeningPrecheckChecks", "EXTERNAL_ENTRYPOINT_CONFIG_PRESENT", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/productionHardeningPrecheckChecks", "PRODUCTION_TRAFFIC_SWITCH_APPLIED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/productionHardeningPrecheckChecks", "ROLLBACK_WINDOW_COMPLETED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/productionHardeningPrecheckChecks", "API_GATEWAY_TRAFFIC_ZERO_PROVEN", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/productionHardeningPrecheckChecks", "USER_RETIREMENT_APPROVAL_GRANTED", "BLOCKED", true);
+
+        JsonNode evidence = readiness.at("/data/productionHardeningEvidence");
+        assertThat(evidence.at("/candidateEntrypoint").asText()).isEqualTo("unified-backend:8135");
+        assertThat(evidence.at("/currentEntrypoint").asText()).isEqualTo("api-gateway:8125");
+        assertThat(evidence.at("/rollbackEntrypoints").toString())
+                .contains("api-gateway:8125")
+                .contains("business-core:8130")
+                .contains("portal-core:8134");
+        assertThat(evidence.at("/businessPathsRemainUnchanged").asBoolean()).isTrue();
+        assertThat(evidence.at("/centralConfigProviderConnected").asBoolean()).isFalse();
+        assertThat(evidence.at("/sensitiveConfigExternalized").asBoolean()).isFalse();
+        assertThat(evidence.at("/persistentAuditSinkConnected").asBoolean()).isFalse();
+        assertThat(evidence.at("/auditWritePathConnected").asBoolean()).isFalse();
+        assertThat(evidence.at("/externalEntrypointConfigPresent").asBoolean()).isFalse();
+        assertThat(evidence.at("/trafficSwitchApplied").asBoolean()).isFalse();
+        assertThat(evidence.at("/rollbackWindowCompleted").asBoolean()).isFalse();
+        assertThat(evidence.at("/apiGatewayTrafficZeroProven").asBoolean()).isFalse();
+        assertThat(evidence.at("/apiGatewayRetirementApproved").asBoolean()).isFalse();
+        assertThat(evidence.at("/coreRetirementApproved").asBoolean()).isFalse();
+        assertThat(evidence.at("/smokeEvidenceRecorded").asBoolean()).isTrue();
+        assertThat(evidence.at("/runbookRecorded").asBoolean()).isTrue();
+        assertThat(evidence.at("/deletionAllowed").asBoolean()).isFalse();
+        assertThat(evidence.at("/status").asText()).isEqualTo("BLOCKED_BY_EXTERNAL_PRODUCTION_PREREQUISITES");
+        assertThat(readiness.toString())
+                .doesNotContain("trafficSwitchApplied\":true")
+                .doesNotContain("deletionAllowed\":true")
+                .doesNotContain("apiGatewayRetirementApproved\":true")
+                .doesNotContain("coreRetirementApproved\":true");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void productionHardeningEvidenceDoesNotLeakSensitiveRuntimeValues() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-production-hardening-redaction"));
+
+        String text = readiness.at("/data/productionHardeningEvidence").toString()
+                + readiness.at("/data/productionHardeningPrecheckChecks");
+        assertThat(text)
+                .doesNotContain("Authorization")
+                .doesNotContain("X-Gateway-Internal-Signature")
+                .doesNotContain("C:\\Users\\")
+                .doesNotContain(".env")
+                .doesNotContain("jdbc:")
+                .doesNotContain("cmd.exe")
+                .doesNotContain("powershell")
+                .doesNotContain("kubectl")
+                .doesNotContain("docker")
+                .doesNotContain("id_rsa");
+        assertThat(text.toLowerCase())
+                .doesNotContain("token")
+                .doesNotContain("cookie")
+                .doesNotContain("secret")
+                .doesNotContain("password");
         assertNoSecrets(readiness);
     }
 

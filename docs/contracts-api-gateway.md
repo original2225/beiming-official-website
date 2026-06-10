@@ -8,6 +8,8 @@
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、时间格式、基础角色、运维能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `api-gateway` 的路径、路由表、字段、错误码、降级、审计和验收口径。
 
+第二十七轮统一后端生产化硬化门禁不改变 `api-gateway` 路由表、代理行为、认证注入、端口或退役审批状态。`api-gateway:8125` 继续作为受保护回滚入口，五个 core 继续作为受保护 core 回滚入口，直到真实外部入口切流、回滚窗口、流量归零证明和用户退役审批全部完成。
+
 第一版设计参考了成熟网关生态中的稳定做法。Spring Cloud Gateway 使用请求属性谓词匹配路由，并通过过滤器处理跨路由逻辑；Kong Gateway 把相关能力拆成可组合插件，例如 Correlation ID 和 Rate Limiting；Nginx 反向代理强调 `proxy_pass`、请求头和请求体透传；Envoy 将上游服务作为 cluster 处理，并把健康检查结果纳入路由判断。第二版继续参考 AWS API Gateway 对请求体大小上限的明确约束、Cloudflare Rules 对边界策略前置的做法，以及 Nginx 对响应头和上游头的显式控制。`api-gateway` 本轮只吸收这些边界思路，不引入动态服务发现、插件市场、真实 WAF、分布式限流、OAuth/OIDC 或 WebSocket 长连接代理。
 
 参考来源为官方文档：Spring Cloud Gateway Request Predicates 与 Gateway Filters、Kong Gateway Correlation ID 与 Rate Limiting 插件、Nginx `ngx_http_proxy_module`、Envoy upstream health checking、AWS API Gateway quotas、Cloudflare Rules。

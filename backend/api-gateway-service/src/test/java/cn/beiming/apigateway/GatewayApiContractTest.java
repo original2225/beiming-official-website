@@ -87,9 +87,10 @@ class GatewayApiContractTest {
         addRange(mapped, "GATE-SEC", 1, 11);
         addRange(mapped, "GATE-RETIRE", 1, 8);
         addRange(mapped, "GATE-CORE-RETIRE", 1, 6);
+        addRange(mapped, "GATE-HARDEN", 1, 4);
 
-        assertThat(mapped).hasSize(266);
-        assertThat(mapped).contains("GATE-COM-001", "GATE-PFX-025", "GATE-BCORE-010", "GATE-ACORE-010", "GATE-ECORE-010", "GATE-OCORE-010", "GATE-PCORE-010", "GATE-PCORE-011", "GATE-TOPOLOGY-012", "GATE-UNIFIED-004", "GATE-UNIFIED-006", "GATE-UP-020", "GATE-PROXY-049", "GATE-SEC-011", "GATE-CORE-RETIRE-001", "GATE-CORE-RETIRE-006");
+        assertThat(mapped).hasSize(270);
+        assertThat(mapped).contains("GATE-COM-001", "GATE-PFX-025", "GATE-BCORE-010", "GATE-ACORE-010", "GATE-ECORE-010", "GATE-OCORE-010", "GATE-PCORE-010", "GATE-PCORE-011", "GATE-TOPOLOGY-012", "GATE-UNIFIED-004", "GATE-UNIFIED-006", "GATE-UP-020", "GATE-PROXY-049", "GATE-SEC-011", "GATE-CORE-RETIRE-001", "GATE-CORE-RETIRE-006", "GATE-HARDEN-001", "GATE-HARDEN-004");
     }
 
     @Test
@@ -364,6 +365,39 @@ class GatewayApiContractTest {
         assertThat(topology.toString())
                 .contains("business-core", "admission-core", "engagement-core", "ops-core", "portal-core")
                 .contains("WAIT_FOR_API_GATEWAY_RETIREMENT_AND_CORE_RETIREMENT_APPROVAL")
+                .doesNotContain("retirementApprovalStatus\":\"APPROVED")
+                .doesNotContain("trafficSwitchProven\":true")
+                .doesNotContain("node-daemon")
+                .doesNotContain("NODE_DAEMON")
+                .doesNotContain("/api/v1/node-daemon")
+                .doesNotContain("8117");
+        assertNoSecrets(topology);
+    }
+
+    @Test
+    void runtimeTopologyRemainsRollbackOnlyDuringProductionHardening() throws Exception {
+        JsonNode topology = performJson(get("/api/v1/gateway/admin/runtime-topology")
+                .header("Authorization", bearer("owner-token"))
+                .header("X-Request-Id", "req-production-hardening-gateway"), 200);
+
+        JsonNode gateway = findByText(topology.at("/data/currentEntrypoints"), "entrypointKey", "api-gateway");
+        assertThat(gateway.at("/port").asInt()).isEqualTo(8125);
+        assertThat(gateway.at("/rollbackEntrypointRole").asText()).isEqualTo("PROTECTED_ROLLBACK_ENTRYPOINT");
+        assertThat(gateway.at("/retirementApprovalStatus").asText()).isEqualTo("BLOCKED");
+        assertThat(gateway.at("/trafficSwitchProven").asBoolean()).isFalse();
+        assertThat(gateway.at("/nextAction").asText()).isEqualTo("WAIT_FOR_UNIFIED_ENTRYPOINT_TRAFFIC_SWITCH");
+
+        assertThat(topology.at("/data/businessRoutesTotal").asInt()).isEqualTo(25);
+        assertThat(topology.at("/data/futureUnifiedBackend/pilotCandidate/readyToReplaceGateway").asBoolean()).isFalse();
+
+        for (String core : List.of("business-core", "admission-core", "engagement-core", "ops-core", "portal-core")) {
+            JsonNode entrypoint = findByText(topology.at("/data/currentEntrypoints"), "entrypointKey", core);
+            assertThat(entrypoint.at("/rollbackEntrypointRole").asText()).isEqualTo("PROTECTED_CORE_ROLLBACK_ENTRYPOINT");
+            assertThat(entrypoint.at("/retirementApprovalStatus").asText()).isEqualTo("BLOCKED");
+            assertThat(entrypoint.at("/trafficSwitchProven").asBoolean()).isFalse();
+        }
+
+        assertThat(topology.toString())
                 .doesNotContain("retirementApprovalStatus\":\"APPROVED")
                 .doesNotContain("trafficSwitchProven\":true")
                 .doesNotContain("node-daemon")

@@ -148,6 +148,9 @@ class UnifiedBackendController {
                 "coreEntrypointRetirementPrecheckStatus", "BLOCKED_BY_PROTECTED_ROLLBACK_ROLE",
                 "coreEntrypointRetirementPrecheckChecks", registry.coreEntrypointRetirementPrecheckChecks(),
                 "coreEntrypointRetirementEvidence", registry.coreEntrypointRetirementEvidence(),
+                "productionHardeningPrecheckStatus", "BLOCKED_BY_EXTERNAL_PRODUCTION_PREREQUISITES",
+                "productionHardeningPrecheckChecks", registry.productionHardeningPrecheckChecks(),
+                "productionHardeningEvidence", registry.productionHardeningEvidence(),
                 "replacementDecision", registry.replacementDecision(),
                 "generatedAt", now()
         ));
@@ -1115,6 +1118,60 @@ class UnifiedBackendRegistry {
                         coreRetirementTarget("portal-core", 8134, "backend/portal-core-service", List.of("online-map", "material", "guide"), 5)
                 ),
                 "status", "BLOCKED_BY_PROTECTED_ROLLBACK_ROLE"
+        );
+    }
+
+    List<Map<String, Object>> productionHardeningPrecheckChecks() {
+        return List.of(
+                switchCheck("UNIFIED_BACKEND_CANDIDATE_READY", "PASS", "unified-backend:8135 is ready as the backend application candidate", true),
+                switchCheck("BUSINESS_PATHS_PRESERVED", "PASS", "all business paths keep existing /api/v1 prefixes", true),
+                switchCheck("REAL_HTTP_REHEARSAL_PASSED", "PASS", "real HTTP rehearsal passed for the candidate business surface", true),
+                switchCheck("ROUTE_DRIFT_SCAN_PASSED", "PASS", "gateway routes and unified mounts have no route drift", true),
+                switchCheck("ROLLBACK_ENTRYPOINTS_PROTECTED", "PASS", "api-gateway and five core entrypoints remain protected rollback targets", true),
+                switchCheck("CENTRAL_CONFIG_CONTRACT_DEFINED", "PASS", "central config ownership and rollback contract are documented", true),
+                switchCheck("AUDIT_TRAIL_CONTRACT_DEFINED", "PASS", "audit trail ownership and event contract are documented", true),
+                switchCheck("CUTOVER_RUNBOOK_DEFINED", "PASS", "cutover runbook requirements are recorded without applying traffic switch", true),
+                switchCheck("ROLLBACK_RECHECK_COMMANDS_DEFINED", "PASS", "rollback recheck commands are recorded for candidate and rollback entrypoints", true),
+                switchCheck("SMOKE_EVIDENCE_FORMAT_DEFINED", "PASS", "smoke evidence format is recorded without treating it as production switch proof", true),
+                switchCheck("CENTRAL_CONFIG_PROVIDER_CONNECTED", "BLOCKED", "centralized production configuration provider is not connected", true),
+                switchCheck("SENSITIVE_CONFIG_SOURCE_EXTERNALIZED", "BLOCKED", "sensitive config source is not externalized yet", true),
+                switchCheck("PERSISTENT_AUDIT_SINK_CONNECTED", "BLOCKED", "persistent production audit sink is not connected", true),
+                switchCheck("AUDIT_WRITE_PATH_CONNECTED", "BLOCKED", "audit write path is not connected", true),
+                switchCheck("EXTERNAL_ENTRYPOINT_CONFIG_PRESENT", "BLOCKED", "repository does not contain external frontend or proxy entrypoint config", true),
+                switchCheck("PRODUCTION_TRAFFIC_SWITCH_APPLIED", "BLOCKED", "production traffic is not switched to unified-backend", true),
+                switchCheck("ROLLBACK_WINDOW_COMPLETED", "BLOCKED", "rollback window has not completed after traffic switch", true),
+                switchCheck("API_GATEWAY_TRAFFIC_ZERO_PROVEN", "BLOCKED", "api-gateway zero production traffic is not proven", true),
+                switchCheck("USER_RETIREMENT_APPROVAL_GRANTED", "BLOCKED", "entrypoint retirement approval has not been granted by the user", true)
+        );
+    }
+
+    Map<String, Object> productionHardeningEvidence() {
+        return map(
+                "candidateEntrypoint", "unified-backend:8135",
+                "currentEntrypoint", "api-gateway:8125",
+                "rollbackEntrypoints", List.of(
+                        "api-gateway:8125",
+                        "business-core:8130",
+                        "admission-core:8131",
+                        "engagement-core:8132",
+                        "ops-core:8133",
+                        "portal-core:8134"
+                ),
+                "businessPathsRemainUnchanged", true,
+                "centralConfigProviderConnected", false,
+                "sensitiveConfigExternalized", false,
+                "persistentAuditSinkConnected", false,
+                "auditWritePathConnected", false,
+                "externalEntrypointConfigPresent", false,
+                "trafficSwitchApplied", false,
+                "rollbackWindowCompleted", false,
+                "apiGatewayTrafficZeroProven", false,
+                "apiGatewayRetirementApproved", false,
+                "coreRetirementApproved", false,
+                "smokeEvidenceRecorded", true,
+                "runbookRecorded", true,
+                "deletionAllowed", false,
+                "status", "BLOCKED_BY_EXTERNAL_PRODUCTION_PREREQUISITES"
         );
     }
 
