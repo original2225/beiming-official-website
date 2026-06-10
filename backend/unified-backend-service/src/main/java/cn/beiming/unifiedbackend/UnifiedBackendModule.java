@@ -105,6 +105,9 @@ class UnifiedBackendController {
                 "centralConfigGovernancePrecheckStatus", "BLOCKED",
                 "centralConfigGovernancePrecheckChecks", registry.centralConfigGovernancePrecheckChecks(),
                 "centralConfigGovernanceEvidence", registry.centralConfigGovernanceEvidence(),
+                "productionCentralConfigPrecheckStatus", "BLOCKED_BY_PRODUCTION_CONFIG_PROVIDER_NOT_CONNECTED",
+                "productionCentralConfigPrecheckChecks", registry.productionCentralConfigPrecheckChecks(),
+                "productionCentralConfigEvidence", registry.productionCentralConfigEvidence(),
                 "persistentAuditPrecheckStatus", "BLOCKED",
                 "persistentAuditPrecheckChecks", registry.persistentAuditPrecheckChecks(),
                 "persistentAuditGovernancePrecheckStatus", "BLOCKED",
@@ -518,6 +521,60 @@ class UnifiedBackendRegistry {
                 "externalNodeExecutorOutOfRepository", true,
                 "externalNodeExecutorConnected", false,
                 "status", "GOVERNANCE_EVIDENCE_RECORDED_NOT_CONNECTED"
+        );
+    }
+
+    List<Map<String, Object>> productionCentralConfigPrecheckChecks() {
+        return List.of(
+                switchCheck("CONFIG_OWNERSHIP_DOCUMENTED", "PASS", "configuration ownership remains documented before production provider connection", true),
+                switchCheck("ENTRYPOINT_PORTS_DOCUMENTED", "PASS", "current gateway, rollback entrypoints and candidate port are documented", true),
+                switchCheck("CANDIDATE_CONFIG_SURFACE_DOCUMENTED", "PASS", "candidate production config surface is documented without reading real values", true),
+                switchCheck("CONFIG_DRIFT_SCAN_AUTOMATED", "PASS", "config drift scan remains automated through readiness assertions", true),
+                switchCheck("CONFIG_ROLLBACK_SOURCE_DEFINED", "PASS", "config rollback source remains the protected rollback entrypoint set", true),
+                switchCheck("SENSITIVE_VALUE_REDACTION_ENFORCED", "PASS", "production config readiness evidence is covered by redaction assertions", true),
+                switchCheck("ROLLBACK_ENTRYPOINTS_DOCUMENTED", "PASS", "api-gateway and five core rollback entrypoints remain documented", true),
+                switchCheck("CURRENT_GATEWAY_ENTRYPOINT_PRESERVED", "PASS", "api-gateway:8125 remains preserved as the current gateway entrypoint", true),
+                switchCheck("CENTRAL_CONFIG_PROVIDER_CONNECTED", "BLOCKED", "production centralized configuration provider is not connected", true),
+                switchCheck("PRODUCTION_PROFILE_BOUND", "BLOCKED", "production profile is not bound to the candidate", true),
+                switchCheck("SENSITIVE_CONFIG_SOURCE_EXTERNALIZED", "BLOCKED", "sensitive configuration source is not externalized yet", true),
+                switchCheck("FRONTEND_ENTRYPOINT_SWITCH_IMPLEMENTED", "BLOCKED", "frontend entrypoint is not switched to unified-backend", true),
+                switchCheck("EXTERNAL_PROXY_SWITCH_IMPLEMENTED", "BLOCKED", "external proxy target is not switched to unified-backend", true),
+                switchCheck("PRODUCTION_TRAFFIC_ENTRYPOINT_READY", "BLOCKED", "production traffic entrypoint is not switched to unified-backend", true)
+        );
+    }
+
+    Map<String, Object> productionCentralConfigEvidence() {
+        return map(
+                "readinessMode", "PRODUCTION_PREREQUISITES_RECORDED_NOT_CONNECTED",
+                "candidateEntrypoint", "unified-backend:8135",
+                "currentEntrypoint", "api-gateway:8125",
+                "rollbackEntrypoints", List.of(
+                        "api-gateway:8125",
+                        "business-core:8130",
+                        "admission-core:8131",
+                        "engagement-core:8132",
+                        "ops-core:8133",
+                        "portal-core:8134"
+                ),
+                "configDomains", List.of(
+                        "entrypoint",
+                        "security",
+                        "audit",
+                        "rollback"
+                ),
+                "configProviderStatus", "BLOCKED",
+                "productionProfileBound", false,
+                "sensitiveConfigExternalized", false,
+                "environmentVariablesRead", false,
+                "sensitiveValuesExposed", false,
+                "configDriftScanAutomated", true,
+                "rollbackSourceDefined", true,
+                "trafficSwitchApplied", false,
+                "frontendEntrypointSwitched", false,
+                "externalProxySwitched", false,
+                "productionTrafficEntrypointReady", false,
+                "currentEntrypointPreserved", true,
+                "status", "BLOCKED_BY_PRODUCTION_CONFIG_PROVIDER_NOT_CONNECTED"
         );
     }
 

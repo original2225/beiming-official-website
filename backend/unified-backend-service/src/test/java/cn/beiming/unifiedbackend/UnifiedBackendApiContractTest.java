@@ -58,6 +58,7 @@ class UnifiedBackendApiContractTest {
         addRange(mapped, "UBACK-PROD-CUTOVER", 1, 10);
         addRange(mapped, "UBACK-CORE-RETIRE", 1, 10);
         addRange(mapped, "UBACK-HARDEN", 1, 12);
+        addRange(mapped, "UBACK-PROD-CONFIG", 1, 12);
 
         assertThat(mapped).contains(
                 "UBACK-COM-001",
@@ -94,9 +95,11 @@ class UnifiedBackendApiContractTest {
                 "UBACK-CORE-RETIRE-001",
                 "UBACK-CORE-RETIRE-010",
                 "UBACK-HARDEN-001",
-                "UBACK-HARDEN-012"
+                "UBACK-HARDEN-012",
+                "UBACK-PROD-CONFIG-001",
+                "UBACK-PROD-CONFIG-012"
         );
-        assertThat(mapped).hasSize(83);
+        assertThat(mapped).hasSize(95);
     }
 
     @Test
@@ -1261,6 +1264,96 @@ class UnifiedBackendApiContractTest {
 
         String text = readiness.at("/data/productionHardeningEvidence").toString()
                 + readiness.at("/data/productionHardeningPrecheckChecks");
+        assertThat(text)
+                .doesNotContain("Authorization")
+                .doesNotContain("X-Gateway-Internal-Signature")
+                .doesNotContain("C:\\Users\\")
+                .doesNotContain(".env")
+                .doesNotContain("jdbc:")
+                .doesNotContain("cmd.exe")
+                .doesNotContain("powershell")
+                .doesNotContain("kubectl")
+                .doesNotContain("docker")
+                .doesNotContain("id_rsa");
+        assertThat(text.toLowerCase())
+                .doesNotContain("token")
+                .doesNotContain("cookie")
+                .doesNotContain("secret")
+                .doesNotContain("password");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void exposesProductionCentralConfigPrerequisitesWithoutConnectingProvider() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-production-central-config-precheck"));
+
+        assertThat(readiness.at("/data/productionCentralConfigPrecheckStatus").asText())
+                .isEqualTo("BLOCKED_BY_PRODUCTION_CONFIG_PROVIDER_NOT_CONNECTED");
+        assertThat(readiness.at("/data/centralConfigGovernancePrecheckStatus").asText()).isEqualTo("BLOCKED");
+        assertThat(readiness.at("/data/productionHardeningPrecheckStatus").asText())
+                .isEqualTo("BLOCKED_BY_EXTERNAL_PRODUCTION_PREREQUISITES");
+        assertThat(readiness.at("/data/readyForProduction").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/readyToReplaceGateway").asBoolean()).isFalse();
+
+        assertPrecheck(readiness, "/data/productionCentralConfigPrecheckChecks", "CONFIG_OWNERSHIP_DOCUMENTED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCentralConfigPrecheckChecks", "ENTRYPOINT_PORTS_DOCUMENTED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCentralConfigPrecheckChecks", "CANDIDATE_CONFIG_SURFACE_DOCUMENTED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCentralConfigPrecheckChecks", "CONFIG_DRIFT_SCAN_AUTOMATED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCentralConfigPrecheckChecks", "CONFIG_ROLLBACK_SOURCE_DEFINED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCentralConfigPrecheckChecks", "SENSITIVE_VALUE_REDACTION_ENFORCED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCentralConfigPrecheckChecks", "ROLLBACK_ENTRYPOINTS_DOCUMENTED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCentralConfigPrecheckChecks", "CURRENT_GATEWAY_ENTRYPOINT_PRESERVED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCentralConfigPrecheckChecks", "CENTRAL_CONFIG_PROVIDER_CONNECTED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/productionCentralConfigPrecheckChecks", "PRODUCTION_PROFILE_BOUND", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/productionCentralConfigPrecheckChecks", "SENSITIVE_CONFIG_SOURCE_EXTERNALIZED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/productionCentralConfigPrecheckChecks", "FRONTEND_ENTRYPOINT_SWITCH_IMPLEMENTED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/productionCentralConfigPrecheckChecks", "EXTERNAL_PROXY_SWITCH_IMPLEMENTED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/productionCentralConfigPrecheckChecks", "PRODUCTION_TRAFFIC_ENTRYPOINT_READY", "BLOCKED", true);
+
+        JsonNode evidence = readiness.at("/data/productionCentralConfigEvidence");
+        assertThat(evidence.at("/readinessMode").asText()).isEqualTo("PRODUCTION_PREREQUISITES_RECORDED_NOT_CONNECTED");
+        assertThat(evidence.at("/candidateEntrypoint").asText()).isEqualTo("unified-backend:8135");
+        assertThat(evidence.at("/currentEntrypoint").asText()).isEqualTo("api-gateway:8125");
+        assertThat(evidence.at("/rollbackEntrypoints").toString())
+                .contains("api-gateway:8125")
+                .contains("business-core:8130")
+                .contains("portal-core:8134");
+        assertThat(evidence.at("/configDomains").toString())
+                .contains("entrypoint")
+                .contains("security")
+                .contains("audit")
+                .contains("rollback");
+        assertThat(evidence.at("/configProviderStatus").asText()).isEqualTo("BLOCKED");
+        assertThat(evidence.at("/productionProfileBound").asBoolean()).isFalse();
+        assertThat(evidence.at("/sensitiveConfigExternalized").asBoolean()).isFalse();
+        assertThat(evidence.at("/environmentVariablesRead").asBoolean()).isFalse();
+        assertThat(evidence.at("/sensitiveValuesExposed").asBoolean()).isFalse();
+        assertThat(evidence.at("/configDriftScanAutomated").asBoolean()).isTrue();
+        assertThat(evidence.at("/rollbackSourceDefined").asBoolean()).isTrue();
+        assertThat(evidence.at("/trafficSwitchApplied").asBoolean()).isFalse();
+        assertThat(evidence.at("/frontendEntrypointSwitched").asBoolean()).isFalse();
+        assertThat(evidence.at("/externalProxySwitched").asBoolean()).isFalse();
+        assertThat(evidence.at("/productionTrafficEntrypointReady").asBoolean()).isFalse();
+        assertThat(evidence.at("/currentEntrypointPreserved").asBoolean()).isTrue();
+        assertThat(evidence.at("/status").asText()).isEqualTo("BLOCKED_BY_PRODUCTION_CONFIG_PROVIDER_NOT_CONNECTED");
+        assertThat(readiness.toString())
+                .doesNotContain("productionProfileBound\":true")
+                .doesNotContain("sensitiveConfigExternalized\":true")
+                .doesNotContain("environmentVariablesRead\":true")
+                .doesNotContain("trafficSwitchApplied\":true");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void productionCentralConfigEvidenceDoesNotLeakSensitiveRuntimeValues() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-production-central-config-redaction"));
+
+        String text = readiness.at("/data/productionCentralConfigEvidence").toString()
+                + readiness.at("/data/productionCentralConfigPrecheckChecks");
         assertThat(text)
                 .doesNotContain("Authorization")
                 .doesNotContain("X-Gateway-Internal-Signature")
