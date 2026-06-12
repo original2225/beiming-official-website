@@ -20,12 +20,14 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 @RestController
 @RequestMapping("/api/v1/unified-backend")
@@ -131,6 +133,9 @@ class UnifiedBackendController {
                 "productionCutoverApprovalPackageStatus", registry.productionCutoverApprovalPackageStatus(),
                 "productionCutoverApprovalPackageChecks", registry.productionCutoverApprovalPackageChecks(),
                 "productionCutoverApprovalPackageEvidence", registry.productionCutoverApprovalPackageEvidence(),
+                "productionCutoverExternalParameterManifestStatus", registry.productionCutoverExternalParameterManifestStatus(),
+                "productionCutoverExternalParameterManifestChecks", registry.productionCutoverExternalParameterManifestChecks(),
+                "productionCutoverExternalParameterManifestEvidence", registry.productionCutoverExternalParameterManifestEvidence(),
                 "auditSinkAdapterRehearsalStatus", registry.auditSinkAdapterRehearsalStatus(),
                 "auditSinkAdapterRehearsalChecks", registry.auditSinkAdapterRehearsalChecks(),
                 "auditSinkAdapterRehearsalEvidence", registry.auditSinkAdapterRehearsalEvidence(),
@@ -998,6 +1003,269 @@ record ProductionCutoverApprovalPackageSnapshot(
 ) {
 }
 
+interface UnifiedProductionCutoverExternalParameterManifest {
+    ProductionCutoverExternalParameterManifestSnapshot snapshot();
+}
+
+final class LocalFileProductionCutoverExternalParameterManifest implements UnifiedProductionCutoverExternalParameterManifest {
+    private static final Set<String> REQUIRED_PARAMETER_KEYS = Set.of(
+            "frontendApiBaseUrl",
+            "reverseProxyUpstream",
+            "deploymentEntrypointTarget",
+            "centralConfigProviderRef",
+            "productionProfileRef",
+            "sensitiveConfigExternalizationRef",
+            "persistentAuditSinkRef",
+            "auditWriteSmokeRef",
+            "httpSmokeObservationRef",
+            "rollbackOperatorApprovalRef",
+            "retirementApproverRef"
+    );
+    private static final List<String> FORBIDDEN_FRAGMENTS = List.of(
+            "authorization",
+            "x-gateway-internal-signature",
+            "c:\\users\\",
+            ".env",
+            "jdbc:",
+            "mongodb://",
+            "redis://",
+            "id_rsa",
+            "akia",
+            "token",
+            "cookie",
+            "secret",
+            "password",
+            "passwd",
+            "pwd",
+            "privatekey",
+            "kubectl",
+            "docker",
+            "powershell",
+            "cmd.exe",
+            "ssh ",
+            "scp "
+    );
+    private static final Pattern REAL_IPV4 = Pattern.compile("\\b(?!(?:127|0)\\.)(?:\\d{1,3}\\.){3}\\d{1,3}\\b");
+    private static final Pattern REAL_DOMAIN = Pattern.compile("\\b[a-z0-9][a-z0-9-]*(?:\\.[a-z0-9][a-z0-9-]*)+\\b", Pattern.CASE_INSENSITIVE);
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @Override
+    public ProductionCutoverExternalParameterManifestSnapshot snapshot() {
+        Path manifestPath = locateManifestPath();
+        JsonNode sample = readSample(manifestPath);
+        boolean present = Files.exists(manifestPath);
+        boolean parsed = present && !sample.isMissingNode();
+        int parameterGroupsTotal = sample.path("parameterGroups").size();
+        int parametersTotal = countParameters(sample.path("parameterGroups"));
+        int requiredExternalParametersTotal = countBooleanParameters(sample.path("parameterGroups"), "externalValueRequired");
+        int redactedParametersTotal = countBooleanParameters(sample.path("parameterGroups"), "redacted");
+        Set<String> parameterKeys = parameterKeys(sample.path("parameterGroups"));
+        boolean realValuesProvidedInRepository = anyBooleanParameter(sample.path("parameterGroups"), "realValueProvidedInRepository")
+                || sample.path("realValuesAllowedInRepository").asBoolean(false);
+        boolean sensitiveValuesExposed = containsSensitiveValues(sample);
+        boolean approvalPackageReferenced = "docs/unified-backend-production-cutover-approval-package-sample.json"
+                .equals(sample.path("approvalPackageReference").path("path").asText());
+        boolean localManifestPassed = parsed
+                && parameterGroupsTotal >= 6
+                && parametersTotal >= 20
+                && requiredExternalParametersTotal >= 20
+                && redactedParametersTotal >= 20
+                && parameterKeys.containsAll(REQUIRED_PARAMETER_KEYS)
+                && approvalPackageReferenced
+                && !sample.path("manifestApplied").asBoolean(true)
+                && !sample.path("productionTrafficAllowed").asBoolean(true)
+                && !sample.path("realValuesAllowedInRepository").asBoolean(true)
+                && sample.path("requiresExternalSecretStore").asBoolean(false)
+                && !realValuesProvidedInRepository
+                && !sensitiveValuesExposed;
+        return new ProductionCutoverExternalParameterManifestSnapshot(
+                "LOCAL_EXTERNAL_PARAMETER_MANIFEST_REHEARSAL_NOT_PRODUCTION",
+                "docs/unified-backend-production-cutover-external-parameters-sample.json",
+                present,
+                parsed,
+                sample.path("manifestApplied").asBoolean(false),
+                sample.path("productionTrafficAllowed").asBoolean(false),
+                sample.path("realValuesAllowedInRepository").asBoolean(false),
+                sample.path("requiresExternalSecretStore").asBoolean(true),
+                "http://127.0.0.1:8135",
+                "http://127.0.0.1:8125",
+                "http://127.0.0.1:8125",
+                parameterGroupsTotal,
+                parametersTotal,
+                requiredExternalParametersTotal,
+                parameterKeys,
+                realValuesProvidedInRepository,
+                redactedParametersTotal,
+                approvalPackageReferenced,
+                sample.path("approvalPackageReference").path("approvalPackageApplied").asBoolean(false),
+                sample.path("approvalPackageReference").path("productionTrafficApproved").asBoolean(false),
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                sample.path("approvalPackageReference").path("retirementApproverGranted").asBoolean(false),
+                false,
+                false,
+                false,
+                sensitiveValuesExposed,
+                List.of(
+                        "REAL_EXTERNAL_ENTRYPOINT_CONFIG_VALUES_PROVIDED_OUTSIDE_REPOSITORY",
+                        "REAL_EXTERNAL_ENTRYPOINT_CONFIG_APPLIED",
+                        "REAL_CENTRAL_CONFIG_PROVIDER_CONNECTED",
+                        "PRODUCTION_PROFILE_BOUND",
+                        "SENSITIVE_CONFIG_SOURCE_EXTERNALIZED",
+                        "REAL_PERSISTENT_AUDIT_SINK_CONNECTED",
+                        "REAL_AUDIT_WRITE_SMOKE_PASSED",
+                        "PRODUCTION_TRAFFIC_SWITCH_APPROVED",
+                        "PRODUCTION_TRAFFIC_SWITCH_APPLIED",
+                        "PRODUCTION_TRAFFIC_OBSERVED_ON_UNIFIED",
+                        "API_GATEWAY_TRAFFIC_ZERO_PROVEN",
+                        "ROLLBACK_OPERATOR_APPROVED",
+                        "ROLLBACK_WINDOW_COMPLETED",
+                        "USER_RETIREMENT_APPROVAL_GRANTED"
+                ),
+                localManifestPassed
+                        ? "PASS_REDACTED_EXTERNAL_PARAMETER_MANIFEST_REHEARSAL_NOT_PRODUCTION"
+                        : "BLOCKED_BY_EXTERNAL_PARAMETER_MANIFEST_SAMPLE_NOT_AVAILABLE"
+        );
+    }
+
+    private JsonNode readSample(Path samplePath) {
+        try {
+            if (Files.exists(samplePath)) {
+                return objectMapper.readTree(Files.readString(samplePath));
+            }
+        } catch (IOException ignored) {
+            return objectMapper.getNodeFactory().missingNode();
+        }
+        return objectMapper.getNodeFactory().missingNode();
+    }
+
+    private Set<String> parameterKeys(JsonNode groups) {
+        Set<String> keys = new HashSet<>();
+        for (JsonNode group : groups) {
+            for (JsonNode parameter : group.path("parameters")) {
+                keys.add(parameter.path("key").asText());
+            }
+        }
+        return Set.copyOf(keys);
+    }
+
+    private int countParameters(JsonNode groups) {
+        int total = 0;
+        for (JsonNode group : groups) {
+            total += group.path("parameters").size();
+        }
+        return total;
+    }
+
+    private int countBooleanParameters(JsonNode groups, String fieldName) {
+        int total = 0;
+        for (JsonNode group : groups) {
+            for (JsonNode parameter : group.path("parameters")) {
+                if (parameter.path(fieldName).asBoolean(false)) {
+                    total++;
+                }
+            }
+        }
+        return total;
+    }
+
+    private boolean anyBooleanParameter(JsonNode groups, String fieldName) {
+        for (JsonNode group : groups) {
+            for (JsonNode parameter : group.path("parameters")) {
+                if (parameter.path(fieldName).asBoolean(false)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean containsSensitiveValues(JsonNode sample) {
+        String text = (sample.path("parameterGroups").toString()
+                + sample.path("approvalPackageReference").toString()
+                + sample.path("goNoGoImpact").toString()
+                + sample.path("verificationCommands").toString()).toLowerCase(Locale.ROOT)
+                .replace("requiresexternalsecretstore", "");
+        if (FORBIDDEN_FRAGMENTS.stream().anyMatch(text::contains)) {
+            return true;
+        }
+        String refText = referenceText(sample).toLowerCase(Locale.ROOT);
+        return REAL_IPV4.matcher(refText).find() || REAL_DOMAIN.matcher(refText).find();
+    }
+
+    private String referenceText(JsonNode sample) {
+        StringBuilder refs = new StringBuilder()
+                .append(sample.path("candidateEntrypointRef").asText()).append(' ')
+                .append(sample.path("currentEntrypointRef").asText()).append(' ')
+                .append(sample.path("rollbackEntrypointRef").asText()).append(' ');
+        for (JsonNode group : sample.path("parameterGroups")) {
+            for (JsonNode parameter : group.path("parameters")) {
+                refs.append(parameter.path("valueRef").asText()).append(' ');
+            }
+        }
+        return refs.toString();
+    }
+
+    private Path locateManifestPath() {
+        List<Path> candidates = List.of(
+                Path.of("docs", "unified-backend-production-cutover-external-parameters-sample.json"),
+                Path.of("..", "docs", "unified-backend-production-cutover-external-parameters-sample.json"),
+                Path.of("..", "..", "docs", "unified-backend-production-cutover-external-parameters-sample.json")
+        );
+        for (Path candidate : candidates) {
+            if (Files.exists(candidate)) {
+                return candidate.normalize();
+            }
+        }
+        return candidates.get(0).normalize();
+    }
+}
+
+record ProductionCutoverExternalParameterManifestSnapshot(
+        String readinessMode,
+        String sampleManifestPath,
+        boolean sampleManifestPresent,
+        boolean sampleManifestParsed,
+        boolean manifestApplied,
+        boolean productionTrafficAllowed,
+        boolean realValuesAllowedInRepository,
+        boolean requiresExternalSecretStore,
+        String candidateEntrypoint,
+        String currentEntrypoint,
+        String rollbackEntrypoint,
+        int parameterGroupsTotal,
+        int parametersTotal,
+        int requiredExternalParametersTotal,
+        Set<String> parameterKeys,
+        boolean realValuesProvidedInRepository,
+        int redactedParametersTotal,
+        boolean approvalPackageReferenced,
+        boolean approvalPackageApplied,
+        boolean productionTrafficApproved,
+        boolean centralConfigProviderConnected,
+        boolean productionProfileBound,
+        boolean sensitiveConfigExternalized,
+        boolean persistentAuditSinkConnected,
+        boolean auditWriteSmokePassed,
+        boolean productionTrafficObservedOnUnified,
+        boolean apiGatewayTrafficZeroProven,
+        boolean rollbackWindowCompleted,
+        boolean retirementApproverGranted,
+        boolean deletionAllowed,
+        boolean bulkRetirementAllowed,
+        boolean environmentVariablesRead,
+        boolean sensitiveValuesExposed,
+        List<String> remainingProductionBlockers,
+        String status
+) {
+}
+
 @Component
 class UnifiedBackendRegistry {
     private static final List<String> MOUNTED_ENTRYPOINTS = List.of("api-gateway", "business-core", "admission-core", "engagement-core", "ops-core", "portal-core");
@@ -1013,35 +1281,46 @@ class UnifiedBackendRegistry {
     private final UnifiedAuditSink auditSink;
     private final UnifiedProductionCutoverRunbook cutoverRunbook;
     private final UnifiedProductionCutoverApprovalPackage cutoverApprovalPackage;
+    private final UnifiedProductionCutoverExternalParameterManifest externalParameterManifest;
     private final List<UnifiedMount> gatewayRoutes = createGatewayRoutes();
 
     UnifiedBackendRegistry() {
         this(new LocalFileUnifiedConfigProvider(), new LocalFileUnifiedAuditSink(), new LocalFileProductionCutoverRunbook(),
-                new LocalFileProductionCutoverApprovalPackage());
+                new LocalFileProductionCutoverApprovalPackage(), new LocalFileProductionCutoverExternalParameterManifest());
     }
 
     UnifiedBackendRegistry(UnifiedConfigProvider configProvider) {
         this(configProvider, new LocalFileUnifiedAuditSink(), new LocalFileProductionCutoverRunbook(),
-                new LocalFileProductionCutoverApprovalPackage());
+                new LocalFileProductionCutoverApprovalPackage(), new LocalFileProductionCutoverExternalParameterManifest());
     }
 
     UnifiedBackendRegistry(UnifiedConfigProvider configProvider, UnifiedAuditSink auditSink) {
         this(configProvider, auditSink, new LocalFileProductionCutoverRunbook(),
-                new LocalFileProductionCutoverApprovalPackage());
+                new LocalFileProductionCutoverApprovalPackage(), new LocalFileProductionCutoverExternalParameterManifest());
     }
 
     UnifiedBackendRegistry(UnifiedConfigProvider configProvider, UnifiedAuditSink auditSink,
                            UnifiedProductionCutoverRunbook cutoverRunbook) {
-        this(configProvider, auditSink, cutoverRunbook, new LocalFileProductionCutoverApprovalPackage());
+        this(configProvider, auditSink, cutoverRunbook, new LocalFileProductionCutoverApprovalPackage(),
+                new LocalFileProductionCutoverExternalParameterManifest());
     }
 
     UnifiedBackendRegistry(UnifiedConfigProvider configProvider, UnifiedAuditSink auditSink,
                            UnifiedProductionCutoverRunbook cutoverRunbook,
                            UnifiedProductionCutoverApprovalPackage cutoverApprovalPackage) {
+        this(configProvider, auditSink, cutoverRunbook, cutoverApprovalPackage,
+                new LocalFileProductionCutoverExternalParameterManifest());
+    }
+
+    UnifiedBackendRegistry(UnifiedConfigProvider configProvider, UnifiedAuditSink auditSink,
+                           UnifiedProductionCutoverRunbook cutoverRunbook,
+                           UnifiedProductionCutoverApprovalPackage cutoverApprovalPackage,
+                           UnifiedProductionCutoverExternalParameterManifest externalParameterManifest) {
         this.configProvider = configProvider;
         this.auditSink = auditSink;
         this.cutoverRunbook = cutoverRunbook;
         this.cutoverApprovalPackage = cutoverApprovalPackage;
+        this.externalParameterManifest = externalParameterManifest;
     }
 
     Map<String, Object> baseProfile() {
@@ -2171,6 +2450,80 @@ class UnifiedBackendRegistry {
                 "auditWriteSmokePassed", snapshot.auditWriteSmokePassed(),
                 "productionTrafficApproved", snapshot.productionTrafficApproved(),
                 "rollbackOperatorApproved", snapshot.rollbackOperatorApproved(),
+                "retirementApproverGranted", snapshot.retirementApproverGranted(),
+                "deletionAllowed", snapshot.deletionAllowed(),
+                "bulkRetirementAllowed", snapshot.bulkRetirementAllowed(),
+                "environmentVariablesRead", snapshot.environmentVariablesRead(),
+                "sensitiveValuesExposed", snapshot.sensitiveValuesExposed(),
+                "readyForProduction", false,
+                "readyToReplaceGateway", false,
+                "remainingProductionBlockers", snapshot.remainingProductionBlockers(),
+                "status", snapshot.status()
+        );
+    }
+
+    String productionCutoverExternalParameterManifestStatus() {
+        return externalParameterManifest.snapshot().status();
+    }
+
+    List<Map<String, Object>> productionCutoverExternalParameterManifestChecks() {
+        ProductionCutoverExternalParameterManifestSnapshot snapshot = externalParameterManifest.snapshot();
+        return List.of(
+                switchCheck("EXTERNAL_PARAMETER_MANIFEST_SAMPLE_PRESENT", snapshot.sampleManifestPresent() ? "PASS" : "BLOCKED", "production cutover external parameter manifest sample is present", true),
+                switchCheck("EXTERNAL_PARAMETER_MANIFEST_JSON_PARSABLE", snapshot.sampleManifestParsed() ? "PASS" : "BLOCKED", "external parameter manifest sample is parseable JSON", true),
+                switchCheck("PARAMETER_GROUPS_RECORDED", snapshot.parameterGroupsTotal() >= 6 ? "PASS" : "BLOCKED", "external parameter groups are recorded", true),
+                switchCheck("FRONTEND_ENTRYPOINT_PARAMETER_RECORDED", snapshot.parameterKeys().contains("frontendApiBaseUrl") ? "PASS" : "BLOCKED", "frontend entrypoint parameter is recorded", true),
+                switchCheck("PROXY_UPSTREAM_PARAMETER_RECORDED", snapshot.parameterKeys().contains("reverseProxyUpstream") ? "PASS" : "BLOCKED", "proxy upstream parameter is recorded", true),
+                switchCheck("DEPLOYMENT_ENTRYPOINT_PARAMETER_RECORDED", snapshot.parameterKeys().contains("deploymentEntrypointTarget") ? "PASS" : "BLOCKED", "deployment entrypoint parameter is recorded", true),
+                switchCheck("CENTRAL_CONFIG_PROVIDER_PARAMETER_RECORDED", snapshot.parameterKeys().contains("centralConfigProviderRef") ? "PASS" : "BLOCKED", "central config provider parameter is recorded", true),
+                switchCheck("PRODUCTION_PROFILE_PARAMETER_RECORDED", snapshot.parameterKeys().contains("productionProfileRef") ? "PASS" : "BLOCKED", "production profile parameter is recorded", true),
+                switchCheck("SENSITIVE_CONFIG_EXTERNALIZATION_PARAMETER_RECORDED", snapshot.parameterKeys().contains("sensitiveConfigExternalizationRef") ? "PASS" : "BLOCKED", "sensitive config externalization parameter is recorded", true),
+                switchCheck("AUDIT_SINK_PARAMETER_RECORDED", snapshot.parameterKeys().contains("persistentAuditSinkRef") ? "PASS" : "BLOCKED", "audit sink parameter is recorded", true),
+                switchCheck("OBSERVABILITY_PARAMETER_RECORDED", snapshot.parameterKeys().contains("httpSmokeObservationRef") ? "PASS" : "BLOCKED", "observability parameter references are recorded", true),
+                switchCheck("APPROVAL_REFERENCE_RECORDED", snapshot.approvalPackageReferenced() ? "PASS" : "BLOCKED", "approval package reference is recorded", true),
+                switchCheck("ROLLBACK_AUTHORITY_REFERENCE_RECORDED", snapshot.parameterKeys().contains("rollbackOperatorApprovalRef") ? "PASS" : "BLOCKED", "rollback authority reference is recorded", true),
+                switchCheck("RETIREMENT_APPROVAL_REFERENCE_RECORDED", snapshot.parameterKeys().contains("retirementApproverRef") ? "PASS" : "BLOCKED", "retirement approval reference is recorded", true),
+                switchCheck("NO_REAL_VALUES_IN_REPOSITORY", snapshot.realValuesProvidedInRepository() || snapshot.realValuesAllowedInRepository() || snapshot.sensitiveValuesExposed() ? "BLOCKED" : "PASS", "manifest sample records no real runtime values", true),
+                switchCheck("READY_FLAGS_REMAIN_FALSE", "PASS", "readyForProduction and readyToReplaceGateway remain false", true),
+                switchCheck("REAL_EXTERNAL_ENTRYPOINT_VALUES_NOT_PROVIDED", snapshot.realValuesProvidedInRepository() ? "PASS" : "BLOCKED", "real external entrypoint values are not provided in repository", true),
+                switchCheck("REAL_CENTRAL_CONFIG_PROVIDER_NOT_CONNECTED", snapshot.centralConfigProviderConnected() ? "PASS" : "BLOCKED", "real central config provider remains disconnected", true),
+                switchCheck("REAL_AUDIT_SINK_NOT_CONNECTED", snapshot.persistentAuditSinkConnected() ? "PASS" : "BLOCKED", "real audit sink remains disconnected", true),
+                switchCheck("PRODUCTION_TRAFFIC_NOT_SWITCHED", snapshot.productionTrafficObservedOnUnified() ? "PASS" : "BLOCKED", "production traffic is not switched to unified-backend", true),
+                switchCheck("API_GATEWAY_TRAFFIC_ZERO_NOT_PROVEN", snapshot.apiGatewayTrafficZeroProven() ? "PASS" : "BLOCKED", "api-gateway zero traffic is not proven", true),
+                switchCheck("RETIREMENT_NOT_APPROVED", snapshot.retirementApproverGranted() ? "PASS" : "BLOCKED", "entrypoint retirement is not approved", true)
+        );
+    }
+
+    Map<String, Object> productionCutoverExternalParameterManifestEvidence() {
+        ProductionCutoverExternalParameterManifestSnapshot snapshot = externalParameterManifest.snapshot();
+        return map(
+                "readinessMode", snapshot.readinessMode(),
+                "sampleManifestPath", snapshot.sampleManifestPath(),
+                "sampleManifestPresent", snapshot.sampleManifestPresent(),
+                "sampleManifestParsed", snapshot.sampleManifestParsed(),
+                "manifestApplied", snapshot.manifestApplied(),
+                "productionTrafficAllowed", snapshot.productionTrafficAllowed(),
+                "realValuesAllowedInRepository", snapshot.realValuesAllowedInRepository(),
+                "requiresExternalSecretStore", snapshot.requiresExternalSecretStore(),
+                "candidateEntrypoint", snapshot.candidateEntrypoint(),
+                "currentEntrypoint", snapshot.currentEntrypoint(),
+                "rollbackEntrypoint", snapshot.rollbackEntrypoint(),
+                "parameterGroupsTotal", snapshot.parameterGroupsTotal(),
+                "parametersTotal", snapshot.parametersTotal(),
+                "requiredExternalParametersTotal", snapshot.requiredExternalParametersTotal(),
+                "realValuesProvidedInRepository", snapshot.realValuesProvidedInRepository(),
+                "redactedParametersTotal", snapshot.redactedParametersTotal(),
+                "approvalPackageReferenced", snapshot.approvalPackageReferenced(),
+                "approvalPackageApplied", snapshot.approvalPackageApplied(),
+                "productionTrafficApproved", snapshot.productionTrafficApproved(),
+                "centralConfigProviderConnected", snapshot.centralConfigProviderConnected(),
+                "productionProfileBound", snapshot.productionProfileBound(),
+                "sensitiveConfigExternalized", snapshot.sensitiveConfigExternalized(),
+                "persistentAuditSinkConnected", snapshot.persistentAuditSinkConnected(),
+                "auditWriteSmokePassed", snapshot.auditWriteSmokePassed(),
+                "productionTrafficObservedOnUnified", snapshot.productionTrafficObservedOnUnified(),
+                "apiGatewayTrafficZeroProven", snapshot.apiGatewayTrafficZeroProven(),
+                "rollbackWindowCompleted", snapshot.rollbackWindowCompleted(),
                 "retirementApproverGranted", snapshot.retirementApproverGranted(),
                 "deletionAllowed", snapshot.deletionAllowed(),
                 "bulkRetirementAllowed", snapshot.bulkRetirementAllowed(),

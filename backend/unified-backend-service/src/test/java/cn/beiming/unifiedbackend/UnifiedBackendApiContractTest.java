@@ -67,6 +67,7 @@ class UnifiedBackendApiContractTest {
         addRange(mapped, "UBACK-AUDIT-ADAPTER", 1, 12);
         addRange(mapped, "UBACK-CUTOVER-RUNBOOK", 1, 12);
         addRange(mapped, "UBACK-CUTOVER-APPROVAL", 1, 12);
+        addRange(mapped, "UBACK-EXTERNAL-PARAMS", 1, 12);
 
         assertThat(mapped).contains(
                 "UBACK-COM-001",
@@ -121,9 +122,11 @@ class UnifiedBackendApiContractTest {
                 "UBACK-CUTOVER-RUNBOOK-001",
                 "UBACK-CUTOVER-RUNBOOK-012",
                 "UBACK-CUTOVER-APPROVAL-001",
-                "UBACK-CUTOVER-APPROVAL-012"
+                "UBACK-CUTOVER-APPROVAL-012",
+                "UBACK-EXTERNAL-PARAMS-001",
+                "UBACK-EXTERNAL-PARAMS-012"
         );
-        assertThat(mapped).hasSize(191);
+        assertThat(mapped).hasSize(203);
     }
 
     @Test
@@ -2094,6 +2097,198 @@ class UnifiedBackendApiContractTest {
     }
 
     @Test
+    void exposesProductionCutoverExternalParameterManifestWithoutApplyingTraffic() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-production-cutover-external-parameter-manifest"));
+
+        assertThat(readiness.at("/data/productionCutoverExternalParameterManifestStatus").asText())
+                .isEqualTo("PASS_REDACTED_EXTERNAL_PARAMETER_MANIFEST_REHEARSAL_NOT_PRODUCTION");
+        assertThat(readiness.at("/data/readyForProduction").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/readyToReplaceGateway").asBoolean()).isFalse();
+
+        assertPrecheck(readiness, "/data/productionCutoverExternalParameterManifestChecks", "EXTERNAL_PARAMETER_MANIFEST_SAMPLE_PRESENT", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCutoverExternalParameterManifestChecks", "EXTERNAL_PARAMETER_MANIFEST_JSON_PARSABLE", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCutoverExternalParameterManifestChecks", "PARAMETER_GROUPS_RECORDED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCutoverExternalParameterManifestChecks", "FRONTEND_ENTRYPOINT_PARAMETER_RECORDED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCutoverExternalParameterManifestChecks", "PROXY_UPSTREAM_PARAMETER_RECORDED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCutoverExternalParameterManifestChecks", "DEPLOYMENT_ENTRYPOINT_PARAMETER_RECORDED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCutoverExternalParameterManifestChecks", "CENTRAL_CONFIG_PROVIDER_PARAMETER_RECORDED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCutoverExternalParameterManifestChecks", "PRODUCTION_PROFILE_PARAMETER_RECORDED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCutoverExternalParameterManifestChecks", "SENSITIVE_CONFIG_EXTERNALIZATION_PARAMETER_RECORDED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCutoverExternalParameterManifestChecks", "AUDIT_SINK_PARAMETER_RECORDED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCutoverExternalParameterManifestChecks", "OBSERVABILITY_PARAMETER_RECORDED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCutoverExternalParameterManifestChecks", "APPROVAL_REFERENCE_RECORDED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCutoverExternalParameterManifestChecks", "ROLLBACK_AUTHORITY_REFERENCE_RECORDED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCutoverExternalParameterManifestChecks", "RETIREMENT_APPROVAL_REFERENCE_RECORDED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCutoverExternalParameterManifestChecks", "NO_REAL_VALUES_IN_REPOSITORY", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCutoverExternalParameterManifestChecks", "READY_FLAGS_REMAIN_FALSE", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCutoverExternalParameterManifestChecks", "REAL_EXTERNAL_ENTRYPOINT_VALUES_NOT_PROVIDED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/productionCutoverExternalParameterManifestChecks", "REAL_CENTRAL_CONFIG_PROVIDER_NOT_CONNECTED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/productionCutoverExternalParameterManifestChecks", "REAL_AUDIT_SINK_NOT_CONNECTED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/productionCutoverExternalParameterManifestChecks", "PRODUCTION_TRAFFIC_NOT_SWITCHED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/productionCutoverExternalParameterManifestChecks", "API_GATEWAY_TRAFFIC_ZERO_NOT_PROVEN", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/productionCutoverExternalParameterManifestChecks", "RETIREMENT_NOT_APPROVED", "BLOCKED", true);
+
+        JsonNode evidence = readiness.at("/data/productionCutoverExternalParameterManifestEvidence");
+        assertThat(evidence.at("/readinessMode").asText())
+                .isEqualTo("LOCAL_EXTERNAL_PARAMETER_MANIFEST_REHEARSAL_NOT_PRODUCTION");
+        assertThat(evidence.at("/sampleManifestPath").asText())
+                .isEqualTo("docs/unified-backend-production-cutover-external-parameters-sample.json");
+        assertThat(evidence.at("/sampleManifestPresent").asBoolean()).isTrue();
+        assertThat(evidence.at("/sampleManifestParsed").asBoolean()).isTrue();
+        assertThat(evidence.at("/manifestApplied").asBoolean()).isFalse();
+        assertThat(evidence.at("/productionTrafficAllowed").asBoolean()).isFalse();
+        assertThat(evidence.at("/realValuesAllowedInRepository").asBoolean()).isFalse();
+        assertThat(evidence.at("/requiresExternalSecretStore").asBoolean()).isTrue();
+        assertThat(evidence.at("/candidateEntrypoint").asText()).isEqualTo("http://127.0.0.1:8135");
+        assertThat(evidence.at("/currentEntrypoint").asText()).isEqualTo("http://127.0.0.1:8125");
+        assertThat(evidence.at("/rollbackEntrypoint").asText()).isEqualTo("http://127.0.0.1:8125");
+        assertThat(evidence.at("/parameterGroupsTotal").asInt()).isGreaterThanOrEqualTo(6);
+        assertThat(evidence.at("/parametersTotal").asInt()).isGreaterThanOrEqualTo(20);
+        assertThat(evidence.at("/requiredExternalParametersTotal").asInt()).isGreaterThanOrEqualTo(20);
+        assertThat(evidence.at("/realValuesProvidedInRepository").asBoolean()).isFalse();
+        assertThat(evidence.at("/redactedParametersTotal").asInt()).isGreaterThanOrEqualTo(20);
+        assertThat(evidence.at("/approvalPackageReferenced").asBoolean()).isTrue();
+        assertThat(evidence.at("/approvalPackageApplied").asBoolean()).isFalse();
+        assertThat(evidence.at("/productionTrafficApproved").asBoolean()).isFalse();
+        assertThat(evidence.at("/centralConfigProviderConnected").asBoolean()).isFalse();
+        assertThat(evidence.at("/productionProfileBound").asBoolean()).isFalse();
+        assertThat(evidence.at("/sensitiveConfigExternalized").asBoolean()).isFalse();
+        assertThat(evidence.at("/persistentAuditSinkConnected").asBoolean()).isFalse();
+        assertThat(evidence.at("/auditWriteSmokePassed").asBoolean()).isFalse();
+        assertThat(evidence.at("/productionTrafficObservedOnUnified").asBoolean()).isFalse();
+        assertThat(evidence.at("/apiGatewayTrafficZeroProven").asBoolean()).isFalse();
+        assertThat(evidence.at("/rollbackWindowCompleted").asBoolean()).isFalse();
+        assertThat(evidence.at("/retirementApproverGranted").asBoolean()).isFalse();
+        assertThat(evidence.at("/deletionAllowed").asBoolean()).isFalse();
+        assertThat(evidence.at("/bulkRetirementAllowed").asBoolean()).isFalse();
+        assertThat(evidence.at("/environmentVariablesRead").asBoolean()).isFalse();
+        assertThat(evidence.at("/sensitiveValuesExposed").asBoolean()).isFalse();
+        assertThat(evidence.at("/readyForProduction").asBoolean()).isFalse();
+        assertThat(evidence.at("/readyToReplaceGateway").asBoolean()).isFalse();
+        assertThat(evidence.at("/status").asText())
+                .isEqualTo("PASS_REDACTED_EXTERNAL_PARAMETER_MANIFEST_REHEARSAL_NOT_PRODUCTION");
+        assertThat(evidence.at("/remainingProductionBlockers").toString())
+                .contains("REAL_EXTERNAL_ENTRYPOINT_CONFIG_VALUES_PROVIDED_OUTSIDE_REPOSITORY")
+                .contains("REAL_EXTERNAL_ENTRYPOINT_CONFIG_APPLIED")
+                .contains("REAL_CENTRAL_CONFIG_PROVIDER_CONNECTED")
+                .contains("REAL_PERSISTENT_AUDIT_SINK_CONNECTED")
+                .contains("PRODUCTION_TRAFFIC_SWITCH_APPLIED")
+                .contains("API_GATEWAY_TRAFFIC_ZERO_PROVEN")
+                .contains("ROLLBACK_WINDOW_COMPLETED")
+                .contains("USER_RETIREMENT_APPROVAL_GRANTED");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void productionCutoverExternalParameterManifestEvidenceDoesNotLeakSensitiveRuntimeValues() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-production-cutover-external-parameter-manifest-redaction"));
+
+        assertThat(readiness.at("/data/productionCutoverExternalParameterManifestStatus").asText())
+                .isEqualTo("PASS_REDACTED_EXTERNAL_PARAMETER_MANIFEST_REHEARSAL_NOT_PRODUCTION");
+        String text = readiness.at("/data/productionCutoverExternalParameterManifestEvidence").toString()
+                + readiness.at("/data/productionCutoverExternalParameterManifestChecks");
+        assertThat(text)
+                .doesNotContain("Authorization")
+                .doesNotContain("X-Gateway-Internal-Signature")
+                .doesNotContain("C:\\Users\\")
+                .doesNotContain(".env")
+                .doesNotContain("jdbc:")
+                .doesNotContain("cmd.exe")
+                .doesNotContain("powershell")
+                .doesNotContain("kubectl")
+                .doesNotContain("docker")
+                .doesNotContain("id_rsa");
+        assertThat(text.toLowerCase().replace("requiresexternalsecretstore", ""))
+                .doesNotContain("token")
+                .doesNotContain("cookie")
+                .doesNotContain("secret")
+                .doesNotContain("password")
+                .doesNotContain("dsn")
+                .doesNotContain("bucket")
+                .doesNotContain("topic");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void productionCutoverExternalParameterManifestSampleFileIsParseableAndSafe() throws Exception {
+        JsonNode sample = objectMapper.readTree(Files.readString(Path.of("../../docs/unified-backend-production-cutover-external-parameters-sample.json")));
+
+        assertThat(sample.at("/sampleName").asText()).isEqualTo("beiming-unified-backend-production-cutover-external-parameters");
+        assertThat(sample.at("/mode").asText()).isEqualTo("LOCAL_EXTERNAL_PARAMETER_MANIFEST_REHEARSAL_NOT_APPLIED");
+        assertThat(sample.at("/manifestApplied").asBoolean()).isFalse();
+        assertThat(sample.at("/productionTrafficAllowed").asBoolean()).isFalse();
+        assertThat(sample.at("/realValuesAllowedInRepository").asBoolean()).isFalse();
+        assertThat(sample.at("/requiresExternalSecretStore").asBoolean()).isTrue();
+        assertThat(sample.at("/candidateEntrypointRef").asText()).isEqualTo("LOCAL_SAMPLE_REF:UNIFIED_BACKEND_8135");
+        assertThat(sample.at("/currentEntrypointRef").asText()).isEqualTo("LOCAL_SAMPLE_REF:API_GATEWAY_8125");
+        assertThat(sample.at("/rollbackEntrypointRef").asText()).isEqualTo("LOCAL_SAMPLE_REF:API_GATEWAY_8125");
+        assertThat(sample.at("/parameterGroups").size()).isGreaterThanOrEqualTo(6);
+        assertThat(sample.at("/approvalPackageReference/path").asText())
+                .isEqualTo("docs/unified-backend-production-cutover-approval-package-sample.json");
+        assertThat(sample.at("/approvalPackageReference/approvalPackageApplied").asBoolean()).isFalse();
+        assertThat(sample.at("/approvalPackageReference/productionTrafficApproved").asBoolean()).isFalse();
+        assertThat(sample.at("/approvalPackageReference/rollbackOperatorApproved").asBoolean()).isFalse();
+        assertThat(sample.at("/approvalPackageReference/retirementApproverGranted").asBoolean()).isFalse();
+        assertThat(sample.at("/goNoGoImpact").toString())
+                .contains("REAL_EXTERNAL_ENTRYPOINT_CONFIG_APPLIED")
+                .contains("REAL_CENTRAL_CONFIG_PROVIDER_CONNECTED")
+                .contains("PRODUCTION_TRAFFIC_SWITCH_APPLIED")
+                .contains("BLOCKED");
+        assertThat(sample.at("/validationRules/allRequiredParametersDeclared").asBoolean()).isTrue();
+        assertThat(sample.at("/validationRules/allRealValuesExternalized").asBoolean()).isTrue();
+        assertThat(sample.at("/validationRules/noProductionTrafficValue").asBoolean()).isTrue();
+        assertThat(sample.at("/validationRules/noRuntimeCommandValue").asBoolean()).isTrue();
+        assertThat(sample.at("/validationRules/noCredentialValue").asBoolean()).isTrue();
+        assertThat(sample.at("/validationRules/noLocalAbsolutePath").asBoolean()).isTrue();
+        assertThat(sample.at("/redactionPolicy/forbiddenValues").toString().toLowerCase())
+                .contains("authorization")
+                .contains("cookie")
+                .contains("token")
+                .contains("secret")
+                .contains("password")
+                .contains("jdbc:")
+                .contains("kubectl")
+                .contains("docker")
+                .contains("powershell")
+                .contains("cmd.exe");
+        assertThat(sample.toString())
+                .doesNotContain("/api/v1/unified-backend/auth")
+                .doesNotContain("/api/v1/unified-backend/profile")
+                .doesNotContain("http://")
+                .doesNotContain("https://");
+        String parameterText = sample.at("/parameterGroups").toString().toLowerCase()
+                + sample.at("/approvalPackageReference").toString().toLowerCase()
+                + sample.at("/goNoGoImpact").toString().toLowerCase()
+                + sample.at("/verificationCommands").toString().toLowerCase();
+        assertThat(parameterText.replace("requiresexternalsecretstore", ""))
+                .doesNotContain("authorization")
+                .doesNotContain("token")
+                .doesNotContain("cookie")
+                .doesNotContain("secret")
+                .doesNotContain("password")
+                .doesNotContain("passwd")
+                .doesNotContain("pwd")
+                .doesNotContain("privatekey")
+                .doesNotContain("id_rsa")
+                .doesNotContain("jdbc:")
+                .doesNotContain("mongodb://")
+                .doesNotContain("redis://")
+                .doesNotContain("akia")
+                .doesNotContain("kubectl")
+                .doesNotContain("docker")
+                .doesNotContain("powershell")
+                .doesNotContain("cmd.exe")
+                .doesNotContain("ssh ")
+                .doesNotContain("scp ")
+                .doesNotContain("c:\\users\\")
+                .doesNotContain(".env");
+    }
+
+    @Test
     void exposesProductionAuditSinkPreflightWithoutConnectingSink() throws Exception {
         JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
                 .header("Authorization", "Bearer owner-token")
@@ -2491,7 +2686,8 @@ class UnifiedBackendApiContractTest {
     }
 
     private void assertNoSecrets(JsonNode node) {
-        String text = node.toString().toLowerCase();
+        String text = node.toString().toLowerCase()
+                .replace("requiresexternalsecretstore", "");
         assertThat(text)
                 .doesNotContain("authorization")
                 .doesNotContain("cookie")

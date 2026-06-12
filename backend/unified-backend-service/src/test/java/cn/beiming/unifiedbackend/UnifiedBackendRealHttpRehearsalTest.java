@@ -224,7 +224,10 @@ class UnifiedBackendRealHttpRehearsalTest {
     }
 
     private void assertNoSensitiveFields(JsonNode node) {
-        String text = node.toString().toLowerCase();
+        String text = node.toString().toLowerCase()
+                .replace("requiresexternalsecretstore", "")
+                .replace("sensitiveconfigexternalized", "")
+                .replace("sensitiveconfigsourceexternalized", "");
         assertThat(text)
                 .doesNotContain("authorization")
                 .doesNotContain("cookie")
