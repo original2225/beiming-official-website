@@ -1,0 +1,49 @@
+{
+  "schemaName": "beiming-unified-backend-audit-sink-sample",
+  "schemaVersion": "1.0",
+  "sinkType": "LOCAL_FILE_JSONL_SAMPLE",
+  "sinkConnected": false,
+  "writeMode": "APPEND_ONLY_REHEARSAL",
+  "replayMode": "READ_ONLY_REHEARSAL",
+  "exportMode": "SUMMARY_ONLY_REHEARSAL",
+  "retentionMode": "POLICY_RECORDED_NOT_EXECUTED",
+  "requiredFields": [
+    "eventId",
+    "schemaVersion",
+    "occurredAt",
+    "requestId",
+    "sourceService",
+    "entrypoint",
+    "actor",
+    "target",
+    "action",
+    "riskLevel",
+    "result",
+    "beforeStateSummary",
+    "afterStateSummary",
+    "reason",
+    "redactionApplied",
+    "sensitiveValuesExposed",
+    "productionTraffic",
+    "rehearsalOnly"
+  ],
+  "allowedRiskLevels": [
+    "LOW",
+    "MEDIUM",
+    "HIGH",
+    "CRITICAL"
+  ],
+  "allowedResultStatuses": [
+    "SUCCESS",
+    "FAILED",
+    "DEGRADED"
+  ],
+  "safetyRules": {
+    "runtimeCredentialValuesAllowed": false,
+    "runtimeEndpointValuesAllowed": false,
+    "localAbsolutePathsAllowed": false,
+    "runtimeCommandValuesAllowed": false,
+    "productionTrafficAllowed": false,
+    "fullRequestHeadersAllowed": false
+  }
+}

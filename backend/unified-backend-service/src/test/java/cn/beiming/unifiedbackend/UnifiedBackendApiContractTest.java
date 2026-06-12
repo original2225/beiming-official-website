@@ -64,6 +64,7 @@ class UnifiedBackendApiContractTest {
         addRange(mapped, "UBACK-SAMPLE", 1, 12);
         addRange(mapped, "UBACK-LOCAL-CUTOVER", 1, 12);
         addRange(mapped, "UBACK-CONFIG-PROVIDER", 1, 12);
+        addRange(mapped, "UBACK-AUDIT-ADAPTER", 1, 12);
 
         assertThat(mapped).contains(
                 "UBACK-COM-001",
@@ -112,9 +113,11 @@ class UnifiedBackendApiContractTest {
                 "UBACK-LOCAL-CUTOVER-001",
                 "UBACK-LOCAL-CUTOVER-012",
                 "UBACK-CONFIG-PROVIDER-001",
-                "UBACK-CONFIG-PROVIDER-012"
+                "UBACK-CONFIG-PROVIDER-012",
+                "UBACK-AUDIT-ADAPTER-001",
+                "UBACK-AUDIT-ADAPTER-012"
         );
-        assertThat(mapped).hasSize(155);
+        assertThat(mapped).hasSize(167);
     }
 
     @Test
@@ -1618,6 +1621,161 @@ class UnifiedBackendApiContractTest {
                 .doesNotContain("secret")
                 .doesNotContain("password");
         assertNoSecrets(readiness);
+    }
+
+    @Test
+    void exposesAuditSinkAdapterRehearsalWithoutConnectingProductionSink() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-audit-sink-adapter-rehearsal"));
+
+        assertThat(readiness.at("/data/auditSinkAdapterRehearsalStatus").asText())
+                .isEqualTo("PASS_LOCAL_AUDIT_SINK_REHEARSAL_NOT_PRODUCTION");
+        assertThat(readiness.at("/data/readyForProduction").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/readyToReplaceGateway").asBoolean()).isFalse();
+
+        assertPrecheck(readiness, "/data/auditSinkAdapterRehearsalChecks", "LOCAL_AUDIT_SINK_ADAPTER_CREATED", "PASS", true);
+        assertPrecheck(readiness, "/data/auditSinkAdapterRehearsalChecks", "AUDIT_SAMPLE_JSONL_PRESENT", "PASS", true);
+        assertPrecheck(readiness, "/data/auditSinkAdapterRehearsalChecks", "AUDIT_SAMPLE_JSONL_PARSEABLE", "PASS", true);
+        assertPrecheck(readiness, "/data/auditSinkAdapterRehearsalChecks", "AUDIT_EVENT_SCHEMA_DECLARED", "PASS", true);
+        assertPrecheck(readiness, "/data/auditSinkAdapterRehearsalChecks", "AUDIT_EVENT_REQUIRED_FIELDS_PRESENT", "PASS", true);
+        assertPrecheck(readiness, "/data/auditSinkAdapterRehearsalChecks", "AUDIT_REQUEST_ID_PROPAGATED", "PASS", true);
+        assertPrecheck(readiness, "/data/auditSinkAdapterRehearsalChecks", "AUDIT_ACTOR_TARGET_ACTION_RECORDED", "PASS", true);
+        assertPrecheck(readiness, "/data/auditSinkAdapterRehearsalChecks", "AUDIT_WRITE_SMOKE_REHEARSED", "PASS", true);
+        assertPrecheck(readiness, "/data/auditSinkAdapterRehearsalChecks", "AUDIT_REPLAY_REHEARSED", "PASS", true);
+        assertPrecheck(readiness, "/data/auditSinkAdapterRehearsalChecks", "AUDIT_EXPORT_SUMMARY_REHEARSED", "PASS", true);
+        assertPrecheck(readiness, "/data/auditSinkAdapterRehearsalChecks", "AUDIT_RETENTION_POLICY_RECORDED", "PASS", true);
+        assertPrecheck(readiness, "/data/auditSinkAdapterRehearsalChecks", "AUDIT_REDACTION_RULES_ENFORCED", "PASS", true);
+        assertPrecheck(readiness, "/data/auditSinkAdapterRehearsalChecks", "PRODUCTION_AUDIT_SINK_NOT_CONNECTED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/auditSinkAdapterRehearsalChecks", "PRODUCTION_AUDIT_TRAFFIC_NOT_OBSERVED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/auditSinkAdapterRehearsalChecks", "READY_FLAGS_REMAIN_FALSE", "PASS", true);
+
+        JsonNode evidence = readiness.at("/data/auditSinkAdapterRehearsalEvidence");
+        assertThat(evidence.at("/readinessMode").asText()).isEqualTo("LOCAL_AUDIT_SINK_ADAPTER_REHEARSAL_NOT_PRODUCTION");
+        assertThat(evidence.at("/sinkType").asText()).isEqualTo("LOCAL_FILE_JSONL_SAMPLE");
+        assertThat(evidence.at("/sinkConnected").asBoolean()).isFalse();
+        assertThat(evidence.at("/sampleEventPath").asText()).isEqualTo("docs/unified-backend-audit-sink-sample.jsonl");
+        assertThat(evidence.at("/sampleSchemaPath").asText()).isEqualTo("docs/unified-backend-audit-sink-sample-schema.json");
+        assertThat(evidence.at("/sampleEventsPresent").asBoolean()).isTrue();
+        assertThat(evidence.at("/sampleEventsParsed").asBoolean()).isTrue();
+        assertThat(evidence.at("/sampleEventsTotal").asInt()).isEqualTo(4);
+        assertThat(evidence.at("/writeSmokeRehearsed").asBoolean()).isTrue();
+        assertThat(evidence.at("/replayRehearsed").asBoolean()).isTrue();
+        assertThat(evidence.at("/exportSummaryRehearsed").asBoolean()).isTrue();
+        assertThat(evidence.at("/retentionPolicyRecorded").asBoolean()).isTrue();
+        assertThat(evidence.at("/auditEventSchemaVersion").asText()).isEqualTo("1.0");
+        assertThat(evidence.at("/requiredFieldsTotal").asInt()).isGreaterThanOrEqualTo(17);
+        assertThat(evidence.at("/candidateEntrypoint").asText()).isEqualTo("http://127.0.0.1:8135");
+        assertThat(evidence.at("/currentEntrypoint").asText()).isEqualTo("http://127.0.0.1:8125");
+        assertThat(evidence.at("/rollbackEntrypoint").asText()).isEqualTo("http://127.0.0.1:8125");
+        assertThat(evidence.at("/environmentVariablesRead").asBoolean()).isFalse();
+        assertThat(evidence.at("/sensitiveValuesExposed").asBoolean()).isFalse();
+        assertThat(evidence.at("/productionAuditSinkConnected").asBoolean()).isFalse();
+        assertThat(evidence.at("/productionAuditTrafficObserved").asBoolean()).isFalse();
+        assertThat(evidence.at("/trafficSwitchApplied").asBoolean()).isFalse();
+        assertThat(evidence.at("/readyForProduction").asBoolean()).isFalse();
+        assertThat(evidence.at("/readyToReplaceGateway").asBoolean()).isFalse();
+        assertThat(evidence.at("/status").asText()).isEqualTo("PASS_LOCAL_AUDIT_SINK_REHEARSAL_NOT_PRODUCTION");
+        assertThat(evidence.at("/remainingProductionBlockers").toString())
+                .contains("REAL_PERSISTENT_AUDIT_SINK_CONFIGURED")
+                .contains("REAL_AUDIT_WRITE_PATH_CONNECTED")
+                .contains("REAL_AUDIT_REPLAY_PATH_CONNECTED")
+                .contains("REAL_AUDIT_EXPORT_PATH_CONNECTED")
+                .contains("REAL_AUDIT_RETENTION_JOB_CONNECTED")
+                .contains("REAL_CENTRAL_CONFIG_PROVIDER_CONNECTED")
+                .contains("EXTERNAL_ENTRYPOINT_CONFIG_APPLIED")
+                .contains("PRODUCTION_TRAFFIC_SWITCH_APPLIED")
+                .contains("API_GATEWAY_TRAFFIC_ZERO_PROVEN")
+                .contains("ROLLBACK_WINDOW_COMPLETED")
+                .contains("USER_RETIREMENT_APPROVAL_GRANTED");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void auditSinkAdapterEvidenceDoesNotLeakSensitiveRuntimeValues() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-audit-sink-adapter-redaction"));
+
+        assertThat(readiness.at("/data/auditSinkAdapterRehearsalStatus").asText())
+                .isEqualTo("PASS_LOCAL_AUDIT_SINK_REHEARSAL_NOT_PRODUCTION");
+        String text = readiness.at("/data/auditSinkAdapterRehearsalEvidence").toString()
+                + readiness.at("/data/auditSinkAdapterRehearsalChecks");
+        assertThat(text)
+                .doesNotContain("Authorization")
+                .doesNotContain("X-Gateway-Internal-Signature")
+                .doesNotContain("C:\\Users\\")
+                .doesNotContain(".env")
+                .doesNotContain("jdbc:")
+                .doesNotContain("cmd.exe")
+                .doesNotContain("powershell")
+                .doesNotContain("kubectl")
+                .doesNotContain("docker")
+                .doesNotContain("id_rsa");
+        assertThat(text.toLowerCase())
+                .doesNotContain("token")
+                .doesNotContain("cookie")
+                .doesNotContain("secret")
+                .doesNotContain("password")
+                .doesNotContain("dsn")
+                .doesNotContain("bucket")
+                .doesNotContain("topic");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void auditSinkSampleFilesAreParseableAndSafe() throws Exception {
+        List<String> lines = Files.readAllLines(Path.of("../../docs/unified-backend-audit-sink-sample.jsonl"));
+        JsonNode schema = objectMapper.readTree(Files.readString(Path.of("../../docs/unified-backend-audit-sink-sample-schema.json")));
+
+        assertThat(lines).hasSize(4);
+        assertThat(schema.at("/schemaVersion").asText()).isEqualTo("1.0");
+        assertThat(schema.at("/sinkType").asText()).isEqualTo("LOCAL_FILE_JSONL_SAMPLE");
+        assertThat(schema.at("/sinkConnected").asBoolean()).isFalse();
+        assertThat(schema.at("/writeMode").asText()).isEqualTo("APPEND_ONLY_REHEARSAL");
+        assertThat(schema.at("/replayMode").asText()).isEqualTo("READ_ONLY_REHEARSAL");
+        assertThat(schema.at("/exportMode").asText()).isEqualTo("SUMMARY_ONLY_REHEARSAL");
+        assertThat(schema.at("/retentionMode").asText()).isEqualTo("POLICY_RECORDED_NOT_EXECUTED");
+
+        for (String line : lines) {
+            JsonNode event = objectMapper.readTree(line);
+            assertThat(event.at("/schemaVersion").asText()).isEqualTo("1.0");
+            assertThat(event.hasNonNull("eventId")).isTrue();
+            assertThat(event.hasNonNull("occurredAt")).isTrue();
+            assertThat(event.hasNonNull("requestId")).isTrue();
+            assertThat(event.hasNonNull("actor")).isTrue();
+            assertThat(event.hasNonNull("target")).isTrue();
+            assertThat(event.hasNonNull("action")).isTrue();
+            assertThat(event.hasNonNull("riskLevel")).isTrue();
+            assertThat(event.hasNonNull("result")).isTrue();
+            assertThat(event.hasNonNull("redactionApplied")).isTrue();
+            assertThat(event.at("/productionTraffic").asBoolean()).isFalse();
+            assertThat(event.at("/rehearsalOnly").asBoolean()).isTrue();
+            assertThat(event.at("/sensitiveValuesExposed").asBoolean()).isFalse();
+            assertThat(event.at("/actor/actorId").asText()).startsWith("local-");
+            assertThat(event.at("/target/targetEntrypoint").asText()).isEqualTo("unified-backend:8135");
+        }
+
+        String text = String.join("\n", lines) + schema;
+        assertThat(text)
+                .doesNotContain("Authorization")
+                .doesNotContain("X-Gateway-Internal-Signature")
+                .doesNotContain("C:\\Users\\")
+                .doesNotContain(".env")
+                .doesNotContain("jdbc:")
+                .doesNotContain("cmd.exe")
+                .doesNotContain("powershell")
+                .doesNotContain("kubectl")
+                .doesNotContain("docker")
+                .doesNotContain("id_rsa");
+        assertThat(text.toLowerCase())
+                .doesNotContain("token")
+                .doesNotContain("cookie")
+                .doesNotContain("secret")
+                .doesNotContain("password")
+                .doesNotContain("dsn")
+                .doesNotContain("bucket")
+                .doesNotContain("topic");
     }
 
     @Test

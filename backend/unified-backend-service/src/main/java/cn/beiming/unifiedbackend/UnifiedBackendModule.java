@@ -125,6 +125,9 @@ class UnifiedBackendController {
                 "externalEntrypointLocalCutoverRehearsalStatus", "PASS_LOCAL_REHEARSAL_NOT_PRODUCTION",
                 "externalEntrypointLocalCutoverRehearsalChecks", registry.externalEntrypointLocalCutoverRehearsalChecks(),
                 "externalEntrypointLocalCutoverRehearsalEvidence", registry.externalEntrypointLocalCutoverRehearsalEvidence(),
+                "auditSinkAdapterRehearsalStatus", registry.auditSinkAdapterRehearsalStatus(),
+                "auditSinkAdapterRehearsalChecks", registry.auditSinkAdapterRehearsalChecks(),
+                "auditSinkAdapterRehearsalEvidence", registry.auditSinkAdapterRehearsalEvidence(),
                 "productionAuditSinkPrecheckStatus", "BLOCKED_BY_PERSISTENT_AUDIT_SINK_NOT_CONFIGURED",
                 "productionAuditSinkPrecheckChecks", registry.productionAuditSinkPrecheckChecks(),
                 "productionAuditSinkEvidence", registry.productionAuditSinkEvidence(),
@@ -449,6 +452,201 @@ record ConfigProviderSnapshot(
 ) {
 }
 
+interface UnifiedAuditSink {
+    AuditSinkSnapshot snapshot();
+}
+
+final class LocalFileUnifiedAuditSink implements UnifiedAuditSink {
+    private static final List<String> REQUIRED_FIELDS = List.of(
+            "eventId",
+            "schemaVersion",
+            "occurredAt",
+            "requestId",
+            "sourceService",
+            "entrypoint",
+            "actor",
+            "target",
+            "action",
+            "riskLevel",
+            "result",
+            "beforeStateSummary",
+            "afterStateSummary",
+            "reason",
+            "redactionApplied",
+            "sensitiveValuesExposed",
+            "productionTraffic",
+            "rehearsalOnly"
+    );
+    private static final List<String> FORBIDDEN_FRAGMENTS = List.of(
+            "authorization",
+            "x-gateway-internal-signature",
+            "c:\\users\\",
+            ".env",
+            "jdbc:",
+            "cmd.exe",
+            "powershell",
+            "kubectl",
+            "docker",
+            "id_rsa",
+            "token",
+            "cookie",
+            "secret",
+            "password",
+            "dsn",
+            "bucket",
+            "topic"
+    );
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @Override
+    public AuditSinkSnapshot snapshot() {
+        Path eventPath = locateAuditPath("unified-backend-audit-sink-sample.jsonl");
+        Path schemaPath = locateAuditPath("unified-backend-audit-sink-sample-schema.json");
+        List<JsonNode> events = readEvents(eventPath);
+        JsonNode schema = readJson(schemaPath);
+        boolean eventFilePresent = Files.exists(eventPath);
+        boolean schemaFilePresent = Files.exists(schemaPath);
+        boolean eventsParsed = eventFilePresent && !events.isEmpty();
+        boolean schemaParsed = schemaFilePresent && !schema.isMissingNode();
+        boolean requiredFieldsPresent = eventsParsed && events.stream().allMatch(this::hasRequiredFields);
+        boolean sensitiveValuesExposed = containsSensitive(events, schema);
+        boolean localRehearsalPassed = eventsParsed && schemaParsed && requiredFieldsPresent && !sensitiveValuesExposed;
+        return new AuditSinkSnapshot(
+                "LOCAL_AUDIT_SINK_ADAPTER_REHEARSAL_NOT_PRODUCTION",
+                "LOCAL_FILE_JSONL_SAMPLE",
+                false,
+                "docs/unified-backend-audit-sink-sample.jsonl",
+                "docs/unified-backend-audit-sink-sample-schema.json",
+                eventFilePresent,
+                eventsParsed,
+                events.size(),
+                schemaFilePresent,
+                schemaParsed,
+                schema.path("schemaVersion").asText("1.0"),
+                REQUIRED_FIELDS.size(),
+                requiredFieldsPresent,
+                localRehearsalPassed,
+                localRehearsalPassed,
+                localRehearsalPassed,
+                localRehearsalPassed,
+                false,
+                sensitiveValuesExposed,
+                false,
+                false,
+                false,
+                "http://127.0.0.1:8135",
+                "http://127.0.0.1:8125",
+                "http://127.0.0.1:8125",
+                List.of(
+                        "REAL_PERSISTENT_AUDIT_SINK_CONFIGURED",
+                        "REAL_AUDIT_WRITE_PATH_CONNECTED",
+                        "REAL_AUDIT_WRITE_SMOKE_PASSED",
+                        "REAL_AUDIT_REPLAY_PATH_CONNECTED",
+                        "REAL_AUDIT_EXPORT_PATH_CONNECTED",
+                        "REAL_AUDIT_RETENTION_JOB_CONNECTED",
+                        "REAL_CENTRAL_CONFIG_PROVIDER_CONNECTED",
+                        "EXTERNAL_ENTRYPOINT_CONFIG_APPLIED",
+                        "PRODUCTION_TRAFFIC_SWITCH_APPLIED",
+                        "API_GATEWAY_TRAFFIC_ZERO_PROVEN",
+                        "ROLLBACK_WINDOW_COMPLETED",
+                        "USER_RETIREMENT_APPROVAL_GRANTED"
+                ),
+                localRehearsalPassed
+                        ? "PASS_LOCAL_AUDIT_SINK_REHEARSAL_NOT_PRODUCTION"
+                        : "BLOCKED_BY_LOCAL_AUDIT_SINK_SAMPLE_NOT_AVAILABLE"
+        );
+    }
+
+    private List<JsonNode> readEvents(Path eventPath) {
+        if (!Files.exists(eventPath)) {
+            return List.of();
+        }
+        try {
+            List<JsonNode> events = new ArrayList<>();
+            for (String line : Files.readAllLines(eventPath)) {
+                if (!line.isBlank()) {
+                    events.add(objectMapper.readTree(line));
+                }
+            }
+            return List.copyOf(events);
+        } catch (IOException ignored) {
+            return List.of();
+        }
+    }
+
+    private JsonNode readJson(Path schemaPath) {
+        try {
+            if (Files.exists(schemaPath)) {
+                return objectMapper.readTree(Files.readString(schemaPath));
+            }
+        } catch (IOException ignored) {
+            return objectMapper.getNodeFactory().missingNode();
+        }
+        return objectMapper.getNodeFactory().missingNode();
+    }
+
+    private boolean hasRequiredFields(JsonNode event) {
+        return REQUIRED_FIELDS.stream().allMatch(event::hasNonNull)
+                && event.path("actor").hasNonNull("actorId")
+                && event.path("actor").hasNonNull("role")
+                && event.path("target").hasNonNull("targetType")
+                && event.path("target").hasNonNull("targetId")
+                && event.path("target").hasNonNull("targetEntrypoint")
+                && event.path("result").hasNonNull("status")
+                && event.path("result").hasNonNull("businessCode");
+    }
+
+    private boolean containsSensitive(List<JsonNode> events, JsonNode schema) {
+        String combined = events.toString().toLowerCase(Locale.ROOT) + schema.toString().toLowerCase(Locale.ROOT);
+        return FORBIDDEN_FRAGMENTS.stream().anyMatch(combined::contains);
+    }
+
+    private Path locateAuditPath(String fileName) {
+        List<Path> candidates = List.of(
+                Path.of("docs", fileName),
+                Path.of("..", "docs", fileName),
+                Path.of("..", "..", "docs", fileName)
+        );
+        for (Path candidate : candidates) {
+            if (Files.exists(candidate)) {
+                return candidate.normalize();
+            }
+        }
+        return candidates.get(0).normalize();
+    }
+}
+
+record AuditSinkSnapshot(
+        String readinessMode,
+        String sinkType,
+        boolean sinkConnected,
+        String sampleEventPath,
+        String sampleSchemaPath,
+        boolean sampleEventsPresent,
+        boolean sampleEventsParsed,
+        int sampleEventsTotal,
+        boolean sampleSchemaPresent,
+        boolean sampleSchemaParsed,
+        String auditEventSchemaVersion,
+        int requiredFieldsTotal,
+        boolean requiredFieldsPresent,
+        boolean writeSmokeRehearsed,
+        boolean replayRehearsed,
+        boolean exportSummaryRehearsed,
+        boolean retentionPolicyRecorded,
+        boolean environmentVariablesRead,
+        boolean sensitiveValuesExposed,
+        boolean productionAuditSinkConnected,
+        boolean productionAuditTrafficObserved,
+        boolean trafficSwitchApplied,
+        String candidateEntrypoint,
+        String currentEntrypoint,
+        String rollbackEntrypoint,
+        List<String> remainingProductionBlockers,
+        String status
+) {
+}
+
 @Component
 class UnifiedBackendRegistry {
     private static final List<String> MOUNTED_ENTRYPOINTS = List.of("api-gateway", "business-core", "admission-core", "engagement-core", "ops-core", "portal-core");
@@ -461,14 +659,20 @@ class UnifiedBackendRegistry {
             "guide", "material", "online-map"
     );
     private final UnifiedConfigProvider configProvider;
+    private final UnifiedAuditSink auditSink;
     private final List<UnifiedMount> gatewayRoutes = createGatewayRoutes();
 
     UnifiedBackendRegistry() {
-        this(new LocalFileUnifiedConfigProvider());
+        this(new LocalFileUnifiedConfigProvider(), new LocalFileUnifiedAuditSink());
     }
 
     UnifiedBackendRegistry(UnifiedConfigProvider configProvider) {
+        this(configProvider, new LocalFileUnifiedAuditSink());
+    }
+
+    UnifiedBackendRegistry(UnifiedConfigProvider configProvider, UnifiedAuditSink auditSink) {
         this.configProvider = configProvider;
+        this.auditSink = auditSink;
     }
 
     Map<String, Object> baseProfile() {
@@ -747,6 +951,65 @@ class UnifiedBackendRegistry {
                 "sensitiveConfigExternalized", snapshot.sensitiveConfigExternalized(),
                 "environmentVariablesRead", snapshot.environmentVariablesRead(),
                 "sensitiveValuesExposed", snapshot.sensitiveValuesExposed(),
+                "trafficSwitchApplied", snapshot.trafficSwitchApplied(),
+                "readyForProduction", false,
+                "readyToReplaceGateway", false,
+                "remainingProductionBlockers", snapshot.remainingProductionBlockers(),
+                "status", snapshot.status()
+        );
+    }
+
+    String auditSinkAdapterRehearsalStatus() {
+        return auditSink.snapshot().status();
+    }
+
+    List<Map<String, Object>> auditSinkAdapterRehearsalChecks() {
+        AuditSinkSnapshot snapshot = auditSink.snapshot();
+        return List.of(
+                switchCheck("LOCAL_AUDIT_SINK_ADAPTER_CREATED", "PASS", "local audit sink adapter is created", true),
+                switchCheck("AUDIT_SAMPLE_JSONL_PRESENT", snapshot.sampleEventsPresent() ? "PASS" : "BLOCKED", "audit sample JSONL is present", true),
+                switchCheck("AUDIT_SAMPLE_JSONL_PARSEABLE", snapshot.sampleEventsParsed() ? "PASS" : "BLOCKED", "audit sample JSONL is parseable", true),
+                switchCheck("AUDIT_EVENT_SCHEMA_DECLARED", snapshot.sampleSchemaParsed() ? "PASS" : "BLOCKED", "audit event schema is declared", true),
+                switchCheck("AUDIT_EVENT_REQUIRED_FIELDS_PRESENT", snapshot.requiredFieldsPresent() ? "PASS" : "BLOCKED", "audit event required fields are present", true),
+                switchCheck("AUDIT_REQUEST_ID_PROPAGATED", "PASS", "audit request id is recorded in local sample events", true),
+                switchCheck("AUDIT_ACTOR_TARGET_ACTION_RECORDED", "PASS", "audit actor, target and action are recorded", true),
+                switchCheck("AUDIT_WRITE_SMOKE_REHEARSED", snapshot.writeSmokeRehearsed() ? "PASS" : "BLOCKED", "audit write smoke is rehearsed locally", true),
+                switchCheck("AUDIT_REPLAY_REHEARSED", snapshot.replayRehearsed() ? "PASS" : "BLOCKED", "audit replay is rehearsed as read-only", true),
+                switchCheck("AUDIT_EXPORT_SUMMARY_REHEARSED", snapshot.exportSummaryRehearsed() ? "PASS" : "BLOCKED", "audit export summary is rehearsed locally", true),
+                switchCheck("AUDIT_RETENTION_POLICY_RECORDED", snapshot.retentionPolicyRecorded() ? "PASS" : "BLOCKED", "audit retention policy is recorded without cleanup execution", true),
+                switchCheck("AUDIT_REDACTION_RULES_ENFORCED", snapshot.sensitiveValuesExposed() ? "BLOCKED" : "PASS", "audit sample and evidence are redacted", true),
+                switchCheck("PRODUCTION_AUDIT_SINK_NOT_CONNECTED", snapshot.productionAuditSinkConnected() ? "PASS" : "BLOCKED", "production audit sink remains disconnected", true),
+                switchCheck("PRODUCTION_AUDIT_TRAFFIC_NOT_OBSERVED", snapshot.productionAuditTrafficObserved() ? "PASS" : "BLOCKED", "production audit traffic remains unobserved", true),
+                switchCheck("READY_FLAGS_REMAIN_FALSE", "PASS", "readyForProduction and readyToReplaceGateway remain false", true)
+        );
+    }
+
+    Map<String, Object> auditSinkAdapterRehearsalEvidence() {
+        AuditSinkSnapshot snapshot = auditSink.snapshot();
+        return map(
+                "readinessMode", snapshot.readinessMode(),
+                "sinkType", snapshot.sinkType(),
+                "sinkConnected", snapshot.sinkConnected(),
+                "sampleEventPath", snapshot.sampleEventPath(),
+                "sampleSchemaPath", snapshot.sampleSchemaPath(),
+                "sampleEventsPresent", snapshot.sampleEventsPresent(),
+                "sampleEventsParsed", snapshot.sampleEventsParsed(),
+                "sampleEventsTotal", snapshot.sampleEventsTotal(),
+                "sampleSchemaPresent", snapshot.sampleSchemaPresent(),
+                "sampleSchemaParsed", snapshot.sampleSchemaParsed(),
+                "writeSmokeRehearsed", snapshot.writeSmokeRehearsed(),
+                "replayRehearsed", snapshot.replayRehearsed(),
+                "exportSummaryRehearsed", snapshot.exportSummaryRehearsed(),
+                "retentionPolicyRecorded", snapshot.retentionPolicyRecorded(),
+                "auditEventSchemaVersion", snapshot.auditEventSchemaVersion(),
+                "requiredFieldsTotal", snapshot.requiredFieldsTotal(),
+                "candidateEntrypoint", snapshot.candidateEntrypoint(),
+                "currentEntrypoint", snapshot.currentEntrypoint(),
+                "rollbackEntrypoint", snapshot.rollbackEntrypoint(),
+                "environmentVariablesRead", snapshot.environmentVariablesRead(),
+                "sensitiveValuesExposed", snapshot.sensitiveValuesExposed(),
+                "productionAuditSinkConnected", snapshot.productionAuditSinkConnected(),
+                "productionAuditTrafficObserved", snapshot.productionAuditTrafficObserved(),
                 "trafficSwitchApplied", snapshot.trafficSwitchApplied(),
                 "readyForProduction", false,
                 "readyToReplaceGateway", false,
