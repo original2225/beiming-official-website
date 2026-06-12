@@ -62,6 +62,7 @@ class UnifiedBackendApiContractTest {
         addRange(mapped, "UBACK-EXT-CUTOVER", 1, 12);
         addRange(mapped, "UBACK-PROD-AUDIT", 1, 12);
         addRange(mapped, "UBACK-SAMPLE", 1, 12);
+        addRange(mapped, "UBACK-LOCAL-CUTOVER", 1, 12);
 
         assertThat(mapped).contains(
                 "UBACK-COM-001",
@@ -106,9 +107,11 @@ class UnifiedBackendApiContractTest {
                 "UBACK-PROD-AUDIT-001",
                 "UBACK-PROD-AUDIT-012",
                 "UBACK-SAMPLE-001",
-                "UBACK-SAMPLE-012"
+                "UBACK-SAMPLE-012",
+                "UBACK-LOCAL-CUTOVER-001",
+                "UBACK-LOCAL-CUTOVER-012"
         );
-        assertThat(mapped).hasSize(131);
+        assertThat(mapped).hasSize(143);
     }
 
     @Test
@@ -1675,6 +1678,94 @@ class UnifiedBackendApiContractTest {
                 .doesNotContain("bucket")
                 .doesNotContain("topic")
                 .doesNotContain("c:\\users\\");
+    }
+
+    @Test
+    void exposesExternalEntrypointLocalCutoverRehearsalWithoutSwitchingProductionTraffic() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-external-entrypoint-local-cutover-rehearsal"));
+
+        assertThat(readiness.at("/data/externalEntrypointLocalCutoverRehearsalStatus").asText())
+                .isEqualTo("PASS_LOCAL_REHEARSAL_NOT_PRODUCTION");
+        assertThat(readiness.at("/data/readyForProduction").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/readyToReplaceGateway").asBoolean()).isFalse();
+
+        assertPrecheck(readiness, "/data/externalEntrypointLocalCutoverRehearsalChecks", "CUTOVER_SAMPLE_LOADED", "PASS", true);
+        assertPrecheck(readiness, "/data/externalEntrypointLocalCutoverRehearsalChecks", "CUTOVER_SAMPLE_JSON_PARSABLE", "PASS", true);
+        assertPrecheck(readiness, "/data/externalEntrypointLocalCutoverRehearsalChecks", "CANDIDATE_ENTRYPOINT_MATCHES_UNIFIED_BACKEND", "PASS", true);
+        assertPrecheck(readiness, "/data/externalEntrypointLocalCutoverRehearsalChecks", "CURRENT_ENTRYPOINT_MATCHES_API_GATEWAY", "PASS", true);
+        assertPrecheck(readiness, "/data/externalEntrypointLocalCutoverRehearsalChecks", "ROLLBACK_ENTRYPOINT_MATCHES_API_GATEWAY", "PASS", true);
+        assertPrecheck(readiness, "/data/externalEntrypointLocalCutoverRehearsalChecks", "SMOKE_TARGETS_COMPLETE", "PASS", true);
+        assertPrecheck(readiness, "/data/externalEntrypointLocalCutoverRehearsalChecks", "BUSINESS_PATHS_PRESERVED", "PASS", true);
+        assertPrecheck(readiness, "/data/externalEntrypointLocalCutoverRehearsalChecks", "PRODUCTION_TRAFFIC_SWITCH_REMAINS_FALSE", "PASS", true);
+        assertPrecheck(readiness, "/data/externalEntrypointLocalCutoverRehearsalChecks", "ROLLBACK_TARGET_PROTECTED", "PASS", true);
+        assertPrecheck(readiness, "/data/externalEntrypointLocalCutoverRehearsalChecks", "LOCAL_REHEARSAL_EXECUTED", "PASS", true);
+        assertPrecheck(readiness, "/data/externalEntrypointLocalCutoverRehearsalChecks", "NO_SENSITIVE_VALUES_IN_REHEARSAL", "PASS", true);
+        assertPrecheck(readiness, "/data/externalEntrypointLocalCutoverRehearsalChecks", "READY_FLAGS_REMAIN_FALSE", "PASS", true);
+
+        JsonNode evidence = readiness.at("/data/externalEntrypointLocalCutoverRehearsalEvidence");
+        assertThat(evidence.at("/readinessMode").asText())
+                .isEqualTo("LOCAL_EXTERNAL_ENTRYPOINT_CUTOVER_REHEARSAL_EXECUTED_NOT_PRODUCTION");
+        assertThat(evidence.at("/sampleConfigPath").asText()).isEqualTo("docs/deployment-entrypoint-cutover-sample.json");
+        assertThat(evidence.at("/sampleConfigApplied").asBoolean()).isFalse();
+        assertThat(evidence.at("/localRehearsalExecuted").asBoolean()).isTrue();
+        assertThat(evidence.at("/applyProductionTraffic").asBoolean()).isFalse();
+        assertThat(evidence.at("/currentEntrypoint").asText()).isEqualTo("http://127.0.0.1:8125");
+        assertThat(evidence.at("/candidateEntrypoint").asText()).isEqualTo("http://127.0.0.1:8135");
+        assertThat(evidence.at("/rollbackEntrypoint").asText()).isEqualTo("http://127.0.0.1:8125");
+        assertThat(evidence.at("/smokeTargetsTotal").asInt()).isEqualTo(32);
+        assertThat(evidence.at("/businessPathsRemainUnchanged").asBoolean()).isTrue();
+        assertThat(evidence.at("/businessPathRewriteAllowed").asBoolean()).isFalse();
+        assertThat(evidence.at("/sensitiveValuesExposed").asBoolean()).isFalse();
+        assertThat(evidence.at("/productionTrafficObserved").asBoolean()).isFalse();
+        assertThat(evidence.at("/apiGatewayTrafficZeroProven").asBoolean()).isFalse();
+        assertThat(evidence.at("/rollbackWindowCompleted").asBoolean()).isFalse();
+        assertThat(evidence.at("/readyForProduction").asBoolean()).isFalse();
+        assertThat(evidence.at("/readyToReplaceGateway").asBoolean()).isFalse();
+        assertThat(evidence.at("/status").asText()).isEqualTo("PASS_LOCAL_REHEARSAL_NOT_PRODUCTION");
+        assertThat(evidence.at("/remainingProductionBlockers").toString())
+                .contains("PRODUCTION_TRAFFIC_SWITCH_APPLIED")
+                .contains("EXTERNAL_PROXY_CONFIG_APPLIED")
+                .contains("FRONTEND_ENTRYPOINT_SWITCH_APPLIED")
+                .contains("API_GATEWAY_TRAFFIC_ZERO_PROVEN")
+                .contains("ROLLBACK_WINDOW_COMPLETED")
+                .contains("CENTRAL_CONFIG_PROVIDER_CONNECTED")
+                .contains("PERSISTENT_AUDIT_SINK_CONNECTED")
+                .contains("USER_RETIREMENT_APPROVAL_GRANTED");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void externalEntrypointLocalCutoverRehearsalDoesNotLeakSensitiveRuntimeValues() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-external-entrypoint-local-cutover-rehearsal-redaction"));
+
+        assertThat(readiness.at("/data/externalEntrypointLocalCutoverRehearsalStatus").asText())
+                .isEqualTo("PASS_LOCAL_REHEARSAL_NOT_PRODUCTION");
+        String text = readiness.at("/data/externalEntrypointLocalCutoverRehearsalEvidence").toString()
+                + readiness.at("/data/externalEntrypointLocalCutoverRehearsalChecks");
+        assertThat(text)
+                .doesNotContain("Authorization")
+                .doesNotContain("X-Gateway-Internal-Signature")
+                .doesNotContain("C:\\Users\\")
+                .doesNotContain(".env")
+                .doesNotContain("jdbc:")
+                .doesNotContain("cmd.exe")
+                .doesNotContain("powershell")
+                .doesNotContain("kubectl")
+                .doesNotContain("docker")
+                .doesNotContain("id_rsa");
+        assertThat(text.toLowerCase())
+                .doesNotContain("token")
+                .doesNotContain("cookie")
+                .doesNotContain("secret")
+                .doesNotContain("password")
+                .doesNotContain("dsn")
+                .doesNotContain("bucket")
+                .doesNotContain("topic");
+        assertNoSecrets(readiness);
     }
 
     @Test

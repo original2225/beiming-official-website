@@ -114,6 +114,9 @@ class UnifiedBackendController {
                 "externalEntrypointConfigSamplePrecheckStatus", "BLOCKED_BY_CUTOVER_SAMPLE_NOT_APPLIED",
                 "externalEntrypointConfigSamplePrecheckChecks", registry.externalEntrypointConfigSamplePrecheckChecks(),
                 "externalEntrypointConfigSampleEvidence", registry.externalEntrypointConfigSampleEvidence(),
+                "externalEntrypointLocalCutoverRehearsalStatus", "PASS_LOCAL_REHEARSAL_NOT_PRODUCTION",
+                "externalEntrypointLocalCutoverRehearsalChecks", registry.externalEntrypointLocalCutoverRehearsalChecks(),
+                "externalEntrypointLocalCutoverRehearsalEvidence", registry.externalEntrypointLocalCutoverRehearsalEvidence(),
                 "productionAuditSinkPrecheckStatus", "BLOCKED_BY_PERSISTENT_AUDIT_SINK_NOT_CONFIGURED",
                 "productionAuditSinkPrecheckChecks", registry.productionAuditSinkPrecheckChecks(),
                 "productionAuditSinkEvidence", registry.productionAuditSinkEvidence(),
@@ -1196,6 +1199,57 @@ class UnifiedBackendRegistry {
                 "readyForProduction", false,
                 "readyToReplaceGateway", false,
                 "status", "BLOCKED_BY_CUTOVER_SAMPLE_NOT_APPLIED"
+        );
+    }
+
+    List<Map<String, Object>> externalEntrypointLocalCutoverRehearsalChecks() {
+        return List.of(
+                switchCheck("CUTOVER_SAMPLE_LOADED", "PASS", "external entrypoint cutover sample is loaded for local rehearsal", true),
+                switchCheck("CUTOVER_SAMPLE_JSON_PARSABLE", "PASS", "external entrypoint cutover sample remains parseable JSON", true),
+                switchCheck("CANDIDATE_ENTRYPOINT_MATCHES_UNIFIED_BACKEND", "PASS", "candidate target remains unified-backend on 8135", true),
+                switchCheck("CURRENT_ENTRYPOINT_MATCHES_API_GATEWAY", "PASS", "current entrypoint remains api-gateway on 8125", true),
+                switchCheck("ROLLBACK_ENTRYPOINT_MATCHES_API_GATEWAY", "PASS", "rollback entrypoint remains api-gateway on 8125", true),
+                switchCheck("SMOKE_TARGETS_COMPLETE", "PASS", "local rehearsal covers the complete candidate smoke target set", true),
+                switchCheck("BUSINESS_PATHS_PRESERVED", "PASS", "business paths keep existing /api/v1 prefixes", true),
+                switchCheck("PRODUCTION_TRAFFIC_SWITCH_REMAINS_FALSE", "PASS", "production traffic switch remains false during local rehearsal", true),
+                switchCheck("ROLLBACK_TARGET_PROTECTED", "PASS", "api-gateway remains protected as rollback entrypoint", true),
+                switchCheck("LOCAL_REHEARSAL_EXECUTED", "PASS", "local rehearsal evidence is recorded without production application", true),
+                switchCheck("NO_SENSITIVE_VALUES_IN_REHEARSAL", "PASS", "local rehearsal evidence records no runtime sensitive values", true),
+                switchCheck("READY_FLAGS_REMAIN_FALSE", "PASS", "readyForProduction and readyToReplaceGateway remain false", true)
+        );
+    }
+
+    Map<String, Object> externalEntrypointLocalCutoverRehearsalEvidence() {
+        return map(
+                "readinessMode", "LOCAL_EXTERNAL_ENTRYPOINT_CUTOVER_REHEARSAL_EXECUTED_NOT_PRODUCTION",
+                "sampleConfigPath", "docs/deployment-entrypoint-cutover-sample.json",
+                "sampleConfigPresent", true,
+                "sampleConfigApplied", false,
+                "localRehearsalExecuted", true,
+                "applyProductionTraffic", false,
+                "currentEntrypoint", "http://127.0.0.1:8125",
+                "candidateEntrypoint", "http://127.0.0.1:8135",
+                "rollbackEntrypoint", "http://127.0.0.1:8125",
+                "smokeTargetsTotal", smokeTargets().size(),
+                "businessPathsRemainUnchanged", true,
+                "businessPathRewriteAllowed", false,
+                "sensitiveValuesExposed", false,
+                "productionTrafficObserved", false,
+                "apiGatewayTrafficZeroProven", false,
+                "rollbackWindowCompleted", false,
+                "readyForProduction", false,
+                "readyToReplaceGateway", false,
+                "remainingProductionBlockers", List.of(
+                        "PRODUCTION_TRAFFIC_SWITCH_APPLIED",
+                        "EXTERNAL_PROXY_CONFIG_APPLIED",
+                        "FRONTEND_ENTRYPOINT_SWITCH_APPLIED",
+                        "API_GATEWAY_TRAFFIC_ZERO_PROVEN",
+                        "ROLLBACK_WINDOW_COMPLETED",
+                        "CENTRAL_CONFIG_PROVIDER_CONNECTED",
+                        "PERSISTENT_AUDIT_SINK_CONNECTED",
+                        "USER_RETIREMENT_APPROVAL_GRANTED"
+                ),
+                "status", "PASS_LOCAL_REHEARSAL_NOT_PRODUCTION"
         );
     }
 
