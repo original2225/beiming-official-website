@@ -139,6 +139,9 @@ class UnifiedBackendController {
                 "productionCutoverEvidenceConsistencyAuditStatus", registry.productionCutoverEvidenceConsistencyAuditStatus(),
                 "productionCutoverEvidenceConsistencyAuditChecks", registry.productionCutoverEvidenceConsistencyAuditChecks(),
                 "productionCutoverEvidenceConsistencyAuditEvidence", registry.productionCutoverEvidenceConsistencyAuditEvidence(),
+                "productionExternalValueIntakeRehearsalStatus", registry.productionExternalValueIntakeRehearsalStatus(),
+                "productionExternalValueIntakeRehearsalChecks", registry.productionExternalValueIntakeRehearsalChecks(),
+                "productionExternalValueIntakeRehearsalEvidence", registry.productionExternalValueIntakeRehearsalEvidence(),
                 "auditSinkAdapterRehearsalStatus", registry.auditSinkAdapterRehearsalStatus(),
                 "auditSinkAdapterRehearsalChecks", registry.auditSinkAdapterRehearsalChecks(),
                 "auditSinkAdapterRehearsalEvidence", registry.auditSinkAdapterRehearsalEvidence(),
@@ -1680,6 +1683,304 @@ record ProductionCutoverEvidenceConsistencyAuditSnapshot(
 ) {
 }
 
+interface UnifiedProductionExternalValueIntakeRehearsal {
+    ProductionExternalValueIntakeRehearsalSnapshot snapshot();
+}
+
+final class LocalFileProductionExternalValueIntakeRehearsal implements UnifiedProductionExternalValueIntakeRehearsal {
+    private static final Set<String> REQUIRED_GROUPS = Set.of(
+            "external-entrypoint",
+            "central-config",
+            "audit-sink",
+            "observability",
+            "approval",
+            "rollback",
+            "retirement"
+    );
+    private static final List<String> FORBIDDEN_FRAGMENTS = List.of(
+            "authorization",
+            "x-gateway-internal-signature",
+            "c:\\users\\",
+            ".env",
+            "jdbc:",
+            "mongodb://",
+            "redis://",
+            "id_rsa",
+            "akia",
+            "token",
+            "cookie",
+            "secret",
+            "password",
+            "passwd",
+            "pwd",
+            "privatekey",
+            "kubectl",
+            "docker",
+            "powershell",
+            "cmd.exe",
+            "ssh ",
+            "scp "
+    );
+    private static final Pattern REAL_IPV4 = Pattern.compile("\\b(?!(?:127|0)\\.)(?:\\d{1,3}\\.){3}\\d{1,3}\\b");
+    private static final Pattern REAL_DOMAIN = Pattern.compile("\\b[a-z0-9][a-z0-9-]*(?:\\.[a-z0-9][a-z0-9-]*)+\\b", Pattern.CASE_INSENSITIVE);
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @Override
+    public ProductionExternalValueIntakeRehearsalSnapshot snapshot() {
+        Path samplePath = locateSamplePath();
+        JsonNode sample = readSample(samplePath);
+        boolean present = Files.exists(samplePath);
+        boolean parsed = present && !sample.isMissingNode();
+        JsonNode channels = sample.path("intakeChannels");
+        JsonNode groups = sample.path("requiredValueGroups");
+        Set<String> groupNames = groupNames(groups);
+        int valueItemsTotal = countValues(groups);
+        int injectionTargetsTotal = countTextValues(groups, "injectionTarget");
+        int validationRefsTotal = countTextValues(groups, "validationRef");
+        int rollbackRefsTotal = countTextValues(groups, "rollbackRef");
+        int redactedValuesTotal = countBooleanValues(groups, "redacted");
+        boolean realValuesProvidedInRepository = sample.path("realValuesAllowedInRepository").asBoolean(false)
+                || anyBooleanValue(groups, "realValueProvidedInRepository");
+        boolean sensitiveValuesExposed = containsSensitiveValues(sample);
+        boolean localRehearsalPassed = parsed
+                && !sample.path("intakeApplied").asBoolean(true)
+                && !sample.path("productionTrafficAllowed").asBoolean(true)
+                && !sample.path("realValuesAllowedInRepository").asBoolean(true)
+                && sample.path("requiresExternalSecretStore").asBoolean(false)
+                && "LOCAL_SAMPLE_REF:UNIFIED_BACKEND_8135".equals(sample.path("candidateEntrypointRef").asText())
+                && "LOCAL_SAMPLE_REF:API_GATEWAY_8125".equals(sample.path("currentEntrypointRef").asText())
+                && "LOCAL_SAMPLE_REF:API_GATEWAY_8125".equals(sample.path("rollbackEntrypointRef").asText())
+                && channels.size() >= 6
+                && groupNames.containsAll(REQUIRED_GROUPS)
+                && valueItemsTotal >= 14
+                && injectionTargetsTotal >= valueItemsTotal
+                && validationRefsTotal >= valueItemsTotal
+                && rollbackRefsTotal >= valueItemsTotal
+                && redactedValuesTotal >= valueItemsTotal
+                && allValueReferencesSafe(groups)
+                && !realValuesProvidedInRepository
+                && !sensitiveValuesExposed;
+        return new ProductionExternalValueIntakeRehearsalSnapshot(
+                "LOCAL_EXTERNAL_VALUE_INTAKE_REHEARSAL_NOT_PRODUCTION",
+                "docs/unified-backend-production-external-value-intake-sample.json",
+                present,
+                parsed,
+                sample.path("intakeApplied").asBoolean(false),
+                sample.path("productionTrafficAllowed").asBoolean(false),
+                sample.path("realValuesAllowedInRepository").asBoolean(false),
+                sample.path("requiresExternalSecretStore").asBoolean(true),
+                sample.path("candidateEntrypointRef").asText("LOCAL_SAMPLE_REF:UNIFIED_BACKEND_8135"),
+                sample.path("currentEntrypointRef").asText("LOCAL_SAMPLE_REF:API_GATEWAY_8125"),
+                sample.path("rollbackEntrypointRef").asText("LOCAL_SAMPLE_REF:API_GATEWAY_8125"),
+                groups.size(),
+                channels.size(),
+                valueItemsTotal,
+                injectionTargetsTotal,
+                validationRefsTotal,
+                rollbackRefsTotal,
+                realValuesProvidedInRepository,
+                redactedValuesTotal,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                sensitiveValuesExposed,
+                List.of(
+                        "REAL_EXTERNAL_VALUES_PROVIDED_OUTSIDE_REPOSITORY",
+                        "REAL_EXTERNAL_VALUES_APPLIED_TO_RUNTIME",
+                        "REAL_CENTRAL_CONFIG_PROVIDER_CONNECTED",
+                        "PRODUCTION_PROFILE_BOUND",
+                        "SENSITIVE_CONFIG_SOURCE_EXTERNALIZED",
+                        "REAL_PERSISTENT_AUDIT_SINK_CONNECTED",
+                        "REAL_AUDIT_WRITE_SMOKE_PASSED",
+                        "PRODUCTION_TRAFFIC_SWITCH_APPLIED",
+                        "PRODUCTION_TRAFFIC_OBSERVED_ON_UNIFIED",
+                        "API_GATEWAY_TRAFFIC_ZERO_PROVEN",
+                        "ROLLBACK_WINDOW_COMPLETED",
+                        "USER_RETIREMENT_APPROVAL_GRANTED"
+                ),
+                localRehearsalPassed
+                        ? "PASS_EXTERNAL_VALUE_INTAKE_REHEARSAL_NOT_PRODUCTION"
+                        : "BLOCKED_BY_EXTERNAL_VALUE_INTAKE_SAMPLE_NOT_AVAILABLE"
+        );
+    }
+
+    private JsonNode readSample(Path samplePath) {
+        try {
+            if (Files.exists(samplePath)) {
+                return objectMapper.readTree(Files.readString(samplePath));
+            }
+        } catch (IOException ignored) {
+            return objectMapper.getNodeFactory().missingNode();
+        }
+        return objectMapper.getNodeFactory().missingNode();
+    }
+
+    private Set<String> groupNames(JsonNode groups) {
+        Set<String> names = new HashSet<>();
+        for (JsonNode group : groups) {
+            names.add(group.path("group").asText());
+        }
+        return Set.copyOf(names);
+    }
+
+    private int countValues(JsonNode groups) {
+        int total = 0;
+        for (JsonNode group : groups) {
+            total += group.path("values").size();
+        }
+        return total;
+    }
+
+    private int countTextValues(JsonNode groups, String fieldName) {
+        int total = 0;
+        for (JsonNode group : groups) {
+            for (JsonNode value : group.path("values")) {
+                if (!value.path(fieldName).asText().isBlank()) {
+                    total++;
+                }
+            }
+        }
+        return total;
+    }
+
+    private int countBooleanValues(JsonNode groups, String fieldName) {
+        int total = 0;
+        for (JsonNode group : groups) {
+            for (JsonNode value : group.path("values")) {
+                if (value.path(fieldName).asBoolean(false)) {
+                    total++;
+                }
+            }
+        }
+        return total;
+    }
+
+    private boolean anyBooleanValue(JsonNode groups, String fieldName) {
+        for (JsonNode group : groups) {
+            for (JsonNode value : group.path("values")) {
+                if (value.path(fieldName).asBoolean(false)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean allValueReferencesSafe(JsonNode groups) {
+        for (JsonNode group : groups) {
+            for (JsonNode value : group.path("values")) {
+                String valueRef = value.path("valueRef").asText();
+                if (!(valueRef.startsWith("EXTERNAL_REF_REQUIRED:")
+                        || valueRef.startsWith("LOCAL_SAMPLE_REF:")
+                        || valueRef.startsWith("APPROVAL_REF_REQUIRED:"))) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    private boolean containsSensitiveValues(JsonNode sample) {
+        String text = scalarTextWithoutRedactionPolicy(sample).toLowerCase(Locale.ROOT)
+                .replace("sensitiveconfigexternalizationref", "")
+                .replace("sensitiveconfigexternalization", "");
+        if (FORBIDDEN_FRAGMENTS.stream().anyMatch(text::contains)) {
+            return true;
+        }
+        String refText = referenceText(sample).toLowerCase(Locale.ROOT);
+        return REAL_IPV4.matcher(refText).find() || REAL_DOMAIN.matcher(refText).find();
+    }
+
+    private String scalarTextWithoutRedactionPolicy(JsonNode node) {
+        StringBuilder values = new StringBuilder();
+        appendScalarText(node, values, false);
+        return values.toString();
+    }
+
+    private void appendScalarText(JsonNode node, StringBuilder values, boolean insideRedactionPolicy) {
+        if (node.isObject()) {
+            node.fields().forEachRemaining(entry -> appendScalarText(entry.getValue(), values,
+                    insideRedactionPolicy || "redactionPolicy".equals(entry.getKey())));
+        } else if (node.isArray()) {
+            for (JsonNode child : node) {
+                appendScalarText(child, values, insideRedactionPolicy);
+            }
+        } else if (!insideRedactionPolicy && node.isValueNode()) {
+            values.append(node.asText()).append(' ');
+        }
+    }
+
+    private String referenceText(JsonNode sample) {
+        StringBuilder refs = new StringBuilder()
+                .append(sample.path("candidateEntrypointRef").asText()).append(' ')
+                .append(sample.path("currentEntrypointRef").asText()).append(' ')
+                .append(sample.path("rollbackEntrypointRef").asText()).append(' ');
+        for (JsonNode group : sample.path("requiredValueGroups")) {
+            for (JsonNode value : group.path("values")) {
+                refs.append(value.path("valueRef").asText()).append(' ');
+            }
+        }
+        return refs.toString();
+    }
+
+    private Path locateSamplePath() {
+        List<Path> candidates = List.of(
+                Path.of("docs", "unified-backend-production-external-value-intake-sample.json"),
+                Path.of("..", "docs", "unified-backend-production-external-value-intake-sample.json"),
+                Path.of("..", "..", "docs", "unified-backend-production-external-value-intake-sample.json")
+        );
+        for (Path candidate : candidates) {
+            if (Files.exists(candidate)) {
+                return candidate.normalize();
+            }
+        }
+        return candidates.get(0).normalize();
+    }
+}
+
+record ProductionExternalValueIntakeRehearsalSnapshot(
+        String readinessMode,
+        String sampleIntakePath,
+        boolean sampleIntakePresent,
+        boolean sampleIntakeParsed,
+        boolean intakeApplied,
+        boolean productionTrafficAllowed,
+        boolean realValuesAllowedInRepository,
+        boolean requiresExternalSecretStore,
+        String candidateEntrypointRef,
+        String currentEntrypointRef,
+        String rollbackEntrypointRef,
+        int valueGroupsTotal,
+        int intakeChannelsTotal,
+        int valueItemsTotal,
+        int injectionTargetsTotal,
+        int validationRefsTotal,
+        int rollbackRefsTotal,
+        boolean realValuesProvidedInRepository,
+        int redactedValuesTotal,
+        boolean centralConfigProviderConnected,
+        boolean productionProfileBound,
+        boolean sensitiveConfigExternalized,
+        boolean persistentAuditSinkConnected,
+        boolean auditWriteSmokePassed,
+        boolean productionTrafficObservedOnUnified,
+        boolean apiGatewayTrafficZeroProven,
+        boolean rollbackWindowCompleted,
+        boolean retirementApproverGranted,
+        boolean environmentVariablesRead,
+        boolean sensitiveValuesExposed,
+        List<String> remainingProductionBlockers,
+        String status
+) {
+}
+
 @Component
 class UnifiedBackendRegistry {
     private static final List<String> MOUNTED_ENTRYPOINTS = List.of("api-gateway", "business-core", "admission-core", "engagement-core", "ops-core", "portal-core");
@@ -1697,37 +1998,40 @@ class UnifiedBackendRegistry {
     private final UnifiedProductionCutoverApprovalPackage cutoverApprovalPackage;
     private final UnifiedProductionCutoverExternalParameterManifest externalParameterManifest;
     private final UnifiedProductionCutoverEvidenceConsistencyAudit evidenceConsistencyAudit;
+    private final UnifiedProductionExternalValueIntakeRehearsal externalValueIntakeRehearsal;
     private final List<UnifiedMount> gatewayRoutes = createGatewayRoutes();
 
     UnifiedBackendRegistry() {
         this(new LocalFileUnifiedConfigProvider(), new LocalFileUnifiedAuditSink(), new LocalFileProductionCutoverRunbook(),
                 new LocalFileProductionCutoverApprovalPackage(), new LocalFileProductionCutoverExternalParameterManifest(),
-                new LocalFileProductionCutoverEvidenceConsistencyAudit());
+                new LocalFileProductionCutoverEvidenceConsistencyAudit(), new LocalFileProductionExternalValueIntakeRehearsal());
     }
 
     UnifiedBackendRegistry(UnifiedConfigProvider configProvider) {
         this(configProvider, new LocalFileUnifiedAuditSink(), new LocalFileProductionCutoverRunbook(),
                 new LocalFileProductionCutoverApprovalPackage(), new LocalFileProductionCutoverExternalParameterManifest(),
-                new LocalFileProductionCutoverEvidenceConsistencyAudit());
+                new LocalFileProductionCutoverEvidenceConsistencyAudit(), new LocalFileProductionExternalValueIntakeRehearsal());
     }
 
     UnifiedBackendRegistry(UnifiedConfigProvider configProvider, UnifiedAuditSink auditSink) {
         this(configProvider, auditSink, new LocalFileProductionCutoverRunbook(),
                 new LocalFileProductionCutoverApprovalPackage(), new LocalFileProductionCutoverExternalParameterManifest(),
-                new LocalFileProductionCutoverEvidenceConsistencyAudit());
+                new LocalFileProductionCutoverEvidenceConsistencyAudit(), new LocalFileProductionExternalValueIntakeRehearsal());
     }
 
     UnifiedBackendRegistry(UnifiedConfigProvider configProvider, UnifiedAuditSink auditSink,
                            UnifiedProductionCutoverRunbook cutoverRunbook) {
         this(configProvider, auditSink, cutoverRunbook, new LocalFileProductionCutoverApprovalPackage(),
-                new LocalFileProductionCutoverExternalParameterManifest(), new LocalFileProductionCutoverEvidenceConsistencyAudit());
+                new LocalFileProductionCutoverExternalParameterManifest(), new LocalFileProductionCutoverEvidenceConsistencyAudit(),
+                new LocalFileProductionExternalValueIntakeRehearsal());
     }
 
     UnifiedBackendRegistry(UnifiedConfigProvider configProvider, UnifiedAuditSink auditSink,
                            UnifiedProductionCutoverRunbook cutoverRunbook,
                            UnifiedProductionCutoverApprovalPackage cutoverApprovalPackage) {
         this(configProvider, auditSink, cutoverRunbook, cutoverApprovalPackage,
-                new LocalFileProductionCutoverExternalParameterManifest(), new LocalFileProductionCutoverEvidenceConsistencyAudit());
+                new LocalFileProductionCutoverExternalParameterManifest(), new LocalFileProductionCutoverEvidenceConsistencyAudit(),
+                new LocalFileProductionExternalValueIntakeRehearsal());
     }
 
     UnifiedBackendRegistry(UnifiedConfigProvider configProvider, UnifiedAuditSink auditSink,
@@ -1735,7 +2039,7 @@ class UnifiedBackendRegistry {
                            UnifiedProductionCutoverApprovalPackage cutoverApprovalPackage,
                            UnifiedProductionCutoverExternalParameterManifest externalParameterManifest) {
         this(configProvider, auditSink, cutoverRunbook, cutoverApprovalPackage, externalParameterManifest,
-                new LocalFileProductionCutoverEvidenceConsistencyAudit());
+                new LocalFileProductionCutoverEvidenceConsistencyAudit(), new LocalFileProductionExternalValueIntakeRehearsal());
     }
 
     UnifiedBackendRegistry(UnifiedConfigProvider configProvider, UnifiedAuditSink auditSink,
@@ -1743,12 +2047,23 @@ class UnifiedBackendRegistry {
                            UnifiedProductionCutoverApprovalPackage cutoverApprovalPackage,
                            UnifiedProductionCutoverExternalParameterManifest externalParameterManifest,
                            UnifiedProductionCutoverEvidenceConsistencyAudit evidenceConsistencyAudit) {
+        this(configProvider, auditSink, cutoverRunbook, cutoverApprovalPackage, externalParameterManifest, evidenceConsistencyAudit,
+                new LocalFileProductionExternalValueIntakeRehearsal());
+    }
+
+    UnifiedBackendRegistry(UnifiedConfigProvider configProvider, UnifiedAuditSink auditSink,
+                           UnifiedProductionCutoverRunbook cutoverRunbook,
+                           UnifiedProductionCutoverApprovalPackage cutoverApprovalPackage,
+                           UnifiedProductionCutoverExternalParameterManifest externalParameterManifest,
+                           UnifiedProductionCutoverEvidenceConsistencyAudit evidenceConsistencyAudit,
+                           UnifiedProductionExternalValueIntakeRehearsal externalValueIntakeRehearsal) {
         this.configProvider = configProvider;
         this.auditSink = auditSink;
         this.cutoverRunbook = cutoverRunbook;
         this.cutoverApprovalPackage = cutoverApprovalPackage;
         this.externalParameterManifest = externalParameterManifest;
         this.evidenceConsistencyAudit = evidenceConsistencyAudit;
+        this.externalValueIntakeRehearsal = externalValueIntakeRehearsal;
     }
 
     Map<String, Object> baseProfile() {
@@ -3023,6 +3338,75 @@ class UnifiedBackendRegistry {
         );
     }
 
+    String productionExternalValueIntakeRehearsalStatus() {
+        return externalValueIntakeRehearsal.snapshot().status();
+    }
+
+    List<Map<String, Object>> productionExternalValueIntakeRehearsalChecks() {
+        ProductionExternalValueIntakeRehearsalSnapshot snapshot = externalValueIntakeRehearsal.snapshot();
+        return List.of(
+                switchCheck("EXTERNAL_VALUE_INTAKE_SAMPLE_PRESENT", snapshot.sampleIntakePresent() ? "PASS" : "BLOCKED", "external value intake sample is present", true),
+                switchCheck("EXTERNAL_VALUE_INTAKE_SAMPLE_JSON_PARSABLE", snapshot.sampleIntakeParsed() ? "PASS" : "BLOCKED", "external value intake sample is parseable JSON", true),
+                switchCheck("VALUE_GROUPS_RECORDED", snapshot.valueGroupsTotal() >= 7 ? "PASS" : "BLOCKED", "external value groups are recorded", true),
+                switchCheck("INTAKE_CHANNELS_RECORDED", snapshot.intakeChannelsTotal() >= 6 ? "PASS" : "BLOCKED", "external intake channels are recorded", true),
+                switchCheck("INJECTION_TARGETS_RECORDED", snapshot.injectionTargetsTotal() >= snapshot.valueItemsTotal() ? "PASS" : "BLOCKED", "injection targets are recorded for all value items", true),
+                switchCheck("VALIDATION_REFS_RECORDED", snapshot.validationRefsTotal() >= snapshot.valueItemsTotal() ? "PASS" : "BLOCKED", "validation references are recorded for all value items", true),
+                switchCheck("ROLLBACK_REFS_RECORDED", snapshot.rollbackRefsTotal() >= snapshot.valueItemsTotal() ? "PASS" : "BLOCKED", "rollback references are recorded for all value items", true),
+                switchCheck("NO_REAL_VALUES_IN_REPOSITORY", snapshot.realValuesProvidedInRepository() ? "BLOCKED" : "PASS", "repository contains only external references, not real runtime values", true),
+                switchCheck("NO_SENSITIVE_VALUES_IN_INTAKE_SAMPLE", snapshot.sensitiveValuesExposed() ? "BLOCKED" : "PASS", "external value intake sample does not expose sensitive runtime values", true),
+                switchCheck("READY_FLAGS_REMAIN_FALSE", "PASS", "readyForProduction and readyToReplaceGateway remain false", true),
+                switchCheck("EXTERNAL_VALUE_INTAKE_REHEARSAL_RECORDED", "PASS", "local external value intake rehearsal is recorded without applying production traffic", true),
+                switchCheck("REAL_EXTERNAL_VALUES_NOT_PROVIDED", "BLOCKED", "real external values are not provided to runtime", true),
+                switchCheck("REAL_ENTRYPOINT_NOT_APPLIED", "BLOCKED", "real external entrypoint is not applied", true),
+                switchCheck("REAL_CENTRAL_CONFIG_PROVIDER_NOT_CONNECTED", "BLOCKED", "real central config provider remains disconnected", true),
+                switchCheck("REAL_AUDIT_SINK_NOT_CONNECTED", "BLOCKED", "real persistent audit sink remains disconnected", true),
+                switchCheck("PRODUCTION_TRAFFIC_NOT_SWITCHED", "BLOCKED", "production traffic is not switched to unified-backend", true),
+                switchCheck("API_GATEWAY_TRAFFIC_ZERO_NOT_PROVEN", "BLOCKED", "api-gateway zero production traffic is not proven", true),
+                switchCheck("ROLLBACK_WINDOW_NOT_COMPLETED", "BLOCKED", "rollback window is not completed", true),
+                switchCheck("RETIREMENT_NOT_APPROVED", "BLOCKED", "entrypoint retirement is not approved", true)
+        );
+    }
+
+    Map<String, Object> productionExternalValueIntakeRehearsalEvidence() {
+        ProductionExternalValueIntakeRehearsalSnapshot snapshot = externalValueIntakeRehearsal.snapshot();
+        return map(
+                "readinessMode", snapshot.readinessMode(),
+                "sampleIntakePath", snapshot.sampleIntakePath(),
+                "sampleIntakePresent", snapshot.sampleIntakePresent(),
+                "sampleIntakeParsed", snapshot.sampleIntakeParsed(),
+                "intakeApplied", snapshot.intakeApplied(),
+                "productionTrafficAllowed", snapshot.productionTrafficAllowed(),
+                "realValuesAllowedInRepository", snapshot.realValuesAllowedInRepository(),
+                "requiresExternalSecretStore", snapshot.requiresExternalSecretStore(),
+                "candidateEntrypointRef", snapshot.candidateEntrypointRef(),
+                "currentEntrypointRef", snapshot.currentEntrypointRef(),
+                "rollbackEntrypointRef", snapshot.rollbackEntrypointRef(),
+                "valueGroupsTotal", snapshot.valueGroupsTotal(),
+                "intakeChannelsTotal", snapshot.intakeChannelsTotal(),
+                "valueItemsTotal", snapshot.valueItemsTotal(),
+                "injectionTargetsTotal", snapshot.injectionTargetsTotal(),
+                "validationRefsTotal", snapshot.validationRefsTotal(),
+                "rollbackRefsTotal", snapshot.rollbackRefsTotal(),
+                "realValuesProvidedInRepository", snapshot.realValuesProvidedInRepository(),
+                "redactedValuesTotal", snapshot.redactedValuesTotal(),
+                "centralConfigProviderConnected", snapshot.centralConfigProviderConnected(),
+                "productionProfileBound", snapshot.productionProfileBound(),
+                "sensitiveConfigExternalized", snapshot.sensitiveConfigExternalized(),
+                "persistentAuditSinkConnected", snapshot.persistentAuditSinkConnected(),
+                "auditWriteSmokePassed", snapshot.auditWriteSmokePassed(),
+                "productionTrafficObservedOnUnified", snapshot.productionTrafficObservedOnUnified(),
+                "apiGatewayTrafficZeroProven", snapshot.apiGatewayTrafficZeroProven(),
+                "rollbackWindowCompleted", snapshot.rollbackWindowCompleted(),
+                "retirementApproverGranted", snapshot.retirementApproverGranted(),
+                "environmentVariablesRead", snapshot.environmentVariablesRead(),
+                "sensitiveValuesExposed", snapshot.sensitiveValuesExposed(),
+                "readyForProduction", false,
+                "readyToReplaceGateway", false,
+                "remainingProductionBlockers", snapshot.remainingProductionBlockers(),
+                "status", snapshot.status()
+        );
+    }
+
     List<Map<String, Object>> productionAuditSinkPrecheckChecks() {
         return List.of(
                 switchCheck("AUDIT_EVENT_SCHEMA_FIXED", "PASS", "production audit event fields are fixed before sink connection", true),
@@ -3161,6 +3545,7 @@ class UnifiedBackendRegistry {
                 switchCheck("CUTOVER_RUNBOOK_DEFINED", "PASS", "cutover runbook requirements are recorded without applying traffic switch", true),
                 switchCheck("PRODUCTION_CUTOVER_APPROVAL_PACKAGE_RECORDED", "PASS", "production cutover approval package requirements are recorded without approving traffic", true),
                 switchCheck("CUTOVER_EVIDENCE_CONSISTENCY_AUDIT_RECORDED", "PASS", "local cutover evidence consistency audit is recorded without applying production traffic", true),
+                switchCheck("EXTERNAL_VALUE_INTAKE_REHEARSAL_RECORDED", "PASS", "external value intake rehearsal is recorded without importing real values", true),
                 switchCheck("ROLLBACK_RECHECK_COMMANDS_DEFINED", "PASS", "rollback recheck commands are recorded for candidate and rollback entrypoints", true),
                 switchCheck("SMOKE_EVIDENCE_FORMAT_DEFINED", "PASS", "smoke evidence format is recorded without treating it as production switch proof", true),
                 switchCheck("CENTRAL_CONFIG_PROVIDER_CONNECTED", "BLOCKED", "centralized production configuration provider is not connected", true),

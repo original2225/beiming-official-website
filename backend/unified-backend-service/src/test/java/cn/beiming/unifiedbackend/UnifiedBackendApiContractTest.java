@@ -69,6 +69,7 @@ class UnifiedBackendApiContractTest {
         addRange(mapped, "UBACK-CUTOVER-APPROVAL", 1, 12);
         addRange(mapped, "UBACK-EXTERNAL-PARAMS", 1, 12);
         addRange(mapped, "UBACK-CUTOVER-CONSISTENCY", 1, 12);
+        addRange(mapped, "UBACK-EXTERNAL-VALUE-INTAKE", 1, 12);
 
         assertThat(mapped).contains(
                 "UBACK-COM-001",
@@ -127,9 +128,11 @@ class UnifiedBackendApiContractTest {
                 "UBACK-EXTERNAL-PARAMS-001",
                 "UBACK-EXTERNAL-PARAMS-012",
                 "UBACK-CUTOVER-CONSISTENCY-001",
-                "UBACK-CUTOVER-CONSISTENCY-012"
+                "UBACK-CUTOVER-CONSISTENCY-012",
+                "UBACK-EXTERNAL-VALUE-INTAKE-001",
+                "UBACK-EXTERNAL-VALUE-INTAKE-012"
         );
-        assertThat(mapped).hasSize(215);
+        assertThat(mapped).hasSize(227);
     }
 
     @Test
@@ -2483,6 +2486,219 @@ class UnifiedBackendApiContractTest {
                 .contains("ROLLBACK_WINDOW_COMPLETED")
                 .contains("USER_RETIREMENT_APPROVAL_GRANTED")
                 .contains("BLOCKED");
+    }
+
+    @Test
+    void exposesProductionExternalValueIntakeRehearsalWithoutImportingValues() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-production-external-value-intake"));
+
+        assertThat(readiness.at("/data/productionExternalValueIntakeRehearsalStatus").asText())
+                .isEqualTo("PASS_EXTERNAL_VALUE_INTAKE_REHEARSAL_NOT_PRODUCTION");
+        assertThat(readiness.at("/data/readyForProduction").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/readyToReplaceGateway").asBoolean()).isFalse();
+
+        assertPrecheck(readiness, "/data/productionExternalValueIntakeRehearsalChecks", "EXTERNAL_VALUE_INTAKE_SAMPLE_PRESENT", "PASS", true);
+        assertPrecheck(readiness, "/data/productionExternalValueIntakeRehearsalChecks", "EXTERNAL_VALUE_INTAKE_SAMPLE_JSON_PARSABLE", "PASS", true);
+        assertPrecheck(readiness, "/data/productionExternalValueIntakeRehearsalChecks", "VALUE_GROUPS_RECORDED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionExternalValueIntakeRehearsalChecks", "INTAKE_CHANNELS_RECORDED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionExternalValueIntakeRehearsalChecks", "INJECTION_TARGETS_RECORDED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionExternalValueIntakeRehearsalChecks", "VALIDATION_REFS_RECORDED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionExternalValueIntakeRehearsalChecks", "ROLLBACK_REFS_RECORDED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionExternalValueIntakeRehearsalChecks", "NO_REAL_VALUES_IN_REPOSITORY", "PASS", true);
+        assertPrecheck(readiness, "/data/productionExternalValueIntakeRehearsalChecks", "NO_SENSITIVE_VALUES_IN_INTAKE_SAMPLE", "PASS", true);
+        assertPrecheck(readiness, "/data/productionExternalValueIntakeRehearsalChecks", "READY_FLAGS_REMAIN_FALSE", "PASS", true);
+        assertPrecheck(readiness, "/data/productionExternalValueIntakeRehearsalChecks", "EXTERNAL_VALUE_INTAKE_REHEARSAL_RECORDED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionExternalValueIntakeRehearsalChecks", "REAL_EXTERNAL_VALUES_NOT_PROVIDED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/productionExternalValueIntakeRehearsalChecks", "REAL_ENTRYPOINT_NOT_APPLIED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/productionExternalValueIntakeRehearsalChecks", "REAL_CENTRAL_CONFIG_PROVIDER_NOT_CONNECTED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/productionExternalValueIntakeRehearsalChecks", "REAL_AUDIT_SINK_NOT_CONNECTED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/productionExternalValueIntakeRehearsalChecks", "PRODUCTION_TRAFFIC_NOT_SWITCHED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/productionExternalValueIntakeRehearsalChecks", "API_GATEWAY_TRAFFIC_ZERO_NOT_PROVEN", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/productionExternalValueIntakeRehearsalChecks", "ROLLBACK_WINDOW_NOT_COMPLETED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/productionExternalValueIntakeRehearsalChecks", "RETIREMENT_NOT_APPROVED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/productionHardeningPrecheckChecks", "EXTERNAL_VALUE_INTAKE_REHEARSAL_RECORDED", "PASS", true);
+
+        JsonNode evidence = readiness.at("/data/productionExternalValueIntakeRehearsalEvidence");
+        assertThat(evidence.at("/readinessMode").asText())
+                .isEqualTo("LOCAL_EXTERNAL_VALUE_INTAKE_REHEARSAL_NOT_PRODUCTION");
+        assertThat(evidence.at("/sampleIntakePath").asText())
+                .isEqualTo("docs/unified-backend-production-external-value-intake-sample.json");
+        assertThat(evidence.at("/sampleIntakePresent").asBoolean()).isTrue();
+        assertThat(evidence.at("/sampleIntakeParsed").asBoolean()).isTrue();
+        assertThat(evidence.at("/intakeApplied").asBoolean()).isFalse();
+        assertThat(evidence.at("/productionTrafficAllowed").asBoolean()).isFalse();
+        assertThat(evidence.at("/realValuesAllowedInRepository").asBoolean()).isFalse();
+        assertThat(evidence.at("/requiresExternalSecretStore").asBoolean()).isTrue();
+        assertThat(evidence.at("/candidateEntrypointRef").asText()).isEqualTo("LOCAL_SAMPLE_REF:UNIFIED_BACKEND_8135");
+        assertThat(evidence.at("/currentEntrypointRef").asText()).isEqualTo("LOCAL_SAMPLE_REF:API_GATEWAY_8125");
+        assertThat(evidence.at("/rollbackEntrypointRef").asText()).isEqualTo("LOCAL_SAMPLE_REF:API_GATEWAY_8125");
+        assertThat(evidence.at("/valueGroupsTotal").asInt()).isGreaterThanOrEqualTo(7);
+        assertThat(evidence.at("/intakeChannelsTotal").asInt()).isGreaterThanOrEqualTo(6);
+        assertThat(evidence.at("/valueItemsTotal").asInt()).isGreaterThanOrEqualTo(14);
+        assertThat(evidence.at("/injectionTargetsTotal").asInt()).isGreaterThanOrEqualTo(14);
+        assertThat(evidence.at("/validationRefsTotal").asInt()).isGreaterThanOrEqualTo(14);
+        assertThat(evidence.at("/rollbackRefsTotal").asInt()).isGreaterThanOrEqualTo(14);
+        assertThat(evidence.at("/realValuesProvidedInRepository").asBoolean()).isFalse();
+        assertThat(evidence.at("/redactedValuesTotal").asInt()).isGreaterThanOrEqualTo(14);
+        assertThat(evidence.at("/centralConfigProviderConnected").asBoolean()).isFalse();
+        assertThat(evidence.at("/productionProfileBound").asBoolean()).isFalse();
+        assertThat(evidence.at("/sensitiveConfigExternalized").asBoolean()).isFalse();
+        assertThat(evidence.at("/persistentAuditSinkConnected").asBoolean()).isFalse();
+        assertThat(evidence.at("/auditWriteSmokePassed").asBoolean()).isFalse();
+        assertThat(evidence.at("/productionTrafficObservedOnUnified").asBoolean()).isFalse();
+        assertThat(evidence.at("/apiGatewayTrafficZeroProven").asBoolean()).isFalse();
+        assertThat(evidence.at("/rollbackWindowCompleted").asBoolean()).isFalse();
+        assertThat(evidence.at("/retirementApproverGranted").asBoolean()).isFalse();
+        assertThat(evidence.at("/environmentVariablesRead").asBoolean()).isFalse();
+        assertThat(evidence.at("/sensitiveValuesExposed").asBoolean()).isFalse();
+        assertThat(evidence.at("/readyForProduction").asBoolean()).isFalse();
+        assertThat(evidence.at("/readyToReplaceGateway").asBoolean()).isFalse();
+        assertThat(evidence.at("/remainingProductionBlockers").toString())
+                .contains("REAL_EXTERNAL_VALUES_PROVIDED_OUTSIDE_REPOSITORY")
+                .contains("REAL_CENTRAL_CONFIG_PROVIDER_CONNECTED")
+                .contains("REAL_PERSISTENT_AUDIT_SINK_CONNECTED")
+                .contains("PRODUCTION_TRAFFIC_SWITCH_APPLIED")
+                .contains("API_GATEWAY_TRAFFIC_ZERO_PROVEN")
+                .contains("ROLLBACK_WINDOW_COMPLETED")
+                .contains("USER_RETIREMENT_APPROVAL_GRANTED");
+        assertThat(evidence.at("/status").asText())
+                .isEqualTo("PASS_EXTERNAL_VALUE_INTAKE_REHEARSAL_NOT_PRODUCTION");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void productionExternalValueIntakeRehearsalDoesNotLeakSensitiveRuntimeValues() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-production-external-value-intake-redaction"));
+
+        assertThat(readiness.at("/data/productionExternalValueIntakeRehearsalStatus").asText())
+                .isEqualTo("PASS_EXTERNAL_VALUE_INTAKE_REHEARSAL_NOT_PRODUCTION");
+        String text = readiness.at("/data/productionExternalValueIntakeRehearsalEvidence").toString()
+                + readiness.at("/data/productionExternalValueIntakeRehearsalChecks");
+        assertThat(text)
+                .doesNotContain("Authorization")
+                .doesNotContain("Cookie")
+                .doesNotContain("X-Gateway-Internal-Signature")
+                .doesNotContain("C:\\Users\\")
+                .doesNotContain(".env")
+                .doesNotContain("jdbc:")
+                .doesNotContain("mongodb://")
+                .doesNotContain("redis://")
+                .doesNotContain("AKIA")
+                .doesNotContain("cmd.exe")
+                .doesNotContain("powershell")
+                .doesNotContain("kubectl")
+                .doesNotContain("docker")
+                .doesNotContain("id_rsa");
+        assertThat(text.toLowerCase()
+                .replace("requiresexternalsecretstore", "")
+                .replace("sensitiveconfigexternalized", "")
+                .replace("sensitivevaluesexposed", ""))
+                .doesNotContain("token")
+                .doesNotContain("cookie")
+                .doesNotContain("secret")
+                .doesNotContain("password")
+                .doesNotContain("passwd")
+                .doesNotContain("privatekey");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void productionExternalValueIntakeSampleFileIsParseableAndSafe() throws Exception {
+        JsonNode sample = objectMapper.readTree(Files.readString(Path.of("../../docs/unified-backend-production-external-value-intake-sample.json")));
+
+        assertThat(sample.at("/sampleName").asText()).isEqualTo("beiming-unified-backend-production-external-value-intake");
+        assertThat(sample.at("/mode").asText()).isEqualTo("LOCAL_EXTERNAL_VALUE_INTAKE_REHEARSAL_NOT_APPLIED");
+        assertThat(sample.at("/intakeApplied").asBoolean()).isFalse();
+        assertThat(sample.at("/productionTrafficAllowed").asBoolean()).isFalse();
+        assertThat(sample.at("/realValuesAllowedInRepository").asBoolean()).isFalse();
+        assertThat(sample.at("/requiresExternalSecretStore").asBoolean()).isTrue();
+        assertThat(sample.at("/candidateEntrypointRef").asText()).isEqualTo("LOCAL_SAMPLE_REF:UNIFIED_BACKEND_8135");
+        assertThat(sample.at("/currentEntrypointRef").asText()).isEqualTo("LOCAL_SAMPLE_REF:API_GATEWAY_8125");
+        assertThat(sample.at("/rollbackEntrypointRef").asText()).isEqualTo("LOCAL_SAMPLE_REF:API_GATEWAY_8125");
+        assertThat(sample.at("/intakeChannels").size()).isGreaterThanOrEqualTo(6);
+        assertThat(sample.at("/requiredValueGroups").size()).isGreaterThanOrEqualTo(7);
+        assertThat(sample.at("/requiredValueGroups").toString())
+                .contains("external-entrypoint")
+                .contains("central-config")
+                .contains("audit-sink")
+                .contains("observability")
+                .contains("approval")
+                .contains("rollback")
+                .contains("retirement");
+
+        int valueItems = 0;
+        for (JsonNode group : sample.at("/requiredValueGroups")) {
+            assertThat(group.path("group").asText()).isNotBlank();
+            for (JsonNode item : group.path("values")) {
+                valueItems++;
+                assertThat(item.path("key").asText()).isNotBlank();
+                assertThat(item.path("group").asText()).isEqualTo(group.path("group").asText());
+                assertThat(item.path("sourceChannelKey").asText()).isNotBlank();
+                String valueRef = item.path("valueRef").asText();
+                assertThat(valueRef.startsWith("EXTERNAL_REF_REQUIRED:")
+                        || valueRef.startsWith("LOCAL_SAMPLE_REF:")
+                        || valueRef.startsWith("APPROVAL_REF_REQUIRED:")).isTrue();
+                assertThat(item.path("injectionTarget").asText()).isNotBlank();
+                assertThat(item.path("validationRef").asText()).isNotBlank();
+                assertThat(item.path("rollbackRef").asText()).isNotBlank();
+                assertThat(item.path("realValueProvidedInRepository").asBoolean()).isFalse();
+                assertThat(item.path("redacted").asBoolean()).isTrue();
+            }
+        }
+        assertThat(valueItems).isGreaterThanOrEqualTo(14);
+
+        assertThat(sample.at("/goNoGoImpact").toString())
+                .contains("REAL_EXTERNAL_VALUES_APPLIED_TO_RUNTIME")
+                .contains("REAL_CENTRAL_CONFIG_PROVIDER_CONNECTED")
+                .contains("PRODUCTION_TRAFFIC_SWITCH_APPLIED")
+                .contains("BLOCKED");
+        assertThat(sample.at("/redactionPolicy/forbiddenValues").toString().toLowerCase())
+                .contains("authorization")
+                .contains("cookie")
+                .contains("token")
+                .contains("secret")
+                .contains("password")
+                .contains("jdbc:")
+                .contains("kubectl")
+                .contains("docker")
+                .contains("powershell")
+                .contains("cmd.exe");
+
+        String safeValueText = sample.at("/requiredValueGroups").toString().toLowerCase()
+                + sample.at("/intakeChannels").toString().toLowerCase()
+                + sample.at("/validationPlan").toString().toLowerCase()
+                + sample.at("/rollbackPlan").toString().toLowerCase()
+                + sample.at("/approvalPlan").toString().toLowerCase()
+                + sample.at("/goNoGoImpact").toString().toLowerCase()
+                + sample.at("/verificationCommands").toString().toLowerCase();
+        assertThat(safeValueText
+                .replace("requiresexternalsecretstore", "")
+                .replace("sensitiveconfigexternalizationref", ""))
+                .doesNotContain("authorization")
+                .doesNotContain("token")
+                .doesNotContain("cookie")
+                .doesNotContain("secret")
+                .doesNotContain("password")
+                .doesNotContain("passwd")
+                .doesNotContain("pwd")
+                .doesNotContain("privatekey")
+                .doesNotContain("id_rsa")
+                .doesNotContain("jdbc:")
+                .doesNotContain("mongodb://")
+                .doesNotContain("redis://")
+                .doesNotContain("akia")
+                .doesNotContain("kubectl")
+                .doesNotContain("docker")
+                .doesNotContain("powershell")
+                .doesNotContain("cmd.exe")
+                .doesNotContain("ssh ")
+                .doesNotContain("scp ")
+                .doesNotContain("c:\\users\\")
+                .doesNotContain(".env");
     }
 
     @Test
