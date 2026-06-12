@@ -1,0 +1,128 @@
+{
+  "sampleName": "beiming-unified-backend-production-audit-observability-smoke",
+  "sampleVersion": "1.0",
+  "mode": "LOCAL_PRODUCTION_AUDIT_OBSERVABILITY_SMOKE_REHEARSAL_NOT_CONNECTED",
+  "productionTrafficAllowed": false,
+  "realValuesAllowedInRepository": false,
+  "runtimeConfigShellSampleRef": "docs/unified-backend-production-runtime-shell-sample.json",
+  "runtimeConfigShellStatusRequired": "PASS_PRODUCTION_RUNTIME_CONFIG_SHELL_REHEARSAL_NOT_PRODUCTION",
+  "auditSinkBindings": [
+    {"key": "PERSISTENT_AUDIT_STORE", "bindingRef": "EXTERNAL_REF_REQUIRED:AUDIT_STORE", "validationRef": "EXTERNAL_REF_REQUIRED:AUDIT_STORE_VALIDATE", "rollbackRef": "EXTERNAL_REF_REQUIRED:AUDIT_STORE_ROLLBACK", "requiredForProductionCutover": true, "externalValueRequired": true, "realValueProvidedInRepository": false, "redacted": true, "description": "external audit store reference"},
+    {"key": "AUDIT_WRITE_PATH", "bindingRef": "EXTERNAL_REF_REQUIRED:AUDIT_WRITE", "validationRef": "EXTERNAL_REF_REQUIRED:AUDIT_WRITE_VALIDATE", "rollbackRef": "EXTERNAL_REF_REQUIRED:AUDIT_WRITE_ROLLBACK", "requiredForProductionCutover": true, "externalValueRequired": true, "realValueProvidedInRepository": false, "redacted": true, "description": "external audit write reference"},
+    {"key": "AUDIT_REPLAY_PATH", "bindingRef": "EXTERNAL_REF_REQUIRED:AUDIT_REPLAY", "validationRef": "EXTERNAL_REF_REQUIRED:AUDIT_REPLAY_VALIDATE", "rollbackRef": "EXTERNAL_REF_REQUIRED:AUDIT_REPLAY_ROLLBACK", "requiredForProductionCutover": true, "externalValueRequired": true, "realValueProvidedInRepository": false, "redacted": true, "description": "external audit replay reference"},
+    {"key": "AUDIT_EXPORT_PATH", "bindingRef": "EXTERNAL_REF_REQUIRED:AUDIT_EXPORT", "validationRef": "EXTERNAL_REF_REQUIRED:AUDIT_EXPORT_VALIDATE", "rollbackRef": "EXTERNAL_REF_REQUIRED:AUDIT_EXPORT_ROLLBACK", "requiredForProductionCutover": true, "externalValueRequired": true, "realValueProvidedInRepository": false, "redacted": true, "description": "external audit export reference"},
+    {"key": "AUDIT_RETENTION_JOB", "bindingRef": "EXTERNAL_REF_REQUIRED:AUDIT_RETENTION", "validationRef": "EXTERNAL_REF_REQUIRED:AUDIT_RETENTION_VALIDATE", "rollbackRef": "EXTERNAL_REF_REQUIRED:AUDIT_RETENTION_ROLLBACK", "requiredForProductionCutover": true, "externalValueRequired": true, "realValueProvidedInRepository": false, "redacted": true, "description": "external audit retention reference"},
+    {"key": "AUDIT_ACCESS_REF", "bindingRef": "EXTERNAL_REF_REQUIRED:AUDIT_ACCESS", "validationRef": "EXTERNAL_REF_REQUIRED:AUDIT_ACCESS_VALIDATE", "rollbackRef": "EXTERNAL_REF_REQUIRED:AUDIT_ACCESS_ROLLBACK", "requiredForProductionCutover": true, "externalValueRequired": true, "realValueProvidedInRepository": false, "redacted": true, "description": "external audit access reference"}
+  ],
+  "auditEventSchema": {
+    "fields": [
+      "auditEventId",
+      "requestId",
+      "occurredAt",
+      "entrypoint",
+      "module",
+      "path",
+      "method",
+      "actorId",
+      "actorRole",
+      "capabilities",
+      "sourceIpHash",
+      "targetType",
+      "targetId",
+      "action",
+      "riskLevel",
+      "requestSummary",
+      "beforeStateSummary",
+      "afterStateSummary",
+      "result",
+      "failureReason",
+      "redactionApplied"
+    ]
+  },
+  "auditSmokeTargets": [
+    {"targetKey": "AUTH_LOGIN", "method": "POST", "pathRef": "/api/v1/auth/login", "expectedAuditAction": "AUTH_LOGIN", "expectedResult": "RECORDED", "requestIdRequired": true, "actorRequired": true, "redactionRequired": true, "writeSmokeValidationRef": "EXTERNAL_REF_REQUIRED:AUTH_LOGIN_AUDIT_WRITE", "rollbackRef": "EXTERNAL_REF_REQUIRED:AUTH_LOGIN_AUDIT_ROLLBACK"},
+    {"targetKey": "PROFILE_ME", "method": "GET", "pathRef": "/api/v1/profile/me", "expectedAuditAction": "PROFILE_READ", "expectedResult": "RECORDED", "requestIdRequired": true, "actorRequired": true, "redactionRequired": true, "writeSmokeValidationRef": "EXTERNAL_REF_REQUIRED:PROFILE_AUDIT_WRITE", "rollbackRef": "EXTERNAL_REF_REQUIRED:PROFILE_AUDIT_ROLLBACK"},
+    {"targetKey": "RESOURCES_LIST", "method": "GET", "pathRef": "/api/v1/resources", "expectedAuditAction": "RESOURCE_READ", "expectedResult": "RECORDED", "requestIdRequired": true, "actorRequired": true, "redactionRequired": true, "writeSmokeValidationRef": "EXTERNAL_REF_REQUIRED:RESOURCE_AUDIT_WRITE", "rollbackRef": "EXTERNAL_REF_REQUIRED:RESOURCE_AUDIT_ROLLBACK"},
+    {"targetKey": "WHITELIST_REVIEW", "method": "GET", "pathRef": "/api/v1/whitelist", "expectedAuditAction": "WHITELIST_REVIEW", "expectedResult": "RECORDED", "requestIdRequired": true, "actorRequired": true, "redactionRequired": true, "writeSmokeValidationRef": "EXTERNAL_REF_REQUIRED:WHITELIST_AUDIT_WRITE", "rollbackRef": "EXTERNAL_REF_REQUIRED:WHITELIST_AUDIT_ROLLBACK"},
+    {"targetKey": "EXAM_SUBMIT", "method": "POST", "pathRef": "/api/v1/exams", "expectedAuditAction": "EXAM_SUBMIT", "expectedResult": "RECORDED", "requestIdRequired": true, "actorRequired": true, "redactionRequired": true, "writeSmokeValidationRef": "EXTERNAL_REF_REQUIRED:EXAM_AUDIT_WRITE", "rollbackRef": "EXTERNAL_REF_REQUIRED:EXAM_AUDIT_ROLLBACK"},
+    {"targetKey": "ATTENDANCE_CHECKIN", "method": "POST", "pathRef": "/api/v1/attendance", "expectedAuditAction": "ATTENDANCE_CHECKIN", "expectedResult": "RECORDED", "requestIdRequired": true, "actorRequired": true, "redactionRequired": true, "writeSmokeValidationRef": "EXTERNAL_REF_REQUIRED:ATTENDANCE_AUDIT_WRITE", "rollbackRef": "EXTERNAL_REF_REQUIRED:ATTENDANCE_AUDIT_ROLLBACK"},
+    {"targetKey": "ACTIVITY_SIGNUP", "method": "POST", "pathRef": "/api/v1/activity", "expectedAuditAction": "ACTIVITY_SIGNUP", "expectedResult": "RECORDED", "requestIdRequired": true, "actorRequired": true, "redactionRequired": true, "writeSmokeValidationRef": "EXTERNAL_REF_REQUIRED:ACTIVITY_AUDIT_WRITE", "rollbackRef": "EXTERNAL_REF_REQUIRED:ACTIVITY_AUDIT_ROLLBACK"},
+    {"targetKey": "ADMIN_READONLY", "method": "GET", "pathRef": "/api/v1/admin/readiness", "expectedAuditAction": "ADMIN_READ", "expectedResult": "RECORDED", "requestIdRequired": true, "actorRequired": true, "redactionRequired": true, "writeSmokeValidationRef": "EXTERNAL_REF_REQUIRED:ADMIN_AUDIT_WRITE", "rollbackRef": "EXTERNAL_REF_REQUIRED:ADMIN_AUDIT_ROLLBACK"},
+    {"targetKey": "OPS_OVERVIEW", "method": "GET", "pathRef": "/api/v1/ops-control/overview", "expectedAuditAction": "OPS_READ", "expectedResult": "RECORDED", "requestIdRequired": true, "actorRequired": true, "redactionRequired": true, "writeSmokeValidationRef": "EXTERNAL_REF_REQUIRED:OPS_AUDIT_WRITE", "rollbackRef": "EXTERNAL_REF_REQUIRED:OPS_AUDIT_ROLLBACK"},
+    {"targetKey": "UNIFIED_READINESS", "method": "GET", "pathRef": "/api/v1/unified-backend/admin/readiness", "expectedAuditAction": "UNIFIED_READINESS_READ", "expectedResult": "RECORDED", "requestIdRequired": true, "actorRequired": true, "redactionRequired": true, "writeSmokeValidationRef": "EXTERNAL_REF_REQUIRED:UNIFIED_AUDIT_WRITE", "rollbackRef": "EXTERNAL_REF_REQUIRED:UNIFIED_AUDIT_ROLLBACK"}
+  ],
+  "observabilitySignals": [
+    {"signalKey": "HTTP_SMOKE_STATUS", "signalType": "status", "sourceRef": "LOCAL_SAMPLE_REF:UNIFIED_HTTP_SMOKE", "expectedTags": ["entrypoint", "module", "routeId"], "thresholdRef": "EXTERNAL_REF_REQUIRED:HTTP_SMOKE_THRESHOLD", "validationRef": "EXTERNAL_REF_REQUIRED:HTTP_SMOKE_VALIDATE", "dashboardRef": "EXTERNAL_REF_REQUIRED:DASHBOARD_HTTP_SMOKE", "alertRef": "EXTERNAL_REF_REQUIRED:ALERT_HTTP_SMOKE", "requiredForProductionCutover": true, "redacted": true},
+    {"signalKey": "HTTP_STATUS_CODE_DISTRIBUTION", "signalType": "counter", "sourceRef": "LOCAL_SAMPLE_REF:UNIFIED_HTTP_STATUS", "expectedTags": ["entrypoint", "module", "routeId"], "thresholdRef": "EXTERNAL_REF_REQUIRED:HTTP_STATUS_THRESHOLD", "validationRef": "EXTERNAL_REF_REQUIRED:HTTP_STATUS_VALIDATE", "dashboardRef": "EXTERNAL_REF_REQUIRED:DASHBOARD_HTTP_STATUS", "alertRef": "EXTERNAL_REF_REQUIRED:ALERT_HTTP_STATUS", "requiredForProductionCutover": true, "redacted": true},
+    {"signalKey": "BUSINESS_CODE_DISTRIBUTION", "signalType": "counter", "sourceRef": "LOCAL_SAMPLE_REF:UNIFIED_BUSINESS_CODE", "expectedTags": ["entrypoint", "module", "routeId"], "thresholdRef": "EXTERNAL_REF_REQUIRED:BUSINESS_CODE_THRESHOLD", "validationRef": "EXTERNAL_REF_REQUIRED:BUSINESS_CODE_VALIDATE", "dashboardRef": "EXTERNAL_REF_REQUIRED:DASHBOARD_BUSINESS_CODE", "alertRef": "EXTERNAL_REF_REQUIRED:ALERT_BUSINESS_CODE", "requiredForProductionCutover": true, "redacted": true},
+    {"signalKey": "ERROR_RATE", "signalType": "ratio", "sourceRef": "LOCAL_SAMPLE_REF:UNIFIED_ERROR_RATE", "expectedTags": ["entrypoint", "module", "routeId"], "thresholdRef": "EXTERNAL_REF_REQUIRED:ERROR_RATE_THRESHOLD", "validationRef": "EXTERNAL_REF_REQUIRED:ERROR_RATE_VALIDATE", "dashboardRef": "EXTERNAL_REF_REQUIRED:DASHBOARD_ERROR_RATE", "alertRef": "EXTERNAL_REF_REQUIRED:ALERT_ERROR_RATE", "requiredForProductionCutover": true, "redacted": true},
+    {"signalKey": "P95_LATENCY", "signalType": "timer", "sourceRef": "LOCAL_SAMPLE_REF:UNIFIED_P95", "expectedTags": ["entrypoint", "module", "routeId"], "thresholdRef": "EXTERNAL_REF_REQUIRED:P95_THRESHOLD", "validationRef": "EXTERNAL_REF_REQUIRED:P95_VALIDATE", "dashboardRef": "EXTERNAL_REF_REQUIRED:DASHBOARD_P95", "alertRef": "EXTERNAL_REF_REQUIRED:ALERT_P95", "requiredForProductionCutover": true, "redacted": true},
+    {"signalKey": "P99_LATENCY", "signalType": "timer", "sourceRef": "LOCAL_SAMPLE_REF:UNIFIED_P99", "expectedTags": ["entrypoint", "module", "routeId"], "thresholdRef": "EXTERNAL_REF_REQUIRED:P99_THRESHOLD", "validationRef": "EXTERNAL_REF_REQUIRED:P99_VALIDATE", "dashboardRef": "EXTERNAL_REF_REQUIRED:DASHBOARD_P99", "alertRef": "EXTERNAL_REF_REQUIRED:ALERT_P99", "requiredForProductionCutover": true, "redacted": true},
+    {"signalKey": "REQUEST_ID_PROPAGATION", "signalType": "correlation", "sourceRef": "LOCAL_SAMPLE_REF:REQUEST_ID", "expectedTags": ["entrypoint", "module", "routeId"], "thresholdRef": "EXTERNAL_REF_REQUIRED:REQUEST_ID_THRESHOLD", "validationRef": "EXTERNAL_REF_REQUIRED:REQUEST_ID_VALIDATE", "dashboardRef": "EXTERNAL_REF_REQUIRED:DASHBOARD_REQUEST_ID", "alertRef": "EXTERNAL_REF_REQUIRED:ALERT_REQUEST_ID", "requiredForProductionCutover": true, "redacted": true},
+    {"signalKey": "ENTRYPOINT_TAG", "signalType": "tag", "sourceRef": "LOCAL_SAMPLE_REF:ENTRYPOINT_TAG", "expectedTags": ["entrypoint"], "thresholdRef": "EXTERNAL_REF_REQUIRED:ENTRYPOINT_TAG_THRESHOLD", "validationRef": "EXTERNAL_REF_REQUIRED:ENTRYPOINT_TAG_VALIDATE", "dashboardRef": "EXTERNAL_REF_REQUIRED:DASHBOARD_ENTRYPOINT_TAG", "alertRef": "EXTERNAL_REF_REQUIRED:ALERT_ENTRYPOINT_TAG", "requiredForProductionCutover": true, "redacted": true},
+    {"signalKey": "MODULE_TAG", "signalType": "tag", "sourceRef": "LOCAL_SAMPLE_REF:MODULE_TAG", "expectedTags": ["module"], "thresholdRef": "EXTERNAL_REF_REQUIRED:MODULE_TAG_THRESHOLD", "validationRef": "EXTERNAL_REF_REQUIRED:MODULE_TAG_VALIDATE", "dashboardRef": "EXTERNAL_REF_REQUIRED:DASHBOARD_MODULE_TAG", "alertRef": "EXTERNAL_REF_REQUIRED:ALERT_MODULE_TAG", "requiredForProductionCutover": true, "redacted": true},
+    {"signalKey": "ROUTE_ID_TAG", "signalType": "tag", "sourceRef": "LOCAL_SAMPLE_REF:ROUTE_ID_TAG", "expectedTags": ["routeId"], "thresholdRef": "EXTERNAL_REF_REQUIRED:ROUTE_ID_TAG_THRESHOLD", "validationRef": "EXTERNAL_REF_REQUIRED:ROUTE_ID_TAG_VALIDATE", "dashboardRef": "EXTERNAL_REF_REQUIRED:DASHBOARD_ROUTE_ID_TAG", "alertRef": "EXTERNAL_REF_REQUIRED:ALERT_ROUTE_ID_TAG", "requiredForProductionCutover": true, "redacted": true},
+    {"signalKey": "AUDIT_WRITE_RESULT_TAG", "signalType": "tag", "sourceRef": "LOCAL_SAMPLE_REF:AUDIT_WRITE_RESULT", "expectedTags": ["entrypoint", "module", "result"], "thresholdRef": "EXTERNAL_REF_REQUIRED:AUDIT_WRITE_RESULT_THRESHOLD", "validationRef": "EXTERNAL_REF_REQUIRED:AUDIT_WRITE_RESULT_VALIDATE", "dashboardRef": "EXTERNAL_REF_REQUIRED:DASHBOARD_AUDIT_WRITE_RESULT", "alertRef": "EXTERNAL_REF_REQUIRED:ALERT_AUDIT_WRITE_RESULT", "requiredForProductionCutover": true, "redacted": true},
+    {"signalKey": "FALLBACK_TAG", "signalType": "tag", "sourceRef": "LOCAL_SAMPLE_REF:FALLBACK_TAG", "expectedTags": ["entrypoint", "module", "fallback"], "thresholdRef": "EXTERNAL_REF_REQUIRED:FALLBACK_TAG_THRESHOLD", "validationRef": "EXTERNAL_REF_REQUIRED:FALLBACK_TAG_VALIDATE", "dashboardRef": "EXTERNAL_REF_REQUIRED:DASHBOARD_FALLBACK_TAG", "alertRef": "EXTERNAL_REF_REQUIRED:ALERT_FALLBACK_TAG", "requiredForProductionCutover": true, "redacted": true},
+    {"signalKey": "ROLLBACK_TAG", "signalType": "tag", "sourceRef": "LOCAL_SAMPLE_REF:ROLLBACK_TAG", "expectedTags": ["entrypoint", "rollback"], "thresholdRef": "EXTERNAL_REF_REQUIRED:ROLLBACK_TAG_THRESHOLD", "validationRef": "EXTERNAL_REF_REQUIRED:ROLLBACK_TAG_VALIDATE", "dashboardRef": "EXTERNAL_REF_REQUIRED:DASHBOARD_ROLLBACK_TAG", "alertRef": "EXTERNAL_REF_REQUIRED:ALERT_ROLLBACK_TAG", "requiredForProductionCutover": true, "redacted": true},
+    {"signalKey": "TRACE_CORRELATION", "signalType": "correlation", "sourceRef": "LOCAL_SAMPLE_REF:TRACE_CORRELATION", "expectedTags": ["entrypoint", "module", "routeId"], "thresholdRef": "EXTERNAL_REF_REQUIRED:TRACE_THRESHOLD", "validationRef": "EXTERNAL_REF_REQUIRED:TRACE_VALIDATE", "dashboardRef": "EXTERNAL_REF_REQUIRED:DASHBOARD_TRACE", "alertRef": "EXTERNAL_REF_REQUIRED:ALERT_TRACE", "requiredForProductionCutover": true, "redacted": true}
+  ],
+  "dashboardRefs": [
+    {"key": "UNIFIED_OVERVIEW", "ref": "EXTERNAL_REF_REQUIRED:DASHBOARD_UNIFIED_OVERVIEW"},
+    {"key": "AUDIT_WRITE_SMOKE", "ref": "EXTERNAL_REF_REQUIRED:DASHBOARD_AUDIT_WRITE_SMOKE"},
+    {"key": "HTTP_SMOKE", "ref": "EXTERNAL_REF_REQUIRED:DASHBOARD_HTTP_SMOKE"},
+    {"key": "ERROR_RATE", "ref": "EXTERNAL_REF_REQUIRED:DASHBOARD_ERROR_RATE"},
+    {"key": "LATENCY", "ref": "EXTERNAL_REF_REQUIRED:DASHBOARD_LATENCY"},
+    {"key": "BUSINESS_CODE", "ref": "EXTERNAL_REF_REQUIRED:DASHBOARD_BUSINESS_CODE"},
+    {"key": "TRACE_CORRELATION", "ref": "EXTERNAL_REF_REQUIRED:DASHBOARD_TRACE_CORRELATION"},
+    {"key": "ROLLBACK_READINESS", "ref": "EXTERNAL_REF_REQUIRED:DASHBOARD_ROLLBACK_READINESS"}
+  ],
+  "alertRefs": [
+    {"key": "AUDIT_WRITE_FAILURE", "ref": "EXTERNAL_REF_REQUIRED:ALERT_AUDIT_WRITE_FAILURE"},
+    {"key": "AUDIT_STORE_UNAVAILABLE", "ref": "EXTERNAL_REF_REQUIRED:ALERT_AUDIT_STORE_UNAVAILABLE"},
+    {"key": "HTTP_SMOKE_FAILURE", "ref": "EXTERNAL_REF_REQUIRED:ALERT_HTTP_SMOKE_FAILURE"},
+    {"key": "FIVE_XX_RATE", "ref": "EXTERNAL_REF_REQUIRED:ALERT_FIVE_XX_RATE"},
+    {"key": "LATENCY_BREACH", "ref": "EXTERNAL_REF_REQUIRED:ALERT_LATENCY_BREACH"},
+    {"key": "BUSINESS_ERROR_SURGE", "ref": "EXTERNAL_REF_REQUIRED:ALERT_BUSINESS_ERROR_SURGE"},
+    {"key": "TRACE_PIPELINE_MISSING", "ref": "EXTERNAL_REF_REQUIRED:ALERT_TRACE_PIPELINE_MISSING"},
+    {"key": "ROLLBACK_WINDOW_BREACH", "ref": "EXTERNAL_REF_REQUIRED:ALERT_ROLLBACK_WINDOW_BREACH"}
+  ],
+  "rollbackRefs": [
+    {"key": "AUDIT_STORE_ROLLBACK", "triggerRef": "EXTERNAL_REF_REQUIRED:AUDIT_STORE_ROLLBACK_TRIGGER", "validationRef": "EXTERNAL_REF_REQUIRED:AUDIT_STORE_ROLLBACK_VALIDATE", "approvalRef": "EXTERNAL_REF_REQUIRED:AUDIT_STORE_ROLLBACK_APPROVAL", "blocksCutover": true},
+    {"key": "OBSERVABILITY_DASHBOARD_ROLLBACK", "triggerRef": "EXTERNAL_REF_REQUIRED:DASHBOARD_ROLLBACK_TRIGGER", "validationRef": "EXTERNAL_REF_REQUIRED:DASHBOARD_ROLLBACK_VALIDATE", "approvalRef": "EXTERNAL_REF_REQUIRED:DASHBOARD_ROLLBACK_APPROVAL", "blocksCutover": true},
+    {"key": "ALERT_ROLLBACK", "triggerRef": "EXTERNAL_REF_REQUIRED:ALERT_ROLLBACK_TRIGGER", "validationRef": "EXTERNAL_REF_REQUIRED:ALERT_ROLLBACK_VALIDATE", "approvalRef": "EXTERNAL_REF_REQUIRED:ALERT_ROLLBACK_APPROVAL", "blocksCutover": true},
+    {"key": "TRAFFIC_ROLLBACK", "triggerRef": "EXTERNAL_REF_REQUIRED:TRAFFIC_ROLLBACK_TRIGGER", "validationRef": "EXTERNAL_REF_REQUIRED:TRAFFIC_ROLLBACK_VALIDATE", "approvalRef": "EXTERNAL_REF_REQUIRED:TRAFFIC_ROLLBACK_APPROVAL", "blocksCutover": true},
+    {"key": "RUNTIME_CONFIG_ROLLBACK", "triggerRef": "EXTERNAL_REF_REQUIRED:RUNTIME_CONFIG_ROLLBACK_TRIGGER", "validationRef": "EXTERNAL_REF_REQUIRED:RUNTIME_CONFIG_ROLLBACK_VALIDATE", "approvalRef": "EXTERNAL_REF_REQUIRED:RUNTIME_CONFIG_ROLLBACK_APPROVAL", "blocksCutover": true},
+    {"key": "OLD_ENTRYPOINT_ROLLBACK", "triggerRef": "EXTERNAL_REF_REQUIRED:OLD_ENTRYPOINT_ROLLBACK_TRIGGER", "validationRef": "EXTERNAL_REF_REQUIRED:OLD_ENTRYPOINT_ROLLBACK_VALIDATE", "approvalRef": "EXTERNAL_REF_REQUIRED:OLD_ENTRYPOINT_ROLLBACK_APPROVAL", "blocksCutover": true}
+  ],
+  "degradationPolicy": {
+    "readPathPolicy": "ordinary read paths keep local contract response when external audit store is unavailable",
+    "writePathPolicy": "business errors remain business errors and are not hidden by audit reference failure",
+    "readinessPolicy": "readyForProduction remains false until external audit and observation gates pass",
+    "rollbackPolicy": "api-gateway and five core entrypoints remain protected"
+  },
+  "redactionPolicy": {
+    "forbiddenValues": ["Authorization", "Cookie", "X-Gateway-Internal-Signature", "token", "secret", "password", "passwd", "pwd", "privateKey", "id_rsa", "jdbc:", "mongodb://", "redis://", "AKIA", "C:\\Users\\", ".env", "real IPv4", "real domain", "real dashboard URL", "real DSN", "real topic", "real bucket", "kubectl", "docker", "powershell", "cmd.exe", "ssh ", "scp "],
+    "repositoryRule": "only references and local sample paths are allowed"
+  },
+  "goNoGoImpact": {
+    "localSmokeShapeReady": true,
+    "productionCutoverAllowed": false,
+    "blockedUntil": [
+      "REAL_PERSISTENT_AUDIT_SINK_CONNECTED",
+      "REAL_AUDIT_WRITE_SMOKE_PASSED",
+      "REAL_OBSERVABILITY_PLATFORM_CONNECTED",
+      "PRODUCTION_TRAFFIC_SWITCH_APPLIED",
+      "ROLLBACK_WINDOW_COMPLETED"
+    ]
+  },
+  "verificationCommands": [
+    "mvn -q -f backend/unified-backend-service/pom.xml test",
+    "mvn -q -f backend/api-gateway-service/pom.xml test",
+    "mvn -q -f backend/business-core-service/pom.xml test",
+    "mvn -q -f backend/admission-core-service/pom.xml test",
+    "mvn -q -f backend/engagement-core-service/pom.xml test",
+    "mvn -q -f backend/ops-core-service/pom.xml test",
+    "mvn -q -f backend/portal-core-service/pom.xml test"
+  ]
+}

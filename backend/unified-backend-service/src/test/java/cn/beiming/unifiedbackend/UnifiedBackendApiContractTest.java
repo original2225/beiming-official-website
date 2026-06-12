@@ -71,6 +71,7 @@ class UnifiedBackendApiContractTest {
         addRange(mapped, "UBACK-CUTOVER-CONSISTENCY", 1, 12);
         addRange(mapped, "UBACK-EXTERNAL-VALUE-INTAKE", 1, 12);
         addRange(mapped, "UBACK-RUNTIME-CONFIG-SHELL", 1, 12);
+        addRange(mapped, "UBACK-AUDIT-OBS-SMOKE", 1, 14);
 
         assertThat(mapped).contains(
                 "UBACK-COM-001",
@@ -133,9 +134,11 @@ class UnifiedBackendApiContractTest {
                 "UBACK-EXTERNAL-VALUE-INTAKE-001",
                 "UBACK-EXTERNAL-VALUE-INTAKE-012",
                 "UBACK-RUNTIME-CONFIG-SHELL-001",
-                "UBACK-RUNTIME-CONFIG-SHELL-012"
+                "UBACK-RUNTIME-CONFIG-SHELL-012",
+                "UBACK-AUDIT-OBS-SMOKE-001",
+                "UBACK-AUDIT-OBS-SMOKE-014"
         );
-        assertThat(mapped).hasSize(239);
+        assertThat(mapped).hasSize(253);
     }
 
     @Test
@@ -2912,6 +2915,248 @@ class UnifiedBackendApiContractTest {
                 .doesNotContain("authorization")
                 .doesNotContain("token")
                 .doesNotContain("cookie")
+                .doesNotContain("secret")
+                .doesNotContain("password")
+                .doesNotContain("passwd")
+                .doesNotContain("pwd")
+                .doesNotContain("privatekey")
+                .doesNotContain("id_rsa")
+                .doesNotContain("jdbc:")
+                .doesNotContain("mongodb://")
+                .doesNotContain("redis://")
+                .doesNotContain("akia")
+                .doesNotContain("kubectl")
+                .doesNotContain("docker")
+                .doesNotContain("powershell")
+                .doesNotContain("cmd.exe")
+                .doesNotContain("ssh ")
+                .doesNotContain("scp ")
+                .doesNotContain("c:\\users\\")
+                .doesNotContain(".env");
+    }
+
+    @Test
+    void exposesProductionAuditObservabilitySmokeWithoutConnectingProductionPlatforms() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-production-audit-observability-smoke"));
+
+        assertThat(readiness.at("/data/productionAuditObservabilitySmokeStatus").asText())
+                .isEqualTo("PASS_PRODUCTION_AUDIT_OBSERVABILITY_SMOKE_REHEARSAL_NOT_PRODUCTION");
+        assertThat(readiness.at("/data/readyForProduction").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/readyToReplaceGateway").asBoolean()).isFalse();
+
+        for (String check : List.of(
+                "AUDIT_OBSERVABILITY_SMOKE_SAMPLE_PRESENT",
+                "AUDIT_OBSERVABILITY_SMOKE_SAMPLE_JSON_PARSABLE",
+                "RUNTIME_CONFIG_SHELL_REHEARSAL_REFERENCED",
+                "AUDIT_SINK_BINDING_RECORDED",
+                "AUDIT_EVENT_SCHEMA_RECORDED",
+                "REQUEST_ID_PROPAGATION_RECORDED",
+                "AUDIT_WRITE_SMOKE_REFERENCE_RECORDED",
+                "AUDIT_REPLAY_EXPORT_RETENTION_RECORDED",
+                "HTTP_SMOKE_OBSERVATION_RECORDED",
+                "ERROR_RATE_OBSERVATION_RECORDED",
+                "LATENCY_OBSERVATION_RECORDED",
+                "BUSINESS_CODE_OBSERVATION_RECORDED",
+                "TRACE_CORRELATION_RECORDED",
+                "DASHBOARD_AND_ALERT_REFERENCES_RECORDED",
+                "NO_SENSITIVE_VALUES_IN_AUDIT_OBSERVABILITY_SAMPLE",
+                "READY_FLAGS_REMAIN_FALSE",
+                "PRODUCTION_AUDIT_OBSERVABILITY_SMOKE_REHEARSAL_RECORDED")) {
+            assertPrecheck(readiness, "/data/productionAuditObservabilitySmokeChecks", check, "PASS", true);
+        }
+        assertPrecheck(readiness, "/data/productionHardeningPrecheckChecks", "PRODUCTION_AUDIT_OBSERVABILITY_SMOKE_REHEARSAL_RECORDED", "PASS", true);
+
+        JsonNode evidence = readiness.at("/data/productionAuditObservabilitySmokeEvidence");
+        assertThat(evidence.at("/readinessMode").asText())
+                .isEqualTo("LOCAL_PRODUCTION_AUDIT_OBSERVABILITY_SMOKE_REHEARSAL_NOT_PRODUCTION");
+        assertThat(evidence.at("/sampleAuditObservabilitySmokePath").asText())
+                .isEqualTo("docs/unified-backend-production-audit-observability-smoke-sample.json");
+        assertThat(evidence.at("/sampleAuditObservabilitySmokePresent").asBoolean()).isTrue();
+        assertThat(evidence.at("/sampleAuditObservabilitySmokeParsed").asBoolean()).isTrue();
+        assertThat(evidence.at("/runtimeConfigShellSampleRef").asText())
+                .isEqualTo("docs/unified-backend-production-runtime-shell-sample.json");
+        assertThat(evidence.at("/runtimeConfigShellStatusRequired").asText())
+                .isEqualTo("PASS_PRODUCTION_RUNTIME_CONFIG_SHELL_REHEARSAL_NOT_PRODUCTION");
+        assertThat(evidence.at("/auditSinkBindingRecorded").asBoolean()).isTrue();
+        assertThat(evidence.at("/auditEventSchemaRecorded").asBoolean()).isTrue();
+        assertThat(evidence.at("/requestIdPropagationRecorded").asBoolean()).isTrue();
+        assertThat(evidence.at("/auditWriteSmokeReferenceRecorded").asBoolean()).isTrue();
+        assertThat(evidence.at("/auditReplayExportRetentionRecorded").asBoolean()).isTrue();
+        assertThat(evidence.at("/httpSmokeObservationRecorded").asBoolean()).isTrue();
+        assertThat(evidence.at("/errorRateObservationRecorded").asBoolean()).isTrue();
+        assertThat(evidence.at("/latencyObservationRecorded").asBoolean()).isTrue();
+        assertThat(evidence.at("/businessCodeObservationRecorded").asBoolean()).isTrue();
+        assertThat(evidence.at("/traceCorrelationRecorded").asBoolean()).isTrue();
+        assertThat(evidence.at("/dashboardReferencesRecorded").asBoolean()).isTrue();
+        assertThat(evidence.at("/alertReferencesRecorded").asBoolean()).isTrue();
+        assertThat(evidence.at("/sampleAuditSmokeTargetsTotal").asInt()).isGreaterThanOrEqualTo(10);
+        assertThat(evidence.at("/sampleObservabilitySignalsTotal").asInt()).isGreaterThanOrEqualTo(12);
+        assertThat(evidence.at("/sampleDashboardRefsTotal").asInt()).isGreaterThanOrEqualTo(8);
+        assertThat(evidence.at("/sampleAlertRefsTotal").asInt()).isGreaterThanOrEqualTo(8);
+        assertThat(evidence.at("/sampleRollbackRefsTotal").asInt()).isGreaterThanOrEqualTo(6);
+        assertThat(evidence.at("/realValuesProvidedInRepository").asBoolean()).isFalse();
+        assertThat(evidence.at("/sensitiveValuesExposed").asBoolean()).isFalse();
+        assertThat(evidence.at("/status").asText())
+                .isEqualTo("PASS_PRODUCTION_AUDIT_OBSERVABILITY_SMOKE_REHEARSAL_NOT_PRODUCTION");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void productionAuditObservabilitySmokeKeepsRealProductionBlockersBlocked() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-production-audit-observability-smoke-blockers"));
+
+        for (String check : List.of(
+                "REAL_PERSISTENT_AUDIT_SINK_NOT_CONNECTED",
+                "REAL_AUDIT_WRITE_PATH_NOT_CONNECTED",
+                "REAL_AUDIT_WRITE_SMOKE_NOT_PASSED",
+                "REAL_AUDIT_REPLAY_EXPORT_RETENTION_NOT_CONNECTED",
+                "REAL_OBSERVABILITY_PLATFORM_NOT_CONNECTED",
+                "REAL_DASHBOARD_NOT_CONNECTED",
+                "REAL_ALERTING_NOT_CONNECTED",
+                "REAL_TRACE_PIPELINE_NOT_CONNECTED",
+                "PRODUCTION_TRAFFIC_NOT_SWITCHED",
+                "PRODUCTION_TRAFFIC_NOT_OBSERVED_ON_UNIFIED",
+                "API_GATEWAY_TRAFFIC_ZERO_NOT_PROVEN",
+                "ROLLBACK_WINDOW_NOT_COMPLETED",
+                "RETIREMENT_NOT_APPROVED")) {
+            assertPrecheck(readiness, "/data/productionAuditObservabilitySmokeChecks", check, "BLOCKED", true);
+        }
+
+        JsonNode evidence = readiness.at("/data/productionAuditObservabilitySmokeEvidence");
+        for (String field : List.of(
+                "persistentAuditSinkConnected",
+                "auditWritePathConnected",
+                "auditWriteSmokePassed",
+                "auditReplayPathConnected",
+                "auditExportPathConnected",
+                "auditRetentionJobConnected",
+                "observabilityPlatformConnected",
+                "dashboardConnected",
+                "alertingConnected",
+                "tracePipelineConnected",
+                "environmentVariablesRead",
+                "productionTrafficObservedOnUnified",
+                "apiGatewayTrafficZeroProven",
+                "rollbackWindowCompleted",
+                "retirementApproverGranted",
+                "realValuesProvidedInRepository",
+                "sensitiveValuesExposed",
+                "readyForProduction",
+                "readyToReplaceGateway")) {
+            assertThat(evidence.at("/" + field).asBoolean()).as(field).isFalse();
+        }
+        assertThat(evidence.at("/remainingProductionBlockers").toString())
+                .contains("REAL_PERSISTENT_AUDIT_SINK_CONNECTED")
+                .contains("REAL_AUDIT_WRITE_PATH_CONNECTED")
+                .contains("REAL_AUDIT_WRITE_SMOKE_PASSED")
+                .contains("REAL_OBSERVABILITY_PLATFORM_CONNECTED")
+                .contains("REAL_DASHBOARD_CONNECTED")
+                .contains("REAL_ALERTING_CONNECTED")
+                .contains("REAL_TRACE_PIPELINE_CONNECTED")
+                .contains("PRODUCTION_TRAFFIC_SWITCH_APPLIED")
+                .contains("API_GATEWAY_TRAFFIC_ZERO_PROVEN")
+                .contains("ROLLBACK_WINDOW_COMPLETED")
+                .contains("USER_RETIREMENT_APPROVAL_GRANTED");
+    }
+
+    @Test
+    void productionAuditObservabilitySmokeDoesNotLeakSensitiveRuntimeValues() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-production-audit-observability-smoke-redaction"));
+
+        String text = readiness.at("/data/productionAuditObservabilitySmokeEvidence").toString()
+                + readiness.at("/data/productionAuditObservabilitySmokeChecks");
+        assertThat(text)
+                .doesNotContain("Authorization")
+                .doesNotContain("Cookie")
+                .doesNotContain("X-Gateway-Internal-Signature")
+                .doesNotContain("C:\\Users\\")
+                .doesNotContain(".env")
+                .doesNotContain("jdbc:")
+                .doesNotContain("mongodb://")
+                .doesNotContain("redis://")
+                .doesNotContain("AKIA")
+                .doesNotContain("cmd.exe")
+                .doesNotContain("powershell")
+                .doesNotContain("kubectl")
+                .doesNotContain("docker")
+                .doesNotContain("id_rsa");
+        assertThat(text.toLowerCase()
+                .replace("auditobservabilitysmoke", "")
+                .replace("sensitivevaluesexposed", ""))
+                .doesNotContain("token")
+                .doesNotContain("cookie")
+                .doesNotContain("secret")
+                .doesNotContain("password")
+                .doesNotContain("passwd")
+                .doesNotContain("pwd")
+                .doesNotContain("privatekey")
+                .doesNotContain("dsn")
+                .doesNotContain("bucket")
+                .doesNotContain("topic");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void productionAuditObservabilitySmokeSampleFileIsParseableAndSafe() throws Exception {
+        JsonNode sample = objectMapper.readTree(Files.readString(Path.of("../../docs/unified-backend-production-audit-observability-smoke-sample.json")));
+
+        assertThat(sample.at("/sampleName").asText()).isEqualTo("beiming-unified-backend-production-audit-observability-smoke");
+        assertThat(sample.at("/mode").asText()).isEqualTo("LOCAL_PRODUCTION_AUDIT_OBSERVABILITY_SMOKE_REHEARSAL_NOT_CONNECTED");
+        assertThat(sample.at("/productionTrafficAllowed").asBoolean()).isFalse();
+        assertThat(sample.at("/realValuesAllowedInRepository").asBoolean()).isFalse();
+        assertThat(sample.at("/runtimeConfigShellSampleRef").asText())
+                .isEqualTo("docs/unified-backend-production-runtime-shell-sample.json");
+        assertThat(sample.at("/runtimeConfigShellStatusRequired").asText())
+                .isEqualTo("PASS_PRODUCTION_RUNTIME_CONFIG_SHELL_REHEARSAL_NOT_PRODUCTION");
+        assertThat(sample.at("/auditSinkBindings").size()).isGreaterThanOrEqualTo(6);
+        assertThat(sample.at("/auditEventSchema/fields").size()).isGreaterThanOrEqualTo(21);
+        assertThat(sample.at("/auditSmokeTargets").size()).isGreaterThanOrEqualTo(10);
+        assertThat(sample.at("/observabilitySignals").size()).isGreaterThanOrEqualTo(12);
+        assertThat(sample.at("/dashboardRefs").size()).isGreaterThanOrEqualTo(8);
+        assertThat(sample.at("/alertRefs").size()).isGreaterThanOrEqualTo(8);
+        assertThat(sample.at("/rollbackRefs").size()).isGreaterThanOrEqualTo(6);
+        assertThat(sample.at("/auditSmokeTargets").toString())
+                .contains("/api/v1/auth/login")
+                .contains("/api/v1/profile/me")
+                .contains("/api/v1/resources")
+                .contains("/api/v1/whitelist")
+                .contains("/api/v1/exams")
+                .contains("/api/v1/attendance")
+                .contains("/api/v1/activity")
+                .contains("/api/v1/ops-control/overview")
+                .contains("/api/v1/unified-backend/admin/readiness");
+        assertThat(sample.at("/observabilitySignals").toString())
+                .contains("HTTP_SMOKE_STATUS")
+                .contains("ERROR_RATE")
+                .contains("P95_LATENCY")
+                .contains("P99_LATENCY")
+                .contains("BUSINESS_CODE_DISTRIBUTION")
+                .contains("TRACE_CORRELATION")
+                .contains("ROLLBACK_TAG");
+        for (String arrayName : List.of("auditSinkBindings", "dashboardRefs", "alertRefs", "rollbackRefs")) {
+            for (JsonNode item : sample.at("/" + arrayName)) {
+                assertThat(item.toString())
+                        .contains("EXTERNAL_REF_REQUIRED:")
+                        .doesNotContain("http://")
+                        .doesNotContain("https://");
+            }
+        }
+
+        String safeValueText = sample.toString().toLowerCase()
+                .replace(sample.at("/redactionPolicy").toString().toLowerCase(), "")
+                .replace("tokenredacted", "")
+                .replace("redactionrequired", "");
+        assertThat(safeValueText)
+                .doesNotContain("authorization")
+                .doesNotContain("cookie")
+                .doesNotContain("x-gateway-internal-signature")
+                .doesNotContain("token")
                 .doesNotContain("secret")
                 .doesNotContain("password")
                 .doesNotContain("passwd")

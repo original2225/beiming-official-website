@@ -142,6 +142,9 @@ class UnifiedBackendController {
                 "productionRuntimeConfigShellStatus", registry.productionRuntimeConfigShellStatus(),
                 "productionRuntimeConfigShellChecks", registry.productionRuntimeConfigShellChecks(),
                 "productionRuntimeConfigShellEvidence", registry.productionRuntimeConfigShellEvidence(),
+                "productionAuditObservabilitySmokeStatus", registry.productionAuditObservabilitySmokeStatus(),
+                "productionAuditObservabilitySmokeChecks", registry.productionAuditObservabilitySmokeChecks(),
+                "productionAuditObservabilitySmokeEvidence", registry.productionAuditObservabilitySmokeEvidence(),
                 "productionExternalValueIntakeRehearsalStatus", registry.productionExternalValueIntakeRehearsalStatus(),
                 "productionExternalValueIntakeRehearsalChecks", registry.productionExternalValueIntakeRehearsalChecks(),
                 "productionExternalValueIntakeRehearsalEvidence", registry.productionExternalValueIntakeRehearsalEvidence(),
@@ -2243,6 +2246,299 @@ record ProductionRuntimeConfigShellSnapshot(
 ) {
 }
 
+interface UnifiedProductionAuditObservabilitySmokeRehearsal {
+    ProductionAuditObservabilitySmokeSnapshot snapshot();
+}
+
+final class LocalFileProductionAuditObservabilitySmokeRehearsal implements UnifiedProductionAuditObservabilitySmokeRehearsal {
+    private static final List<String> FORBIDDEN_FRAGMENTS = List.of(
+            "authorization",
+            "x-gateway-internal-signature",
+            "c:\\users\\",
+            ".env",
+            "jdbc:",
+            "mongodb://",
+            "redis://",
+            "id_rsa",
+            "akia",
+            "token",
+            "cookie",
+            "secret",
+            "password",
+            "passwd",
+            "pwd",
+            "privatekey",
+            "kubectl",
+            "docker",
+            "powershell",
+            "cmd.exe",
+            "ssh ",
+            "scp ",
+            "http://",
+            "https://"
+    );
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @Override
+    public ProductionAuditObservabilitySmokeSnapshot snapshot() {
+        Path samplePath = locateSamplePath();
+        JsonNode sample = readSample(samplePath);
+        boolean present = Files.exists(samplePath);
+        boolean parsed = present && !sample.isMissingNode();
+        JsonNode auditSinkBindings = sample.path("auditSinkBindings");
+        JsonNode auditSmokeTargets = sample.path("auditSmokeTargets");
+        JsonNode observabilitySignals = sample.path("observabilitySignals");
+        JsonNode dashboardRefs = sample.path("dashboardRefs");
+        JsonNode alertRefs = sample.path("alertRefs");
+        JsonNode rollbackRefs = sample.path("rollbackRefs");
+        String sampleText = sample.toString();
+        boolean runtimeShellReferenced = "docs/unified-backend-production-runtime-shell-sample.json"
+                .equals(sample.path("runtimeConfigShellSampleRef").asText())
+                && "PASS_PRODUCTION_RUNTIME_CONFIG_SHELL_REHEARSAL_NOT_PRODUCTION"
+                .equals(sample.path("runtimeConfigShellStatusRequired").asText());
+        boolean auditSinkBindingRecorded = auditSinkBindings.size() >= 6 && allItemsUseExternalRefs(auditSinkBindings)
+                && !anyBooleanValue(auditSinkBindings, "realValueProvidedInRepository");
+        boolean auditEventSchemaRecorded = sample.at("/auditEventSchema/fields").size() >= 21
+                && sample.at("/auditEventSchema/fields").toString().contains("requestId")
+                && sample.at("/auditEventSchema/fields").toString().contains("result");
+        boolean requestIdPropagationRecorded = sampleText.contains("requestId");
+        boolean auditWriteSmokeReferenceRecorded = auditSmokeTargets.size() >= 10
+                && everyItemHasText(auditSmokeTargets, "writeSmokeValidationRef", "EXTERNAL_REF_REQUIRED:");
+        boolean auditReplayExportRetentionRecorded = sampleText.contains("AUDIT_REPLAY")
+                && sampleText.contains("AUDIT_EXPORT")
+                && sampleText.contains("AUDIT_RETENTION");
+        boolean httpSmokeObservationRecorded = containsSignal(observabilitySignals, "HTTP_SMOKE_STATUS");
+        boolean errorRateObservationRecorded = containsSignal(observabilitySignals, "ERROR_RATE");
+        boolean latencyObservationRecorded = containsSignal(observabilitySignals, "P95_LATENCY")
+                && containsSignal(observabilitySignals, "P99_LATENCY");
+        boolean businessCodeObservationRecorded = containsSignal(observabilitySignals, "BUSINESS_CODE_DISTRIBUTION");
+        boolean traceCorrelationRecorded = containsSignal(observabilitySignals, "TRACE_CORRELATION");
+        boolean dashboardReferencesRecorded = dashboardRefs.size() >= 8 && allItemsUseExternalRefs(dashboardRefs);
+        boolean alertReferencesRecorded = alertRefs.size() >= 8 && allItemsUseExternalRefs(alertRefs);
+        boolean rollbackReferencesRecorded = rollbackRefs.size() >= 6 && allItemsUseExternalRefs(rollbackRefs);
+        boolean realValuesProvided = sample.path("realValuesAllowedInRepository").asBoolean(false)
+                || anyBooleanValue(auditSinkBindings, "realValueProvidedInRepository");
+        boolean sensitiveValuesExposed = containsSensitiveValues(sample);
+        boolean localRehearsalPassed = parsed
+                && !sample.path("productionTrafficAllowed").asBoolean(true)
+                && !sample.path("realValuesAllowedInRepository").asBoolean(true)
+                && runtimeShellReferenced
+                && auditSinkBindingRecorded
+                && auditEventSchemaRecorded
+                && requestIdPropagationRecorded
+                && auditWriteSmokeReferenceRecorded
+                && auditReplayExportRetentionRecorded
+                && httpSmokeObservationRecorded
+                && errorRateObservationRecorded
+                && latencyObservationRecorded
+                && businessCodeObservationRecorded
+                && traceCorrelationRecorded
+                && dashboardReferencesRecorded
+                && alertReferencesRecorded
+                && rollbackReferencesRecorded
+                && !realValuesProvided
+                && !sensitiveValuesExposed;
+        return new ProductionAuditObservabilitySmokeSnapshot(
+                "LOCAL_PRODUCTION_AUDIT_OBSERVABILITY_SMOKE_REHEARSAL_NOT_PRODUCTION",
+                "docs/unified-backend-production-audit-observability-smoke-sample.json",
+                present,
+                parsed,
+                sample.path("runtimeConfigShellSampleRef").asText("docs/unified-backend-production-runtime-shell-sample.json"),
+                sample.path("runtimeConfigShellStatusRequired").asText("PASS_PRODUCTION_RUNTIME_CONFIG_SHELL_REHEARSAL_NOT_PRODUCTION"),
+                runtimeShellReferenced,
+                auditSinkBindingRecorded,
+                auditEventSchemaRecorded,
+                requestIdPropagationRecorded,
+                auditWriteSmokeReferenceRecorded,
+                auditReplayExportRetentionRecorded,
+                httpSmokeObservationRecorded,
+                errorRateObservationRecorded,
+                latencyObservationRecorded,
+                businessCodeObservationRecorded,
+                traceCorrelationRecorded,
+                dashboardReferencesRecorded,
+                alertReferencesRecorded,
+                rollbackReferencesRecorded,
+                auditSmokeTargets.size(),
+                observabilitySignals.size(),
+                dashboardRefs.size(),
+                alertRefs.size(),
+                rollbackRefs.size(),
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                realValuesProvided,
+                sensitiveValuesExposed,
+                List.of(
+                        "REAL_PERSISTENT_AUDIT_SINK_CONNECTED",
+                        "REAL_AUDIT_WRITE_PATH_CONNECTED",
+                        "REAL_AUDIT_WRITE_SMOKE_PASSED",
+                        "REAL_AUDIT_REPLAY_EXPORT_RETENTION_CONNECTED",
+                        "REAL_OBSERVABILITY_PLATFORM_CONNECTED",
+                        "REAL_DASHBOARD_CONNECTED",
+                        "REAL_ALERTING_CONNECTED",
+                        "REAL_TRACE_PIPELINE_CONNECTED",
+                        "PRODUCTION_TRAFFIC_SWITCH_APPLIED",
+                        "PRODUCTION_TRAFFIC_OBSERVED_ON_UNIFIED",
+                        "API_GATEWAY_TRAFFIC_ZERO_PROVEN",
+                        "ROLLBACK_WINDOW_COMPLETED",
+                        "USER_RETIREMENT_APPROVAL_GRANTED"
+                ),
+                localRehearsalPassed
+                        ? "PASS_PRODUCTION_AUDIT_OBSERVABILITY_SMOKE_REHEARSAL_NOT_PRODUCTION"
+                        : "BLOCKED_BY_PRODUCTION_AUDIT_OBSERVABILITY_SMOKE_SAMPLE_NOT_AVAILABLE"
+        );
+    }
+
+    private JsonNode readSample(Path samplePath) {
+        try {
+            if (Files.exists(samplePath)) {
+                return objectMapper.readTree(Files.readString(samplePath));
+            }
+        } catch (IOException ignored) {
+            return objectMapper.getNodeFactory().missingNode();
+        }
+        return objectMapper.getNodeFactory().missingNode();
+    }
+
+    private boolean containsSignal(JsonNode signals, String signalKey) {
+        for (JsonNode signal : signals) {
+            if (signalKey.equals(signal.path("signalKey").asText())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean everyItemHasText(JsonNode values, String fieldName, String fragment) {
+        for (JsonNode value : values) {
+            if (!value.path(fieldName).asText().contains(fragment)) {
+                return false;
+            }
+        }
+        return values.size() > 0;
+    }
+
+    private boolean allItemsUseExternalRefs(JsonNode values) {
+        for (JsonNode value : values) {
+            String text = value.toString();
+            if (!text.contains("EXTERNAL_REF_REQUIRED:") || text.contains("http://") || text.contains("https://")) {
+                return false;
+            }
+        }
+        return values.size() > 0;
+    }
+
+    private boolean anyBooleanValue(JsonNode values, String fieldName) {
+        for (JsonNode value : values) {
+            if (value.path(fieldName).asBoolean(false)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean containsSensitiveValues(JsonNode sample) {
+        String text = scalarTextWithoutRedactionPolicy(sample).toLowerCase(Locale.ROOT)
+                .replace("auditobservabilitysmoke", "")
+                .replace("sensitivevaluesexposed", "");
+        return FORBIDDEN_FRAGMENTS.stream().anyMatch(text::contains);
+    }
+
+    private String scalarTextWithoutRedactionPolicy(JsonNode node) {
+        StringBuilder values = new StringBuilder();
+        appendScalarText(node, values, false);
+        return values.toString();
+    }
+
+    private void appendScalarText(JsonNode node, StringBuilder values, boolean insideRedactionPolicy) {
+        if (node.isObject()) {
+            node.fields().forEachRemaining(entry -> appendScalarText(entry.getValue(), values,
+                    insideRedactionPolicy || "redactionPolicy".equals(entry.getKey())));
+        } else if (node.isArray()) {
+            for (JsonNode child : node) {
+                appendScalarText(child, values, insideRedactionPolicy);
+            }
+        } else if (!insideRedactionPolicy && node.isValueNode()) {
+            values.append(node.asText()).append(' ');
+        }
+    }
+
+    private Path locateSamplePath() {
+        List<Path> candidates = List.of(
+                Path.of("docs", "unified-backend-production-audit-observability-smoke-sample.json"),
+                Path.of("..", "docs", "unified-backend-production-audit-observability-smoke-sample.json"),
+                Path.of("..", "..", "docs", "unified-backend-production-audit-observability-smoke-sample.json")
+        );
+        for (Path candidate : candidates) {
+            if (Files.exists(candidate)) {
+                return candidate.normalize();
+            }
+        }
+        return candidates.get(0).normalize();
+    }
+}
+
+record ProductionAuditObservabilitySmokeSnapshot(
+        String readinessMode,
+        String sampleAuditObservabilitySmokePath,
+        boolean sampleAuditObservabilitySmokePresent,
+        boolean sampleAuditObservabilitySmokeParsed,
+        String runtimeConfigShellSampleRef,
+        String runtimeConfigShellStatusRequired,
+        boolean runtimeConfigShellRehearsalReferenced,
+        boolean auditSinkBindingRecorded,
+        boolean auditEventSchemaRecorded,
+        boolean requestIdPropagationRecorded,
+        boolean auditWriteSmokeReferenceRecorded,
+        boolean auditReplayExportRetentionRecorded,
+        boolean httpSmokeObservationRecorded,
+        boolean errorRateObservationRecorded,
+        boolean latencyObservationRecorded,
+        boolean businessCodeObservationRecorded,
+        boolean traceCorrelationRecorded,
+        boolean dashboardReferencesRecorded,
+        boolean alertReferencesRecorded,
+        boolean rollbackReferencesRecorded,
+        int sampleAuditSmokeTargetsTotal,
+        int sampleObservabilitySignalsTotal,
+        int sampleDashboardRefsTotal,
+        int sampleAlertRefsTotal,
+        int sampleRollbackRefsTotal,
+        boolean persistentAuditSinkConnected,
+        boolean auditWritePathConnected,
+        boolean auditWriteSmokePassed,
+        boolean auditReplayPathConnected,
+        boolean auditExportPathConnected,
+        boolean auditRetentionJobConnected,
+        boolean observabilityPlatformConnected,
+        boolean dashboardConnected,
+        boolean alertingConnected,
+        boolean tracePipelineConnected,
+        boolean environmentVariablesRead,
+        boolean productionTrafficObservedOnUnified,
+        boolean apiGatewayTrafficZeroProven,
+        boolean rollbackWindowCompleted,
+        boolean retirementApproverGranted,
+        boolean realValuesProvidedInRepository,
+        boolean sensitiveValuesExposed,
+        List<String> remainingProductionBlockers,
+        String status
+) {
+}
+
 @Component
 class UnifiedBackendRegistry {
     private static final List<String> MOUNTED_ENTRYPOINTS = List.of("api-gateway", "business-core", "admission-core", "engagement-core", "ops-core", "portal-core");
@@ -2262,6 +2558,7 @@ class UnifiedBackendRegistry {
     private final UnifiedProductionCutoverEvidenceConsistencyAudit evidenceConsistencyAudit;
     private final UnifiedProductionExternalValueIntakeRehearsal externalValueIntakeRehearsal;
     private final UnifiedProductionRuntimeConfigShellRehearsal runtimeConfigShellRehearsal = new LocalFileProductionRuntimeConfigShellRehearsal();
+    private final UnifiedProductionAuditObservabilitySmokeRehearsal auditObservabilitySmokeRehearsal = new LocalFileProductionAuditObservabilitySmokeRehearsal();
     private final List<UnifiedMount> gatewayRoutes = createGatewayRoutes();
 
     UnifiedBackendRegistry() {
@@ -3744,6 +4041,96 @@ class UnifiedBackendRegistry {
         );
     }
 
+    String productionAuditObservabilitySmokeStatus() {
+        return auditObservabilitySmokeRehearsal.snapshot().status();
+    }
+
+    List<Map<String, Object>> productionAuditObservabilitySmokeChecks() {
+        ProductionAuditObservabilitySmokeSnapshot snapshot = auditObservabilitySmokeRehearsal.snapshot();
+        return List.of(
+                switchCheck("AUDIT_OBSERVABILITY_SMOKE_SAMPLE_PRESENT", snapshot.sampleAuditObservabilitySmokePresent() ? "PASS" : "BLOCKED", "audit observability smoke sample is present", true),
+                switchCheck("AUDIT_OBSERVABILITY_SMOKE_SAMPLE_JSON_PARSABLE", snapshot.sampleAuditObservabilitySmokeParsed() ? "PASS" : "BLOCKED", "audit observability smoke sample is parseable JSON", true),
+                switchCheck("RUNTIME_CONFIG_SHELL_REHEARSAL_REFERENCED", snapshot.runtimeConfigShellRehearsalReferenced() ? "PASS" : "BLOCKED", "runtime config shell rehearsal is referenced", true),
+                switchCheck("AUDIT_SINK_BINDING_RECORDED", snapshot.auditSinkBindingRecorded() ? "PASS" : "BLOCKED", "audit store binding references are recorded", true),
+                switchCheck("AUDIT_EVENT_SCHEMA_RECORDED", snapshot.auditEventSchemaRecorded() ? "PASS" : "BLOCKED", "audit event schema is recorded", true),
+                switchCheck("REQUEST_ID_PROPAGATION_RECORDED", snapshot.requestIdPropagationRecorded() ? "PASS" : "BLOCKED", "request id propagation is recorded", true),
+                switchCheck("AUDIT_WRITE_SMOKE_REFERENCE_RECORDED", snapshot.auditWriteSmokeReferenceRecorded() ? "PASS" : "BLOCKED", "audit write smoke references are recorded", true),
+                switchCheck("AUDIT_REPLAY_EXPORT_RETENTION_RECORDED", snapshot.auditReplayExportRetentionRecorded() ? "PASS" : "BLOCKED", "audit replay, export and retention references are recorded", true),
+                switchCheck("HTTP_SMOKE_OBSERVATION_RECORDED", snapshot.httpSmokeObservationRecorded() ? "PASS" : "BLOCKED", "HTTP smoke observation reference is recorded", true),
+                switchCheck("ERROR_RATE_OBSERVATION_RECORDED", snapshot.errorRateObservationRecorded() ? "PASS" : "BLOCKED", "error rate observation reference is recorded", true),
+                switchCheck("LATENCY_OBSERVATION_RECORDED", snapshot.latencyObservationRecorded() ? "PASS" : "BLOCKED", "latency observation references are recorded", true),
+                switchCheck("BUSINESS_CODE_OBSERVATION_RECORDED", snapshot.businessCodeObservationRecorded() ? "PASS" : "BLOCKED", "business code observation reference is recorded", true),
+                switchCheck("TRACE_CORRELATION_RECORDED", snapshot.traceCorrelationRecorded() ? "PASS" : "BLOCKED", "trace correlation reference is recorded", true),
+                switchCheck("DASHBOARD_AND_ALERT_REFERENCES_RECORDED", snapshot.dashboardReferencesRecorded() && snapshot.alertReferencesRecorded() ? "PASS" : "BLOCKED", "dashboard and alert references are recorded", true),
+                switchCheck("NO_SENSITIVE_VALUES_IN_AUDIT_OBSERVABILITY_SAMPLE", snapshot.sensitiveValuesExposed() ? "BLOCKED" : "PASS", "audit observability smoke sample has no sensitive runtime values", true),
+                switchCheck("READY_FLAGS_REMAIN_FALSE", "PASS", "readyForProduction and readyToReplaceGateway remain false", true),
+                switchCheck("PRODUCTION_AUDIT_OBSERVABILITY_SMOKE_REHEARSAL_RECORDED", "PASS", "local audit observability smoke rehearsal is recorded without production traffic", true),
+                switchCheck("REAL_PERSISTENT_AUDIT_SINK_NOT_CONNECTED", "BLOCKED", "real persistent audit sink is not connected", true),
+                switchCheck("REAL_AUDIT_WRITE_PATH_NOT_CONNECTED", "BLOCKED", "real audit write path is not connected", true),
+                switchCheck("REAL_AUDIT_WRITE_SMOKE_NOT_PASSED", "BLOCKED", "real audit write smoke has not passed", true),
+                switchCheck("REAL_AUDIT_REPLAY_EXPORT_RETENTION_NOT_CONNECTED", "BLOCKED", "real audit replay, export and retention paths are not connected", true),
+                switchCheck("REAL_OBSERVABILITY_PLATFORM_NOT_CONNECTED", "BLOCKED", "real observability platform is not connected", true),
+                switchCheck("REAL_DASHBOARD_NOT_CONNECTED", "BLOCKED", "real dashboard is not connected", true),
+                switchCheck("REAL_ALERTING_NOT_CONNECTED", "BLOCKED", "real alerting is not connected", true),
+                switchCheck("REAL_TRACE_PIPELINE_NOT_CONNECTED", "BLOCKED", "real trace pipeline is not connected", true),
+                switchCheck("PRODUCTION_TRAFFIC_NOT_SWITCHED", "BLOCKED", "production traffic is not switched to unified-backend", true),
+                switchCheck("PRODUCTION_TRAFFIC_NOT_OBSERVED_ON_UNIFIED", "BLOCKED", "production traffic is not observed on unified-backend", true),
+                switchCheck("API_GATEWAY_TRAFFIC_ZERO_NOT_PROVEN", "BLOCKED", "api-gateway zero production traffic is not proven", true),
+                switchCheck("ROLLBACK_WINDOW_NOT_COMPLETED", "BLOCKED", "rollback window is not completed", true),
+                switchCheck("RETIREMENT_NOT_APPROVED", "BLOCKED", "entrypoint retirement is not approved", true)
+        );
+    }
+
+    Map<String, Object> productionAuditObservabilitySmokeEvidence() {
+        ProductionAuditObservabilitySmokeSnapshot snapshot = auditObservabilitySmokeRehearsal.snapshot();
+        return map(
+                "readinessMode", snapshot.readinessMode(),
+                "sampleAuditObservabilitySmokePath", snapshot.sampleAuditObservabilitySmokePath(),
+                "sampleAuditObservabilitySmokePresent", snapshot.sampleAuditObservabilitySmokePresent(),
+                "sampleAuditObservabilitySmokeParsed", snapshot.sampleAuditObservabilitySmokeParsed(),
+                "runtimeConfigShellSampleRef", snapshot.runtimeConfigShellSampleRef(),
+                "runtimeConfigShellStatusRequired", snapshot.runtimeConfigShellStatusRequired(),
+                "auditSinkBindingRecorded", snapshot.auditSinkBindingRecorded(),
+                "auditEventSchemaRecorded", snapshot.auditEventSchemaRecorded(),
+                "requestIdPropagationRecorded", snapshot.requestIdPropagationRecorded(),
+                "auditWriteSmokeReferenceRecorded", snapshot.auditWriteSmokeReferenceRecorded(),
+                "auditReplayExportRetentionRecorded", snapshot.auditReplayExportRetentionRecorded(),
+                "httpSmokeObservationRecorded", snapshot.httpSmokeObservationRecorded(),
+                "errorRateObservationRecorded", snapshot.errorRateObservationRecorded(),
+                "latencyObservationRecorded", snapshot.latencyObservationRecorded(),
+                "businessCodeObservationRecorded", snapshot.businessCodeObservationRecorded(),
+                "traceCorrelationRecorded", snapshot.traceCorrelationRecorded(),
+                "dashboardReferencesRecorded", snapshot.dashboardReferencesRecorded(),
+                "alertReferencesRecorded", snapshot.alertReferencesRecorded(),
+                "sampleAuditSmokeTargetsTotal", snapshot.sampleAuditSmokeTargetsTotal(),
+                "sampleObservabilitySignalsTotal", snapshot.sampleObservabilitySignalsTotal(),
+                "sampleDashboardRefsTotal", snapshot.sampleDashboardRefsTotal(),
+                "sampleAlertRefsTotal", snapshot.sampleAlertRefsTotal(),
+                "sampleRollbackRefsTotal", snapshot.sampleRollbackRefsTotal(),
+                "persistentAuditSinkConnected", snapshot.persistentAuditSinkConnected(),
+                "auditWritePathConnected", snapshot.auditWritePathConnected(),
+                "auditWriteSmokePassed", snapshot.auditWriteSmokePassed(),
+                "auditReplayPathConnected", snapshot.auditReplayPathConnected(),
+                "auditExportPathConnected", snapshot.auditExportPathConnected(),
+                "auditRetentionJobConnected", snapshot.auditRetentionJobConnected(),
+                "observabilityPlatformConnected", snapshot.observabilityPlatformConnected(),
+                "dashboardConnected", snapshot.dashboardConnected(),
+                "alertingConnected", snapshot.alertingConnected(),
+                "tracePipelineConnected", snapshot.tracePipelineConnected(),
+                "environmentVariablesRead", snapshot.environmentVariablesRead(),
+                "productionTrafficObservedOnUnified", snapshot.productionTrafficObservedOnUnified(),
+                "apiGatewayTrafficZeroProven", snapshot.apiGatewayTrafficZeroProven(),
+                "rollbackWindowCompleted", snapshot.rollbackWindowCompleted(),
+                "retirementApproverGranted", snapshot.retirementApproverGranted(),
+                "realValuesProvidedInRepository", snapshot.realValuesProvidedInRepository(),
+                "sensitiveValuesExposed", snapshot.sensitiveValuesExposed(),
+                "readyForProduction", false,
+                "readyToReplaceGateway", false,
+                "remainingProductionBlockers", snapshot.remainingProductionBlockers(),
+                "status", snapshot.status()
+        );
+    }
+
     List<Map<String, Object>> productionAuditSinkPrecheckChecks() {
         return List.of(
                 switchCheck("AUDIT_EVENT_SCHEMA_FIXED", "PASS", "production audit event fields are fixed before sink connection", true),
@@ -3884,6 +4271,7 @@ class UnifiedBackendRegistry {
                 switchCheck("CUTOVER_EVIDENCE_CONSISTENCY_AUDIT_RECORDED", "PASS", "local cutover evidence consistency audit is recorded without applying production traffic", true),
                 switchCheck("EXTERNAL_VALUE_INTAKE_REHEARSAL_RECORDED", "PASS", "external value intake rehearsal is recorded without importing real values", true),
                 switchCheck("PRODUCTION_RUNTIME_CONFIG_SHELL_REHEARSAL_RECORDED", "PASS", "production runtime config shell rehearsal is recorded without binding real runtime", true),
+                switchCheck("PRODUCTION_AUDIT_OBSERVABILITY_SMOKE_REHEARSAL_RECORDED", "PASS", "production audit observability smoke rehearsal is recorded without connecting real platforms", true),
                 switchCheck("ROLLBACK_RECHECK_COMMANDS_DEFINED", "PASS", "rollback recheck commands are recorded for candidate and rollback entrypoints", true),
                 switchCheck("SMOKE_EVIDENCE_FORMAT_DEFINED", "PASS", "smoke evidence format is recorded without treating it as production switch proof", true),
                 switchCheck("CENTRAL_CONFIG_PROVIDER_CONNECTED", "BLOCKED", "centralized production configuration provider is not connected", true),
