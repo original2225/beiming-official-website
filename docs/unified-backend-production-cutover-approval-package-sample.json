@@ -220,6 +220,18 @@
       "status": "BLOCKED"
     },
     {
+      "item": "PRODUCTION_TRAFFIC_SWITCH_APPLIED",
+      "status": "BLOCKED"
+    },
+    {
+      "item": "API_GATEWAY_TRAFFIC_ZERO_PROVEN",
+      "status": "BLOCKED"
+    },
+    {
+      "item": "ROLLBACK_WINDOW_COMPLETED",
+      "status": "BLOCKED"
+    },
+    {
       "item": "ROLLBACK_OPERATOR_APPROVED",
       "status": "BLOCKED"
     },

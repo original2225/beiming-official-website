@@ -29,18 +29,29 @@
     "externalEntrypointLocalCutoverRehearsalStatus=PASS_LOCAL_REHEARSAL_NOT_PRODUCTION",
     "productionCentralConfigProviderStatus=PASS_LOCAL_FILE_PROVIDER_REHEARSAL_NOT_PRODUCTION",
     "auditSinkAdapterRehearsalStatus=PASS_LOCAL_AUDIT_SINK_REHEARSAL_NOT_PRODUCTION",
+    "productionCutoverExternalParameterManifestStatus=PASS_REDACTED_EXTERNAL_PARAMETER_MANIFEST_REHEARSAL_NOT_PRODUCTION",
     "routeDriftPrecheckStatus=PASS",
     "backendSingleServicePrecheckStatus=PASS",
     "singleServiceCutoverPrecheckStatus=PASS_READY_FOR_EXTERNAL_CUTOVER"
   ],
+  "externalParameterManifest": {
+    "path": "docs/unified-backend-production-cutover-external-parameters-sample.json",
+    "manifestApplied": false,
+    "realValuesProvidedInRepository": false,
+    "productionTrafficAllowed": false
+  },
   "preCutoverChecks": [
     { "check": "REAL_EXTERNAL_ENTRYPOINT_CONFIG_APPLIED", "status": "REQUIRED_EXTERNAL_INPUT" },
     { "check": "REAL_CENTRAL_CONFIG_PROVIDER_CONNECTED", "status": "REQUIRED_EXTERNAL_INPUT" },
     { "check": "PRODUCTION_PROFILE_BOUND", "status": "REQUIRED_EXTERNAL_INPUT" },
     { "check": "SENSITIVE_CONFIG_SOURCE_EXTERNALIZED", "status": "REQUIRED_EXTERNAL_INPUT" },
     { "check": "REAL_PERSISTENT_AUDIT_SINK_CONNECTED", "status": "REQUIRED_EXTERNAL_INPUT" },
+    { "check": "REAL_AUDIT_WRITE_SMOKE_PASSED", "status": "REQUIRED_EXTERNAL_INPUT" },
     { "check": "CONTROLLED_CUTOVER_WINDOW_APPROVED", "status": "REQUIRED_EXTERNAL_INPUT" },
+    { "check": "PRODUCTION_TRAFFIC_SWITCH_APPLIED", "status": "REQUIRED_EXTERNAL_INPUT" },
     { "check": "PRODUCTION_TRAFFIC_OBSERVATION_READY", "status": "REQUIRED_EXTERNAL_INPUT" },
+    { "check": "API_GATEWAY_TRAFFIC_ZERO_PROVEN", "status": "REQUIRED_EXTERNAL_INPUT" },
+    { "check": "ROLLBACK_WINDOW_COMPLETED", "status": "REQUIRED_EXTERNAL_INPUT" },
     { "check": "ROLLBACK_OPERATOR_ASSIGNED", "status": "REQUIRED_EXTERNAL_INPUT" },
     { "check": "RETIREMENT_APPROVER_ASSIGNED", "status": "REQUIRED_EXTERNAL_INPUT" }
   ],

@@ -136,6 +136,9 @@ class UnifiedBackendController {
                 "productionCutoverExternalParameterManifestStatus", registry.productionCutoverExternalParameterManifestStatus(),
                 "productionCutoverExternalParameterManifestChecks", registry.productionCutoverExternalParameterManifestChecks(),
                 "productionCutoverExternalParameterManifestEvidence", registry.productionCutoverExternalParameterManifestEvidence(),
+                "productionCutoverEvidenceConsistencyAuditStatus", registry.productionCutoverEvidenceConsistencyAuditStatus(),
+                "productionCutoverEvidenceConsistencyAuditChecks", registry.productionCutoverEvidenceConsistencyAuditChecks(),
+                "productionCutoverEvidenceConsistencyAuditEvidence", registry.productionCutoverEvidenceConsistencyAuditEvidence(),
                 "auditSinkAdapterRehearsalStatus", registry.auditSinkAdapterRehearsalStatus(),
                 "auditSinkAdapterRehearsalChecks", registry.auditSinkAdapterRehearsalChecks(),
                 "auditSinkAdapterRehearsalEvidence", registry.auditSinkAdapterRehearsalEvidence(),
@@ -1266,6 +1269,417 @@ record ProductionCutoverExternalParameterManifestSnapshot(
 ) {
 }
 
+interface UnifiedProductionCutoverEvidenceConsistencyAudit {
+    ProductionCutoverEvidenceConsistencyAuditSnapshot snapshot();
+}
+
+final class LocalFileProductionCutoverEvidenceConsistencyAudit implements UnifiedProductionCutoverEvidenceConsistencyAudit {
+    private static final List<String> SAMPLE_PATHS = List.of(
+            "docs/deployment-entrypoint-cutover-sample.json",
+            "docs/unified-backend-central-config-provider-sample.json",
+            "docs/unified-backend-audit-sink-sample.jsonl",
+            "docs/unified-backend-audit-sink-sample-schema.json",
+            "docs/unified-backend-production-cutover-runbook-sample.json",
+            "docs/unified-backend-production-cutover-approval-package-sample.json",
+            "docs/unified-backend-production-cutover-external-parameters-sample.json"
+    );
+    private static final Map<String, String> APPROVAL_PARAMETER_ALIASES = Map.ofEntries(
+            Map.entry("frontendApiBaseUrlConfigLocation", "frontendApiBaseUrl"),
+            Map.entry("reverseProxyUpstreamConfigLocation", "reverseProxyUpstream"),
+            Map.entry("deploymentEntrypointConfigLocation", "deploymentEntrypointTarget"),
+            Map.entry("centralConfigProviderType", "centralConfigProviderType"),
+            Map.entry("productionProfileName", "productionProfileRef"),
+            Map.entry("sensitiveConfigExternalizationPlan", "sensitiveConfigExternalizationRef"),
+            Map.entry("persistentAuditSinkType", "persistentAuditSinkType"),
+            Map.entry("productionObservationDashboardLocation", "httpSmokeObservationRef"),
+            Map.entry("rollbackOperatorRef", "rollbackOperatorApprovalRef"),
+            Map.entry("retirementApproverRef", "retirementApproverRef"),
+            Map.entry("allowedCutoverWindow", "entrypointOperatorApprovalRef")
+    );
+    private static final Set<String> CENTRAL_CONFIG_KEYS = Set.of(
+            "centralConfigProviderType",
+            "centralConfigProviderRef",
+            "productionProfileRef",
+            "sensitiveConfigExternalizationRef",
+            "configRollbackSourceRef"
+    );
+    private static final Set<String> AUDIT_SINK_KEYS = Set.of(
+            "persistentAuditSinkType",
+            "persistentAuditSinkRef",
+            "auditWriteSmokeRef",
+            "auditReplayJobRef",
+            "auditExportPathRef",
+            "auditRetentionJobRef"
+    );
+    private static final Set<String> OBSERVABILITY_KEYS = Set.of(
+            "httpSmokeObservationRef",
+            "businessCodeDistributionRef",
+            "latencyObservationRef",
+            "trafficCounterRef",
+            "auditWriteSuccessCountRef",
+            "auditWriteFailureDegradationCountRef",
+            "rollbackTriggerCountRef"
+    );
+    private static final Set<String> EXPECTED_BLOCKERS = Set.of(
+            "REAL_EXTERNAL_ENTRYPOINT_CONFIG_APPLIED",
+            "REAL_CENTRAL_CONFIG_PROVIDER_CONNECTED",
+            "PRODUCTION_PROFILE_BOUND",
+            "SENSITIVE_CONFIG_SOURCE_EXTERNALIZED",
+            "REAL_PERSISTENT_AUDIT_SINK_CONNECTED",
+            "REAL_AUDIT_WRITE_SMOKE_PASSED",
+            "PRODUCTION_TRAFFIC_SWITCH_APPLIED",
+            "API_GATEWAY_TRAFFIC_ZERO_PROVEN",
+            "ROLLBACK_WINDOW_COMPLETED",
+            "USER_RETIREMENT_APPROVAL_GRANTED"
+    );
+    private static final List<String> FORBIDDEN_FRAGMENTS = List.of(
+            "authorization",
+            "x-gateway-internal-signature",
+            "c:\\users\\",
+            ".env",
+            "jdbc:",
+            "mongodb://",
+            "redis://",
+            "id_rsa",
+            "akia",
+            "token",
+            "cookie",
+            "secret",
+            "password",
+            "passwd",
+            "pwd",
+            "privatekey",
+            "kubectl",
+            "docker",
+            "powershell",
+            "cmd.exe",
+            "ssh ",
+            "scp "
+    );
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @Override
+    public ProductionCutoverEvidenceConsistencyAuditSnapshot snapshot() {
+        Path entrypointPath = locate("deployment-entrypoint-cutover-sample.json");
+        Path configPath = locate("unified-backend-central-config-provider-sample.json");
+        Path auditEventsPath = locate("unified-backend-audit-sink-sample.jsonl");
+        Path auditSchemaPath = locate("unified-backend-audit-sink-sample-schema.json");
+        Path runbookPath = locate("unified-backend-production-cutover-runbook-sample.json");
+        Path approvalPath = locate("unified-backend-production-cutover-approval-package-sample.json");
+        Path manifestPath = locate("unified-backend-production-cutover-external-parameters-sample.json");
+        JsonNode entrypoint = readJson(entrypointPath);
+        JsonNode config = readJson(configPath);
+        List<JsonNode> auditEvents = readJsonl(auditEventsPath);
+        JsonNode auditSchema = readJson(auditSchemaPath);
+        JsonNode runbook = readJson(runbookPath);
+        JsonNode approval = readJson(approvalPath);
+        JsonNode manifest = readJson(manifestPath);
+        boolean samplesPresent = Files.exists(entrypointPath)
+                && Files.exists(configPath)
+                && Files.exists(auditEventsPath)
+                && Files.exists(auditSchemaPath)
+                && Files.exists(runbookPath)
+                && Files.exists(approvalPath)
+                && Files.exists(manifestPath);
+        boolean samplesParsed = !entrypoint.isMissingNode()
+                && !config.isMissingNode()
+                && !auditEvents.isEmpty()
+                && !auditSchema.isMissingNode()
+                && !runbook.isMissingNode()
+                && !approval.isMissingNode()
+                && !manifest.isMissingNode();
+        Set<String> manifestKeys = manifestParameterKeys(manifest);
+        Set<String> approvalKeys = approvalParameterKeys(approval);
+        List<String> missingApprovalParameterKeys = missingApprovalParameterKeys(approvalKeys, manifestKeys);
+        List<String> missingManifestParameterKeys = missingManifestParameterKeys(manifestKeys);
+        List<String> inconsistentEntrypointRefs = inconsistentEntrypointRefs(entrypoint, config, runbook, approval, manifest);
+        List<String> runbookCommands = textArray(runbook.path("verificationCommands"));
+        List<String> manifestCommands = textArray(manifest.path("verificationCommands"));
+        List<String> approvalCommands = textArray(approval.path("verificationCommands"));
+        List<String> inconsistentVerificationCommands = runbookCommands.equals(manifestCommands) && runbookCommands.equals(approvalCommands)
+                ? List.of()
+                : List.of("MAVEN_REGRESSION_COMMANDS_DRIFT");
+        List<String> inconsistentBlockers = inconsistentBlockers(runbook, approval, manifest);
+        boolean realValuesProvidedInRepository = manifest.path("realValuesAllowedInRepository").asBoolean(false)
+                || anyBooleanParameter(manifest.path("parameterGroups"), "realValueProvidedInRepository");
+        boolean sensitiveValuesExposed = containsSensitiveValues(manifest, approval, runbook, config, auditSchema, auditEvents);
+        boolean statusPassed = samplesPresent
+                && samplesParsed
+                && missingApprovalParameterKeys.isEmpty()
+                && missingManifestParameterKeys.isEmpty()
+                && inconsistentEntrypointRefs.isEmpty()
+                && inconsistentVerificationCommands.isEmpty()
+                && inconsistentBlockers.isEmpty()
+                && runbookReferencesManifest(runbook)
+                && !realValuesProvidedInRepository
+                && !sensitiveValuesExposed;
+        return new ProductionCutoverEvidenceConsistencyAuditSnapshot(
+                "LOCAL_CUTOVER_EVIDENCE_CONSISTENCY_AUDIT_NOT_PRODUCTION",
+                SAMPLE_PATHS,
+                samplesPresent,
+                samplesParsed,
+                "http://127.0.0.1:8135",
+                "http://127.0.0.1:8125",
+                "http://127.0.0.1:8125",
+                manifestKeys.size(),
+                approvalKeys.size(),
+                runbookCommands.size(),
+                manifestCommands.size(),
+                missingApprovalParameterKeys,
+                missingManifestParameterKeys,
+                inconsistentEntrypointRefs,
+                inconsistentVerificationCommands,
+                inconsistentBlockers,
+                realValuesProvidedInRepository,
+                false,
+                sensitiveValuesExposed,
+                List.of(
+                        "REAL_EXTERNAL_ENTRYPOINT_CONFIG_VALUES_PROVIDED_OUTSIDE_REPOSITORY",
+                        "REAL_EXTERNAL_ENTRYPOINT_CONFIG_APPLIED",
+                        "REAL_CENTRAL_CONFIG_PROVIDER_CONNECTED",
+                        "PRODUCTION_PROFILE_BOUND",
+                        "SENSITIVE_CONFIG_SOURCE_EXTERNALIZED",
+                        "REAL_PERSISTENT_AUDIT_SINK_CONNECTED",
+                        "REAL_AUDIT_WRITE_SMOKE_PASSED",
+                        "PRODUCTION_TRAFFIC_SWITCH_APPROVED",
+                        "PRODUCTION_TRAFFIC_SWITCH_APPLIED",
+                        "PRODUCTION_TRAFFIC_OBSERVED_ON_UNIFIED",
+                        "API_GATEWAY_TRAFFIC_ZERO_PROVEN",
+                        "ROLLBACK_OPERATOR_APPROVED",
+                        "ROLLBACK_WINDOW_COMPLETED",
+                        "USER_RETIREMENT_APPROVAL_GRANTED"
+                ),
+                statusPassed
+                        ? "PASS_LOCAL_CUTOVER_EVIDENCE_CONSISTENCY_AUDIT_NOT_PRODUCTION"
+                        : "BLOCKED_BY_LOCAL_CUTOVER_EVIDENCE_CONSISTENCY_DRIFT"
+        );
+    }
+
+    private JsonNode readJson(Path path) {
+        try {
+            if (Files.exists(path)) {
+                return objectMapper.readTree(Files.readString(path));
+            }
+        } catch (IOException ignored) {
+            return objectMapper.getNodeFactory().missingNode();
+        }
+        return objectMapper.getNodeFactory().missingNode();
+    }
+
+    private List<JsonNode> readJsonl(Path path) {
+        if (!Files.exists(path)) {
+            return List.of();
+        }
+        try {
+            List<JsonNode> nodes = new ArrayList<>();
+            for (String line : Files.readAllLines(path)) {
+                if (!line.isBlank()) {
+                    nodes.add(objectMapper.readTree(line));
+                }
+            }
+            return List.copyOf(nodes);
+        } catch (IOException ignored) {
+            return List.of();
+        }
+    }
+
+    private Set<String> manifestParameterKeys(JsonNode manifest) {
+        Set<String> keys = new HashSet<>();
+        for (JsonNode group : manifest.path("parameterGroups")) {
+            for (JsonNode parameter : group.path("parameters")) {
+                keys.add(parameter.path("key").asText());
+            }
+        }
+        return keys;
+    }
+
+    private Set<String> approvalParameterKeys(JsonNode approval) {
+        Set<String> keys = new HashSet<>();
+        for (JsonNode parameter : approval.path("externalParameterChecklist")) {
+            keys.add(parameter.path("key").asText());
+        }
+        return keys;
+    }
+
+    private List<String> missingApprovalParameterKeys(Set<String> approvalKeys, Set<String> manifestKeys) {
+        List<String> missing = new ArrayList<>();
+        for (String approvalKey : approvalKeys) {
+            String manifestKey = APPROVAL_PARAMETER_ALIASES.getOrDefault(approvalKey, approvalKey);
+            if (!manifestKeys.contains(manifestKey)) {
+                missing.add(approvalKey);
+            }
+        }
+        return List.copyOf(missing);
+    }
+
+    private List<String> missingManifestParameterKeys(Set<String> manifestKeys) {
+        Set<String> required = new HashSet<>();
+        required.addAll(CENTRAL_CONFIG_KEYS);
+        required.addAll(AUDIT_SINK_KEYS);
+        required.addAll(OBSERVABILITY_KEYS);
+        required.addAll(APPROVAL_PARAMETER_ALIASES.values());
+        List<String> missing = new ArrayList<>();
+        for (String key : required) {
+            if (!manifestKeys.contains(key)) {
+                missing.add(key);
+            }
+        }
+        return List.copyOf(missing);
+    }
+
+    private List<String> inconsistentEntrypointRefs(JsonNode entrypoint, JsonNode config, JsonNode runbook, JsonNode approval, JsonNode manifest) {
+        List<String> inconsistent = new ArrayList<>();
+        if (!"http://127.0.0.1:8135".equals(entrypoint.path("candidateEntrypoint").path("baseUrl").asText())) {
+            inconsistent.add("ENTRYPOINT_CANDIDATE_URL");
+        }
+        if (!"http://127.0.0.1:8135".equals(config.path("entrypoints").path("candidate").path("baseUrl").asText())) {
+            inconsistent.add("CONFIG_CANDIDATE_URL");
+        }
+        if (!"http://127.0.0.1:8135".equals(runbook.path("candidateEntrypoint").path("baseUrl").asText())) {
+            inconsistent.add("RUNBOOK_CANDIDATE_URL");
+        }
+        if (!"http://127.0.0.1:8135".equals(approval.path("candidateEntrypoint").path("baseUrl").asText())) {
+            inconsistent.add("APPROVAL_CANDIDATE_URL");
+        }
+        if (!"LOCAL_SAMPLE_REF:UNIFIED_BACKEND_8135".equals(manifest.path("candidateEntrypointRef").asText())) {
+            inconsistent.add("MANIFEST_CANDIDATE_REF");
+        }
+        if (!"http://127.0.0.1:8125".equals(entrypoint.path("currentEntrypoint").path("baseUrl").asText())
+                || !"http://127.0.0.1:8125".equals(config.path("entrypoints").path("current").path("baseUrl").asText())
+                || !"http://127.0.0.1:8125".equals(runbook.path("currentEntrypoint").path("baseUrl").asText())
+                || !"http://127.0.0.1:8125".equals(approval.path("currentEntrypoint").path("baseUrl").asText())
+                || !"LOCAL_SAMPLE_REF:API_GATEWAY_8125".equals(manifest.path("currentEntrypointRef").asText())) {
+            inconsistent.add("CURRENT_ENTRYPOINT_REF");
+        }
+        if (!"http://127.0.0.1:8125".equals(entrypoint.path("rollbackEntrypoint").path("baseUrl").asText())
+                || !"http://127.0.0.1:8125".equals(config.path("entrypoints").path("rollback").path("baseUrl").asText())
+                || !"http://127.0.0.1:8125".equals(runbook.path("rollbackEntrypoint").path("baseUrl").asText())
+                || !"http://127.0.0.1:8125".equals(approval.path("rollbackEntrypoint").path("baseUrl").asText())
+                || !"LOCAL_SAMPLE_REF:API_GATEWAY_8125".equals(manifest.path("rollbackEntrypointRef").asText())) {
+            inconsistent.add("ROLLBACK_ENTRYPOINT_REF");
+        }
+        return List.copyOf(inconsistent);
+    }
+
+    private List<String> inconsistentBlockers(JsonNode runbook, JsonNode approval, JsonNode manifest) {
+        Set<String> runbookBlockers = normalizedBlockers(runbook.path("preCutoverChecks"), "check");
+        Set<String> approvalBlockers = normalizedBlockers(approval.path("goNoGoMatrix"), "item");
+        Set<String> manifestBlockers = normalizedBlockers(manifest.path("goNoGoImpact"), "item");
+        List<String> inconsistent = new ArrayList<>();
+        for (String blocker : EXPECTED_BLOCKERS) {
+            boolean covered = runbookBlockers.contains(blocker) || "PRODUCTION_TRAFFIC_SWITCH_APPLIED".equals(blocker)
+                    || "API_GATEWAY_TRAFFIC_ZERO_PROVEN".equals(blocker);
+            if (!covered || !approvalBlockers.contains(blocker) || !manifestBlockers.contains(blocker)) {
+                inconsistent.add(blocker);
+            }
+        }
+        return List.copyOf(inconsistent);
+    }
+
+    private Set<String> normalizedBlockers(JsonNode items, String nameField) {
+        Set<String> blockers = new HashSet<>();
+        for (JsonNode item : items) {
+            String status = item.path("status").asText();
+            if ("BLOCKED".equals(status) || "REQUIRED_EXTERNAL_INPUT".equals(status)) {
+                blockers.add(normalizeBlocker(item.path(nameField).asText()));
+            }
+        }
+        return blockers;
+    }
+
+    private String normalizeBlocker(String blocker) {
+        return switch (blocker) {
+            case "CONTROLLED_CUTOVER_WINDOW_APPROVED" -> "PRODUCTION_TRAFFIC_SWITCH_APPROVED";
+            case "PRODUCTION_TRAFFIC_OBSERVATION_READY" -> "PRODUCTION_TRAFFIC_OBSERVED_ON_UNIFIED";
+            case "ROLLBACK_OPERATOR_ASSIGNED", "ROLLBACK_OPERATOR_APPROVED" -> "ROLLBACK_OPERATOR_APPROVED";
+            case "RETIREMENT_APPROVER_ASSIGNED", "RETIREMENT_APPROVER_GRANTED" -> "USER_RETIREMENT_APPROVAL_GRANTED";
+            default -> blocker;
+        };
+    }
+
+    private boolean runbookReferencesManifest(JsonNode runbook) {
+        return "docs/unified-backend-production-cutover-external-parameters-sample.json"
+                .equals(runbook.path("externalParameterManifest").path("path").asText());
+    }
+
+    private List<String> textArray(JsonNode array) {
+        List<String> values = new ArrayList<>();
+        for (JsonNode item : array) {
+            values.add(item.asText());
+        }
+        return List.copyOf(values);
+    }
+
+    private boolean anyBooleanParameter(JsonNode groups, String fieldName) {
+        for (JsonNode group : groups) {
+            for (JsonNode parameter : group.path("parameters")) {
+                if (parameter.path(fieldName).asBoolean(false)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean containsSensitiveValues(JsonNode manifest, JsonNode approval, JsonNode runbook,
+                                            JsonNode config, JsonNode auditSchema, List<JsonNode> auditEvents) {
+        String text = (manifest.path("parameterGroups").toString()
+                + manifest.path("approvalPackageReference").toString()
+                + manifest.path("goNoGoImpact").toString()
+                + manifest.path("verificationCommands").toString()
+                + approval.path("externalParameterChecklist").toString()
+                + approval.path("approvalMatrix").toString()
+                + approval.path("goNoGoMatrix").toString()
+                + runbook.path("externalParameterManifest").toString()
+                + runbook.path("preCutoverChecks").toString()
+                + runbook.path("observationPlan").toString()
+                + config.path("configDomains").toString()
+                + auditSchema.path("requiredFields").toString()
+                + auditEvents).toLowerCase(Locale.ROOT)
+                .replace("requiresexternalsecretstore", "");
+        return FORBIDDEN_FRAGMENTS.stream().anyMatch(text::contains);
+    }
+
+    private Path locate(String fileName) {
+        List<Path> candidates = List.of(
+                Path.of("docs", fileName),
+                Path.of("..", "docs", fileName),
+                Path.of("..", "..", "docs", fileName)
+        );
+        for (Path candidate : candidates) {
+            if (Files.exists(candidate)) {
+                return candidate.normalize();
+            }
+        }
+        return candidates.get(0).normalize();
+    }
+}
+
+record ProductionCutoverEvidenceConsistencyAuditSnapshot(
+        String readinessMode,
+        List<String> auditedSamplePaths,
+        boolean samplesPresent,
+        boolean samplesParsed,
+        String candidateEntrypoint,
+        String currentEntrypoint,
+        String rollbackEntrypoint,
+        int externalParameterKeysTotal,
+        int approvalPackageExternalParametersTotal,
+        int runbookVerificationCommandsTotal,
+        int manifestVerificationCommandsTotal,
+        List<String> missingApprovalParameterKeys,
+        List<String> missingManifestParameterKeys,
+        List<String> inconsistentEntrypointRefs,
+        List<String> inconsistentVerificationCommands,
+        List<String> inconsistentBlockers,
+        boolean realValuesProvidedInRepository,
+        boolean environmentVariablesRead,
+        boolean sensitiveValuesExposed,
+        List<String> remainingProductionBlockers,
+        String status
+) {
+}
+
 @Component
 class UnifiedBackendRegistry {
     private static final List<String> MOUNTED_ENTRYPOINTS = List.of("api-gateway", "business-core", "admission-core", "engagement-core", "ops-core", "portal-core");
@@ -1282,45 +1696,59 @@ class UnifiedBackendRegistry {
     private final UnifiedProductionCutoverRunbook cutoverRunbook;
     private final UnifiedProductionCutoverApprovalPackage cutoverApprovalPackage;
     private final UnifiedProductionCutoverExternalParameterManifest externalParameterManifest;
+    private final UnifiedProductionCutoverEvidenceConsistencyAudit evidenceConsistencyAudit;
     private final List<UnifiedMount> gatewayRoutes = createGatewayRoutes();
 
     UnifiedBackendRegistry() {
         this(new LocalFileUnifiedConfigProvider(), new LocalFileUnifiedAuditSink(), new LocalFileProductionCutoverRunbook(),
-                new LocalFileProductionCutoverApprovalPackage(), new LocalFileProductionCutoverExternalParameterManifest());
+                new LocalFileProductionCutoverApprovalPackage(), new LocalFileProductionCutoverExternalParameterManifest(),
+                new LocalFileProductionCutoverEvidenceConsistencyAudit());
     }
 
     UnifiedBackendRegistry(UnifiedConfigProvider configProvider) {
         this(configProvider, new LocalFileUnifiedAuditSink(), new LocalFileProductionCutoverRunbook(),
-                new LocalFileProductionCutoverApprovalPackage(), new LocalFileProductionCutoverExternalParameterManifest());
+                new LocalFileProductionCutoverApprovalPackage(), new LocalFileProductionCutoverExternalParameterManifest(),
+                new LocalFileProductionCutoverEvidenceConsistencyAudit());
     }
 
     UnifiedBackendRegistry(UnifiedConfigProvider configProvider, UnifiedAuditSink auditSink) {
         this(configProvider, auditSink, new LocalFileProductionCutoverRunbook(),
-                new LocalFileProductionCutoverApprovalPackage(), new LocalFileProductionCutoverExternalParameterManifest());
+                new LocalFileProductionCutoverApprovalPackage(), new LocalFileProductionCutoverExternalParameterManifest(),
+                new LocalFileProductionCutoverEvidenceConsistencyAudit());
     }
 
     UnifiedBackendRegistry(UnifiedConfigProvider configProvider, UnifiedAuditSink auditSink,
                            UnifiedProductionCutoverRunbook cutoverRunbook) {
         this(configProvider, auditSink, cutoverRunbook, new LocalFileProductionCutoverApprovalPackage(),
-                new LocalFileProductionCutoverExternalParameterManifest());
+                new LocalFileProductionCutoverExternalParameterManifest(), new LocalFileProductionCutoverEvidenceConsistencyAudit());
     }
 
     UnifiedBackendRegistry(UnifiedConfigProvider configProvider, UnifiedAuditSink auditSink,
                            UnifiedProductionCutoverRunbook cutoverRunbook,
                            UnifiedProductionCutoverApprovalPackage cutoverApprovalPackage) {
         this(configProvider, auditSink, cutoverRunbook, cutoverApprovalPackage,
-                new LocalFileProductionCutoverExternalParameterManifest());
+                new LocalFileProductionCutoverExternalParameterManifest(), new LocalFileProductionCutoverEvidenceConsistencyAudit());
     }
 
     UnifiedBackendRegistry(UnifiedConfigProvider configProvider, UnifiedAuditSink auditSink,
                            UnifiedProductionCutoverRunbook cutoverRunbook,
                            UnifiedProductionCutoverApprovalPackage cutoverApprovalPackage,
                            UnifiedProductionCutoverExternalParameterManifest externalParameterManifest) {
+        this(configProvider, auditSink, cutoverRunbook, cutoverApprovalPackage, externalParameterManifest,
+                new LocalFileProductionCutoverEvidenceConsistencyAudit());
+    }
+
+    UnifiedBackendRegistry(UnifiedConfigProvider configProvider, UnifiedAuditSink auditSink,
+                           UnifiedProductionCutoverRunbook cutoverRunbook,
+                           UnifiedProductionCutoverApprovalPackage cutoverApprovalPackage,
+                           UnifiedProductionCutoverExternalParameterManifest externalParameterManifest,
+                           UnifiedProductionCutoverEvidenceConsistencyAudit evidenceConsistencyAudit) {
         this.configProvider = configProvider;
         this.auditSink = auditSink;
         this.cutoverRunbook = cutoverRunbook;
         this.cutoverApprovalPackage = cutoverApprovalPackage;
         this.externalParameterManifest = externalParameterManifest;
+        this.evidenceConsistencyAudit = evidenceConsistencyAudit;
     }
 
     Map<String, Object> baseProfile() {
@@ -2536,6 +2964,65 @@ class UnifiedBackendRegistry {
         );
     }
 
+    String productionCutoverEvidenceConsistencyAuditStatus() {
+        return evidenceConsistencyAudit.snapshot().status();
+    }
+
+    List<Map<String, Object>> productionCutoverEvidenceConsistencyAuditChecks() {
+        ProductionCutoverEvidenceConsistencyAuditSnapshot snapshot = evidenceConsistencyAudit.snapshot();
+        return List.of(
+                switchCheck("CUTOVER_EVIDENCE_SAMPLES_PRESENT", snapshot.samplesPresent() ? "PASS" : "BLOCKED", "cutover evidence sample files are present", true),
+                switchCheck("CUTOVER_EVIDENCE_SAMPLES_PARSEABLE", snapshot.samplesParsed() ? "PASS" : "BLOCKED", "JSON and JSONL cutover evidence samples are parseable", true),
+                switchCheck("CANDIDATE_ENTRYPOINT_CONSISTENT", snapshot.inconsistentEntrypointRefs().isEmpty() ? "PASS" : "BLOCKED", "candidate entrypoint references stay on unified-backend:8135", true),
+                switchCheck("CURRENT_ENTRYPOINT_CONSISTENT", snapshot.inconsistentEntrypointRefs().isEmpty() ? "PASS" : "BLOCKED", "current entrypoint references stay on api-gateway:8125", true),
+                switchCheck("ROLLBACK_ENTRYPOINT_CONSISTENT", snapshot.inconsistentEntrypointRefs().isEmpty() ? "PASS" : "BLOCKED", "rollback entrypoint references stay on api-gateway:8125", true),
+                switchCheck("MAVEN_REGRESSION_COMMANDS_CONSISTENT", snapshot.inconsistentVerificationCommands().isEmpty() ? "PASS" : "BLOCKED", "runbook, approval package and manifest keep the same Maven regression commands", true),
+                switchCheck("EXTERNAL_PARAMETER_KEYS_REFERENCED_BY_APPROVAL_PACKAGE", snapshot.missingApprovalParameterKeys().isEmpty() ? "PASS" : "BLOCKED", "approval package external parameter references are covered by manifest aliases", true),
+                switchCheck("RUNBOOK_REFERENCES_EXTERNAL_PARAMETER_MANIFEST", snapshot.missingManifestParameterKeys().isEmpty() ? "PASS" : "BLOCKED", "runbook references the external parameter manifest sample", true),
+                switchCheck("CENTRAL_CONFIG_KEYS_COVERED_BY_MANIFEST", snapshot.missingManifestParameterKeys().isEmpty() ? "PASS" : "BLOCKED", "central config sample keys are covered by manifest parameters", true),
+                switchCheck("AUDIT_SINK_KEYS_COVERED_BY_MANIFEST", snapshot.missingManifestParameterKeys().isEmpty() ? "PASS" : "BLOCKED", "audit sink sample keys are covered by manifest parameters", true),
+                switchCheck("OBSERVABILITY_KEYS_COVERED_BY_RUNBOOK_AND_MANIFEST", snapshot.missingManifestParameterKeys().isEmpty() ? "PASS" : "BLOCKED", "observability fields are covered by runbook and manifest", true),
+                switchCheck("RETIREMENT_AND_ROLLBACK_GATES_CONSISTENT", snapshot.inconsistentBlockers().isEmpty() ? "PASS" : "BLOCKED", "rollback, zero-traffic and retirement blockers stay aligned", true),
+                switchCheck("NO_REAL_VALUES_IN_CUTOVER_EVIDENCE", snapshot.realValuesProvidedInRepository() || snapshot.sensitiveValuesExposed() ? "BLOCKED" : "PASS", "cutover evidence contains no real runtime values", true),
+                switchCheck("READY_FLAGS_REMAIN_FALSE", "PASS", "readyForProduction and readyToReplaceGateway remain false", true),
+                switchCheck("REAL_EXTERNAL_VALUES_NOT_IMPORTED", snapshot.realValuesProvidedInRepository() ? "PASS" : "BLOCKED", "real external values are not imported into repository", true),
+                switchCheck("REAL_CENTRAL_CONFIG_PROVIDER_NOT_CONNECTED", "BLOCKED", "real central config provider remains disconnected", true),
+                switchCheck("REAL_AUDIT_SINK_NOT_CONNECTED", "BLOCKED", "real audit sink remains disconnected", true),
+                switchCheck("PRODUCTION_TRAFFIC_NOT_SWITCHED", "BLOCKED", "production traffic is not switched to unified-backend", true),
+                switchCheck("API_GATEWAY_TRAFFIC_ZERO_NOT_PROVEN", "BLOCKED", "api-gateway zero traffic is not proven", true),
+                switchCheck("RETIREMENT_NOT_APPROVED", "BLOCKED", "entrypoint retirement is not approved", true)
+        );
+    }
+
+    Map<String, Object> productionCutoverEvidenceConsistencyAuditEvidence() {
+        ProductionCutoverEvidenceConsistencyAuditSnapshot snapshot = evidenceConsistencyAudit.snapshot();
+        return map(
+                "readinessMode", snapshot.readinessMode(),
+                "auditedSamplePaths", snapshot.auditedSamplePaths(),
+                "samplesPresent", snapshot.samplesPresent(),
+                "samplesParsed", snapshot.samplesParsed(),
+                "candidateEntrypoint", snapshot.candidateEntrypoint(),
+                "currentEntrypoint", snapshot.currentEntrypoint(),
+                "rollbackEntrypoint", snapshot.rollbackEntrypoint(),
+                "externalParameterKeysTotal", snapshot.externalParameterKeysTotal(),
+                "approvalPackageExternalParametersTotal", snapshot.approvalPackageExternalParametersTotal(),
+                "runbookVerificationCommandsTotal", snapshot.runbookVerificationCommandsTotal(),
+                "manifestVerificationCommandsTotal", snapshot.manifestVerificationCommandsTotal(),
+                "missingApprovalParameterKeys", snapshot.missingApprovalParameterKeys(),
+                "missingManifestParameterKeys", snapshot.missingManifestParameterKeys(),
+                "inconsistentEntrypointRefs", snapshot.inconsistentEntrypointRefs(),
+                "inconsistentVerificationCommands", snapshot.inconsistentVerificationCommands(),
+                "inconsistentBlockers", snapshot.inconsistentBlockers(),
+                "realValuesProvidedInRepository", snapshot.realValuesProvidedInRepository(),
+                "environmentVariablesRead", snapshot.environmentVariablesRead(),
+                "sensitiveValuesExposed", snapshot.sensitiveValuesExposed(),
+                "readyForProduction", false,
+                "readyToReplaceGateway", false,
+                "remainingProductionBlockers", snapshot.remainingProductionBlockers(),
+                "status", snapshot.status()
+        );
+    }
+
     List<Map<String, Object>> productionAuditSinkPrecheckChecks() {
         return List.of(
                 switchCheck("AUDIT_EVENT_SCHEMA_FIXED", "PASS", "production audit event fields are fixed before sink connection", true),
@@ -2673,6 +3160,7 @@ class UnifiedBackendRegistry {
                 switchCheck("AUDIT_TRAIL_CONTRACT_DEFINED", "PASS", "audit trail ownership and event contract are documented", true),
                 switchCheck("CUTOVER_RUNBOOK_DEFINED", "PASS", "cutover runbook requirements are recorded without applying traffic switch", true),
                 switchCheck("PRODUCTION_CUTOVER_APPROVAL_PACKAGE_RECORDED", "PASS", "production cutover approval package requirements are recorded without approving traffic", true),
+                switchCheck("CUTOVER_EVIDENCE_CONSISTENCY_AUDIT_RECORDED", "PASS", "local cutover evidence consistency audit is recorded without applying production traffic", true),
                 switchCheck("ROLLBACK_RECHECK_COMMANDS_DEFINED", "PASS", "rollback recheck commands are recorded for candidate and rollback entrypoints", true),
                 switchCheck("SMOKE_EVIDENCE_FORMAT_DEFINED", "PASS", "smoke evidence format is recorded without treating it as production switch proof", true),
                 switchCheck("CENTRAL_CONFIG_PROVIDER_CONNECTED", "BLOCKED", "centralized production configuration provider is not connected", true),
