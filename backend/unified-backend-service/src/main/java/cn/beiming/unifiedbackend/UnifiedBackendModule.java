@@ -139,6 +139,9 @@ class UnifiedBackendController {
                 "productionCutoverEvidenceConsistencyAuditStatus", registry.productionCutoverEvidenceConsistencyAuditStatus(),
                 "productionCutoverEvidenceConsistencyAuditChecks", registry.productionCutoverEvidenceConsistencyAuditChecks(),
                 "productionCutoverEvidenceConsistencyAuditEvidence", registry.productionCutoverEvidenceConsistencyAuditEvidence(),
+                "productionRuntimeConfigShellStatus", registry.productionRuntimeConfigShellStatus(),
+                "productionRuntimeConfigShellChecks", registry.productionRuntimeConfigShellChecks(),
+                "productionRuntimeConfigShellEvidence", registry.productionRuntimeConfigShellEvidence(),
                 "productionExternalValueIntakeRehearsalStatus", registry.productionExternalValueIntakeRehearsalStatus(),
                 "productionExternalValueIntakeRehearsalChecks", registry.productionExternalValueIntakeRehearsalChecks(),
                 "productionExternalValueIntakeRehearsalEvidence", registry.productionExternalValueIntakeRehearsalEvidence(),
@@ -1981,6 +1984,265 @@ record ProductionExternalValueIntakeRehearsalSnapshot(
 ) {
 }
 
+interface UnifiedProductionRuntimeConfigShellRehearsal {
+    ProductionRuntimeConfigShellSnapshot snapshot();
+}
+
+final class LocalFileProductionRuntimeConfigShellRehearsal implements UnifiedProductionRuntimeConfigShellRehearsal {
+    private static final List<String> FORBIDDEN_FRAGMENTS = List.of(
+            "authorization",
+            "x-gateway-internal-signature",
+            "c:\\users\\",
+            ".env",
+            "jdbc:",
+            "mongodb://",
+            "redis://",
+            "id_rsa",
+            "akia",
+            "token",
+            "cookie",
+            "secret",
+            "password",
+            "passwd",
+            "pwd",
+            "privatekey",
+            "kubectl",
+            "docker",
+            "powershell",
+            "cmd.exe",
+            "ssh ",
+            "scp "
+    );
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @Override
+    public ProductionRuntimeConfigShellSnapshot snapshot() {
+        Path samplePath = locateSamplePath();
+        JsonNode sample = readSample(samplePath);
+        boolean present = Files.exists(samplePath);
+        boolean parsed = present && !sample.isMissingNode();
+        JsonNode runtimeProfiles = sample.path("runtimeProfiles");
+        JsonNode configProviderBindings = sample.path("configProviderBindings");
+        JsonNode sensitiveConfigBindings = sample.path("sensitiveConfigBindings");
+        JsonNode deploymentEntrypointBindings = sample.path("deploymentEntrypointBindings");
+        JsonNode rollbackConfigBindings = sample.path("rollbackConfigBindings");
+        boolean realValuesProvided = sample.path("realValuesAllowedInRepository").asBoolean(false)
+                || anyBooleanValue(configProviderBindings, "realValueProvidedInRepository")
+                || anyBooleanValue(sensitiveConfigBindings, "realValueProvidedInRepository")
+                || anyBooleanValue(deploymentEntrypointBindings, "realValueProvidedInRepository")
+                || anyBooleanValue(rollbackConfigBindings, "realValueProvidedInRepository");
+        boolean sensitiveValuesExposed = containsSensitiveValues(sample);
+        boolean externalValueReferenced = "docs/unified-backend-production-external-value-intake-sample.json"
+                .equals(sample.at("/validationPlan/externalValueIntakeSampleRef").asText())
+                && "PASS_EXTERNAL_VALUE_INTAKE_REHEARSAL_NOT_PRODUCTION"
+                .equals(sample.at("/validationPlan/externalValueIntakeStatusRequired").asText());
+        boolean localRehearsalPassed = parsed
+                && !sample.path("runtimeShellApplied").asBoolean(true)
+                && !sample.path("productionTrafficAllowed").asBoolean(true)
+                && !sample.path("realValuesAllowedInRepository").asBoolean(true)
+                && sample.path("requiresExternalConfigProvider").asBoolean(false)
+                && sample.path("requiresExternalSecretStore").asBoolean(false)
+                && "LOCAL_SAMPLE_REF:UNIFIED_BACKEND_8135".equals(sample.path("candidateEntrypointRef").asText())
+                && "LOCAL_SAMPLE_REF:API_GATEWAY_8125".equals(sample.path("currentEntrypointRef").asText())
+                && "LOCAL_SAMPLE_REF:API_GATEWAY_8125".equals(sample.path("rollbackEntrypointRef").asText())
+                && runtimeProfiles.size() >= 3
+                && containsText(runtimeProfiles, "production")
+                && containsText(runtimeProfiles, "rollback")
+                && containsText(runtimeProfiles, "local-rehearsal")
+                && bindingsSafe(configProviderBindings)
+                && bindingsSafe(sensitiveConfigBindings)
+                && bindingsSafe(deploymentEntrypointBindings)
+                && bindingsSafe(rollbackConfigBindings)
+                && sensitiveBindingsUseExternalRefs(sensitiveConfigBindings)
+                && externalValueReferenced
+                && !realValuesProvided
+                && !sensitiveValuesExposed;
+        return new ProductionRuntimeConfigShellSnapshot(
+                "LOCAL_PRODUCTION_RUNTIME_CONFIG_SHELL_REHEARSAL_NOT_PRODUCTION",
+                "docs/unified-backend-production-runtime-shell-sample.json",
+                present,
+                parsed,
+                sample.path("runtimeShellApplied").asBoolean(false),
+                sample.path("productionTrafficAllowed").asBoolean(false),
+                sample.path("realValuesAllowedInRepository").asBoolean(false),
+                sample.path("requiresExternalConfigProvider").asBoolean(true),
+                sample.path("requiresExternalSecretStore").asBoolean(true),
+                sample.path("candidateEntrypointRef").asText("LOCAL_SAMPLE_REF:UNIFIED_BACKEND_8135"),
+                sample.path("currentEntrypointRef").asText("LOCAL_SAMPLE_REF:API_GATEWAY_8125"),
+                sample.path("rollbackEntrypointRef").asText("LOCAL_SAMPLE_REF:API_GATEWAY_8125"),
+                runtimeProfiles.size(),
+                configProviderBindings.size(),
+                sensitiveConfigBindings.size(),
+                deploymentEntrypointBindings.size(),
+                rollbackConfigBindings.size(),
+                sample.path("verificationCommands").size(),
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                realValuesProvided,
+                sensitiveValuesExposed,
+                externalValueReferenced,
+                List.of(
+                        "REAL_PRODUCTION_PROFILE_BOUND_OUTSIDE_REPOSITORY",
+                        "REAL_CENTRAL_CONFIG_PROVIDER_CONNECTED",
+                        "REAL_SENSITIVE_CONFIG_SOURCE_EXTERNALIZED",
+                        "REAL_DEPLOYMENT_ENTRYPOINT_BOUND",
+                        "REAL_ROLLBACK_CONFIG_BOUND",
+                        "REAL_PERSISTENT_AUDIT_SINK_CONNECTED",
+                        "REAL_AUDIT_WRITE_SMOKE_PASSED",
+                        "PRODUCTION_TRAFFIC_SWITCH_APPLIED",
+                        "PRODUCTION_TRAFFIC_OBSERVED_ON_UNIFIED",
+                        "API_GATEWAY_TRAFFIC_ZERO_PROVEN",
+                        "ROLLBACK_WINDOW_COMPLETED",
+                        "USER_RETIREMENT_APPROVAL_GRANTED"
+                ),
+                localRehearsalPassed
+                        ? "PASS_PRODUCTION_RUNTIME_CONFIG_SHELL_REHEARSAL_NOT_PRODUCTION"
+                        : "BLOCKED_BY_PRODUCTION_RUNTIME_CONFIG_SHELL_SAMPLE_NOT_AVAILABLE"
+        );
+    }
+
+    private JsonNode readSample(Path samplePath) {
+        try {
+            if (Files.exists(samplePath)) {
+                return objectMapper.readTree(Files.readString(samplePath));
+            }
+        } catch (IOException ignored) {
+            return objectMapper.getNodeFactory().missingNode();
+        }
+        return objectMapper.getNodeFactory().missingNode();
+    }
+
+    private boolean bindingsSafe(JsonNode bindings) {
+        if (bindings.size() < 5) {
+            return false;
+        }
+        for (JsonNode binding : bindings) {
+            if (binding.path("key").asText().isBlank()
+                    || binding.path("validationRef").asText().isBlank()
+                    || binding.path("rollbackRef").asText().isBlank()
+                    || binding.path("realValueProvidedInRepository").asBoolean(true)
+                    || !binding.path("redacted").asBoolean(false)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean sensitiveBindingsUseExternalRefs(JsonNode bindings) {
+        for (JsonNode binding : bindings) {
+            if (!binding.path("secretStoreRef").asText().startsWith("EXTERNAL_REF_REQUIRED:")
+                    || !binding.path("externalValueRequired").asBoolean(false)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean anyBooleanValue(JsonNode values, String fieldName) {
+        for (JsonNode value : values) {
+            if (value.path(fieldName).asBoolean(false)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean containsText(JsonNode node, String fragment) {
+        return node.toString().contains(fragment);
+    }
+
+    private boolean containsSensitiveValues(JsonNode sample) {
+        String text = scalarTextWithoutRedactionPolicy(sample).toLowerCase(Locale.ROOT)
+                .replace("requiresexternalconfigprovider", "")
+                .replace("requiresexternalsecretstore", "")
+                .replace("sensitiveconfigbindings", "")
+                .replace("secretstoreref", "");
+        return FORBIDDEN_FRAGMENTS.stream().anyMatch(text::contains);
+    }
+
+    private String scalarTextWithoutRedactionPolicy(JsonNode node) {
+        StringBuilder values = new StringBuilder();
+        appendScalarText(node, values, false);
+        return values.toString();
+    }
+
+    private void appendScalarText(JsonNode node, StringBuilder values, boolean insideRedactionPolicy) {
+        if (node.isObject()) {
+            node.fields().forEachRemaining(entry -> appendScalarText(entry.getValue(), values,
+                    insideRedactionPolicy || "redactionPolicy".equals(entry.getKey())));
+        } else if (node.isArray()) {
+            for (JsonNode child : node) {
+                appendScalarText(child, values, insideRedactionPolicy);
+            }
+        } else if (!insideRedactionPolicy && node.isValueNode()) {
+            values.append(node.asText()).append(' ');
+        }
+    }
+
+    private Path locateSamplePath() {
+        List<Path> candidates = List.of(
+                Path.of("docs", "unified-backend-production-runtime-shell-sample.json"),
+                Path.of("..", "docs", "unified-backend-production-runtime-shell-sample.json"),
+                Path.of("..", "..", "docs", "unified-backend-production-runtime-shell-sample.json")
+        );
+        for (Path candidate : candidates) {
+            if (Files.exists(candidate)) {
+                return candidate.normalize();
+            }
+        }
+        return candidates.get(0).normalize();
+    }
+}
+
+record ProductionRuntimeConfigShellSnapshot(
+        String readinessMode,
+        String sampleRuntimeShellPath,
+        boolean sampleRuntimeShellPresent,
+        boolean sampleRuntimeShellParsed,
+        boolean runtimeShellApplied,
+        boolean productionTrafficAllowed,
+        boolean realValuesAllowedInRepository,
+        boolean requiresExternalConfigProvider,
+        boolean requiresExternalSecretStore,
+        String candidateEntrypointRef,
+        String currentEntrypointRef,
+        String rollbackEntrypointRef,
+        int runtimeProfilesTotal,
+        int configProviderBindingsTotal,
+        int sensitiveConfigBindingsTotal,
+        int deploymentEntrypointBindingsTotal,
+        int rollbackConfigBindingsTotal,
+        int validationCommandsTotal,
+        boolean productionProfileBound,
+        boolean centralConfigProviderConnected,
+        boolean sensitiveConfigExternalized,
+        boolean deploymentEntrypointBound,
+        boolean rollbackConfigBound,
+        boolean persistentAuditSinkConnected,
+        boolean auditWriteSmokePassed,
+        boolean productionTrafficObservedOnUnified,
+        boolean apiGatewayTrafficZeroProven,
+        boolean rollbackWindowCompleted,
+        boolean retirementApproverGranted,
+        boolean environmentVariablesRead,
+        boolean realValuesProvidedInRepository,
+        boolean sensitiveValuesExposed,
+        boolean externalValueIntakeRehearsalReferenced,
+        List<String> remainingProductionBlockers,
+        String status
+) {
+}
+
 @Component
 class UnifiedBackendRegistry {
     private static final List<String> MOUNTED_ENTRYPOINTS = List.of("api-gateway", "business-core", "admission-core", "engagement-core", "ops-core", "portal-core");
@@ -1999,6 +2261,7 @@ class UnifiedBackendRegistry {
     private final UnifiedProductionCutoverExternalParameterManifest externalParameterManifest;
     private final UnifiedProductionCutoverEvidenceConsistencyAudit evidenceConsistencyAudit;
     private final UnifiedProductionExternalValueIntakeRehearsal externalValueIntakeRehearsal;
+    private final UnifiedProductionRuntimeConfigShellRehearsal runtimeConfigShellRehearsal = new LocalFileProductionRuntimeConfigShellRehearsal();
     private final List<UnifiedMount> gatewayRoutes = createGatewayRoutes();
 
     UnifiedBackendRegistry() {
@@ -3407,6 +3670,80 @@ class UnifiedBackendRegistry {
         );
     }
 
+    String productionRuntimeConfigShellStatus() {
+        return runtimeConfigShellRehearsal.snapshot().status();
+    }
+
+    List<Map<String, Object>> productionRuntimeConfigShellChecks() {
+        ProductionRuntimeConfigShellSnapshot snapshot = runtimeConfigShellRehearsal.snapshot();
+        return List.of(
+                switchCheck("PRODUCTION_RUNTIME_SHELL_SAMPLE_PRESENT", snapshot.sampleRuntimeShellPresent() ? "PASS" : "BLOCKED", "production runtime shell sample is present", true),
+                switchCheck("PRODUCTION_RUNTIME_SHELL_SAMPLE_JSON_PARSABLE", snapshot.sampleRuntimeShellParsed() ? "PASS" : "BLOCKED", "production runtime shell sample is parseable JSON", true),
+                switchCheck("RUNTIME_PROFILE_SLOT_RECORDED", snapshot.runtimeProfilesTotal() >= 3 ? "PASS" : "BLOCKED", "production, rollback and local rehearsal profile slots are recorded", true),
+                switchCheck("CENTRAL_CONFIG_PROVIDER_SLOT_RECORDED", snapshot.configProviderBindingsTotal() >= 5 ? "PASS" : "BLOCKED", "central config provider slots are recorded", true),
+                switchCheck("SENSITIVE_CONFIG_EXTERNALIZATION_SLOT_RECORDED", snapshot.sensitiveConfigBindingsTotal() >= 5 ? "PASS" : "BLOCKED", "sensitive config externalization slots are recorded", true),
+                switchCheck("DEPLOYMENT_ENTRYPOINT_SLOT_RECORDED", snapshot.deploymentEntrypointBindingsTotal() >= 5 ? "PASS" : "BLOCKED", "deployment entrypoint slots are recorded", true),
+                switchCheck("ROLLBACK_CONFIG_SLOT_RECORDED", snapshot.rollbackConfigBindingsTotal() >= 5 ? "PASS" : "BLOCKED", "rollback config slots are recorded", true),
+                switchCheck("EXTERNAL_VALUE_INTAKE_REHEARSAL_REFERENCED", snapshot.externalValueIntakeRehearsalReferenced() ? "PASS" : "BLOCKED", "third-ninth round external value intake rehearsal is referenced", true),
+                switchCheck("NO_REAL_VALUES_IN_REPOSITORY", snapshot.realValuesProvidedInRepository() ? "BLOCKED" : "PASS", "repository contains only runtime shell references, not real production values", true),
+                switchCheck("NO_SENSITIVE_VALUES_IN_RUNTIME_SHELL_SAMPLE", snapshot.sensitiveValuesExposed() ? "BLOCKED" : "PASS", "runtime shell sample does not expose sensitive runtime values", true),
+                switchCheck("READY_FLAGS_REMAIN_FALSE", "PASS", "readyForProduction and readyToReplaceGateway remain false", true),
+                switchCheck("PRODUCTION_RUNTIME_CONFIG_SHELL_REHEARSAL_RECORDED", "PASS", "local production runtime config shell rehearsal is recorded without applying production traffic", true),
+                switchCheck("REAL_PRODUCTION_PROFILE_NOT_BOUND", "BLOCKED", "real production profile remains unbound", true),
+                switchCheck("REAL_CENTRAL_CONFIG_PROVIDER_NOT_CONNECTED", "BLOCKED", "real central config provider remains disconnected", true),
+                switchCheck("REAL_SENSITIVE_CONFIG_NOT_EXTERNALIZED", "BLOCKED", "real sensitive config source remains externalization-blocked", true),
+                switchCheck("REAL_DEPLOYMENT_ENTRYPOINT_NOT_BOUND", "BLOCKED", "real deployment entrypoint remains unbound", true),
+                switchCheck("REAL_ROLLBACK_CONFIG_NOT_BOUND", "BLOCKED", "real rollback config remains unbound", true),
+                switchCheck("REAL_AUDIT_SINK_NOT_CONNECTED", "BLOCKED", "real persistent audit sink remains disconnected", true),
+                switchCheck("PRODUCTION_TRAFFIC_NOT_SWITCHED", "BLOCKED", "production traffic is not switched to unified-backend", true),
+                switchCheck("API_GATEWAY_TRAFFIC_ZERO_NOT_PROVEN", "BLOCKED", "api-gateway zero production traffic is not proven", true),
+                switchCheck("ROLLBACK_WINDOW_NOT_COMPLETED", "BLOCKED", "rollback window is not completed", true),
+                switchCheck("RETIREMENT_NOT_APPROVED", "BLOCKED", "entrypoint retirement is not approved", true)
+        );
+    }
+
+    Map<String, Object> productionRuntimeConfigShellEvidence() {
+        ProductionRuntimeConfigShellSnapshot snapshot = runtimeConfigShellRehearsal.snapshot();
+        return map(
+                "readinessMode", snapshot.readinessMode(),
+                "sampleRuntimeShellPath", snapshot.sampleRuntimeShellPath(),
+                "sampleRuntimeShellPresent", snapshot.sampleRuntimeShellPresent(),
+                "sampleRuntimeShellParsed", snapshot.sampleRuntimeShellParsed(),
+                "runtimeShellApplied", snapshot.runtimeShellApplied(),
+                "productionTrafficAllowed", snapshot.productionTrafficAllowed(),
+                "realValuesAllowedInRepository", snapshot.realValuesAllowedInRepository(),
+                "requiresExternalConfigProvider", snapshot.requiresExternalConfigProvider(),
+                "requiresExternalSecretStore", snapshot.requiresExternalSecretStore(),
+                "candidateEntrypointRef", snapshot.candidateEntrypointRef(),
+                "currentEntrypointRef", snapshot.currentEntrypointRef(),
+                "rollbackEntrypointRef", snapshot.rollbackEntrypointRef(),
+                "runtimeProfilesTotal", snapshot.runtimeProfilesTotal(),
+                "configProviderBindingsTotal", snapshot.configProviderBindingsTotal(),
+                "sensitiveConfigBindingsTotal", snapshot.sensitiveConfigBindingsTotal(),
+                "deploymentEntrypointBindingsTotal", snapshot.deploymentEntrypointBindingsTotal(),
+                "rollbackConfigBindingsTotal", snapshot.rollbackConfigBindingsTotal(),
+                "validationCommandsTotal", snapshot.validationCommandsTotal(),
+                "productionProfileBound", snapshot.productionProfileBound(),
+                "centralConfigProviderConnected", snapshot.centralConfigProviderConnected(),
+                "sensitiveConfigExternalized", snapshot.sensitiveConfigExternalized(),
+                "deploymentEntrypointBound", snapshot.deploymentEntrypointBound(),
+                "rollbackConfigBound", snapshot.rollbackConfigBound(),
+                "persistentAuditSinkConnected", snapshot.persistentAuditSinkConnected(),
+                "auditWriteSmokePassed", snapshot.auditWriteSmokePassed(),
+                "productionTrafficObservedOnUnified", snapshot.productionTrafficObservedOnUnified(),
+                "apiGatewayTrafficZeroProven", snapshot.apiGatewayTrafficZeroProven(),
+                "rollbackWindowCompleted", snapshot.rollbackWindowCompleted(),
+                "retirementApproverGranted", snapshot.retirementApproverGranted(),
+                "environmentVariablesRead", snapshot.environmentVariablesRead(),
+                "realValuesProvidedInRepository", snapshot.realValuesProvidedInRepository(),
+                "sensitiveValuesExposed", snapshot.sensitiveValuesExposed(),
+                "readyForProduction", false,
+                "readyToReplaceGateway", false,
+                "remainingProductionBlockers", snapshot.remainingProductionBlockers(),
+                "status", snapshot.status()
+        );
+    }
+
     List<Map<String, Object>> productionAuditSinkPrecheckChecks() {
         return List.of(
                 switchCheck("AUDIT_EVENT_SCHEMA_FIXED", "PASS", "production audit event fields are fixed before sink connection", true),
@@ -3546,6 +3883,7 @@ class UnifiedBackendRegistry {
                 switchCheck("PRODUCTION_CUTOVER_APPROVAL_PACKAGE_RECORDED", "PASS", "production cutover approval package requirements are recorded without approving traffic", true),
                 switchCheck("CUTOVER_EVIDENCE_CONSISTENCY_AUDIT_RECORDED", "PASS", "local cutover evidence consistency audit is recorded without applying production traffic", true),
                 switchCheck("EXTERNAL_VALUE_INTAKE_REHEARSAL_RECORDED", "PASS", "external value intake rehearsal is recorded without importing real values", true),
+                switchCheck("PRODUCTION_RUNTIME_CONFIG_SHELL_REHEARSAL_RECORDED", "PASS", "production runtime config shell rehearsal is recorded without binding real runtime", true),
                 switchCheck("ROLLBACK_RECHECK_COMMANDS_DEFINED", "PASS", "rollback recheck commands are recorded for candidate and rollback entrypoints", true),
                 switchCheck("SMOKE_EVIDENCE_FORMAT_DEFINED", "PASS", "smoke evidence format is recorded without treating it as production switch proof", true),
                 switchCheck("CENTRAL_CONFIG_PROVIDER_CONNECTED", "BLOCKED", "centralized production configuration provider is not connected", true),
