@@ -1,0 +1,76 @@
+{
+  "sampleName": "beiming-unified-backend-external-entrypoint-cutover",
+  "sampleVersion": "1.0",
+  "mode": "LOCAL_REHEARSAL_SAMPLE_NOT_APPLIED",
+  "sampleConfigApplied": false,
+  "applyProductionTraffic": false,
+  "requiresUserApprovalBeforeApply": true,
+  "businessPathRewriteAllowed": false,
+  "currentEntrypoint": {
+    "entrypointKey": "api-gateway",
+    "baseUrl": "http://127.0.0.1:8125",
+    "role": "CURRENT_GATEWAY_AND_ROLLBACK_ENTRYPOINT"
+  },
+  "candidateEntrypoint": {
+    "entrypointKey": "unified-backend",
+    "baseUrl": "http://127.0.0.1:8135",
+    "role": "CANDIDATE_BACKEND_APPLICATION_ENTRYPOINT"
+  },
+  "rollbackEntrypoint": {
+    "entrypointKey": "api-gateway",
+    "baseUrl": "http://127.0.0.1:8125",
+    "role": "PROTECTED_ROLLBACK_ENTRYPOINT"
+  },
+  "routePolicy": {
+    "preserveApiV1BusinessPaths": true,
+    "businessPathRewriteAllowed": false,
+    "forbiddenBusinessPrefix": "/api/v1/unified-backend/<module>"
+  },
+  "trafficPolicy": {
+    "productionTrafficAllowed": false,
+    "localRehearsalOnly": true,
+    "rollbackWindowRequired": true,
+    "gatewayTrafficZeroProofRequired": true
+  },
+  "securityPolicy": {
+    "credentialHeadersAllowed": false,
+    "runtimeConfigValuesAllowed": false,
+    "localAbsolutePathsAllowed": false,
+    "runtimeCommandValuesAllowed": false,
+    "sensitiveValuesExposed": false
+  },
+  "smokeTargets": [
+    { "targetKey": "UNIFIED_HEALTH", "method": "GET", "path": "/api/v1/unified-backend/health" },
+    { "targetKey": "GATEWAY_HEALTH", "method": "GET", "path": "/api/v1/gateway/health" },
+    { "targetKey": "BUSINESS_CORE_HEALTH", "method": "GET", "path": "/api/v1/business-core/health" },
+    { "targetKey": "ADMISSION_CORE_HEALTH", "method": "GET", "path": "/api/v1/admission-core/health" },
+    { "targetKey": "ENGAGEMENT_CORE_HEALTH", "method": "GET", "path": "/api/v1/engagement-core/health" },
+    { "targetKey": "OPS_CORE_HEALTH", "method": "GET", "path": "/api/v1/ops-core/health" },
+    { "targetKey": "PORTAL_CORE_HEALTH", "method": "GET", "path": "/api/v1/portal-core/health" },
+    { "targetKey": "AUTH_SESSION_VERIFY", "method": "GET", "path": "/api/v1/auth/session/verify" },
+    { "targetKey": "PROFILE_MEMBERS", "method": "GET", "path": "/api/v1/profile/members" },
+    { "targetKey": "NOTIFICATION_UNREAD_COUNT", "method": "GET", "path": "/api/v1/notifications/me/unread-count" },
+    { "targetKey": "CONTENT_HOME", "method": "GET", "path": "/api/v1/content/home" },
+    { "targetKey": "SERVER_STATUS_OVERVIEW", "method": "GET", "path": "/api/v1/server-status/overview" },
+    { "targetKey": "RESOURCE_LIST", "method": "GET", "path": "/api/v1/resources" },
+    { "targetKey": "ADMIN_OVERVIEW", "method": "GET", "path": "/api/v1/admin/overview" },
+    { "targetKey": "ONBOARDING_PROGRESS", "method": "GET", "path": "/api/v1/onboarding/me/progress" },
+    { "targetKey": "EXAM_SESSIONS", "method": "GET", "path": "/api/v1/exams/me/sessions/current" },
+    { "targetKey": "WHITELIST_CURRENT_APPLICATION", "method": "GET", "path": "/api/v1/whitelist/me/applications/current" },
+    { "targetKey": "ATTENDANCE_LEADERBOARD", "method": "GET", "path": "/api/v1/attendance/leaderboard" },
+    { "targetKey": "COMMUNITY_BOARDS", "method": "GET", "path": "/api/v1/community/boards" },
+    { "targetKey": "ACTIVITY_EVENTS", "method": "GET", "path": "/api/v1/activity/events" },
+    { "targetKey": "CALENDAR_UPCOMING", "method": "GET", "path": "/api/v1/calendar/upcoming" },
+    { "targetKey": "CHANGELOG_LATEST_VERSION", "method": "GET", "path": "/api/v1/changelog/versions/latest" },
+    { "targetKey": "OPS_CONTROL_OVERVIEW", "method": "GET", "path": "/api/v1/ops-control/overview" },
+    { "targetKey": "CLOUDREVE_SYNC_HEALTH", "method": "GET", "path": "/api/v1/cloudreve-sync/health" },
+    { "targetKey": "BACKUP_RECOVERY_HEALTH", "method": "GET", "path": "/api/v1/backup-recovery/health" },
+    { "targetKey": "ALERTING_HEALTH", "method": "GET", "path": "/api/v1/alerting/health" },
+    { "targetKey": "PLUGIN_INTEGRATION_HEALTH", "method": "GET", "path": "/api/v1/plugin-integration/health" },
+    { "targetKey": "CROSS_PLATFORM_NOTIFICATION_HEALTH", "method": "GET", "path": "/api/v1/cross-platform-notification/health" },
+    { "targetKey": "OPS_IMAGE_MARKET_HEALTH", "method": "GET", "path": "/api/v1/ops-image-market/health" },
+    { "targetKey": "GUIDE_CATEGORIES", "method": "GET", "path": "/api/v1/guides/categories" },
+    { "targetKey": "MATERIAL_FEATURED", "method": "GET", "path": "/api/v1/materials/featured" },
+    { "targetKey": "ONLINE_MAP_HEALTH", "method": "GET", "path": "/api/v1/online-map/health" }
+  ]
+}

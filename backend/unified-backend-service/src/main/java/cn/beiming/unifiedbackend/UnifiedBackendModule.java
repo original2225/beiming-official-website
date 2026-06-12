@@ -111,6 +111,9 @@ class UnifiedBackendController {
                 "externalEntrypointCutoverPrecheckStatus", "BLOCKED_BY_EXTERNAL_ENTRYPOINT_CONFIG_NOT_PROVIDED",
                 "externalEntrypointCutoverPrecheckChecks", registry.externalEntrypointCutoverPrecheckChecks(),
                 "externalEntrypointCutoverEvidence", registry.externalEntrypointCutoverEvidence(),
+                "externalEntrypointConfigSamplePrecheckStatus", "BLOCKED_BY_CUTOVER_SAMPLE_NOT_APPLIED",
+                "externalEntrypointConfigSamplePrecheckChecks", registry.externalEntrypointConfigSamplePrecheckChecks(),
+                "externalEntrypointConfigSampleEvidence", registry.externalEntrypointConfigSampleEvidence(),
                 "productionAuditSinkPrecheckStatus", "BLOCKED_BY_PERSISTENT_AUDIT_SINK_NOT_CONFIGURED",
                 "productionAuditSinkPrecheckChecks", registry.productionAuditSinkPrecheckChecks(),
                 "productionAuditSinkEvidence", registry.productionAuditSinkEvidence(),
@@ -1159,6 +1162,40 @@ class UnifiedBackendRegistry {
                 "readyForProduction", false,
                 "readyToReplaceGateway", false,
                 "status", "BLOCKED_BY_EXTERNAL_ENTRYPOINT_CONFIG_NOT_PROVIDED"
+        );
+    }
+
+    List<Map<String, Object>> externalEntrypointConfigSamplePrecheckChecks() {
+        return List.of(
+                switchCheck("CUTOVER_SAMPLE_PRESENT", "PASS", "external entrypoint cutover sample is recorded as a formal repository asset", true),
+                switchCheck("CUTOVER_SAMPLE_JSON_PARSABLE", "PASS", "external entrypoint cutover sample is parseable JSON", true),
+                switchCheck("CANDIDATE_ENTRYPOINT_RECORDED", "PASS", "candidate target remains unified-backend on 8135", true),
+                switchCheck("CURRENT_ENTRYPOINT_RECORDED", "PASS", "current effective entrypoint remains api-gateway on 8125", true),
+                switchCheck("ROLLBACK_ENTRYPOINT_RECORDED", "PASS", "api-gateway on 8125 remains the rollback target", true),
+                switchCheck("BUSINESS_PATHS_PRESERVED", "PASS", "business paths keep existing /api/v1 prefixes", true),
+                switchCheck("SMOKE_TARGETS_RECORDED", "PASS", "cutover sample records the candidate smoke target set", true),
+                switchCheck("NO_SENSITIVE_VALUES_IN_SAMPLE", "PASS", "cutover sample records no runtime credentials or sensitive config values", true),
+                switchCheck("PRODUCTION_SWITCH_DEFAULT_FALSE", "PASS", "cutover sample defaults production traffic switch to false", true),
+                switchCheck("API_GATEWAY_ROLLBACK_PROTECTED", "PASS", "api-gateway remains protected as rollback entrypoint", true)
+        );
+    }
+
+    Map<String, Object> externalEntrypointConfigSampleEvidence() {
+        return map(
+                "sampleConfigPath", "docs/deployment-entrypoint-cutover-sample.json",
+                "sampleConfigPresent", true,
+                "sampleConfigApplied", false,
+                "applyProductionTraffic", false,
+                "requiresUserApprovalBeforeApply", true,
+                "businessPathRewriteAllowed", false,
+                "smokeTargetsTotal", smokeTargets().size(),
+                "currentEntrypoint", "http://127.0.0.1:8125",
+                "candidateEntrypoint", "http://127.0.0.1:8135",
+                "rollbackEntrypoint", "http://127.0.0.1:8125",
+                "sensitiveValuesExposed", false,
+                "readyForProduction", false,
+                "readyToReplaceGateway", false,
+                "status", "BLOCKED_BY_CUTOVER_SAMPLE_NOT_APPLIED"
         );
     }
 

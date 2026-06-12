@@ -61,6 +61,7 @@ class UnifiedBackendApiContractTest {
         addRange(mapped, "UBACK-PROD-CONFIG", 1, 12);
         addRange(mapped, "UBACK-EXT-CUTOVER", 1, 12);
         addRange(mapped, "UBACK-PROD-AUDIT", 1, 12);
+        addRange(mapped, "UBACK-SAMPLE", 1, 12);
 
         assertThat(mapped).contains(
                 "UBACK-COM-001",
@@ -103,9 +104,11 @@ class UnifiedBackendApiContractTest {
                 "UBACK-EXT-CUTOVER-001",
                 "UBACK-EXT-CUTOVER-012",
                 "UBACK-PROD-AUDIT-001",
-                "UBACK-PROD-AUDIT-012"
+                "UBACK-PROD-AUDIT-012",
+                "UBACK-SAMPLE-001",
+                "UBACK-SAMPLE-012"
         );
-        assertThat(mapped).hasSize(119);
+        assertThat(mapped).hasSize(131);
     }
 
     @Test
@@ -1569,6 +1572,109 @@ class UnifiedBackendApiContractTest {
                 .doesNotContain("bucket")
                 .doesNotContain("topic");
         assertNoSecrets(readiness);
+    }
+
+    @Test
+    void exposesExternalEntrypointConfigSampleWithoutApplyingTraffic() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-external-entrypoint-cutover-sample"));
+
+        assertThat(readiness.at("/data/externalEntrypointConfigSamplePrecheckStatus").asText())
+                .isEqualTo("BLOCKED_BY_CUTOVER_SAMPLE_NOT_APPLIED");
+        assertThat(readiness.at("/data/readyForProduction").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/readyToReplaceGateway").asBoolean()).isFalse();
+
+        assertPrecheck(readiness, "/data/externalEntrypointConfigSamplePrecheckChecks", "CUTOVER_SAMPLE_PRESENT", "PASS", true);
+        assertPrecheck(readiness, "/data/externalEntrypointConfigSamplePrecheckChecks", "CUTOVER_SAMPLE_JSON_PARSABLE", "PASS", true);
+        assertPrecheck(readiness, "/data/externalEntrypointConfigSamplePrecheckChecks", "CANDIDATE_ENTRYPOINT_RECORDED", "PASS", true);
+        assertPrecheck(readiness, "/data/externalEntrypointConfigSamplePrecheckChecks", "CURRENT_ENTRYPOINT_RECORDED", "PASS", true);
+        assertPrecheck(readiness, "/data/externalEntrypointConfigSamplePrecheckChecks", "ROLLBACK_ENTRYPOINT_RECORDED", "PASS", true);
+        assertPrecheck(readiness, "/data/externalEntrypointConfigSamplePrecheckChecks", "BUSINESS_PATHS_PRESERVED", "PASS", true);
+        assertPrecheck(readiness, "/data/externalEntrypointConfigSamplePrecheckChecks", "SMOKE_TARGETS_RECORDED", "PASS", true);
+        assertPrecheck(readiness, "/data/externalEntrypointConfigSamplePrecheckChecks", "NO_SENSITIVE_VALUES_IN_SAMPLE", "PASS", true);
+        assertPrecheck(readiness, "/data/externalEntrypointConfigSamplePrecheckChecks", "PRODUCTION_SWITCH_DEFAULT_FALSE", "PASS", true);
+        assertPrecheck(readiness, "/data/externalEntrypointConfigSamplePrecheckChecks", "API_GATEWAY_ROLLBACK_PROTECTED", "PASS", true);
+
+        JsonNode evidence = readiness.at("/data/externalEntrypointConfigSampleEvidence");
+        assertThat(evidence.at("/sampleConfigPath").asText()).isEqualTo("docs/deployment-entrypoint-cutover-sample.json");
+        assertThat(evidence.at("/sampleConfigPresent").asBoolean()).isTrue();
+        assertThat(evidence.at("/sampleConfigApplied").asBoolean()).isFalse();
+        assertThat(evidence.at("/applyProductionTraffic").asBoolean()).isFalse();
+        assertThat(evidence.at("/requiresUserApprovalBeforeApply").asBoolean()).isTrue();
+        assertThat(evidence.at("/businessPathRewriteAllowed").asBoolean()).isFalse();
+        assertThat(evidence.at("/smokeTargetsTotal").asInt()).isEqualTo(32);
+        assertThat(evidence.at("/currentEntrypoint").asText()).isEqualTo("http://127.0.0.1:8125");
+        assertThat(evidence.at("/candidateEntrypoint").asText()).isEqualTo("http://127.0.0.1:8135");
+        assertThat(evidence.at("/rollbackEntrypoint").asText()).isEqualTo("http://127.0.0.1:8125");
+        assertThat(evidence.at("/sensitiveValuesExposed").asBoolean()).isFalse();
+        assertThat(evidence.at("/readyForProduction").asBoolean()).isFalse();
+        assertThat(evidence.at("/readyToReplaceGateway").asBoolean()).isFalse();
+        assertThat(evidence.at("/status").asText()).isEqualTo("BLOCKED_BY_CUTOVER_SAMPLE_NOT_APPLIED");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void externalEntrypointConfigSampleDoesNotLeakSensitiveRuntimeValues() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-external-entrypoint-cutover-sample-redaction"));
+
+        assertThat(readiness.at("/data/externalEntrypointConfigSamplePrecheckStatus").asText())
+                .isEqualTo("BLOCKED_BY_CUTOVER_SAMPLE_NOT_APPLIED");
+        String text = readiness.at("/data/externalEntrypointConfigSampleEvidence").toString()
+                + readiness.at("/data/externalEntrypointConfigSamplePrecheckChecks");
+        assertThat(text)
+                .doesNotContain("Authorization")
+                .doesNotContain("X-Gateway-Internal-Signature")
+                .doesNotContain("C:\\Users\\")
+                .doesNotContain(".env")
+                .doesNotContain("jdbc:")
+                .doesNotContain("cmd.exe")
+                .doesNotContain("powershell")
+                .doesNotContain("kubectl")
+                .doesNotContain("docker")
+                .doesNotContain("id_rsa");
+        assertThat(text.toLowerCase())
+                .doesNotContain("token")
+                .doesNotContain("cookie")
+                .doesNotContain("secret")
+                .doesNotContain("password")
+                .doesNotContain("dsn")
+                .doesNotContain("bucket")
+                .doesNotContain("topic");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void externalEntrypointCutoverSampleFileIsParseableAndSafe() throws Exception {
+        JsonNode sample = objectMapper.readTree(Files.readString(Path.of("../../docs/deployment-entrypoint-cutover-sample.json")));
+
+        assertThat(sample.at("/sampleName").asText()).isEqualTo("beiming-unified-backend-external-entrypoint-cutover");
+        assertThat(sample.at("/mode").asText()).isEqualTo("LOCAL_REHEARSAL_SAMPLE_NOT_APPLIED");
+        assertThat(sample.at("/applyProductionTraffic").asBoolean()).isFalse();
+        assertThat(sample.at("/requiresUserApprovalBeforeApply").asBoolean()).isTrue();
+        assertThat(sample.at("/businessPathRewriteAllowed").asBoolean()).isFalse();
+        assertThat(sample.at("/currentEntrypoint/baseUrl").asText()).isEqualTo("http://127.0.0.1:8125");
+        assertThat(sample.at("/candidateEntrypoint/baseUrl").asText()).isEqualTo("http://127.0.0.1:8135");
+        assertThat(sample.at("/rollbackEntrypoint/baseUrl").asText()).isEqualTo("http://127.0.0.1:8125");
+        assertThat(sample.at("/routePolicy/preserveApiV1BusinessPaths").asBoolean()).isTrue();
+        assertThat(sample.at("/routePolicy/businessPathRewriteAllowed").asBoolean()).isFalse();
+        assertThat(sample.at("/smokeTargets").size()).isEqualTo(32);
+        assertThat(sample.toString())
+                .doesNotContain("/api/v1/unified-backend/auth")
+                .doesNotContain("/api/v1/unified-backend/profile");
+        assertThat(sample.toString().toLowerCase())
+                .doesNotContain("authorization")
+                .doesNotContain("token")
+                .doesNotContain("cookie")
+                .doesNotContain("secret")
+                .doesNotContain("password")
+                .doesNotContain("dsn")
+                .doesNotContain("jdbc:")
+                .doesNotContain("bucket")
+                .doesNotContain("topic")
+                .doesNotContain("c:\\users\\");
     }
 
     @Test
