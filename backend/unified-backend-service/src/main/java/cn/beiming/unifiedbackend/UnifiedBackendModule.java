@@ -128,6 +128,9 @@ class UnifiedBackendController {
                 "productionCutoverRunbookStatus", registry.productionCutoverRunbookStatus(),
                 "productionCutoverRunbookChecks", registry.productionCutoverRunbookChecks(),
                 "productionCutoverRunbookEvidence", registry.productionCutoverRunbookEvidence(),
+                "productionCutoverApprovalPackageStatus", registry.productionCutoverApprovalPackageStatus(),
+                "productionCutoverApprovalPackageChecks", registry.productionCutoverApprovalPackageChecks(),
+                "productionCutoverApprovalPackageEvidence", registry.productionCutoverApprovalPackageEvidence(),
                 "auditSinkAdapterRehearsalStatus", registry.auditSinkAdapterRehearsalStatus(),
                 "auditSinkAdapterRehearsalChecks", registry.auditSinkAdapterRehearsalChecks(),
                 "auditSinkAdapterRehearsalEvidence", registry.auditSinkAdapterRehearsalEvidence(),
@@ -795,6 +798,206 @@ record ProductionCutoverRunbookSnapshot(
 ) {
 }
 
+interface UnifiedProductionCutoverApprovalPackage {
+    ProductionCutoverApprovalPackageSnapshot snapshot();
+}
+
+final class LocalFileProductionCutoverApprovalPackage implements UnifiedProductionCutoverApprovalPackage {
+    private static final List<String> FORBIDDEN_FRAGMENTS = List.of(
+            "authorization",
+            "x-gateway-internal-signature",
+            "c:\\users\\",
+            ".env",
+            "jdbc:",
+            "id_rsa",
+            "token",
+            "cookie",
+            "secret",
+            "password",
+            "dsn",
+            "bucket",
+            "topic"
+    );
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @Override
+    public ProductionCutoverApprovalPackageSnapshot snapshot() {
+        Path packagePath = locatePackagePath();
+        JsonNode sample = readSample(packagePath);
+        boolean present = Files.exists(packagePath);
+        boolean parsed = present && !sample.isMissingNode();
+        boolean sensitiveValuesExposed = containsSensitive(sample);
+        int evidenceInputsTotal = sample.path("evidenceInputs").size();
+        int externalParametersTotal = sample.path("externalParameterChecklist").size();
+        int approvalRolesTotal = sample.path("approvalMatrix").size();
+        int goNoGoItemsTotal = sample.path("goNoGoMatrix").size();
+        int observationFieldsTotal = sample.path("observationChecklist").size();
+        int verificationCommandsTotal = sample.path("verificationCommands").size();
+        boolean localApprovalPackagePassed = parsed
+                && evidenceInputsTotal >= 7
+                && externalParametersTotal >= 10
+                && approvalRolesTotal >= 7
+                && goNoGoItemsTotal >= 15
+                && observationFieldsTotal >= 10
+                && verificationCommandsTotal == 7
+                && !sample.path("approvalPackageApplied").asBoolean(true)
+                && !sample.path("productionTrafficAllowed").asBoolean(true)
+                && sample.path("requiresUserApprovalBeforeApply").asBoolean(false)
+                && !sensitiveValuesExposed;
+        return new ProductionCutoverApprovalPackageSnapshot(
+                "LOCAL_PRODUCTION_CUTOVER_APPROVAL_PACKAGE_REHEARSAL_NOT_PRODUCTION",
+                "docs/unified-backend-production-cutover-approval-package-sample.json",
+                present,
+                parsed,
+                sample.path("approvalPackageApplied").asBoolean(false),
+                sample.path("productionTrafficAllowed").asBoolean(false),
+                sample.path("requiresUserApprovalBeforeApply").asBoolean(true),
+                sample.path("candidateEntrypoint").path("baseUrl").asText("http://127.0.0.1:8135"),
+                sample.path("currentEntrypoint").path("baseUrl").asText("http://127.0.0.1:8125"),
+                sample.path("rollbackEntrypoint").path("baseUrl").asText("http://127.0.0.1:8125"),
+                evidenceInputsTotal,
+                externalParametersTotal,
+                approvalRolesTotal,
+                goNoGoItemsTotal,
+                observationFieldsTotal,
+                verificationCommandsTotal,
+                anyExternalValueProvided(sample.path("externalParameterChecklist")),
+                statusIsPass(sample.path("goNoGoMatrix"), "REAL_CENTRAL_CONFIG_PROVIDER_CONNECTED"),
+                statusIsPass(sample.path("goNoGoMatrix"), "PRODUCTION_PROFILE_BOUND"),
+                statusIsPass(sample.path("goNoGoMatrix"), "SENSITIVE_CONFIG_SOURCE_EXTERNALIZED"),
+                statusIsPass(sample.path("goNoGoMatrix"), "REAL_PERSISTENT_AUDIT_SINK_CONNECTED"),
+                statusIsPass(sample.path("goNoGoMatrix"), "REAL_AUDIT_WRITE_SMOKE_PASSED"),
+                allApproved(sample.path("approvalMatrix")),
+                sample.path("rollbackAuthority").path("rollbackOperatorApproved").asBoolean(false),
+                sample.path("retirementGate").path("apiGatewayRetirementApproved").asBoolean(false)
+                        || sample.path("retirementGate").path("coreRetirementApproved").asBoolean(false),
+                sample.path("retirementGate").path("deletionAllowed").asBoolean(false),
+                sample.path("retirementGate").path("bulkRetirementAllowed").asBoolean(false),
+                false,
+                sensitiveValuesExposed,
+                List.of(
+                        "REAL_EXTERNAL_ENTRYPOINT_CONFIG_APPLIED",
+                        "REAL_CENTRAL_CONFIG_PROVIDER_CONNECTED",
+                        "PRODUCTION_PROFILE_BOUND",
+                        "SENSITIVE_CONFIG_SOURCE_EXTERNALIZED",
+                        "REAL_PERSISTENT_AUDIT_SINK_CONNECTED",
+                        "REAL_AUDIT_WRITE_SMOKE_PASSED",
+                        "PRODUCTION_TRAFFIC_SWITCH_APPROVED",
+                        "PRODUCTION_TRAFFIC_SWITCH_APPLIED",
+                        "PRODUCTION_TRAFFIC_OBSERVED_ON_UNIFIED",
+                        "API_GATEWAY_TRAFFIC_ZERO_PROVEN",
+                        "ROLLBACK_OPERATOR_APPROVED",
+                        "ROLLBACK_WINDOW_COMPLETED",
+                        "USER_RETIREMENT_APPROVAL_GRANTED"
+                ),
+                localApprovalPackagePassed
+                        ? "PASS_LOCAL_APPROVAL_PACKAGE_REHEARSAL_NOT_PRODUCTION"
+                        : "BLOCKED_BY_LOCAL_APPROVAL_PACKAGE_SAMPLE_NOT_AVAILABLE"
+        );
+    }
+
+    private JsonNode readSample(Path samplePath) {
+        try {
+            if (Files.exists(samplePath)) {
+                return objectMapper.readTree(Files.readString(samplePath));
+            }
+        } catch (IOException ignored) {
+            return objectMapper.getNodeFactory().missingNode();
+        }
+        return objectMapper.getNodeFactory().missingNode();
+    }
+
+    private boolean containsSensitive(JsonNode sample) {
+        String text = sample.toString().toLowerCase(Locale.ROOT);
+        return FORBIDDEN_FRAGMENTS.stream().anyMatch(text::contains);
+    }
+
+    private boolean anyExternalValueProvided(JsonNode checklist) {
+        if (!checklist.isArray()) {
+            return false;
+        }
+        for (JsonNode item : checklist) {
+            if (item.path("valueProvided").asBoolean(false)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean allApproved(JsonNode approvalMatrix) {
+        if (!approvalMatrix.isArray() || approvalMatrix.isEmpty()) {
+            return false;
+        }
+        for (JsonNode item : approvalMatrix) {
+            if (!item.path("approved").asBoolean(false) || !item.path("approvalEvidenceProvided").asBoolean(false)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean statusIsPass(JsonNode matrix, String itemName) {
+        if (!matrix.isArray()) {
+            return false;
+        }
+        for (JsonNode item : matrix) {
+            if (itemName.equals(item.path("item").asText())) {
+                return "PASS".equals(item.path("status").asText());
+            }
+        }
+        return false;
+    }
+
+    private Path locatePackagePath() {
+        List<Path> candidates = List.of(
+                Path.of("docs", "unified-backend-production-cutover-approval-package-sample.json"),
+                Path.of("..", "docs", "unified-backend-production-cutover-approval-package-sample.json"),
+                Path.of("..", "..", "docs", "unified-backend-production-cutover-approval-package-sample.json")
+        );
+        for (Path candidate : candidates) {
+            if (Files.exists(candidate)) {
+                return candidate.normalize();
+            }
+        }
+        return candidates.get(0).normalize();
+    }
+}
+
+record ProductionCutoverApprovalPackageSnapshot(
+        String readinessMode,
+        String sampleApprovalPackagePath,
+        boolean sampleApprovalPackagePresent,
+        boolean sampleApprovalPackageParsed,
+        boolean approvalPackageApplied,
+        boolean productionTrafficAllowed,
+        boolean requiresUserApprovalBeforeApply,
+        String candidateEntrypoint,
+        String currentEntrypoint,
+        String rollbackEntrypoint,
+        int existingEvidenceReferencedTotal,
+        int externalParametersTotal,
+        int approvalRolesTotal,
+        int goNoGoItemsTotal,
+        int observationFieldsTotal,
+        int verificationCommandsTotal,
+        boolean externalEntrypointValuesProvided,
+        boolean centralConfigProviderConnected,
+        boolean productionProfileBound,
+        boolean sensitiveConfigExternalized,
+        boolean persistentAuditSinkConnected,
+        boolean auditWriteSmokePassed,
+        boolean productionTrafficApproved,
+        boolean rollbackOperatorApproved,
+        boolean retirementApproverGranted,
+        boolean deletionAllowed,
+        boolean bulkRetirementAllowed,
+        boolean environmentVariablesRead,
+        boolean sensitiveValuesExposed,
+        List<String> remainingProductionBlockers,
+        String status
+) {
+}
+
 @Component
 class UnifiedBackendRegistry {
     private static final List<String> MOUNTED_ENTRYPOINTS = List.of("api-gateway", "business-core", "admission-core", "engagement-core", "ops-core", "portal-core");
@@ -809,25 +1012,36 @@ class UnifiedBackendRegistry {
     private final UnifiedConfigProvider configProvider;
     private final UnifiedAuditSink auditSink;
     private final UnifiedProductionCutoverRunbook cutoverRunbook;
+    private final UnifiedProductionCutoverApprovalPackage cutoverApprovalPackage;
     private final List<UnifiedMount> gatewayRoutes = createGatewayRoutes();
 
     UnifiedBackendRegistry() {
-        this(new LocalFileUnifiedConfigProvider(), new LocalFileUnifiedAuditSink(), new LocalFileProductionCutoverRunbook());
+        this(new LocalFileUnifiedConfigProvider(), new LocalFileUnifiedAuditSink(), new LocalFileProductionCutoverRunbook(),
+                new LocalFileProductionCutoverApprovalPackage());
     }
 
     UnifiedBackendRegistry(UnifiedConfigProvider configProvider) {
-        this(configProvider, new LocalFileUnifiedAuditSink(), new LocalFileProductionCutoverRunbook());
+        this(configProvider, new LocalFileUnifiedAuditSink(), new LocalFileProductionCutoverRunbook(),
+                new LocalFileProductionCutoverApprovalPackage());
     }
 
     UnifiedBackendRegistry(UnifiedConfigProvider configProvider, UnifiedAuditSink auditSink) {
-        this(configProvider, auditSink, new LocalFileProductionCutoverRunbook());
+        this(configProvider, auditSink, new LocalFileProductionCutoverRunbook(),
+                new LocalFileProductionCutoverApprovalPackage());
     }
 
     UnifiedBackendRegistry(UnifiedConfigProvider configProvider, UnifiedAuditSink auditSink,
                            UnifiedProductionCutoverRunbook cutoverRunbook) {
+        this(configProvider, auditSink, cutoverRunbook, new LocalFileProductionCutoverApprovalPackage());
+    }
+
+    UnifiedBackendRegistry(UnifiedConfigProvider configProvider, UnifiedAuditSink auditSink,
+                           UnifiedProductionCutoverRunbook cutoverRunbook,
+                           UnifiedProductionCutoverApprovalPackage cutoverApprovalPackage) {
         this.configProvider = configProvider;
         this.auditSink = auditSink;
         this.cutoverRunbook = cutoverRunbook;
+        this.cutoverApprovalPackage = cutoverApprovalPackage;
     }
 
     Map<String, Object> baseProfile() {
@@ -1903,6 +2117,72 @@ class UnifiedBackendRegistry {
         );
     }
 
+    String productionCutoverApprovalPackageStatus() {
+        return cutoverApprovalPackage.snapshot().status();
+    }
+
+    List<Map<String, Object>> productionCutoverApprovalPackageChecks() {
+        ProductionCutoverApprovalPackageSnapshot snapshot = cutoverApprovalPackage.snapshot();
+        return List.of(
+                switchCheck("APPROVAL_PACKAGE_SAMPLE_PRESENT", snapshot.sampleApprovalPackagePresent() ? "PASS" : "BLOCKED", "production cutover approval package sample is present", true),
+                switchCheck("APPROVAL_PACKAGE_JSON_PARSABLE", snapshot.sampleApprovalPackageParsed() ? "PASS" : "BLOCKED", "production cutover approval package sample is parseable JSON", true),
+                switchCheck("EXISTING_LOCAL_EVIDENCE_REFERENCED", snapshot.existingEvidenceReferencedTotal() >= 7 ? "PASS" : "BLOCKED", "existing local cutover evidence is referenced", true),
+                switchCheck("EXTERNAL_PARAMETER_CHECKLIST_RECORDED", snapshot.externalParametersTotal() >= 10 ? "PASS" : "BLOCKED", "external parameter checklist is recorded without real values", true),
+                switchCheck("APPROVAL_ROLES_RECORDED", snapshot.approvalRolesTotal() >= 7 ? "PASS" : "BLOCKED", "approval roles are recorded without real approvers", true),
+                switchCheck("GO_NO_GO_MATRIX_RECORDED", snapshot.goNoGoItemsTotal() >= 15 ? "PASS" : "BLOCKED", "go/no-go matrix records local pass items and external blockers", true),
+                switchCheck("OBSERVATION_CHECKLIST_RECORDED", snapshot.observationFieldsTotal() >= 10 ? "PASS" : "BLOCKED", "post-cutover observation fields are recorded", true),
+                switchCheck("ROLLBACK_AUTHORITY_RECORDED", snapshot.rollbackOperatorApproved() ? "BLOCKED" : "PASS", "rollback authority is recorded without approval", true),
+                switchCheck("RETIREMENT_GATE_RECORDED", snapshot.deletionAllowed() || snapshot.bulkRetirementAllowed() ? "BLOCKED" : "PASS", "retirement gate preserves deletion and bulk retirement blocks", true),
+                switchCheck("NO_SENSITIVE_VALUES_IN_APPROVAL_PACKAGE", snapshot.sensitiveValuesExposed() ? "BLOCKED" : "PASS", "approval package sample and evidence are redacted", true),
+                switchCheck("REAL_EXTERNAL_ENTRYPOINT_VALUES_NOT_PROVIDED", snapshot.externalEntrypointValuesProvided() ? "PASS" : "BLOCKED", "real external entrypoint values are not provided in repository", true),
+                switchCheck("REAL_CENTRAL_CONFIG_PROVIDER_NOT_CONNECTED", snapshot.centralConfigProviderConnected() ? "PASS" : "BLOCKED", "real central config provider remains disconnected", true),
+                switchCheck("REAL_AUDIT_SINK_NOT_CONNECTED", snapshot.persistentAuditSinkConnected() ? "PASS" : "BLOCKED", "real persistent audit sink remains disconnected", true),
+                switchCheck("PRODUCTION_TRAFFIC_NOT_APPROVED", snapshot.productionTrafficApproved() ? "PASS" : "BLOCKED", "production traffic switch is not approved", true),
+                switchCheck("ROLLBACK_OPERATOR_NOT_APPROVED", snapshot.rollbackOperatorApproved() ? "PASS" : "BLOCKED", "rollback operator is not approved", true),
+                switchCheck("RETIREMENT_APPROVER_NOT_GRANTED", snapshot.retirementApproverGranted() ? "PASS" : "BLOCKED", "retirement approval is not granted", true),
+                switchCheck("READY_FLAGS_REMAIN_FALSE", "PASS", "readyForProduction and readyToReplaceGateway remain false", true)
+        );
+    }
+
+    Map<String, Object> productionCutoverApprovalPackageEvidence() {
+        ProductionCutoverApprovalPackageSnapshot snapshot = cutoverApprovalPackage.snapshot();
+        return map(
+                "readinessMode", snapshot.readinessMode(),
+                "sampleApprovalPackagePath", snapshot.sampleApprovalPackagePath(),
+                "sampleApprovalPackagePresent", snapshot.sampleApprovalPackagePresent(),
+                "sampleApprovalPackageParsed", snapshot.sampleApprovalPackageParsed(),
+                "approvalPackageApplied", snapshot.approvalPackageApplied(),
+                "productionTrafficAllowed", snapshot.productionTrafficAllowed(),
+                "requiresUserApprovalBeforeApply", snapshot.requiresUserApprovalBeforeApply(),
+                "candidateEntrypoint", snapshot.candidateEntrypoint(),
+                "currentEntrypoint", snapshot.currentEntrypoint(),
+                "rollbackEntrypoint", snapshot.rollbackEntrypoint(),
+                "existingEvidenceReferencedTotal", snapshot.existingEvidenceReferencedTotal(),
+                "externalParametersTotal", snapshot.externalParametersTotal(),
+                "approvalRolesTotal", snapshot.approvalRolesTotal(),
+                "goNoGoItemsTotal", snapshot.goNoGoItemsTotal(),
+                "observationFieldsTotal", snapshot.observationFieldsTotal(),
+                "verificationCommandsTotal", snapshot.verificationCommandsTotal(),
+                "externalEntrypointValuesProvided", snapshot.externalEntrypointValuesProvided(),
+                "centralConfigProviderConnected", snapshot.centralConfigProviderConnected(),
+                "productionProfileBound", snapshot.productionProfileBound(),
+                "sensitiveConfigExternalized", snapshot.sensitiveConfigExternalized(),
+                "persistentAuditSinkConnected", snapshot.persistentAuditSinkConnected(),
+                "auditWriteSmokePassed", snapshot.auditWriteSmokePassed(),
+                "productionTrafficApproved", snapshot.productionTrafficApproved(),
+                "rollbackOperatorApproved", snapshot.rollbackOperatorApproved(),
+                "retirementApproverGranted", snapshot.retirementApproverGranted(),
+                "deletionAllowed", snapshot.deletionAllowed(),
+                "bulkRetirementAllowed", snapshot.bulkRetirementAllowed(),
+                "environmentVariablesRead", snapshot.environmentVariablesRead(),
+                "sensitiveValuesExposed", snapshot.sensitiveValuesExposed(),
+                "readyForProduction", false,
+                "readyToReplaceGateway", false,
+                "remainingProductionBlockers", snapshot.remainingProductionBlockers(),
+                "status", snapshot.status()
+        );
+    }
+
     List<Map<String, Object>> productionAuditSinkPrecheckChecks() {
         return List.of(
                 switchCheck("AUDIT_EVENT_SCHEMA_FIXED", "PASS", "production audit event fields are fixed before sink connection", true),
@@ -2039,6 +2319,7 @@ class UnifiedBackendRegistry {
                 switchCheck("CENTRAL_CONFIG_CONTRACT_DEFINED", "PASS", "central config ownership and rollback contract are documented", true),
                 switchCheck("AUDIT_TRAIL_CONTRACT_DEFINED", "PASS", "audit trail ownership and event contract are documented", true),
                 switchCheck("CUTOVER_RUNBOOK_DEFINED", "PASS", "cutover runbook requirements are recorded without applying traffic switch", true),
+                switchCheck("PRODUCTION_CUTOVER_APPROVAL_PACKAGE_RECORDED", "PASS", "production cutover approval package requirements are recorded without approving traffic", true),
                 switchCheck("ROLLBACK_RECHECK_COMMANDS_DEFINED", "PASS", "rollback recheck commands are recorded for candidate and rollback entrypoints", true),
                 switchCheck("SMOKE_EVIDENCE_FORMAT_DEFINED", "PASS", "smoke evidence format is recorded without treating it as production switch proof", true),
                 switchCheck("CENTRAL_CONFIG_PROVIDER_CONNECTED", "BLOCKED", "centralized production configuration provider is not connected", true),
