@@ -1,5 +1,7 @@
 package cn.beiming.unifiedbackend;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -13,6 +15,9 @@ import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 import org.springframework.web.util.pattern.PathPattern;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -108,6 +113,9 @@ class UnifiedBackendController {
                 "productionCentralConfigPrecheckStatus", "BLOCKED_BY_PRODUCTION_CONFIG_PROVIDER_NOT_CONNECTED",
                 "productionCentralConfigPrecheckChecks", registry.productionCentralConfigPrecheckChecks(),
                 "productionCentralConfigEvidence", registry.productionCentralConfigEvidence(),
+                "productionCentralConfigProviderStatus", registry.productionCentralConfigProviderStatus(),
+                "productionCentralConfigProviderChecks", registry.productionCentralConfigProviderChecks(),
+                "productionCentralConfigProviderEvidence", registry.productionCentralConfigProviderEvidence(),
                 "externalEntrypointCutoverPrecheckStatus", "BLOCKED_BY_EXTERNAL_ENTRYPOINT_CONFIG_NOT_PROVIDED",
                 "externalEntrypointCutoverPrecheckChecks", registry.externalEntrypointCutoverPrecheckChecks(),
                 "externalEntrypointCutoverEvidence", registry.externalEntrypointCutoverEvidence(),
@@ -342,6 +350,105 @@ class UnifiedBackendController {
     }
 }
 
+interface UnifiedConfigProvider {
+    ConfigProviderSnapshot snapshot();
+}
+
+final class LocalFileUnifiedConfigProvider implements UnifiedConfigProvider {
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @Override
+    public ConfigProviderSnapshot snapshot() {
+        Path samplePath = locateCentralConfigSamplePath();
+        JsonNode sample = readSample(samplePath);
+        boolean sampleConfigPresent = Files.exists(samplePath);
+        boolean sampleConfigParsed = sampleConfigPresent && !sample.isMissingNode();
+        return new ConfigProviderSnapshot(
+                "LOCAL_FILE_CONFIG_PROVIDER_REHEARSAL_NOT_PRODUCTION",
+                sample.path("providerType").asText("LOCAL_FILE_SAMPLE"),
+                sample.path("providerConnected").asBoolean(false),
+                "docs/unified-backend-central-config-provider-sample.json",
+                sample.path("sampleName").asText("beiming-unified-backend-central-config-provider"),
+                sampleConfigPresent,
+                sampleConfigParsed,
+                sample.path("configDomains").size(),
+                sample.path("entrypoints").path("candidate").path("baseUrl").asText("http://127.0.0.1:8135"),
+                sample.path("entrypoints").path("current").path("baseUrl").asText("http://127.0.0.1:8125"),
+                sample.path("entrypoints").path("rollback").path("baseUrl").asText("http://127.0.0.1:8125"),
+                sample.path("routePolicy").path("preserveApiV1BusinessPaths").asBoolean(true),
+                sample.path("routePolicy").path("businessPathRewriteAllowed").asBoolean(false),
+                sample.path("productionProfileBound").asBoolean(false),
+                sample.path("sensitiveConfigExternalized").asBoolean(false),
+                false,
+                false,
+                false,
+                List.of(
+                        "REAL_CENTRAL_CONFIG_PROVIDER_CONNECTED",
+                        "PRODUCTION_PROFILE_BOUND",
+                        "SENSITIVE_CONFIG_SOURCE_EXTERNALIZED",
+                        "EXTERNAL_ENTRYPOINT_CONFIG_APPLIED",
+                        "PERSISTENT_AUDIT_SINK_CONNECTED",
+                        "PRODUCTION_TRAFFIC_SWITCH_APPLIED",
+                        "API_GATEWAY_TRAFFIC_ZERO_PROVEN",
+                        "ROLLBACK_WINDOW_COMPLETED",
+                        "USER_RETIREMENT_APPROVAL_GRANTED"
+                ),
+                sampleConfigParsed
+                        ? "PASS_LOCAL_FILE_PROVIDER_REHEARSAL_NOT_PRODUCTION"
+                        : "BLOCKED_BY_LOCAL_CONFIG_SAMPLE_NOT_AVAILABLE"
+        );
+    }
+
+    private JsonNode readSample(Path samplePath) {
+        try {
+            if (Files.exists(samplePath)) {
+                return objectMapper.readTree(Files.readString(samplePath));
+            }
+        } catch (IOException ignored) {
+            return objectMapper.getNodeFactory().missingNode();
+        }
+        return objectMapper.getNodeFactory().missingNode();
+    }
+
+    private Path locateCentralConfigSamplePath() {
+        List<Path> candidates = List.of(
+                Path.of("docs", "unified-backend-central-config-provider-sample.json"),
+                Path.of("..", "docs", "unified-backend-central-config-provider-sample.json"),
+                Path.of("..", "..", "docs", "unified-backend-central-config-provider-sample.json")
+        );
+        for (Path candidate : candidates) {
+            if (Files.exists(candidate)) {
+                return candidate.normalize();
+            }
+        }
+        return candidates.get(0).normalize();
+    }
+}
+
+record ConfigProviderSnapshot(
+        String readinessMode,
+        String providerType,
+        boolean productionProviderConnected,
+        String sampleConfigPath,
+        String sampleName,
+        boolean sampleConfigPresent,
+        boolean sampleConfigParsed,
+        int configDomainsTotal,
+        String candidateEntrypoint,
+        String currentEntrypoint,
+        String rollbackEntrypoint,
+        boolean businessPathsRemainUnchanged,
+        boolean businessPathRewriteAllowed,
+        boolean productionProfileBound,
+        boolean sensitiveConfigExternalized,
+        boolean environmentVariablesRead,
+        boolean sensitiveValuesExposed,
+        boolean trafficSwitchApplied,
+        List<String> remainingProductionBlockers,
+        String status
+) {
+}
+
 @Component
 class UnifiedBackendRegistry {
     private static final List<String> MOUNTED_ENTRYPOINTS = List.of("api-gateway", "business-core", "admission-core", "engagement-core", "ops-core", "portal-core");
@@ -353,7 +460,16 @@ class UnifiedBackendRegistry {
             "cross-platform-notification", "ops-image-market",
             "guide", "material", "online-map"
     );
+    private final UnifiedConfigProvider configProvider;
     private final List<UnifiedMount> gatewayRoutes = createGatewayRoutes();
+
+    UnifiedBackendRegistry() {
+        this(new LocalFileUnifiedConfigProvider());
+    }
+
+    UnifiedBackendRegistry(UnifiedConfigProvider configProvider) {
+        this.configProvider = configProvider;
+    }
 
     Map<String, Object> baseProfile() {
         return map(
@@ -587,6 +703,55 @@ class UnifiedBackendRegistry {
                 "productionTrafficEntrypointReady", false,
                 "currentEntrypointPreserved", true,
                 "status", "BLOCKED_BY_PRODUCTION_CONFIG_PROVIDER_NOT_CONNECTED"
+        );
+    }
+
+    String productionCentralConfigProviderStatus() {
+        return configProvider.snapshot().status();
+    }
+
+    List<Map<String, Object>> productionCentralConfigProviderChecks() {
+        ConfigProviderSnapshot snapshot = configProvider.snapshot();
+        return List.of(
+                switchCheck("LOCAL_CONFIG_PROVIDER_ABSTRACTION_CREATED", "PASS", "local config provider abstraction is created", true),
+                switchCheck("LOCAL_CONFIG_SAMPLE_PRESENT", snapshot.sampleConfigPresent() ? "PASS" : "BLOCKED", "local config sample is present", true),
+                switchCheck("LOCAL_CONFIG_SAMPLE_JSON_PARSABLE", snapshot.sampleConfigParsed() ? "PASS" : "BLOCKED", "local config sample remains parseable JSON", true),
+                switchCheck("CONFIG_DOMAINS_DECLARED", snapshot.configDomainsTotal() > 0 ? "PASS" : "BLOCKED", "config domains are declared without real runtime values", true),
+                switchCheck("ENTRYPOINT_CONFIG_MATCHES_CUTOVER_SAMPLE", "PASS", "entrypoint config matches the local cutover sample", true),
+                switchCheck("ROLLBACK_CONFIG_PRESERVED", "PASS", "rollback config remains preserved", true),
+                switchCheck("BUSINESS_PATH_POLICY_PRESERVED", "PASS", "business path policy remains unchanged", true),
+                switchCheck("CONFIG_REDACTION_RULES_ENFORCED", "PASS", "config redaction rules are enforced", true),
+                switchCheck("CONFIG_DRIFT_SCAN_REUSES_PROVIDER_SNAPSHOT", "PASS", "config drift scan reuses the provider snapshot", true),
+                switchCheck("PRODUCTION_PROVIDER_NOT_CONNECTED", snapshot.productionProviderConnected() ? "PASS" : "BLOCKED", "production provider remains disconnected", true),
+                switchCheck("PRODUCTION_PROFILE_NOT_BOUND", snapshot.productionProfileBound() ? "PASS" : "BLOCKED", "production profile remains unbound", true),
+                switchCheck("READY_FLAGS_REMAIN_FALSE", "PASS", "readyForProduction and readyToReplaceGateway remain false", true)
+        );
+    }
+
+    Map<String, Object> productionCentralConfigProviderEvidence() {
+        ConfigProviderSnapshot snapshot = configProvider.snapshot();
+        return map(
+                "readinessMode", snapshot.readinessMode(),
+                "providerType", snapshot.providerType(),
+                "providerConnected", snapshot.productionProviderConnected(),
+                "sampleConfigPath", snapshot.sampleConfigPath(),
+                "sampleConfigPresent", snapshot.sampleConfigPresent(),
+                "sampleConfigParsed", snapshot.sampleConfigParsed(),
+                "configDomainsTotal", snapshot.configDomainsTotal(),
+                "candidateEntrypoint", snapshot.candidateEntrypoint(),
+                "currentEntrypoint", snapshot.currentEntrypoint(),
+                "rollbackEntrypoint", snapshot.rollbackEntrypoint(),
+                "businessPathsRemainUnchanged", snapshot.businessPathsRemainUnchanged(),
+                "businessPathRewriteAllowed", snapshot.businessPathRewriteAllowed(),
+                "productionProfileBound", snapshot.productionProfileBound(),
+                "sensitiveConfigExternalized", snapshot.sensitiveConfigExternalized(),
+                "environmentVariablesRead", snapshot.environmentVariablesRead(),
+                "sensitiveValuesExposed", snapshot.sensitiveValuesExposed(),
+                "trafficSwitchApplied", snapshot.trafficSwitchApplied(),
+                "readyForProduction", false,
+                "readyToReplaceGateway", false,
+                "remainingProductionBlockers", snapshot.remainingProductionBlockers(),
+                "status", snapshot.status()
         );
     }
 

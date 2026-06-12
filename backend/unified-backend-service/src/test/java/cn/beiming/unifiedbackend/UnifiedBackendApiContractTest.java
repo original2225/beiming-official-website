@@ -63,6 +63,7 @@ class UnifiedBackendApiContractTest {
         addRange(mapped, "UBACK-PROD-AUDIT", 1, 12);
         addRange(mapped, "UBACK-SAMPLE", 1, 12);
         addRange(mapped, "UBACK-LOCAL-CUTOVER", 1, 12);
+        addRange(mapped, "UBACK-CONFIG-PROVIDER", 1, 12);
 
         assertThat(mapped).contains(
                 "UBACK-COM-001",
@@ -109,9 +110,11 @@ class UnifiedBackendApiContractTest {
                 "UBACK-SAMPLE-001",
                 "UBACK-SAMPLE-012",
                 "UBACK-LOCAL-CUTOVER-001",
-                "UBACK-LOCAL-CUTOVER-012"
+                "UBACK-LOCAL-CUTOVER-012",
+                "UBACK-CONFIG-PROVIDER-001",
+                "UBACK-CONFIG-PROVIDER-012"
         );
-        assertThat(mapped).hasSize(143);
+        assertThat(mapped).hasSize(155);
     }
 
     @Test
@@ -1383,6 +1386,146 @@ class UnifiedBackendApiContractTest {
                 .doesNotContain("secret")
                 .doesNotContain("password");
         assertNoSecrets(readiness);
+    }
+
+    @Test
+    void exposesProductionCentralConfigProviderBridgeWithoutConnectingProductionProvider() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-production-central-config-provider"));
+
+        assertThat(readiness.at("/data/productionCentralConfigProviderStatus").asText())
+                .isEqualTo("PASS_LOCAL_FILE_PROVIDER_REHEARSAL_NOT_PRODUCTION");
+        assertThat(readiness.at("/data/readyForProduction").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/readyToReplaceGateway").asBoolean()).isFalse();
+
+        assertPrecheck(readiness, "/data/productionCentralConfigProviderChecks", "LOCAL_CONFIG_PROVIDER_ABSTRACTION_CREATED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCentralConfigProviderChecks", "LOCAL_CONFIG_SAMPLE_PRESENT", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCentralConfigProviderChecks", "LOCAL_CONFIG_SAMPLE_JSON_PARSABLE", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCentralConfigProviderChecks", "CONFIG_DOMAINS_DECLARED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCentralConfigProviderChecks", "ENTRYPOINT_CONFIG_MATCHES_CUTOVER_SAMPLE", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCentralConfigProviderChecks", "ROLLBACK_CONFIG_PRESERVED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCentralConfigProviderChecks", "BUSINESS_PATH_POLICY_PRESERVED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCentralConfigProviderChecks", "CONFIG_REDACTION_RULES_ENFORCED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCentralConfigProviderChecks", "CONFIG_DRIFT_SCAN_REUSES_PROVIDER_SNAPSHOT", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCentralConfigProviderChecks", "PRODUCTION_PROVIDER_NOT_CONNECTED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/productionCentralConfigProviderChecks", "PRODUCTION_PROFILE_NOT_BOUND", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/productionCentralConfigProviderChecks", "READY_FLAGS_REMAIN_FALSE", "PASS", true);
+
+        JsonNode evidence = readiness.at("/data/productionCentralConfigProviderEvidence");
+        assertThat(evidence.at("/readinessMode").asText())
+                .isEqualTo("LOCAL_FILE_CONFIG_PROVIDER_REHEARSAL_NOT_PRODUCTION");
+        assertThat(evidence.at("/providerType").asText()).isEqualTo("LOCAL_FILE_SAMPLE");
+        assertThat(evidence.at("/providerConnected").asBoolean()).isFalse();
+        assertThat(evidence.at("/sampleConfigPath").asText())
+                .isEqualTo("docs/unified-backend-central-config-provider-sample.json");
+        assertThat(evidence.at("/sampleConfigPresent").asBoolean()).isTrue();
+        assertThat(evidence.at("/sampleConfigParsed").asBoolean()).isTrue();
+        assertThat(evidence.at("/configDomainsTotal").asInt()).isEqualTo(8);
+        assertThat(evidence.at("/candidateEntrypoint").asText()).isEqualTo("http://127.0.0.1:8135");
+        assertThat(evidence.at("/currentEntrypoint").asText()).isEqualTo("http://127.0.0.1:8125");
+        assertThat(evidence.at("/rollbackEntrypoint").asText()).isEqualTo("http://127.0.0.1:8125");
+        assertThat(evidence.at("/businessPathsRemainUnchanged").asBoolean()).isTrue();
+        assertThat(evidence.at("/businessPathRewriteAllowed").asBoolean()).isFalse();
+        assertThat(evidence.at("/productionProfileBound").asBoolean()).isFalse();
+        assertThat(evidence.at("/sensitiveConfigExternalized").asBoolean()).isFalse();
+        assertThat(evidence.at("/environmentVariablesRead").asBoolean()).isFalse();
+        assertThat(evidence.at("/sensitiveValuesExposed").asBoolean()).isFalse();
+        assertThat(evidence.at("/trafficSwitchApplied").asBoolean()).isFalse();
+        assertThat(evidence.at("/readyForProduction").asBoolean()).isFalse();
+        assertThat(evidence.at("/readyToReplaceGateway").asBoolean()).isFalse();
+        assertThat(evidence.at("/remainingProductionBlockers").toString())
+                .contains("REAL_CENTRAL_CONFIG_PROVIDER_CONNECTED")
+                .contains("PRODUCTION_PROFILE_BOUND")
+                .contains("SENSITIVE_CONFIG_SOURCE_EXTERNALIZED")
+                .contains("EXTERNAL_ENTRYPOINT_CONFIG_APPLIED")
+                .contains("PERSISTENT_AUDIT_SINK_CONNECTED")
+                .contains("PRODUCTION_TRAFFIC_SWITCH_APPLIED")
+                .contains("API_GATEWAY_TRAFFIC_ZERO_PROVEN")
+                .contains("ROLLBACK_WINDOW_COMPLETED")
+                .contains("USER_RETIREMENT_APPROVAL_GRANTED");
+        assertThat(evidence.at("/status").asText())
+                .isEqualTo("PASS_LOCAL_FILE_PROVIDER_REHEARSAL_NOT_PRODUCTION");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void productionCentralConfigProviderEvidenceDoesNotLeakSensitiveRuntimeValues() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-production-central-config-provider-redaction"));
+
+        assertThat(readiness.at("/data/productionCentralConfigProviderStatus").asText())
+                .isEqualTo("PASS_LOCAL_FILE_PROVIDER_REHEARSAL_NOT_PRODUCTION");
+        String text = readiness.at("/data/productionCentralConfigProviderEvidence").toString()
+                + readiness.at("/data/productionCentralConfigProviderChecks");
+        assertThat(text)
+                .doesNotContain("Authorization")
+                .doesNotContain("X-Gateway-Internal-Signature")
+                .doesNotContain("C:\\Users\\")
+                .doesNotContain(".env")
+                .doesNotContain("jdbc:")
+                .doesNotContain("cmd.exe")
+                .doesNotContain("powershell")
+                .doesNotContain("kubectl")
+                .doesNotContain("docker")
+                .doesNotContain("id_rsa");
+        assertThat(text.toLowerCase())
+                .doesNotContain("token")
+                .doesNotContain("cookie")
+                .doesNotContain("secret")
+                .doesNotContain("password")
+                .doesNotContain("dsn")
+                .doesNotContain("bucket")
+                .doesNotContain("topic");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void productionCentralConfigProviderSampleFileIsParseableAndSafe() throws Exception {
+        Path samplePath = Path.of("../../docs/unified-backend-central-config-provider-sample.json");
+        assertThat(Files.exists(samplePath)).as(samplePath.toString()).isTrue();
+        JsonNode sample = objectMapper.readTree(Files.readString(samplePath));
+
+        assertThat(sample.at("/sampleName").asText()).isEqualTo("beiming-unified-backend-central-config-provider");
+        assertThat(sample.at("/mode").asText()).isEqualTo("LOCAL_FILE_PROVIDER_REHEARSAL_NOT_PRODUCTION");
+        assertThat(sample.at("/providerType").asText()).isEqualTo("LOCAL_FILE_SAMPLE");
+        assertThat(sample.at("/providerConnected").asBoolean()).isFalse();
+        assertThat(sample.at("/productionProfileBound").asBoolean()).isFalse();
+        assertThat(sample.at("/sensitiveConfigExternalized").asBoolean()).isFalse();
+        assertThat(sample.at("/applyProductionTraffic").asBoolean()).isFalse();
+        assertThat(sample.at("/entrypoints/current/baseUrl").asText()).isEqualTo("http://127.0.0.1:8125");
+        assertThat(sample.at("/entrypoints/candidate/baseUrl").asText()).isEqualTo("http://127.0.0.1:8135");
+        assertThat(sample.at("/entrypoints/rollback/baseUrl").asText()).isEqualTo("http://127.0.0.1:8125");
+        assertThat(sample.at("/routePolicy/preserveApiV1BusinessPaths").asBoolean()).isTrue();
+        assertThat(sample.at("/routePolicy/businessPathRewriteAllowed").asBoolean()).isFalse();
+        assertThat(sample.at("/configDomains").size()).isEqualTo(8);
+        assertThat(sample.at("/configDomains").toString())
+                .contains("entrypoint")
+                .contains("route-registry")
+                .contains("security-headers")
+                .contains("cors")
+                .contains("audit-sink")
+                .contains("central-config")
+                .contains("rollback")
+                .contains("retirement-gates");
+        assertThat(sample.at("/redactionRules/forbiddenKeys").toString())
+                .contains("token")
+                .contains("secret")
+                .contains("password")
+                .contains("Authorization")
+                .contains("X-Gateway-Internal-Signature")
+                .contains("C:\\\\Users\\\\");
+        assertThat(sample.toString())
+                .doesNotContain("/api/v1/unified-backend/auth")
+                .doesNotContain("/api/v1/unified-backend/profile");
+        assertThat(sample.at("/entrypoints").toString().toLowerCase())
+                .doesNotContain("token")
+                .doesNotContain("cookie")
+                .doesNotContain("secret")
+                .doesNotContain("password")
+                .doesNotContain("dsn")
+                .doesNotContain("jdbc:");
     }
 
     @Test

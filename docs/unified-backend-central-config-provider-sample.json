@@ -1,0 +1,131 @@
+{
+  "sampleName": "beiming-unified-backend-central-config-provider",
+  "sampleVersion": "1.0",
+  "mode": "LOCAL_FILE_PROVIDER_REHEARSAL_NOT_PRODUCTION",
+  "providerType": "LOCAL_FILE_SAMPLE",
+  "providerConnected": false,
+  "productionProfileBound": false,
+  "sensitiveConfigExternalized": false,
+  "applyProductionTraffic": false,
+  "configDomains": [
+    {
+      "name": "entrypoint",
+      "owner": "unified-backend",
+      "purpose": "current, candidate and rollback entrypoint summary",
+      "source": "local-file-sample",
+      "status": "LOCAL_REHEARSAL_ONLY",
+      "requiredForProduction": true
+    },
+    {
+      "name": "route-registry",
+      "owner": "unified-backend",
+      "purpose": "preserve existing /api/v1 business route policy",
+      "source": "local-file-sample",
+      "status": "LOCAL_REHEARSAL_ONLY",
+      "requiredForProduction": true
+    },
+    {
+      "name": "security-headers",
+      "owner": "api-gateway",
+      "purpose": "document trusted header boundary without runtime values",
+      "source": "local-file-sample",
+      "status": "LOCAL_REHEARSAL_ONLY",
+      "requiredForProduction": true
+    },
+    {
+      "name": "cors",
+      "owner": "api-gateway",
+      "purpose": "document browser entrypoint policy without real origins",
+      "source": "local-file-sample",
+      "status": "LOCAL_REHEARSAL_ONLY",
+      "requiredForProduction": true
+    },
+    {
+      "name": "audit-sink",
+      "owner": "unified-backend",
+      "purpose": "record audit sink configuration boundary before connection",
+      "source": "local-file-sample",
+      "status": "BLOCKED_BY_REAL_SINK_NOT_CONFIGURED",
+      "requiredForProduction": true
+    },
+    {
+      "name": "central-config",
+      "owner": "unified-backend",
+      "purpose": "record provider abstraction before real provider connection",
+      "source": "local-file-sample",
+      "status": "BLOCKED_BY_REAL_PROVIDER_NOT_CONNECTED",
+      "requiredForProduction": true
+    },
+    {
+      "name": "rollback",
+      "owner": "unified-backend",
+      "purpose": "preserve api-gateway and core rollback entrypoints",
+      "source": "local-file-sample",
+      "status": "LOCAL_REHEARSAL_ONLY",
+      "requiredForProduction": true
+    },
+    {
+      "name": "retirement-gates",
+      "owner": "unified-backend",
+      "purpose": "keep old entrypoint retirement blocked until approval",
+      "source": "local-file-sample",
+      "status": "BLOCKED_BY_TRAFFIC_NOT_SWITCHED",
+      "requiredForProduction": true
+    }
+  ],
+  "entrypoints": {
+    "current": {
+      "entrypointKey": "api-gateway",
+      "baseUrl": "http://127.0.0.1:8125",
+      "role": "CURRENT_GATEWAY_AND_ROLLBACK_ENTRYPOINT"
+    },
+    "candidate": {
+      "entrypointKey": "unified-backend",
+      "baseUrl": "http://127.0.0.1:8135",
+      "role": "CANDIDATE_BACKEND_APPLICATION_ENTRYPOINT"
+    },
+    "rollback": {
+      "entrypointKey": "api-gateway",
+      "baseUrl": "http://127.0.0.1:8125",
+      "role": "PROTECTED_ROLLBACK_ENTRYPOINT"
+    }
+  },
+  "routePolicy": {
+    "preserveApiV1BusinessPaths": true,
+    "businessPathRewriteAllowed": false,
+    "forbiddenBusinessPrefix": "/api/v1/unified-backend/<module>"
+  },
+  "rollback": {
+    "protectedEntrypoints": [
+      "api-gateway:8125",
+      "business-core:8130",
+      "admission-core:8131",
+      "engagement-core:8132",
+      "ops-core:8133",
+      "portal-core:8134"
+    ],
+    "bulkRetirementAllowed": false,
+    "deletionAllowed": false
+  },
+  "redactionRules": {
+    "forbiddenKeys": [
+      "token",
+      "secret",
+      "password",
+      "cookie",
+      "dsn",
+      "jdbc:",
+      "bucket",
+      "topic",
+      "Authorization",
+      "X-Gateway-Internal-Signature",
+      "C:\\Users\\",
+      ".env",
+      "id_rsa",
+      "kubectl",
+      "docker",
+      "powershell",
+      "cmd.exe"
+    ]
+  }
+}
