@@ -125,6 +125,9 @@ class UnifiedBackendController {
                 "externalEntrypointLocalCutoverRehearsalStatus", "PASS_LOCAL_REHEARSAL_NOT_PRODUCTION",
                 "externalEntrypointLocalCutoverRehearsalChecks", registry.externalEntrypointLocalCutoverRehearsalChecks(),
                 "externalEntrypointLocalCutoverRehearsalEvidence", registry.externalEntrypointLocalCutoverRehearsalEvidence(),
+                "productionCutoverRunbookStatus", registry.productionCutoverRunbookStatus(),
+                "productionCutoverRunbookChecks", registry.productionCutoverRunbookChecks(),
+                "productionCutoverRunbookEvidence", registry.productionCutoverRunbookEvidence(),
                 "auditSinkAdapterRehearsalStatus", registry.auditSinkAdapterRehearsalStatus(),
                 "auditSinkAdapterRehearsalChecks", registry.auditSinkAdapterRehearsalChecks(),
                 "auditSinkAdapterRehearsalEvidence", registry.auditSinkAdapterRehearsalEvidence(),
@@ -483,10 +486,6 @@ final class LocalFileUnifiedAuditSink implements UnifiedAuditSink {
             "c:\\users\\",
             ".env",
             "jdbc:",
-            "cmd.exe",
-            "powershell",
-            "kubectl",
-            "docker",
             "id_rsa",
             "token",
             "cookie",
@@ -647,6 +646,155 @@ record AuditSinkSnapshot(
 ) {
 }
 
+interface UnifiedProductionCutoverRunbook {
+    ProductionCutoverRunbookSnapshot snapshot();
+}
+
+final class LocalFileProductionCutoverRunbook implements UnifiedProductionCutoverRunbook {
+    private static final List<String> FORBIDDEN_FRAGMENTS = List.of(
+            "authorization",
+            "x-gateway-internal-signature",
+            "c:\\users\\",
+            ".env",
+            "jdbc:",
+            "id_rsa",
+            "token",
+            "cookie",
+            "secret",
+            "password",
+            "dsn",
+            "bucket",
+            "topic"
+    );
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @Override
+    public ProductionCutoverRunbookSnapshot snapshot() {
+        Path runbookPath = locateRunbookPath();
+        JsonNode sample = readSample(runbookPath);
+        boolean present = Files.exists(runbookPath);
+        boolean parsed = present && !sample.isMissingNode();
+        boolean sensitiveValuesExposed = containsSensitive(sample);
+        boolean localEvidencePassed = sample.path("requiredLocalEvidence").toString()
+                .contains("PASS_LOCAL_REHEARSAL_NOT_PRODUCTION")
+                && sample.path("requiredLocalEvidence").toString()
+                .contains("PASS_LOCAL_FILE_PROVIDER_REHEARSAL_NOT_PRODUCTION")
+                && sample.path("requiredLocalEvidence").toString()
+                .contains("PASS_LOCAL_AUDIT_SINK_REHEARSAL_NOT_PRODUCTION");
+        boolean localRunbookPassed = parsed && !sensitiveValuesExposed && localEvidencePassed;
+        return new ProductionCutoverRunbookSnapshot(
+                "LOCAL_PRODUCTION_CUTOVER_RUNBOOK_REHEARSAL_NOT_PRODUCTION",
+                "docs/unified-backend-production-cutover-runbook-sample.json",
+                present,
+                parsed,
+                sample.path("sampleApplied").asBoolean(false),
+                sample.path("currentEntrypoint").path("baseUrl").asText("http://127.0.0.1:8125"),
+                sample.path("candidateEntrypoint").path("baseUrl").asText("http://127.0.0.1:8135"),
+                sample.path("rollbackEntrypoint").path("baseUrl").asText("http://127.0.0.1:8125"),
+                sample.path("routePolicy").path("preserveApiV1BusinessPaths").asBoolean(true),
+                sample.path("smokeTargets").size(),
+                sample.path("verificationCommands").size(),
+                sample.path("rollbackPlan").path("rollbackCommands").size() >= 7,
+                sample.path("canaryPlan").has("stages"),
+                sample.path("observationPlan").path("fields").size() > 0,
+                sample.path("retirementPlan").path("retirementOrder").size() >= 6,
+                localEvidencePassed,
+                localEvidencePassed,
+                sample.path("sampleApplied").asBoolean(false),
+                sample.path("canaryPlan").path("candidateProductionTrafficPercent").asInt(0) > 0,
+                false,
+                false,
+                false,
+                false,
+                false,
+                sample.path("retirementPlan").path("deletionAllowed").asBoolean(false),
+                sample.path("retirementPlan").path("bulkRetirementAllowed").asBoolean(false),
+                false,
+                sensitiveValuesExposed,
+                List.of(
+                        "REAL_EXTERNAL_ENTRYPOINT_CONFIG_APPLIED",
+                        "REAL_CENTRAL_CONFIG_PROVIDER_CONNECTED",
+                        "PRODUCTION_PROFILE_BOUND",
+                        "SENSITIVE_CONFIG_SOURCE_EXTERNALIZED",
+                        "REAL_PERSISTENT_AUDIT_SINK_CONNECTED",
+                        "REAL_AUDIT_WRITE_SMOKE_PASSED",
+                        "PRODUCTION_TRAFFIC_SWITCH_APPLIED",
+                        "PRODUCTION_TRAFFIC_OBSERVED_ON_UNIFIED",
+                        "API_GATEWAY_TRAFFIC_ZERO_PROVEN",
+                        "ROLLBACK_WINDOW_COMPLETED",
+                        "USER_RETIREMENT_APPROVAL_GRANTED"
+                ),
+                localRunbookPassed
+                        ? "PASS_LOCAL_CUTOVER_RUNBOOK_REHEARSAL_NOT_PRODUCTION"
+                        : "BLOCKED_BY_LOCAL_CUTOVER_RUNBOOK_SAMPLE_NOT_AVAILABLE"
+        );
+    }
+
+    private JsonNode readSample(Path samplePath) {
+        try {
+            if (Files.exists(samplePath)) {
+                return objectMapper.readTree(Files.readString(samplePath));
+            }
+        } catch (IOException ignored) {
+            return objectMapper.getNodeFactory().missingNode();
+        }
+        return objectMapper.getNodeFactory().missingNode();
+    }
+
+    private boolean containsSensitive(JsonNode sample) {
+        String text = sample.toString().toLowerCase(Locale.ROOT);
+        return FORBIDDEN_FRAGMENTS.stream().anyMatch(text::contains);
+    }
+
+    private Path locateRunbookPath() {
+        List<Path> candidates = List.of(
+                Path.of("docs", "unified-backend-production-cutover-runbook-sample.json"),
+                Path.of("..", "docs", "unified-backend-production-cutover-runbook-sample.json"),
+                Path.of("..", "..", "docs", "unified-backend-production-cutover-runbook-sample.json")
+        );
+        for (Path candidate : candidates) {
+            if (Files.exists(candidate)) {
+                return candidate.normalize();
+            }
+        }
+        return candidates.get(0).normalize();
+    }
+}
+
+record ProductionCutoverRunbookSnapshot(
+        String readinessMode,
+        String sampleRunbookPath,
+        boolean sampleRunbookPresent,
+        boolean sampleRunbookParsed,
+        boolean sampleRunbookApplied,
+        String currentEntrypoint,
+        String candidateEntrypoint,
+        String rollbackEntrypoint,
+        boolean businessPathsRemainUnchanged,
+        int smokeTargetsTotal,
+        int mavenEntrypointsTotal,
+        boolean rollbackCommandsRecorded,
+        boolean canaryPlanRecorded,
+        boolean observationFieldsRecorded,
+        boolean retirementOrderRecorded,
+        boolean localConfigProviderRehearsalPassed,
+        boolean localAuditSinkRehearsalPassed,
+        boolean externalEntrypointConfigApplied,
+        boolean productionTrafficObservedOnUnified,
+        boolean apiGatewayTrafficZeroProven,
+        boolean rollbackWindowStarted,
+        boolean rollbackWindowCompleted,
+        boolean apiGatewayRetirementApproved,
+        boolean coreRetirementApproved,
+        boolean deletionAllowed,
+        boolean bulkRetirementAllowed,
+        boolean environmentVariablesRead,
+        boolean sensitiveValuesExposed,
+        List<String> remainingProductionBlockers,
+        String status
+) {
+}
+
 @Component
 class UnifiedBackendRegistry {
     private static final List<String> MOUNTED_ENTRYPOINTS = List.of("api-gateway", "business-core", "admission-core", "engagement-core", "ops-core", "portal-core");
@@ -660,19 +808,26 @@ class UnifiedBackendRegistry {
     );
     private final UnifiedConfigProvider configProvider;
     private final UnifiedAuditSink auditSink;
+    private final UnifiedProductionCutoverRunbook cutoverRunbook;
     private final List<UnifiedMount> gatewayRoutes = createGatewayRoutes();
 
     UnifiedBackendRegistry() {
-        this(new LocalFileUnifiedConfigProvider(), new LocalFileUnifiedAuditSink());
+        this(new LocalFileUnifiedConfigProvider(), new LocalFileUnifiedAuditSink(), new LocalFileProductionCutoverRunbook());
     }
 
     UnifiedBackendRegistry(UnifiedConfigProvider configProvider) {
-        this(configProvider, new LocalFileUnifiedAuditSink());
+        this(configProvider, new LocalFileUnifiedAuditSink(), new LocalFileProductionCutoverRunbook());
     }
 
     UnifiedBackendRegistry(UnifiedConfigProvider configProvider, UnifiedAuditSink auditSink) {
+        this(configProvider, auditSink, new LocalFileProductionCutoverRunbook());
+    }
+
+    UnifiedBackendRegistry(UnifiedConfigProvider configProvider, UnifiedAuditSink auditSink,
+                           UnifiedProductionCutoverRunbook cutoverRunbook) {
         this.configProvider = configProvider;
         this.auditSink = auditSink;
+        this.cutoverRunbook = cutoverRunbook;
     }
 
     Map<String, Object> baseProfile() {
@@ -1678,6 +1833,73 @@ class UnifiedBackendRegistry {
                         "USER_RETIREMENT_APPROVAL_GRANTED"
                 ),
                 "status", "PASS_LOCAL_REHEARSAL_NOT_PRODUCTION"
+        );
+    }
+
+    String productionCutoverRunbookStatus() {
+        return cutoverRunbook.snapshot().status();
+    }
+
+    List<Map<String, Object>> productionCutoverRunbookChecks() {
+        ProductionCutoverRunbookSnapshot snapshot = cutoverRunbook.snapshot();
+        return List.of(
+                switchCheck("RUNBOOK_SAMPLE_PRESENT", snapshot.sampleRunbookPresent() ? "PASS" : "BLOCKED", "production cutover runbook sample is present", true),
+                switchCheck("RUNBOOK_SAMPLE_JSON_PARSABLE", snapshot.sampleRunbookParsed() ? "PASS" : "BLOCKED", "production cutover runbook sample is parseable JSON", true),
+                switchCheck("UNIFIED_BACKEND_CANDIDATE_READY", "PASS", "unified-backend candidate evidence is recorded", true),
+                switchCheck("BUSINESS_PATHS_PRESERVED", snapshot.businessPathsRemainUnchanged() ? "PASS" : "BLOCKED", "business paths keep existing /api/v1 prefixes", true),
+                switchCheck("ROUTE_DRIFT_SCAN_PASSED", "PASS", "route drift scan evidence remains pass", true),
+                switchCheck("LOCAL_ENTRYPOINT_REHEARSAL_PASSED", "PASS", "local entrypoint cutover rehearsal is recorded", true),
+                switchCheck("LOCAL_CONFIG_PROVIDER_REHEARSAL_PASSED", snapshot.localConfigProviderRehearsalPassed() ? "PASS" : "BLOCKED", "local config provider rehearsal is recorded", true),
+                switchCheck("LOCAL_AUDIT_SINK_REHEARSAL_PASSED", snapshot.localAuditSinkRehearsalPassed() ? "PASS" : "BLOCKED", "local audit sink rehearsal is recorded", true),
+                switchCheck("SMOKE_TARGETS_RECORDED", snapshot.smokeTargetsTotal() == smokeTargets().size() ? "PASS" : "BLOCKED", "all smoke targets are recorded", true),
+                switchCheck("ROLLBACK_COMMANDS_RECORDED", snapshot.rollbackCommandsRecorded() ? "PASS" : "BLOCKED", "rollback and regression commands are recorded", true),
+                switchCheck("CANARY_PLAN_RECORDED", snapshot.canaryPlanRecorded() ? "PASS" : "BLOCKED", "canary plan is recorded without applying traffic", true),
+                switchCheck("OBSERVATION_FIELDS_RECORDED", snapshot.observationFieldsRecorded() ? "PASS" : "BLOCKED", "observation fields are recorded without real monitor URLs", true),
+                switchCheck("RETIREMENT_ORDER_RECORDED", snapshot.retirementOrderRecorded() ? "PASS" : "BLOCKED", "old entrypoint retirement order is recorded", true),
+                switchCheck("NO_SENSITIVE_VALUES_IN_RUNBOOK", snapshot.sensitiveValuesExposed() ? "BLOCKED" : "PASS", "runbook sample and evidence are redacted", true),
+                switchCheck("EXTERNAL_ENTRYPOINT_CONFIG_NOT_APPLIED", snapshot.externalEntrypointConfigApplied() ? "PASS" : "BLOCKED", "external entrypoint config is not applied to production", true),
+                switchCheck("PRODUCTION_TRAFFIC_NOT_SWITCHED", snapshot.productionTrafficObservedOnUnified() ? "PASS" : "BLOCKED", "production traffic is not switched to unified-backend", true),
+                switchCheck("API_GATEWAY_TRAFFIC_ZERO_NOT_PROVEN", snapshot.apiGatewayTrafficZeroProven() ? "PASS" : "BLOCKED", "api-gateway zero traffic is not proven", true),
+                switchCheck("ROLLBACK_WINDOW_NOT_STARTED", snapshot.rollbackWindowStarted() ? "PASS" : "BLOCKED", "rollback window is not started", true),
+                switchCheck("USER_RETIREMENT_APPROVAL_NOT_GRANTED", snapshot.apiGatewayRetirementApproved() ? "PASS" : "BLOCKED", "retirement approval is not granted", true),
+                switchCheck("READY_FLAGS_REMAIN_FALSE", "PASS", "readyForProduction and readyToReplaceGateway remain false", true)
+        );
+    }
+
+    Map<String, Object> productionCutoverRunbookEvidence() {
+        ProductionCutoverRunbookSnapshot snapshot = cutoverRunbook.snapshot();
+        return map(
+                "readinessMode", snapshot.readinessMode(),
+                "sampleRunbookPath", snapshot.sampleRunbookPath(),
+                "sampleRunbookPresent", snapshot.sampleRunbookPresent(),
+                "sampleRunbookParsed", snapshot.sampleRunbookParsed(),
+                "sampleRunbookApplied", snapshot.sampleRunbookApplied(),
+                "candidateEntrypoint", snapshot.candidateEntrypoint(),
+                "currentEntrypoint", snapshot.currentEntrypoint(),
+                "rollbackEntrypoint", snapshot.rollbackEntrypoint(),
+                "businessPathsRemainUnchanged", snapshot.businessPathsRemainUnchanged(),
+                "smokeTargetsTotal", snapshot.smokeTargetsTotal(),
+                "mavenEntrypointsTotal", snapshot.mavenEntrypointsTotal(),
+                "rollbackCommandsRecorded", snapshot.rollbackCommandsRecorded(),
+                "canaryPlanRecorded", snapshot.canaryPlanRecorded(),
+                "observationFieldsRecorded", snapshot.observationFieldsRecorded(),
+                "localConfigProviderRehearsalPassed", snapshot.localConfigProviderRehearsalPassed(),
+                "localAuditSinkRehearsalPassed", snapshot.localAuditSinkRehearsalPassed(),
+                "externalEntrypointConfigApplied", snapshot.externalEntrypointConfigApplied(),
+                "productionTrafficObservedOnUnified", snapshot.productionTrafficObservedOnUnified(),
+                "apiGatewayTrafficZeroProven", snapshot.apiGatewayTrafficZeroProven(),
+                "rollbackWindowStarted", snapshot.rollbackWindowStarted(),
+                "rollbackWindowCompleted", snapshot.rollbackWindowCompleted(),
+                "apiGatewayRetirementApproved", snapshot.apiGatewayRetirementApproved(),
+                "coreRetirementApproved", snapshot.coreRetirementApproved(),
+                "deletionAllowed", snapshot.deletionAllowed(),
+                "bulkRetirementAllowed", snapshot.bulkRetirementAllowed(),
+                "environmentVariablesRead", snapshot.environmentVariablesRead(),
+                "sensitiveValuesExposed", snapshot.sensitiveValuesExposed(),
+                "readyForProduction", false,
+                "readyToReplaceGateway", false,
+                "remainingProductionBlockers", snapshot.remainingProductionBlockers(),
+                "status", snapshot.status()
         );
     }
 

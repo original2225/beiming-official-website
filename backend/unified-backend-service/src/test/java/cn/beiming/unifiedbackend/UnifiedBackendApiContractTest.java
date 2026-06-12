@@ -65,6 +65,7 @@ class UnifiedBackendApiContractTest {
         addRange(mapped, "UBACK-LOCAL-CUTOVER", 1, 12);
         addRange(mapped, "UBACK-CONFIG-PROVIDER", 1, 12);
         addRange(mapped, "UBACK-AUDIT-ADAPTER", 1, 12);
+        addRange(mapped, "UBACK-CUTOVER-RUNBOOK", 1, 12);
 
         assertThat(mapped).contains(
                 "UBACK-COM-001",
@@ -115,9 +116,11 @@ class UnifiedBackendApiContractTest {
                 "UBACK-CONFIG-PROVIDER-001",
                 "UBACK-CONFIG-PROVIDER-012",
                 "UBACK-AUDIT-ADAPTER-001",
-                "UBACK-AUDIT-ADAPTER-012"
+                "UBACK-AUDIT-ADAPTER-012",
+                "UBACK-CUTOVER-RUNBOOK-001",
+                "UBACK-CUTOVER-RUNBOOK-012"
         );
-        assertThat(mapped).hasSize(167);
+        assertThat(mapped).hasSize(179);
     }
 
     @Test
@@ -1776,6 +1779,160 @@ class UnifiedBackendApiContractTest {
                 .doesNotContain("dsn")
                 .doesNotContain("bucket")
                 .doesNotContain("topic");
+    }
+
+    @Test
+    void exposesProductionCutoverRunbookWithoutSwitchingTraffic() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-production-cutover-runbook"));
+
+        assertThat(readiness.at("/data/productionCutoverRunbookStatus").asText())
+                .isEqualTo("PASS_LOCAL_CUTOVER_RUNBOOK_REHEARSAL_NOT_PRODUCTION");
+        assertThat(readiness.at("/data/readyForProduction").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/readyToReplaceGateway").asBoolean()).isFalse();
+
+        assertPrecheck(readiness, "/data/productionCutoverRunbookChecks", "RUNBOOK_SAMPLE_PRESENT", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCutoverRunbookChecks", "RUNBOOK_SAMPLE_JSON_PARSABLE", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCutoverRunbookChecks", "UNIFIED_BACKEND_CANDIDATE_READY", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCutoverRunbookChecks", "BUSINESS_PATHS_PRESERVED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCutoverRunbookChecks", "ROUTE_DRIFT_SCAN_PASSED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCutoverRunbookChecks", "LOCAL_ENTRYPOINT_REHEARSAL_PASSED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCutoverRunbookChecks", "LOCAL_CONFIG_PROVIDER_REHEARSAL_PASSED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCutoverRunbookChecks", "LOCAL_AUDIT_SINK_REHEARSAL_PASSED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCutoverRunbookChecks", "SMOKE_TARGETS_RECORDED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCutoverRunbookChecks", "ROLLBACK_COMMANDS_RECORDED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCutoverRunbookChecks", "CANARY_PLAN_RECORDED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCutoverRunbookChecks", "OBSERVATION_FIELDS_RECORDED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCutoverRunbookChecks", "RETIREMENT_ORDER_RECORDED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCutoverRunbookChecks", "NO_SENSITIVE_VALUES_IN_RUNBOOK", "PASS", true);
+        assertPrecheck(readiness, "/data/productionCutoverRunbookChecks", "EXTERNAL_ENTRYPOINT_CONFIG_NOT_APPLIED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/productionCutoverRunbookChecks", "PRODUCTION_TRAFFIC_NOT_SWITCHED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/productionCutoverRunbookChecks", "API_GATEWAY_TRAFFIC_ZERO_NOT_PROVEN", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/productionCutoverRunbookChecks", "ROLLBACK_WINDOW_NOT_STARTED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/productionCutoverRunbookChecks", "USER_RETIREMENT_APPROVAL_NOT_GRANTED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/productionCutoverRunbookChecks", "READY_FLAGS_REMAIN_FALSE", "PASS", true);
+
+        JsonNode evidence = readiness.at("/data/productionCutoverRunbookEvidence");
+        assertThat(evidence.at("/readinessMode").asText())
+                .isEqualTo("LOCAL_PRODUCTION_CUTOVER_RUNBOOK_REHEARSAL_NOT_PRODUCTION");
+        assertThat(evidence.at("/sampleRunbookPath").asText())
+                .isEqualTo("docs/unified-backend-production-cutover-runbook-sample.json");
+        assertThat(evidence.at("/sampleRunbookPresent").asBoolean()).isTrue();
+        assertThat(evidence.at("/sampleRunbookParsed").asBoolean()).isTrue();
+        assertThat(evidence.at("/sampleRunbookApplied").asBoolean()).isFalse();
+        assertThat(evidence.at("/currentEntrypoint").asText()).isEqualTo("http://127.0.0.1:8125");
+        assertThat(evidence.at("/candidateEntrypoint").asText()).isEqualTo("http://127.0.0.1:8135");
+        assertThat(evidence.at("/rollbackEntrypoint").asText()).isEqualTo("http://127.0.0.1:8125");
+        assertThat(evidence.at("/businessPathsRemainUnchanged").asBoolean()).isTrue();
+        assertThat(evidence.at("/smokeTargetsTotal").asInt()).isEqualTo(32);
+        assertThat(evidence.at("/mavenEntrypointsTotal").asInt()).isEqualTo(7);
+        assertThat(evidence.at("/rollbackCommandsRecorded").asBoolean()).isTrue();
+        assertThat(evidence.at("/canaryPlanRecorded").asBoolean()).isTrue();
+        assertThat(evidence.at("/observationFieldsRecorded").asBoolean()).isTrue();
+        assertThat(evidence.at("/localConfigProviderRehearsalPassed").asBoolean()).isTrue();
+        assertThat(evidence.at("/localAuditSinkRehearsalPassed").asBoolean()).isTrue();
+        assertThat(evidence.at("/externalEntrypointConfigApplied").asBoolean()).isFalse();
+        assertThat(evidence.at("/productionTrafficObservedOnUnified").asBoolean()).isFalse();
+        assertThat(evidence.at("/apiGatewayTrafficZeroProven").asBoolean()).isFalse();
+        assertThat(evidence.at("/rollbackWindowStarted").asBoolean()).isFalse();
+        assertThat(evidence.at("/rollbackWindowCompleted").asBoolean()).isFalse();
+        assertThat(evidence.at("/apiGatewayRetirementApproved").asBoolean()).isFalse();
+        assertThat(evidence.at("/coreRetirementApproved").asBoolean()).isFalse();
+        assertThat(evidence.at("/deletionAllowed").asBoolean()).isFalse();
+        assertThat(evidence.at("/bulkRetirementAllowed").asBoolean()).isFalse();
+        assertThat(evidence.at("/environmentVariablesRead").asBoolean()).isFalse();
+        assertThat(evidence.at("/sensitiveValuesExposed").asBoolean()).isFalse();
+        assertThat(evidence.at("/readyForProduction").asBoolean()).isFalse();
+        assertThat(evidence.at("/readyToReplaceGateway").asBoolean()).isFalse();
+        assertThat(evidence.at("/status").asText())
+                .isEqualTo("PASS_LOCAL_CUTOVER_RUNBOOK_REHEARSAL_NOT_PRODUCTION");
+        assertThat(evidence.at("/remainingProductionBlockers").toString())
+                .contains("REAL_EXTERNAL_ENTRYPOINT_CONFIG_APPLIED")
+                .contains("REAL_CENTRAL_CONFIG_PROVIDER_CONNECTED")
+                .contains("REAL_PERSISTENT_AUDIT_SINK_CONNECTED")
+                .contains("PRODUCTION_TRAFFIC_SWITCH_APPLIED")
+                .contains("PRODUCTION_TRAFFIC_OBSERVED_ON_UNIFIED")
+                .contains("API_GATEWAY_TRAFFIC_ZERO_PROVEN")
+                .contains("ROLLBACK_WINDOW_COMPLETED")
+                .contains("USER_RETIREMENT_APPROVAL_GRANTED");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void productionCutoverRunbookEvidenceDoesNotLeakSensitiveRuntimeValues() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-production-cutover-runbook-redaction"));
+
+        assertThat(readiness.at("/data/productionCutoverRunbookStatus").asText())
+                .isEqualTo("PASS_LOCAL_CUTOVER_RUNBOOK_REHEARSAL_NOT_PRODUCTION");
+        String text = readiness.at("/data/productionCutoverRunbookEvidence").toString()
+                + readiness.at("/data/productionCutoverRunbookChecks");
+        assertThat(text)
+                .doesNotContain("Authorization")
+                .doesNotContain("X-Gateway-Internal-Signature")
+                .doesNotContain("C:\\Users\\")
+                .doesNotContain(".env")
+                .doesNotContain("jdbc:")
+                .doesNotContain("cmd.exe")
+                .doesNotContain("powershell")
+                .doesNotContain("kubectl")
+                .doesNotContain("docker")
+                .doesNotContain("id_rsa");
+        assertThat(text.toLowerCase())
+                .doesNotContain("token")
+                .doesNotContain("cookie")
+                .doesNotContain("secret")
+                .doesNotContain("password")
+                .doesNotContain("dsn")
+                .doesNotContain("bucket")
+                .doesNotContain("topic");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void productionCutoverRunbookSampleFileIsParseableAndSafe() throws Exception {
+        JsonNode sample = objectMapper.readTree(Files.readString(Path.of("../../docs/unified-backend-production-cutover-runbook-sample.json")));
+
+        assertThat(sample.at("/sampleName").asText()).isEqualTo("beiming-unified-backend-production-cutover-runbook");
+        assertThat(sample.at("/mode").asText()).isEqualTo("LOCAL_RUNBOOK_REHEARSAL_NOT_APPLIED");
+        assertThat(sample.at("/sampleApplied").asBoolean()).isFalse();
+        assertThat(sample.at("/productionTrafficAllowed").asBoolean()).isFalse();
+        assertThat(sample.at("/requiresUserApprovalBeforeApply").asBoolean()).isTrue();
+        assertThat(sample.at("/currentEntrypoint/baseUrl").asText()).isEqualTo("http://127.0.0.1:8125");
+        assertThat(sample.at("/candidateEntrypoint/baseUrl").asText()).isEqualTo("http://127.0.0.1:8135");
+        assertThat(sample.at("/rollbackEntrypoint/baseUrl").asText()).isEqualTo("http://127.0.0.1:8125");
+        assertThat(sample.at("/requiredLocalEvidence").toString())
+                .contains("PASS_LOCAL_REHEARSAL_NOT_PRODUCTION")
+                .contains("PASS_LOCAL_FILE_PROVIDER_REHEARSAL_NOT_PRODUCTION")
+                .contains("PASS_LOCAL_AUDIT_SINK_REHEARSAL_NOT_PRODUCTION");
+        assertThat(sample.at("/verificationCommands").size()).isEqualTo(7);
+        assertThat(sample.at("/canaryPlan/currentProductionTrafficPercent").asInt()).isZero();
+        assertThat(sample.at("/canaryPlan/candidateProductionTrafficPercent").asInt()).isZero();
+        assertThat(sample.at("/canaryPlan/trafficSwitchApplied").asBoolean()).isFalse();
+        assertThat(sample.at("/rollbackPlan/rollbackCommands").size()).isGreaterThanOrEqualTo(7);
+        assertThat(sample.at("/retirementPlan/deletionAllowed").asBoolean()).isFalse();
+        assertThat(sample.at("/retirementPlan/bulkRetirementAllowed").asBoolean()).isFalse();
+        assertThat(sample.at("/securityPolicy/sensitiveValuesExposed").asBoolean()).isFalse();
+        assertThat(sample.toString())
+                .doesNotContain("/api/v1/unified-backend/auth")
+                .doesNotContain("/api/v1/unified-backend/profile");
+        assertThat(sample.toString().toLowerCase())
+                .doesNotContain("authorization")
+                .doesNotContain("token")
+                .doesNotContain("cookie")
+                .doesNotContain("secret")
+                .doesNotContain("password")
+                .doesNotContain("dsn")
+                .doesNotContain("jdbc:")
+                .doesNotContain("bucket")
+                .doesNotContain("topic")
+                .doesNotContain("c:\\users\\")
+                .doesNotContain("kubectl")
+                .doesNotContain("docker")
+                .doesNotContain("powershell")
+                .doesNotContain("cmd.exe");
     }
 
     @Test
