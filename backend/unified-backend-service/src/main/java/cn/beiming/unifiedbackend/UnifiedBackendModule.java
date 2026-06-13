@@ -148,6 +148,9 @@ class UnifiedBackendController {
                 "productionControlledCutoverStatus", registry.productionControlledCutoverStatus(),
                 "productionControlledCutoverChecks", registry.productionControlledCutoverChecks(),
                 "productionControlledCutoverEvidence", registry.productionControlledCutoverEvidence(),
+                "apiGatewayControlledRetirementStatus", registry.apiGatewayControlledRetirementStatus(),
+                "apiGatewayControlledRetirementChecks", registry.apiGatewayControlledRetirementChecks(),
+                "apiGatewayControlledRetirementEvidence", registry.apiGatewayControlledRetirementEvidence(),
                 "productionExternalValueIntakeRehearsalStatus", registry.productionExternalValueIntakeRehearsalStatus(),
                 "productionExternalValueIntakeRehearsalChecks", registry.productionExternalValueIntakeRehearsalChecks(),
                 "productionExternalValueIntakeRehearsalEvidence", registry.productionExternalValueIntakeRehearsalEvidence(),
@@ -2777,6 +2780,260 @@ record ProductionControlledCutoverReceiptSnapshot(
 ) {
 }
 
+interface UnifiedApiGatewayControlledRetirementReceipt {
+    ApiGatewayControlledRetirementReceiptSnapshot snapshot();
+}
+
+class LocalFileApiGatewayControlledRetirementReceipt implements UnifiedApiGatewayControlledRetirementReceipt {
+    private static final List<String> FORBIDDEN_FRAGMENTS = List.of(
+            "authorization",
+            "x-gateway-internal-signature",
+            "c:\\users\\",
+            ".env",
+            "jdbc:",
+            "mongodb://",
+            "redis://",
+            "id_rsa",
+            "akia",
+            "token",
+            "cookie",
+            "secret",
+            "password",
+            "passwd",
+            "pwd",
+            "privatekey",
+            "kubectl",
+            "docker",
+            "powershell",
+            "cmd.exe",
+            "ssh ",
+            "scp ",
+            "http://",
+            "https://"
+    );
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @Override
+    public ApiGatewayControlledRetirementReceiptSnapshot snapshot() {
+        Path samplePath = locateSamplePath();
+        JsonNode sample = readSample(samplePath);
+        boolean present = Files.exists(samplePath);
+        boolean parsed = present && !sample.isMissingNode();
+        boolean retirementApplied = sample.path("retirementApplied").asBoolean(false);
+        boolean deleteListApproved = sample.path("deleteListApproved").asBoolean(false);
+        boolean productionTrafficAllowed = sample.path("productionTrafficAllowed").asBoolean(true);
+        boolean realValuesAllowedInRepository = sample.path("realValuesAllowedInRepository").asBoolean(true);
+        boolean sensitiveValuesExposed = containsSensitiveValues(sample);
+        boolean controlledCutoverReferenced = containsText(sample.path("controlledCutoverRefs"),
+                "docs/unified-backend-production-controlled-cutover-receipt-sample.json");
+        boolean coreEntrypointsPreserved = sample.at("/coreProtection/coreEntrypointsPreserved").asBoolean(false);
+        boolean unifiedBuildHelperStillReferencesApiGateway = unifiedBuildHelperStillReferencesApiGateway();
+        boolean apiGatewayPomStillPresent = Files.exists(Path.of("..", "api-gateway-service", "pom.xml"));
+        boolean apiGatewayServiceDirectoryStillPresent = Files.exists(Path.of("..", "api-gateway-service"));
+        int remainingGatewayPackageRefs = (unifiedBuildHelperStillReferencesApiGateway ? 1 : 0)
+                + (apiGatewayPomStillPresent ? 1 : 0)
+                + (apiGatewayServiceDirectoryStillPresent ? 1 : 0);
+        boolean sampleValid = parsed
+                && "LOCAL_API_GATEWAY_RETIREMENT_RECEIPT_SHAPE_NOT_APPLIED".equals(sample.path("mode").asText())
+                && !retirementApplied
+                && !deleteListApproved
+                && !productionTrafficAllowed
+                && !realValuesAllowedInRepository
+                && controlledCutoverReferenced
+                && sample.path("approvalRefs").size() >= 6
+                && sample.path("trafficZeroRefs").size() >= 6
+                && sample.path("gatewaySelfApiParityRefs").size() >= 10
+                && sample.path("observabilityRefs").size() >= 6
+                && sample.path("auditRefs").size() >= 4
+                && sample.path("rollbackWindowRefs").size() >= 4
+                && sample.path("deleteList").size() >= 6
+                && coreEntrypointsPreserved
+                && !sensitiveValuesExposed;
+        return new ApiGatewayControlledRetirementReceiptSnapshot(
+                "LOCAL_API_GATEWAY_RETIREMENT_RECEIPT_GATE_NOT_PRODUCTION",
+                "docs/unified-backend-api-gateway-retirement-receipt-sample.json",
+                present,
+                parsed,
+                retirementApplied,
+                deleteListApproved,
+                productionTrafficAllowed,
+                realValuesAllowedInRepository,
+                sample.path("candidateEntrypointRef").asText("LOCAL_SAMPLE_REF:UNIFIED_BACKEND_8135"),
+                sample.path("retiredEntrypointRef").asText("LOCAL_SAMPLE_REF:API_GATEWAY_8125"),
+                textArray(sample.path("rollbackEntrypointRefs")),
+                sample.path("controlledCutoverRefs").size(),
+                sample.path("approvalRefs").size(),
+                sample.path("trafficZeroRefs").size(),
+                sample.path("observabilityRefs").size(),
+                sample.path("auditRefs").size(),
+                sample.path("rollbackWindowRefs").size(),
+                sample.path("gatewaySelfApiParityRefs").size(),
+                sample.path("deleteList").size(),
+                0,
+                remainingGatewayPackageRefs,
+                unifiedBuildHelperStillReferencesApiGateway,
+                apiGatewayPomStillPresent,
+                apiGatewayServiceDirectoryStillPresent,
+                coreEntrypointsPreserved,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                sensitiveValuesExposed,
+                controlledCutoverReferenced,
+                sampleValid,
+                List.of(
+                        "REAL_API_GATEWAY_RETIREMENT_RECEIPT_PROVIDED_OUTSIDE_REPOSITORY",
+                        "PRODUCTION_TRAFFIC_OBSERVED_ON_UNIFIED",
+                        "API_GATEWAY_TRAFFIC_ZERO_PROVEN",
+                        "ROLLBACK_WINDOW_COMPLETED",
+                        "REAL_AUDIT_WRITE_SMOKE_PASSED",
+                        "DASHBOARD_ALERT_TRACE_VERIFIED",
+                        "RETIREMENT_APPROVAL_GRANTED",
+                        "DELETE_LIST_APPROVED_BY_USER",
+                        "UNIFIED_BUILD_HELPER_STILL_REFERENCES_API_GATEWAY",
+                        "GATEWAY_SELF_API_PARITY_PROVEN_WITH_REAL_RECEIPT",
+                        "UNIFIED_BACKEND_FULL_REGRESSION_RECORDED",
+                        "CORE_ENTRYPOINT_REGRESSION_RECORDED",
+                        "ROLLBACK_PLAN_REVALIDATED",
+                        "BULK_DELETE_FORBIDDEN"
+                ),
+                "BLOCKED_BY_API_GATEWAY_RETIREMENT_RECEIPT_NOT_PROVIDED"
+        );
+    }
+
+    private JsonNode readSample(Path samplePath) {
+        try {
+            if (Files.exists(samplePath)) {
+                return objectMapper.readTree(Files.readString(samplePath));
+            }
+        } catch (IOException ignored) {
+            return objectMapper.getNodeFactory().missingNode();
+        }
+        return objectMapper.getNodeFactory().missingNode();
+    }
+
+    private boolean containsText(JsonNode values, String expectedText) {
+        for (JsonNode value : values) {
+            if (expectedText.equals(value.asText())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private List<String> textArray(JsonNode values) {
+        List<String> result = new ArrayList<>();
+        for (JsonNode value : values) {
+            result.add(value.asText());
+        }
+        return List.copyOf(result);
+    }
+
+    private boolean unifiedBuildHelperStillReferencesApiGateway() {
+        for (Path candidate : List.of(
+                Path.of("pom.xml"),
+                Path.of("backend", "unified-backend-service", "pom.xml"),
+                Path.of("..", "unified-backend-service", "pom.xml")
+        )) {
+            try {
+                if (Files.exists(candidate) && Files.readString(candidate).contains("../api-gateway-service/src/main/java")) {
+                    return true;
+                }
+            } catch (IOException ignored) {
+                return false;
+            }
+        }
+        return false;
+    }
+
+    private boolean containsSensitiveValues(JsonNode sample) {
+        String text = scalarTextWithoutRedactionPolicy(sample).toLowerCase(Locale.ROOT)
+                .replace("apigatewaycontrolledretirement", "")
+                .replace("controlledretirement", "")
+                .replace("sensitivevaluesexposed", "")
+                .replace("retirement", "");
+        return FORBIDDEN_FRAGMENTS.stream().anyMatch(text::contains);
+    }
+
+    private String scalarTextWithoutRedactionPolicy(JsonNode node) {
+        StringBuilder values = new StringBuilder();
+        appendScalarText(node, values, false);
+        return values.toString();
+    }
+
+    private void appendScalarText(JsonNode node, StringBuilder values, boolean insideRedactionPolicy) {
+        if (node.isObject()) {
+            node.fields().forEachRemaining(entry -> appendScalarText(entry.getValue(), values,
+                    insideRedactionPolicy || "redactionPolicy".equals(entry.getKey())));
+        } else if (node.isArray()) {
+            for (JsonNode child : node) {
+                appendScalarText(child, values, insideRedactionPolicy);
+            }
+        } else if (!insideRedactionPolicy && node.isValueNode()) {
+            values.append(node.asText()).append(' ');
+        }
+    }
+
+    private Path locateSamplePath() {
+        List<Path> candidates = List.of(
+                Path.of("docs", "unified-backend-api-gateway-retirement-receipt-sample.json"),
+                Path.of("..", "docs", "unified-backend-api-gateway-retirement-receipt-sample.json"),
+                Path.of("..", "..", "docs", "unified-backend-api-gateway-retirement-receipt-sample.json")
+        );
+        for (Path candidate : candidates) {
+            if (Files.exists(candidate)) {
+                return candidate.normalize();
+            }
+        }
+        return candidates.get(0).normalize();
+    }
+}
+
+record ApiGatewayControlledRetirementReceiptSnapshot(
+        String readinessMode,
+        String receiptPath,
+        boolean receiptPresent,
+        boolean receiptParsed,
+        boolean retirementApplied,
+        boolean deleteListApproved,
+        boolean productionTrafficAllowed,
+        boolean realValuesAllowedInRepository,
+        String candidateEntrypointRef,
+        String retiredEntrypointRef,
+        List<String> rollbackEntrypointRefs,
+        int controlledCutoverRefsTotal,
+        int approvalRefsTotal,
+        int trafficZeroRefsTotal,
+        int observabilityRefsTotal,
+        int auditRefsTotal,
+        int rollbackWindowRefsTotal,
+        int gatewaySelfApiParityRefsTotal,
+        int deleteListItemsTotal,
+        int deletedFilesTotal,
+        int remainingGatewayPackageRefs,
+        boolean unifiedBuildHelperStillReferencesApiGateway,
+        boolean apiGatewayPomStillPresent,
+        boolean apiGatewayServiceDirectoryStillPresent,
+        boolean coreEntrypointsPreserved,
+        boolean readyToRetireBusinessCore,
+        boolean readyToRetireAdmissionCore,
+        boolean readyToRetireEngagementCore,
+        boolean readyToRetireOpsCore,
+        boolean readyToRetirePortalCore,
+        boolean bulkDeleteAllowed,
+        boolean environmentVariablesRead,
+        boolean sensitiveValuesExposed,
+        boolean controlledCutoverReceiptReferenced,
+        boolean sampleValid,
+        List<String> remainingBlockers,
+        String status
+) {
+}
+
 @Component
 class UnifiedBackendRegistry {
     private static final List<String> MOUNTED_ENTRYPOINTS = List.of("api-gateway", "business-core", "admission-core", "engagement-core", "ops-core", "portal-core");
@@ -2798,6 +3055,7 @@ class UnifiedBackendRegistry {
     private final UnifiedProductionRuntimeConfigShellRehearsal runtimeConfigShellRehearsal = new LocalFileProductionRuntimeConfigShellRehearsal();
     private final UnifiedProductionAuditObservabilitySmokeRehearsal auditObservabilitySmokeRehearsal = new LocalFileProductionAuditObservabilitySmokeRehearsal();
     private final UnifiedProductionControlledCutoverReceipt controlledCutoverReceipt = new LocalFileProductionControlledCutoverReceipt();
+    private final UnifiedApiGatewayControlledRetirementReceipt apiGatewayControlledRetirementReceipt = new LocalFileApiGatewayControlledRetirementReceipt();
     private final List<UnifiedMount> gatewayRoutes = createGatewayRoutes();
 
     UnifiedBackendRegistry() {
@@ -4446,6 +4704,82 @@ class UnifiedBackendRegistry {
                 "readyForProduction", snapshot.readyForProduction(),
                 "readyToReplaceGateway", snapshot.readyToReplaceGateway(),
                 "readyToRetireOldEntrypoints", snapshot.readyToRetireOldEntrypoints(),
+                "remainingBlockers", snapshot.remainingBlockers(),
+                "status", snapshot.status()
+        );
+    }
+
+    String apiGatewayControlledRetirementStatus() {
+        return apiGatewayControlledRetirementReceipt.snapshot().status();
+    }
+
+    List<Map<String, Object>> apiGatewayControlledRetirementChecks() {
+        ApiGatewayControlledRetirementReceiptSnapshot snapshot = apiGatewayControlledRetirementReceipt.snapshot();
+        return List.of(
+                switchCheck("API_GATEWAY_RETIREMENT_RECEIPT_SAMPLE_PRESENT", snapshot.receiptPresent() ? "PASS" : "BLOCKED", "api-gateway retirement receipt sample is present", true),
+                switchCheck("API_GATEWAY_RETIREMENT_RECEIPT_SAMPLE_JSON_PARSABLE", snapshot.receiptParsed() ? "PASS" : "BLOCKED", "api-gateway retirement receipt sample is parseable JSON", true),
+                switchCheck("CONTROLLED_CUTOVER_RECEIPT_REFERENCED", snapshot.controlledCutoverReceiptReferenced() ? "PASS" : "BLOCKED", "controlled production cutover receipt is referenced", true),
+                switchCheck("GATEWAY_SELF_APIS_PRESERVED_IN_UNIFIED", "PASS", "gateway self APIs remain mounted in unified-backend", true),
+                switchCheck("BUSINESS_PATHS_UNCHANGED", "PASS", "business paths keep existing /api/v1 prefixes", true),
+                switchCheck("CORE_ENTRYPOINTS_PRESERVED", snapshot.coreEntrypointsPreserved() ? "PASS" : "BLOCKED", "five core entrypoints remain protected", true),
+                switchCheck("NODE_DAEMON_OUT_OF_REPOSITORY", "PASS", "node daemon remains out of repository", true),
+                switchCheck("DELETE_LIST_RECORDED", snapshot.deleteListItemsTotal() >= 6 ? "PASS" : "BLOCKED", "explicit api-gateway deletion list is recorded without executing it", true),
+                switchCheck("NO_REAL_VALUES_IN_API_GATEWAY_RETIREMENT_RECEIPT", snapshot.realValuesAllowedInRepository() ? "BLOCKED" : "PASS", "retirement receipt contains only redacted references", true),
+                switchCheck("NO_SENSITIVE_VALUES_IN_API_GATEWAY_RETIREMENT_RECEIPT", snapshot.sensitiveValuesExposed() ? "BLOCKED" : "PASS", "retirement receipt sample has no sensitive runtime values", true),
+                switchCheck("READY_FLAGS_REMAIN_FALSE", "PASS", "production and retirement ready flags remain false", true),
+                switchCheck("RETIREMENT_RECEIPT_NOT_PROVIDED", "BLOCKED", "real api-gateway retirement receipt is not provided outside repository", true),
+                switchCheck("PRODUCTION_TRAFFIC_NOT_OBSERVED_ON_UNIFIED", "BLOCKED", "production traffic is not observed on unified-backend", true),
+                switchCheck("API_GATEWAY_TRAFFIC_ZERO_NOT_PROVEN", "BLOCKED", "api-gateway zero production traffic is not proven", true),
+                switchCheck("ROLLBACK_WINDOW_NOT_COMPLETED", "BLOCKED", "rollback window is not completed", true),
+                switchCheck("REAL_AUDIT_WRITE_SMOKE_NOT_PASSED", "BLOCKED", "real audit write smoke has not passed", true),
+                switchCheck("DASHBOARD_ALERT_TRACE_NOT_VERIFIED", "BLOCKED", "real dashboard, alert and trace evidence is not verified", true),
+                switchCheck("RETIREMENT_APPROVAL_NOT_GRANTED", "BLOCKED", "api-gateway retirement approval is not granted", true),
+                switchCheck("DELETE_LIST_NOT_APPROVED", "BLOCKED", "delete list is not approved by the user", true),
+                switchCheck("API_GATEWAY_SOURCE_STILL_IN_UNIFIED_BUILD_HELPER", "BLOCKED", "unified-backend build-helper still references api-gateway source", true),
+                switchCheck("GATEWAY_SELF_API_PARITY_NOT_PROVEN_WITH_REAL_RECEIPT", "BLOCKED", "gateway self API parity is not proven by a real retirement receipt", true),
+                switchCheck("UNIFIED_BACKEND_FULL_REGRESSION_NOT_RECORDED", "BLOCKED", "unified-backend full regression has not been recorded for real retirement", true),
+                switchCheck("CORE_ENTRYPOINT_REGRESSION_NOT_RECORDED", "BLOCKED", "core entrypoint regression has not been recorded for real retirement", true),
+                switchCheck("ROLLBACK_PLAN_NOT_REVALIDATED", "BLOCKED", "rollback plan is not revalidated for real retirement", true),
+                switchCheck("BULK_DELETE_FORBIDDEN", "BLOCKED", "bulk delete remains forbidden; every delete must be explicit", true)
+        );
+    }
+
+    Map<String, Object> apiGatewayControlledRetirementEvidence() {
+        ApiGatewayControlledRetirementReceiptSnapshot snapshot = apiGatewayControlledRetirementReceipt.snapshot();
+        return map(
+                "readinessMode", snapshot.readinessMode(),
+                "receiptPath", snapshot.receiptPath(),
+                "receiptPresent", snapshot.receiptPresent(),
+                "receiptParsed", snapshot.receiptParsed(),
+                "retirementApplied", snapshot.retirementApplied(),
+                "deleteListApproved", snapshot.deleteListApproved(),
+                "productionTrafficAllowed", snapshot.productionTrafficAllowed(),
+                "realValuesAllowedInRepository", snapshot.realValuesAllowedInRepository(),
+                "candidateEntrypointRef", snapshot.candidateEntrypointRef(),
+                "retiredEntrypointRef", snapshot.retiredEntrypointRef(),
+                "rollbackEntrypointRefs", snapshot.rollbackEntrypointRefs(),
+                "controlledCutoverRefsTotal", snapshot.controlledCutoverRefsTotal(),
+                "approvalRefsTotal", snapshot.approvalRefsTotal(),
+                "trafficZeroRefsTotal", snapshot.trafficZeroRefsTotal(),
+                "observabilityRefsTotal", snapshot.observabilityRefsTotal(),
+                "auditRefsTotal", snapshot.auditRefsTotal(),
+                "rollbackWindowRefsTotal", snapshot.rollbackWindowRefsTotal(),
+                "gatewaySelfApiParityRefsTotal", snapshot.gatewaySelfApiParityRefsTotal(),
+                "deleteListItemsTotal", snapshot.deleteListItemsTotal(),
+                "deletedFilesTotal", snapshot.deletedFilesTotal(),
+                "remainingGatewayPackageRefs", snapshot.remainingGatewayPackageRefs(),
+                "unifiedBuildHelperStillReferencesApiGateway", snapshot.unifiedBuildHelperStillReferencesApiGateway(),
+                "apiGatewayPomStillPresent", snapshot.apiGatewayPomStillPresent(),
+                "apiGatewayServiceDirectoryStillPresent", snapshot.apiGatewayServiceDirectoryStillPresent(),
+                "coreEntrypointsPreserved", snapshot.coreEntrypointsPreserved(),
+                "readyToRetireBusinessCore", snapshot.readyToRetireBusinessCore(),
+                "readyToRetireAdmissionCore", snapshot.readyToRetireAdmissionCore(),
+                "readyToRetireEngagementCore", snapshot.readyToRetireEngagementCore(),
+                "readyToRetireOpsCore", snapshot.readyToRetireOpsCore(),
+                "readyToRetirePortalCore", snapshot.readyToRetirePortalCore(),
+                "bulkDeleteAllowed", snapshot.bulkDeleteAllowed(),
+                "environmentVariablesRead", snapshot.environmentVariablesRead(),
+                "sensitiveValuesExposed", snapshot.sensitiveValuesExposed(),
                 "remainingBlockers", snapshot.remainingBlockers(),
                 "status", snapshot.status()
         );

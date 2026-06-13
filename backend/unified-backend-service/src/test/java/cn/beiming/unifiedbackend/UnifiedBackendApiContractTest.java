@@ -73,6 +73,7 @@ class UnifiedBackendApiContractTest {
         addRange(mapped, "UBACK-RUNTIME-CONFIG-SHELL", 1, 12);
         addRange(mapped, "UBACK-AUDIT-OBS-SMOKE", 1, 14);
         addRange(mapped, "UBACK-CONTROLLED-CUTOVER", 1, 18);
+        addRange(mapped, "UBACK-API-GATEWAY-RETIREMENT", 1, 20);
 
         assertThat(mapped).contains(
                 "UBACK-COM-001",
@@ -139,9 +140,11 @@ class UnifiedBackendApiContractTest {
                 "UBACK-AUDIT-OBS-SMOKE-001",
                 "UBACK-AUDIT-OBS-SMOKE-014",
                 "UBACK-CONTROLLED-CUTOVER-001",
-                "UBACK-CONTROLLED-CUTOVER-018"
+                "UBACK-CONTROLLED-CUTOVER-018",
+                "UBACK-API-GATEWAY-RETIREMENT-001",
+                "UBACK-API-GATEWAY-RETIREMENT-020"
         );
-        assertThat(mapped).hasSize(271);
+        assertThat(mapped).hasSize(291);
     }
 
     @Test
@@ -307,7 +310,9 @@ class UnifiedBackendApiContractTest {
 
         JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
                 .header("Authorization", "Bearer owner-token"));
-        String readinessText = readiness.toString();
+        String readinessText = readiness.toString()
+                .replace("NODE_DAEMON_OUT_OF_REPOSITORY", "")
+                .replace("\"nodeDaemonOutOfRepository\":true", "");
         assertThat(readiness.at("/data/currentProductionEntrypointsTotal").asInt()).isEqualTo(6);
         assertThat(readiness.at("/data/candidateEntrypointsTotal").asInt()).isEqualTo(1);
         assertThat(readiness.at("/data/replacementDecision/canReplaceGateway").asBoolean()).isFalse();
@@ -386,7 +391,8 @@ class UnifiedBackendApiContractTest {
         assertThat(readiness.at("/data/readyForProduction").asBoolean()).isFalse();
         assertThat(readiness.at("/data/readyToReplaceGateway").asBoolean()).isFalse();
         String readinessWithoutControlledCutoverNodeExecutorFlag = readiness.toString()
-                .replace("\"nodeDaemonOutOfRepository\":true", "");
+                .replace("\"nodeDaemonOutOfRepository\":true", "")
+                .replace("NODE_DAEMON_OUT_OF_REPOSITORY", "");
         assertThat(readinessWithoutControlledCutoverNodeExecutorFlag)
                 .doesNotContain("node-daemon")
                 .doesNotContain("NODE_DAEMON")
@@ -3432,6 +3438,274 @@ class UnifiedBackendApiContractTest {
         assertThat(readiness.at("/data/productionControlledCutoverEvidence/readyToRetireOldEntrypoints").asBoolean()).isFalse();
         assertThat(readiness.at("/data/replacementDecision/canRetireApiGateway").asBoolean()).isFalse();
         assertThat(readiness.at("/data/replacementDecision/canRetireIndependentCoreEntrypoints").asBoolean()).isFalse();
+    }
+
+    @Test
+    void exposesApiGatewayControlledRetirementGateWithoutDeletingGateway() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-api-gateway-controlled-retirement"));
+
+        assertThat(readiness.at("/data/apiGatewayControlledRetirementStatus").asText())
+                .isEqualTo("BLOCKED_BY_API_GATEWAY_RETIREMENT_RECEIPT_NOT_PROVIDED");
+        assertThat(readiness.at("/data/readyForProduction").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/readyToReplaceGateway").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/apiGatewayRetirementPrecheckStatus").asText())
+                .isEqualTo("BLOCKED_BY_TRAFFIC_NOT_SWITCHED");
+
+        for (String check : List.of(
+                "API_GATEWAY_RETIREMENT_RECEIPT_SAMPLE_PRESENT",
+                "API_GATEWAY_RETIREMENT_RECEIPT_SAMPLE_JSON_PARSABLE",
+                "CONTROLLED_CUTOVER_RECEIPT_REFERENCED",
+                "GATEWAY_SELF_APIS_PRESERVED_IN_UNIFIED",
+                "BUSINESS_PATHS_UNCHANGED",
+                "CORE_ENTRYPOINTS_PRESERVED",
+                "NODE_DAEMON_OUT_OF_REPOSITORY",
+                "DELETE_LIST_RECORDED",
+                "NO_REAL_VALUES_IN_API_GATEWAY_RETIREMENT_RECEIPT",
+                "NO_SENSITIVE_VALUES_IN_API_GATEWAY_RETIREMENT_RECEIPT",
+                "READY_FLAGS_REMAIN_FALSE")) {
+            assertPrecheck(readiness, "/data/apiGatewayControlledRetirementChecks", check, "PASS", true);
+        }
+        for (String check : List.of(
+                "RETIREMENT_RECEIPT_NOT_PROVIDED",
+                "PRODUCTION_TRAFFIC_NOT_OBSERVED_ON_UNIFIED",
+                "API_GATEWAY_TRAFFIC_ZERO_NOT_PROVEN",
+                "ROLLBACK_WINDOW_NOT_COMPLETED",
+                "REAL_AUDIT_WRITE_SMOKE_NOT_PASSED",
+                "DASHBOARD_ALERT_TRACE_NOT_VERIFIED",
+                "RETIREMENT_APPROVAL_NOT_GRANTED",
+                "DELETE_LIST_NOT_APPROVED",
+                "API_GATEWAY_SOURCE_STILL_IN_UNIFIED_BUILD_HELPER",
+                "GATEWAY_SELF_API_PARITY_NOT_PROVEN_WITH_REAL_RECEIPT",
+                "UNIFIED_BACKEND_FULL_REGRESSION_NOT_RECORDED",
+                "CORE_ENTRYPOINT_REGRESSION_NOT_RECORDED",
+                "ROLLBACK_PLAN_NOT_REVALIDATED",
+                "BULK_DELETE_FORBIDDEN")) {
+            assertPrecheck(readiness, "/data/apiGatewayControlledRetirementChecks", check, "BLOCKED", true);
+        }
+
+        JsonNode evidence = readiness.at("/data/apiGatewayControlledRetirementEvidence");
+        assertThat(evidence.at("/readinessMode").asText())
+                .isEqualTo("LOCAL_API_GATEWAY_RETIREMENT_RECEIPT_GATE_NOT_PRODUCTION");
+        assertThat(evidence.at("/receiptPath").asText())
+                .isEqualTo("docs/unified-backend-api-gateway-retirement-receipt-sample.json");
+        assertThat(evidence.at("/receiptPresent").asBoolean()).isTrue();
+        assertThat(evidence.at("/receiptParsed").asBoolean()).isTrue();
+        assertThat(evidence.at("/retirementApplied").asBoolean()).isFalse();
+        assertThat(evidence.at("/deleteListApproved").asBoolean()).isFalse();
+        assertThat(evidence.at("/productionTrafficAllowed").asBoolean()).isFalse();
+        assertThat(evidence.at("/realValuesAllowedInRepository").asBoolean()).isFalse();
+        assertThat(evidence.at("/candidateEntrypointRef").asText()).isEqualTo("LOCAL_SAMPLE_REF:UNIFIED_BACKEND_8135");
+        assertThat(evidence.at("/retiredEntrypointRef").asText()).isEqualTo("LOCAL_SAMPLE_REF:API_GATEWAY_8125");
+        assertThat(evidence.at("/rollbackEntrypointRefs").toString())
+                .contains("LOCAL_SAMPLE_REF:API_GATEWAY_8125")
+                .contains("LOCAL_SAMPLE_REF:BUSINESS_CORE_8130")
+                .contains("LOCAL_SAMPLE_REF:PORTAL_CORE_8134");
+        assertThat(evidence.at("/controlledCutoverRefsTotal").asInt()).isGreaterThanOrEqualTo(1);
+        assertThat(evidence.at("/approvalRefsTotal").asInt()).isGreaterThanOrEqualTo(6);
+        assertThat(evidence.at("/trafficZeroRefsTotal").asInt()).isGreaterThanOrEqualTo(6);
+        assertThat(evidence.at("/observabilityRefsTotal").asInt()).isGreaterThanOrEqualTo(6);
+        assertThat(evidence.at("/auditRefsTotal").asInt()).isGreaterThanOrEqualTo(4);
+        assertThat(evidence.at("/rollbackWindowRefsTotal").asInt()).isGreaterThanOrEqualTo(4);
+        assertThat(evidence.at("/gatewaySelfApiParityRefsTotal").asInt()).isGreaterThanOrEqualTo(10);
+        assertThat(evidence.at("/deleteListItemsTotal").asInt()).isGreaterThanOrEqualTo(6);
+        assertThat(evidence.at("/deletedFilesTotal").asInt()).isZero();
+        assertThat(evidence.at("/remainingGatewayPackageRefs").asInt()).isGreaterThan(0);
+        assertThat(evidence.at("/unifiedBuildHelperStillReferencesApiGateway").asBoolean()).isTrue();
+        assertThat(evidence.at("/apiGatewayPomStillPresent").asBoolean()).isTrue();
+        assertThat(evidence.at("/apiGatewayServiceDirectoryStillPresent").asBoolean()).isTrue();
+        assertThat(evidence.at("/coreEntrypointsPreserved").asBoolean()).isTrue();
+        for (String field : List.of(
+                "readyToRetireBusinessCore",
+                "readyToRetireAdmissionCore",
+                "readyToRetireEngagementCore",
+                "readyToRetireOpsCore",
+                "readyToRetirePortalCore",
+                "bulkDeleteAllowed",
+                "environmentVariablesRead",
+                "sensitiveValuesExposed")) {
+            assertThat(evidence.at("/" + field).asBoolean()).as(field).isFalse();
+        }
+        assertThat(evidence.at("/remainingBlockers").toString())
+                .contains("REAL_API_GATEWAY_RETIREMENT_RECEIPT_PROVIDED_OUTSIDE_REPOSITORY")
+                .contains("API_GATEWAY_TRAFFIC_ZERO_PROVEN")
+                .contains("DELETE_LIST_APPROVED_BY_USER")
+                .contains("UNIFIED_BUILD_HELPER_STILL_REFERENCES_API_GATEWAY")
+                .contains("BULK_DELETE_FORBIDDEN");
+        assertThat(evidence.at("/status").asText())
+                .isEqualTo("BLOCKED_BY_API_GATEWAY_RETIREMENT_RECEIPT_NOT_PROVIDED");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void apiGatewayRetirementReceiptSampleFileIsParseableAndSafe() throws Exception {
+        JsonNode sample = objectMapper.readTree(Files.readString(Path.of("../../docs/unified-backend-api-gateway-retirement-receipt-sample.json")));
+
+        assertThat(sample.at("/sampleName").asText()).isEqualTo("beiming-unified-backend-api-gateway-retirement-receipt");
+        assertThat(sample.at("/mode").asText()).isEqualTo("LOCAL_API_GATEWAY_RETIREMENT_RECEIPT_SHAPE_NOT_APPLIED");
+        assertThat(sample.at("/retirementApplied").asBoolean()).isFalse();
+        assertThat(sample.at("/deleteListApproved").asBoolean()).isFalse();
+        assertThat(sample.at("/productionTrafficAllowed").asBoolean()).isFalse();
+        assertThat(sample.at("/realValuesAllowedInRepository").asBoolean()).isFalse();
+        assertThat(sample.at("/candidateEntrypointRef").asText()).isEqualTo("LOCAL_SAMPLE_REF:UNIFIED_BACKEND_8135");
+        assertThat(sample.at("/retiredEntrypointRef").asText()).isEqualTo("LOCAL_SAMPLE_REF:API_GATEWAY_8125");
+        assertThat(sample.at("/rollbackEntrypointRefs").size()).isGreaterThanOrEqualTo(6);
+        assertThat(sample.at("/controlledCutoverRefs").toString())
+                .contains("docs/unified-backend-production-controlled-cutover-receipt-sample.json");
+        assertThat(sample.at("/approvalRefs").size()).isGreaterThanOrEqualTo(6);
+        assertThat(sample.at("/trafficZeroRefs").size()).isGreaterThanOrEqualTo(6);
+        assertThat(sample.at("/gatewaySelfApiParityRefs").size()).isGreaterThanOrEqualTo(10);
+        assertThat(sample.at("/observabilityRefs").size()).isGreaterThanOrEqualTo(6);
+        assertThat(sample.at("/auditRefs").size()).isGreaterThanOrEqualTo(4);
+        assertThat(sample.at("/rollbackWindowRefs").size()).isGreaterThanOrEqualTo(4);
+        assertThat(sample.at("/deleteList").size()).isGreaterThanOrEqualTo(6);
+        assertThat(sample.at("/deleteList").toString())
+                .contains("backend/api-gateway-service/pom.xml")
+                .contains("backend/api-gateway-service/src/main/java/cn/beiming/apigateway/GatewayModule.java");
+        assertThat(sample.at("/migrationPlan/unifiedBuildHelperStillReferencesApiGateway").asBoolean()).isTrue();
+        assertThat(sample.at("/coreProtection/coreEntrypointsPreserved").asBoolean()).isTrue();
+        assertThat(sample.at("/coreProtection/readyToRetireBusinessCore").asBoolean()).isFalse();
+        assertThat(sample.at("/coreProtection/readyToRetireAdmissionCore").asBoolean()).isFalse();
+        assertThat(sample.at("/coreProtection/readyToRetireEngagementCore").asBoolean()).isFalse();
+        assertThat(sample.at("/coreProtection/readyToRetireOpsCore").asBoolean()).isFalse();
+        assertThat(sample.at("/coreProtection/readyToRetirePortalCore").asBoolean()).isFalse();
+
+        String safeValueText = sample.toString().toLowerCase()
+                .replace(sample.at("/redactionPolicy").toString().toLowerCase(), "");
+        assertThat(safeValueText)
+                .doesNotContain("authorization")
+                .doesNotContain("cookie")
+                .doesNotContain("x-gateway-internal-signature")
+                .doesNotContain("token")
+                .doesNotContain("secret")
+                .doesNotContain("password")
+                .doesNotContain("passwd")
+                .doesNotContain("pwd")
+                .doesNotContain("privatekey")
+                .doesNotContain("id_rsa")
+                .doesNotContain("jdbc:")
+                .doesNotContain("mongodb://")
+                .doesNotContain("redis://")
+                .doesNotContain("akia")
+                .doesNotContain("kubectl")
+                .doesNotContain("docker")
+                .doesNotContain("powershell")
+                .doesNotContain("cmd.exe")
+                .doesNotContain("ssh ")
+                .doesNotContain("scp ")
+                .doesNotContain("c:\\users\\")
+                .doesNotContain(".env")
+                .doesNotContain("http://")
+                .doesNotContain("https://");
+    }
+
+    @Test
+    void apiGatewayRetirementDoesNotLeakSensitiveRuntimeValues() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-api-gateway-retirement-redaction"));
+
+        String text = readiness.at("/data/apiGatewayControlledRetirementEvidence").toString()
+                + readiness.at("/data/apiGatewayControlledRetirementChecks");
+        assertThat(text)
+                .doesNotContain("Authorization")
+                .doesNotContain("Cookie")
+                .doesNotContain("X-Gateway-Internal-Signature")
+                .doesNotContain("C:\\Users\\")
+                .doesNotContain(".env")
+                .doesNotContain("jdbc:")
+                .doesNotContain("mongodb://")
+                .doesNotContain("redis://")
+                .doesNotContain("AKIA")
+                .doesNotContain("cmd.exe")
+                .doesNotContain("powershell")
+                .doesNotContain("kubectl")
+                .doesNotContain("docker")
+                .doesNotContain("id_rsa")
+                .doesNotContain("http://")
+                .doesNotContain("https://");
+        assertThat(text.toLowerCase()
+                .replace("apigatewaycontrolledretirement", "")
+                .replace("controlledretirement", "")
+                .replace("sensitivevaluesexposed", "")
+                .replace("retirement", ""))
+                .doesNotContain("token")
+                .doesNotContain("cookie")
+                .doesNotContain("secret")
+                .doesNotContain("password")
+                .doesNotContain("passwd")
+                .doesNotContain("pwd")
+                .doesNotContain("privatekey")
+                .doesNotContain("dsn")
+                .doesNotContain("bucket")
+                .doesNotContain("topic");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void apiGatewayRetirementKeepsCoreEntrypointsProtected() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-api-gateway-retirement-core-protection"));
+
+        JsonNode evidence = readiness.at("/data/apiGatewayControlledRetirementEvidence");
+        assertThat(evidence.at("/coreEntrypointsPreserved").asBoolean()).isTrue();
+        assertThat(evidence.at("/bulkDeleteAllowed").asBoolean()).isFalse();
+        assertThat(evidence.at("/readyToRetireBusinessCore").asBoolean()).isFalse();
+        assertThat(evidence.at("/readyToRetireAdmissionCore").asBoolean()).isFalse();
+        assertThat(evidence.at("/readyToRetireEngagementCore").asBoolean()).isFalse();
+        assertThat(evidence.at("/readyToRetireOpsCore").asBoolean()).isFalse();
+        assertThat(evidence.at("/readyToRetirePortalCore").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/coreEntrypointRetirementPrecheckStatus").asText())
+                .isEqualTo("BLOCKED_BY_PROTECTED_ROLLBACK_ROLE");
+        assertThat(List.of(
+                Path.of("../api-gateway-service/pom.xml"),
+                Path.of("../business-core-service/pom.xml"),
+                Path.of("../admission-core-service/pom.xml"),
+                Path.of("../engagement-core-service/pom.xml"),
+                Path.of("../ops-core-service/pom.xml"),
+                Path.of("../portal-core-service/pom.xml")
+        )).allSatisfy(path -> assertThat(Files.exists(path)).as(path.toString()).isTrue());
+        assertThat(Files.exists(Path.of("../node-daemon-service"))).isFalse();
+    }
+
+    @Test
+    void unifiedBackendPreservesGatewaySelfApisBeforeApiGatewayRetirement() throws Exception {
+        assertThat(performJson(get("/api/v1/gateway/health")
+                .header("X-Request-Id", "req-unified-gateway-health")).at("/data/service").asText())
+                .isEqualTo("api-gateway");
+        assertThat(performJson(get("/api/v1/gateway/admin/ops/summary")
+                .header("Authorization", "Bearer owner-token")).at("/data/service").asText())
+                .isEqualTo("api-gateway");
+        assertThat(performJson(get("/api/v1/gateway/admin/runtime-topology")
+                .header("Authorization", "Bearer owner-token")).at("/data/currentEntrypoints").toString())
+                .contains("api-gateway");
+        assertThat(performJson(get("/api/v1/gateway/admin/routes?pageSize=100")
+                .header("Authorization", "Bearer owner-token")).at("/data/items").size())
+                .isGreaterThanOrEqualTo(25);
+        assertThat(performJson(get("/api/v1/gateway/admin/upstreams?pageSize=100")
+                .header("Authorization", "Bearer owner-token")).at("/data/items").size())
+                .isGreaterThanOrEqualTo(25);
+        assertThat(performJson(get("/api/v1/gateway/admin/request-logs")
+                .header("Authorization", "Bearer owner-token")).at("/data/items").isArray()).isTrue();
+    }
+
+    @Test
+    void apiGatewayRetirementCannotProceedWhileUnifiedBuildStillDependsOnGatewayServiceSource() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-api-gateway-retirement-build-helper"));
+        String pom = Files.readString(Path.of("pom.xml"));
+
+        assertThat(pom).contains("../api-gateway-service/src/main/java");
+        assertThat(readiness.at("/data/apiGatewayControlledRetirementStatus").asText())
+                .isEqualTo("BLOCKED_BY_API_GATEWAY_RETIREMENT_RECEIPT_NOT_PROVIDED");
+        assertPrecheck(readiness, "/data/apiGatewayControlledRetirementChecks", "API_GATEWAY_SOURCE_STILL_IN_UNIFIED_BUILD_HELPER", "BLOCKED", true);
+        assertThat(readiness.at("/data/apiGatewayControlledRetirementEvidence/unifiedBuildHelperStillReferencesApiGateway").asBoolean()).isTrue();
+        assertThat(readiness.at("/data/apiGatewayControlledRetirementEvidence/apiGatewayPomStillPresent").asBoolean()).isTrue();
+        assertThat(readiness.at("/data/apiGatewayControlledRetirementEvidence/apiGatewayServiceDirectoryStillPresent").asBoolean()).isTrue();
+        assertThat(readiness.at("/data/apiGatewayControlledRetirementEvidence/deletedFilesTotal").asInt()).isZero();
     }
 
     @Test

@@ -1,0 +1,154 @@
+{
+  "sampleName": "beiming-unified-backend-api-gateway-retirement-receipt",
+  "sampleVersion": "1.0",
+  "mode": "LOCAL_API_GATEWAY_RETIREMENT_RECEIPT_SHAPE_NOT_APPLIED",
+  "retirementApplied": false,
+  "deleteListApproved": false,
+  "productionTrafficAllowed": false,
+  "realValuesAllowedInRepository": false,
+  "candidateEntrypointRef": "LOCAL_SAMPLE_REF:UNIFIED_BACKEND_8135",
+  "retiredEntrypointRef": "LOCAL_SAMPLE_REF:API_GATEWAY_8125",
+  "rollbackEntrypointRefs": [
+    "LOCAL_SAMPLE_REF:API_GATEWAY_8125",
+    "LOCAL_SAMPLE_REF:BUSINESS_CORE_8130",
+    "LOCAL_SAMPLE_REF:ADMISSION_CORE_8131",
+    "LOCAL_SAMPLE_REF:ENGAGEMENT_CORE_8132",
+    "LOCAL_SAMPLE_REF:OPS_CORE_8133",
+    "LOCAL_SAMPLE_REF:PORTAL_CORE_8134"
+  ],
+  "approvalRefs": [
+    "LOCAL_APPROVAL_REF:API_GATEWAY_RETIREMENT_OWNER_REVIEW_PENDING",
+    "LOCAL_APPROVAL_REF:DELETE_LIST_REVIEW_PENDING",
+    "LOCAL_APPROVAL_REF:ROLLBACK_OWNER_REVIEW_PENDING",
+    "LOCAL_APPROVAL_REF:OBSERVABILITY_OWNER_REVIEW_PENDING",
+    "LOCAL_APPROVAL_REF:AUDIT_OWNER_REVIEW_PENDING",
+    "LOCAL_APPROVAL_REF:CORE_RETIREMENT_DEFERRAL_CONFIRMED"
+  ],
+  "controlledCutoverRefs": [
+    "docs/unified-backend-production-controlled-cutover-receipt-sample.json"
+  ],
+  "trafficZeroRefs": [
+    "LOCAL_TRAFFIC_ZERO_REF:API_GATEWAY_NEW_TRAFFIC_ZERO_PENDING",
+    "LOCAL_TRAFFIC_ZERO_REF:API_GATEWAY_ERROR_RATE_EXPLAINED_PENDING",
+    "LOCAL_TRAFFIC_ZERO_REF:BUSINESS_PATHS_NO_LONGER_HIT_OLD_GATEWAY_PENDING",
+    "LOCAL_TRAFFIC_ZERO_REF:ROLLBACK_ENTRYPOINT_STARTABLE_PENDING",
+    "LOCAL_TRAFFIC_ZERO_REF:LOG_RETENTION_WINDOW_PENDING",
+    "LOCAL_TRAFFIC_ZERO_REF:OBSERVATION_WINDOW_PENDING"
+  ],
+  "gatewaySelfApiParityRefs": [
+    "LOCAL_GATEWAY_PARITY_REF:HEALTH_PENDING",
+    "LOCAL_GATEWAY_PARITY_REF:OPS_SUMMARY_PENDING",
+    "LOCAL_GATEWAY_PARITY_REF:RUNTIME_TOPOLOGY_PENDING",
+    "LOCAL_GATEWAY_PARITY_REF:ROUTES_PENDING",
+    "LOCAL_GATEWAY_PARITY_REF:ROUTE_DETAIL_PENDING",
+    "LOCAL_GATEWAY_PARITY_REF:UPSTREAMS_PENDING",
+    "LOCAL_GATEWAY_PARITY_REF:HEALTH_REFRESH_PENDING",
+    "LOCAL_GATEWAY_PARITY_REF:REQUEST_LOGS_PENDING",
+    "LOCAL_GATEWAY_PARITY_REF:CORS_PENDING",
+    "LOCAL_GATEWAY_PARITY_REF:REQUEST_ID_PENDING",
+    "LOCAL_GATEWAY_PARITY_REF:TRUSTED_IDENTITY_SIGNATURE_PENDING",
+    "LOCAL_GATEWAY_PARITY_REF:PROXY_DEGRADATION_ERROR_SHAPE_PENDING"
+  ],
+  "observabilityRefs": [
+    "LOCAL_OBSERVABILITY_REF:HTTP_STATUS_PENDING",
+    "LOCAL_OBSERVABILITY_REF:ERROR_RATE_PENDING",
+    "LOCAL_OBSERVABILITY_REF:LATENCY_PENDING",
+    "LOCAL_OBSERVABILITY_REF:BUSINESS_CODE_PENDING",
+    "LOCAL_OBSERVABILITY_REF:TRACE_PENDING",
+    "LOCAL_OBSERVABILITY_REF:DASHBOARD_ALERT_PENDING"
+  ],
+  "auditRefs": [
+    "LOCAL_AUDIT_REF:WRITE_SMOKE_PENDING",
+    "LOCAL_AUDIT_REF:REQUEST_ID_PENDING",
+    "LOCAL_AUDIT_REF:ACTOR_FIELDS_PENDING",
+    "LOCAL_AUDIT_REF:RETIREMENT_DECISION_PENDING"
+  ],
+  "rollbackWindowRefs": [
+    "LOCAL_ROLLBACK_REF:WINDOW_START_PENDING",
+    "LOCAL_ROLLBACK_REF:WINDOW_END_PENDING",
+    "LOCAL_ROLLBACK_REF:ROLLBACK_TRIGGER_PENDING",
+    "LOCAL_ROLLBACK_REF:ROLLBACK_RECHECK_PENDING"
+  ],
+  "deleteList": [
+    "backend/api-gateway-service/pom.xml",
+    "backend/api-gateway-service/src/main/resources/application.yml",
+    "backend/api-gateway-service/src/main/java/cn/beiming/apigateway/ApiGatewayServiceApplication.java",
+    "backend/api-gateway-service/src/main/java/cn/beiming/apigateway/GatewayModule.java",
+    "backend/api-gateway-service/src/test/java/cn/beiming/apigateway/GatewayApiContractTest.java",
+    "backend/api-gateway-service/src/test/java/cn/beiming/apigateway/GatewayPortConfigTest.java",
+    "backend/api-gateway-service/src/test/java/cn/beiming/apigateway/GatewayPortalCoreOverrideTest.java",
+    "backend/api-gateway-service/src/test/java/cn/beiming/apigateway/GatewayProductionHardeningTest.java"
+  ],
+  "migrationPlan": {
+    "unifiedBuildHelperStillReferencesApiGateway": true,
+    "canDeleteApiGatewaySourceDirectoryNow": false,
+    "requiredBeforeDelete": [
+      "LOCAL_MIGRATION_REF:UNIFIED_GATEWAY_SELF_API_OWNERSHIP_MOVED",
+      "LOCAL_MIGRATION_REF:BUILD_HELPER_REFERENCE_REMOVED",
+      "LOCAL_MIGRATION_REF:UNIFIED_GATEWAY_PARITY_REGRESSION_GREEN",
+      "LOCAL_MIGRATION_REF:SEVEN_TO_SIX_ENTRYPOINT_DOCS_SYNCED"
+    ]
+  },
+  "coreProtection": {
+    "coreEntrypointsPreserved": true,
+    "readyToRetireBusinessCore": false,
+    "readyToRetireAdmissionCore": false,
+    "readyToRetireEngagementCore": false,
+    "readyToRetireOpsCore": false,
+    "readyToRetirePortalCore": false,
+    "protectedCorePaths": [
+      "backend/business-core-service/pom.xml",
+      "backend/admission-core-service/pom.xml",
+      "backend/engagement-core-service/pom.xml",
+      "backend/ops-core-service/pom.xml",
+      "backend/portal-core-service/pom.xml"
+    ]
+  },
+  "redactionPolicy": {
+    "forbiddenValueFragments": [
+      "Authorization",
+      "Cookie",
+      "X-Gateway-Internal-Signature",
+      "token",
+      "secret",
+      "password",
+      "passwd",
+      "pwd",
+      "privateKey",
+      "id_rsa",
+      "jdbc:",
+      "mongodb://",
+      "redis://",
+      "AKIA",
+      "C:\\Users\\",
+      ".env",
+      "real IPv4",
+      "real domain",
+      "real dashboard URL",
+      "real DSN",
+      "real topic",
+      "real bucket",
+      "kubectl",
+      "docker",
+      "powershell",
+      "cmd.exe",
+      "ssh ",
+      "scp "
+    ]
+  },
+  "goNoGoImpact": {
+    "receiptDoesNotApproveDeletion": true,
+    "bulkDeleteAllowed": false,
+    "deleteListRequiresUserApproval": true,
+    "coreRetirementDeferred": true
+  },
+  "verificationCommands": [
+    "mvn -q -f backend/unified-backend-service/pom.xml test",
+    "mvn -q -f backend/api-gateway-service/pom.xml test",
+    "mvn -q -f backend/business-core-service/pom.xml test",
+    "mvn -q -f backend/admission-core-service/pom.xml test",
+    "mvn -q -f backend/engagement-core-service/pom.xml test",
+    "mvn -q -f backend/ops-core-service/pom.xml test",
+    "mvn -q -f backend/portal-core-service/pom.xml test"
+  ]
+}
