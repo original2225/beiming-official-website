@@ -3533,7 +3533,16 @@ class UnifiedBackendApiContractTest {
                 .contains("API_GATEWAY_TRAFFIC_ZERO_PROVEN")
                 .contains("DELETE_LIST_APPROVED_BY_USER")
                 .contains("UNIFIED_BUILD_HELPER_STILL_REFERENCES_API_GATEWAY")
+                .contains("GATEWAY_SELF_API_PARITY_NOT_PROVEN_WITH_REAL_RECEIPT")
+                .contains("UNIFIED_BACKEND_FULL_REGRESSION_NOT_RECORDED")
+                .contains("CORE_ENTRYPOINT_REGRESSION_NOT_RECORDED")
+                .contains("ROLLBACK_PLAN_NOT_REVALIDATED")
                 .contains("BULK_DELETE_FORBIDDEN");
+        assertThat(evidence.at("/remainingBlockers").toString())
+                .doesNotContain("GATEWAY_SELF_API_PARITY_PROVEN_WITH_REAL_RECEIPT")
+                .doesNotContain("UNIFIED_BACKEND_FULL_REGRESSION_RECORDED")
+                .doesNotContain("CORE_ENTRYPOINT_REGRESSION_RECORDED")
+                .doesNotContain("ROLLBACK_PLAN_REVALIDATED");
         assertThat(evidence.at("/status").asText())
                 .isEqualTo("BLOCKED_BY_API_GATEWAY_RETIREMENT_RECEIPT_NOT_PROVIDED");
         assertNoSecrets(readiness);

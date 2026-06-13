@@ -2895,10 +2895,10 @@ class LocalFileApiGatewayControlledRetirementReceipt implements UnifiedApiGatewa
                         "RETIREMENT_APPROVAL_GRANTED",
                         "DELETE_LIST_APPROVED_BY_USER",
                         "UNIFIED_BUILD_HELPER_STILL_REFERENCES_API_GATEWAY",
-                        "GATEWAY_SELF_API_PARITY_PROVEN_WITH_REAL_RECEIPT",
-                        "UNIFIED_BACKEND_FULL_REGRESSION_RECORDED",
-                        "CORE_ENTRYPOINT_REGRESSION_RECORDED",
-                        "ROLLBACK_PLAN_REVALIDATED",
+                        "GATEWAY_SELF_API_PARITY_NOT_PROVEN_WITH_REAL_RECEIPT",
+                        "UNIFIED_BACKEND_FULL_REGRESSION_NOT_RECORDED",
+                        "CORE_ENTRYPOINT_REGRESSION_NOT_RECORDED",
+                        "ROLLBACK_PLAN_NOT_REVALIDATED",
                         "BULK_DELETE_FORBIDDEN"
                 ),
                 "BLOCKED_BY_API_GATEWAY_RETIREMENT_RECEIPT_NOT_PROVIDED"
