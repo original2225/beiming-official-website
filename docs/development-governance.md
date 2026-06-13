@@ -66,6 +66,8 @@ API 文档必须放在 `docs/`，并按 `docs/contracts-<module>.md` 独立命�
 
 受控生产入口切流和旧入口退役必须分开闭环。`unified-backend-service:8135` 的受控切流收据门禁只允许提交脱敏样板、脱敏引用、正式契约、自动化测试和 readiness evidence；没有真实外部切流收据、真实审计写入、真实观测、真实回滚窗口和退役审批时，不能把 `readyToReplaceGateway`、`readyToRetireBusinessCore`、`readyToRetireAdmissionCore`、`readyToRetireEngagementCore`、`readyToRetireOpsCore` 或 `readyToRetirePortalCore` 改成 true。即使后续真实生产入口完成受控切流，也不得在同一轮批量删除 `api-gateway-service` 或五个 core。
 
+`api-gateway-service:8125` 的受控退役预检也必须单独闭环。`apiGatewayControlledRetirementStatus=BLOCKED_BY_API_GATEWAY_RETIREMENT_RECEIPT_NOT_PROVIDED` 时，只能说明 `docs/unified-backend-api-gateway-retirement-receipt-sample.json`、退役收据结构、删除清单和本地守卫已经入仓，不代表真实退役完成。没有真实外部退役收据、真实生产流量归零、真实审计写入 smoke、真实 dashboard、真实 alert、真实 trace、回滚窗口完成和用户删除清单确认时，不得删除 `api-gateway-service`，不得批量退役五个 core，也不得把 `unified-backend-service:8135` 描述成已经替代生产入口。五个 core 必须继续保持 `readyToRetireBusinessCore=false`、`readyToRetireAdmissionCore=false`、`readyToRetireEngagementCore=false`、`readyToRetireOpsCore=false` 和 `readyToRetirePortalCore=false`。
+
 清理 `.local-docs/` 时也必须遵守删除规则。只能删除一个明确路径的文件，不能删除整个目录，不能使用递归删除命令。需要清理多个文件时，先列出路径并获得用户确认，再逐个删除。
 
 ## 验收要求

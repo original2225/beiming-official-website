@@ -28,6 +28,8 @@ Zustand 更适合本项目第一版，因为登录态、当前用户、权限、
 
 第四十二轮受控生产入口切流收据门禁只新增后端 readiness 证据。`productionControlledCutoverStatus=BLOCKED_BY_REAL_CUTOVER_RECEIPT_NOT_PROVIDED` 时，前端默认仍使用网关回滚入口，不自动切 `VITE_API_BASE_URL`，也不改任何业务路径。这个状态可以在运维页展示为外部切流收据未提供，不能展示成生产切流完成。
 
+第四十三轮 `api-gateway-service` 受控退役预检同样只新增后端 readiness 证据。`apiGatewayControlledRetirementStatus=BLOCKED_BY_API_GATEWAY_RETIREMENT_RECEIPT_NOT_PROVIDED` 时，运维页只能展示 `docs/unified-backend-api-gateway-retirement-receipt-sample.json` 对应的本地退役门禁、删除清单和回滚引用尚未获得真实生产收据，不得展示成 `api-gateway-service` 已退役。即使本地联调把 `VITE_API_BASE_URL` 指向 `http://127.0.0.1:8135`，也只是在访问 `unified-backend-service:8135` 候选入口，业务路径仍是 `POST /api/v1/auth/login` 这类 `/api/v1/**` 原路径，不改成统一后端专用路径。五个 core 仍保持 `readyToRetireBusinessCore=false`、`readyToRetireAdmissionCore=false`、`readyToRetireEngagementCore=false`、`readyToRetireOpsCore=false` 和 `readyToRetirePortalCore=false`，前端不得提供批量退役或删除提示。
+
 单服务直连只用于排障，不应写在业务页面里。端口统一放在前端常量文件中，便于联调和排障页读取。
 
 | 模块 | 端口 | 用途 |

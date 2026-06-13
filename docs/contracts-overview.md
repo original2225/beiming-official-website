@@ -12,6 +12,8 @@
 
 第四十二轮新增受控生产入口切流收据门禁。`unified-backend` readiness 需要暴露 `productionControlledCutoverStatus`、`productionControlledCutoverChecks` 和 `productionControlledCutoverEvidence`，默认 `productionControlledCutoverStatus=BLOCKED_BY_REAL_CUTOVER_RECEIPT_NOT_PROVIDED`。该状态只表示仓库内已经具备脱敏切流收据样板、结构校验、旧入口保护和测试守卫，不表示真实生产入口已经切到 `8135`，不表示生产流量已观测在候选入口，不表示真实 audit write smoke、dashboard、alert、trace 或回滚窗口已经完成，也不允许退役 `api-gateway-service` 或五个 core。
 
+第四十三轮新增 `api-gateway-service:8125` 受控退役预检门禁。`unified-backend-service:8135` readiness 需要暴露 `apiGatewayControlledRetirementStatus`、`apiGatewayControlledRetirementChecks` 和 `apiGatewayControlledRetirementEvidence`，默认 `apiGatewayControlledRetirementStatus=BLOCKED_BY_API_GATEWAY_RETIREMENT_RECEIPT_NOT_PROVIDED`。正式脱敏样板为 `docs/unified-backend-api-gateway-retirement-receipt-sample.json`。该状态只表示仓库内已经具备 `api-gateway-service` 退役收据、删除清单、build-helper 残留、网关自有 API parity 和 core 保护的本地校验能力，不表示真实生产流量已经切到 `unified-backend-service:8135`，不表示 `api-gateway:8125` 新流量归零，不表示回滚窗口完成，不表示用户已批准删除清单。当前必须继续保持 `readyToRetireBusinessCore=false`、`readyToRetireAdmissionCore=false`、`readyToRetireEngagementCore=false`、`readyToRetireOpsCore=false` 和 `readyToRetirePortalCore=false`，五个 core 仍不是可删除状态。
+
 ## 全局接口规则
 
 所有业务成功响应使用统一结构，`code=0` 表示成功，`message` 为成功或错误摘要，业务数据放在 `data` 中。分页响应统一在 `data` 内返回 `items`、`page`、`pageSize` 和 `total`。

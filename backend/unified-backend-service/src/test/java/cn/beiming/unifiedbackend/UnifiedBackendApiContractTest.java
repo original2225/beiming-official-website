@@ -13,6 +13,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -3706,6 +3707,44 @@ class UnifiedBackendApiContractTest {
         assertThat(readiness.at("/data/apiGatewayControlledRetirementEvidence/apiGatewayPomStillPresent").asBoolean()).isTrue();
         assertThat(readiness.at("/data/apiGatewayControlledRetirementEvidence/apiGatewayServiceDirectoryStillPresent").asBoolean()).isTrue();
         assertThat(readiness.at("/data/apiGatewayControlledRetirementEvidence/deletedFilesTotal").asInt()).isZero();
+    }
+
+    @Test
+    void apiGatewayRetirementGateIsDocumentedAcrossOperationalHandbooks() throws Exception {
+        Map<String, String> docs = Map.of(
+                "contracts-overview", Files.readString(Path.of("../../docs/contracts-overview.md")),
+                "api-reference", Files.readString(Path.of("../../docs/api-reference.md")),
+                "frontend-api-handbook", Files.readString(Path.of("../../docs/frontend-api-handbook.md")),
+                "frontend-development-guide", Files.readString(Path.of("../../docs/frontend-development-guide.md")),
+                "system-design", Files.readString(Path.of("../../docs/system-design.md")),
+                "development-governance", Files.readString(Path.of("../../docs/development-governance.md"))
+        );
+
+        docs.forEach((name, text) -> assertThat(text)
+                .as(name)
+                .contains("apiGatewayControlledRetirementStatus")
+                .contains("BLOCKED_BY_API_GATEWAY_RETIREMENT_RECEIPT_NOT_PROVIDED")
+                .contains("docs/unified-backend-api-gateway-retirement-receipt-sample.json")
+                .contains("api-gateway-service")
+                .contains("unified-backend-service:8135")
+                .contains("readyToRetireBusinessCore=false")
+                .contains("readyToRetireAdmissionCore=false")
+                .contains("readyToRetireEngagementCore=false")
+                .contains("readyToRetireOpsCore=false")
+                .contains("readyToRetirePortalCore=false"));
+
+        assertThat(docs.get("frontend-api-handbook"))
+                .contains("VITE_API_BASE_URL")
+                .contains("/api/v1/**")
+                .contains("http://127.0.0.1:8135")
+                .contains("http://127.0.0.1:8125");
+        assertThat(docs.get("frontend-development-guide"))
+                .contains("VITE_API_BASE_URL")
+                .contains("/api/v1/auth/login")
+                .contains("apiGatewayControlledRetirementStatus");
+        assertThat(docs.get("development-governance"))
+                .contains("不得批量退役")
+                .contains("没有真实外部退役收据");
     }
 
     @Test
