@@ -80,12 +80,13 @@
     "backend/api-gateway-service/src/test/java/cn/beiming/apigateway/GatewayProductionHardeningTest.java"
   ],
   "migrationPlan": {
-    "unifiedBuildHelperStillReferencesApiGateway": true,
+    "unifiedBuildHelperStillReferencesApiGateway": false,
+    "unifiedBackendSelfHostsGatewaySource": true,
     "canDeleteApiGatewaySourceDirectoryNow": false,
     "requiredBeforeDelete": [
-      "LOCAL_MIGRATION_REF:UNIFIED_GATEWAY_SELF_API_OWNERSHIP_MOVED",
-      "LOCAL_MIGRATION_REF:BUILD_HELPER_REFERENCE_REMOVED",
       "LOCAL_MIGRATION_REF:UNIFIED_GATEWAY_PARITY_REGRESSION_GREEN",
+      "LOCAL_MIGRATION_REF:REAL_RETIREMENT_RECEIPT_PROVIDED",
+      "LOCAL_MIGRATION_REF:DELETE_LIST_APPROVED_BY_USER",
       "LOCAL_MIGRATION_REF:SEVEN_TO_SIX_ENTRYPOINT_DOCS_SYNCED"
     ]
   },

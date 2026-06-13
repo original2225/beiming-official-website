@@ -3477,7 +3477,6 @@ class UnifiedBackendApiContractTest {
                 "DASHBOARD_ALERT_TRACE_NOT_VERIFIED",
                 "RETIREMENT_APPROVAL_NOT_GRANTED",
                 "DELETE_LIST_NOT_APPROVED",
-                "API_GATEWAY_SOURCE_STILL_IN_UNIFIED_BUILD_HELPER",
                 "GATEWAY_SELF_API_PARITY_NOT_PROVEN_WITH_REAL_RECEIPT",
                 "UNIFIED_BACKEND_FULL_REGRESSION_NOT_RECORDED",
                 "CORE_ENTRYPOINT_REGRESSION_NOT_RECORDED",
@@ -3512,8 +3511,9 @@ class UnifiedBackendApiContractTest {
         assertThat(evidence.at("/gatewaySelfApiParityRefsTotal").asInt()).isGreaterThanOrEqualTo(10);
         assertThat(evidence.at("/deleteListItemsTotal").asInt()).isGreaterThanOrEqualTo(6);
         assertThat(evidence.at("/deletedFilesTotal").asInt()).isZero();
-        assertThat(evidence.at("/remainingGatewayPackageRefs").asInt()).isGreaterThan(0);
-        assertThat(evidence.at("/unifiedBuildHelperStillReferencesApiGateway").asBoolean()).isTrue();
+        assertPrecheck(readiness, "/data/apiGatewayControlledRetirementChecks", "UNIFIED_BACKEND_SELF_HOSTS_GATEWAY_SOURCE", "PASS", true);
+        assertThat(evidence.at("/remainingGatewayPackageRefs").asInt()).isEqualTo(2);
+        assertThat(evidence.at("/unifiedBuildHelperStillReferencesApiGateway").asBoolean()).isFalse();
         assertThat(evidence.at("/apiGatewayPomStillPresent").asBoolean()).isTrue();
         assertThat(evidence.at("/apiGatewayServiceDirectoryStillPresent").asBoolean()).isTrue();
         assertThat(evidence.at("/coreEntrypointsPreserved").asBoolean()).isTrue();
@@ -3532,7 +3532,6 @@ class UnifiedBackendApiContractTest {
                 .contains("REAL_API_GATEWAY_RETIREMENT_RECEIPT_PROVIDED_OUTSIDE_REPOSITORY")
                 .contains("API_GATEWAY_TRAFFIC_ZERO_PROVEN")
                 .contains("DELETE_LIST_APPROVED_BY_USER")
-                .contains("UNIFIED_BUILD_HELPER_STILL_REFERENCES_API_GATEWAY")
                 .contains("GATEWAY_SELF_API_PARITY_NOT_PROVEN_WITH_REAL_RECEIPT")
                 .contains("UNIFIED_BACKEND_FULL_REGRESSION_NOT_RECORDED")
                 .contains("CORE_ENTRYPOINT_REGRESSION_NOT_RECORDED")
@@ -3573,7 +3572,8 @@ class UnifiedBackendApiContractTest {
         assertThat(sample.at("/deleteList").toString())
                 .contains("backend/api-gateway-service/pom.xml")
                 .contains("backend/api-gateway-service/src/main/java/cn/beiming/apigateway/GatewayModule.java");
-        assertThat(sample.at("/migrationPlan/unifiedBuildHelperStillReferencesApiGateway").asBoolean()).isTrue();
+        assertThat(sample.at("/migrationPlan/unifiedBuildHelperStillReferencesApiGateway").asBoolean()).isFalse();
+        assertThat(sample.at("/migrationPlan/unifiedBackendSelfHostsGatewaySource").asBoolean()).isTrue();
         assertThat(sample.at("/coreProtection/coreEntrypointsPreserved").asBoolean()).isTrue();
         assertThat(sample.at("/coreProtection/readyToRetireBusinessCore").asBoolean()).isFalse();
         assertThat(sample.at("/coreProtection/readyToRetireAdmissionCore").asBoolean()).isFalse();
@@ -3702,17 +3702,17 @@ class UnifiedBackendApiContractTest {
     }
 
     @Test
-    void apiGatewayRetirementCannotProceedWhileUnifiedBuildStillDependsOnGatewayServiceSource() throws Exception {
+    void unifiedBackendSelfHostsGatewaySourceBeforeApiGatewayRetirement() throws Exception {
         JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
                 .header("Authorization", "Bearer owner-token")
                 .header("X-Request-Id", "req-api-gateway-retirement-build-helper"));
         String pom = Files.readString(Path.of("pom.xml"));
 
-        assertThat(pom).contains("../api-gateway-service/src/main/java");
+        assertThat(pom).doesNotContain("../api-gateway-service/src/main/java");
         assertThat(readiness.at("/data/apiGatewayControlledRetirementStatus").asText())
                 .isEqualTo("BLOCKED_BY_API_GATEWAY_RETIREMENT_RECEIPT_NOT_PROVIDED");
-        assertPrecheck(readiness, "/data/apiGatewayControlledRetirementChecks", "API_GATEWAY_SOURCE_STILL_IN_UNIFIED_BUILD_HELPER", "BLOCKED", true);
-        assertThat(readiness.at("/data/apiGatewayControlledRetirementEvidence/unifiedBuildHelperStillReferencesApiGateway").asBoolean()).isTrue();
+        assertPrecheck(readiness, "/data/apiGatewayControlledRetirementChecks", "UNIFIED_BACKEND_SELF_HOSTS_GATEWAY_SOURCE", "PASS", true);
+        assertThat(readiness.at("/data/apiGatewayControlledRetirementEvidence/unifiedBuildHelperStillReferencesApiGateway").asBoolean()).isFalse();
         assertThat(readiness.at("/data/apiGatewayControlledRetirementEvidence/apiGatewayPomStillPresent").asBoolean()).isTrue();
         assertThat(readiness.at("/data/apiGatewayControlledRetirementEvidence/apiGatewayServiceDirectoryStillPresent").asBoolean()).isTrue();
         assertThat(readiness.at("/data/apiGatewayControlledRetirementEvidence/deletedFilesTotal").asInt()).isZero();
