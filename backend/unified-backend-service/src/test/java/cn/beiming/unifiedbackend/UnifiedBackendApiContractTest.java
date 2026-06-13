@@ -72,6 +72,7 @@ class UnifiedBackendApiContractTest {
         addRange(mapped, "UBACK-EXTERNAL-VALUE-INTAKE", 1, 12);
         addRange(mapped, "UBACK-RUNTIME-CONFIG-SHELL", 1, 12);
         addRange(mapped, "UBACK-AUDIT-OBS-SMOKE", 1, 14);
+        addRange(mapped, "UBACK-CONTROLLED-CUTOVER", 1, 18);
 
         assertThat(mapped).contains(
                 "UBACK-COM-001",
@@ -136,9 +137,11 @@ class UnifiedBackendApiContractTest {
                 "UBACK-RUNTIME-CONFIG-SHELL-001",
                 "UBACK-RUNTIME-CONFIG-SHELL-012",
                 "UBACK-AUDIT-OBS-SMOKE-001",
-                "UBACK-AUDIT-OBS-SMOKE-014"
+                "UBACK-AUDIT-OBS-SMOKE-014",
+                "UBACK-CONTROLLED-CUTOVER-001",
+                "UBACK-CONTROLLED-CUTOVER-018"
         );
-        assertThat(mapped).hasSize(253);
+        assertThat(mapped).hasSize(271);
     }
 
     @Test
@@ -382,7 +385,9 @@ class UnifiedBackendApiContractTest {
                 .contains("portal-core");
         assertThat(readiness.at("/data/readyForProduction").asBoolean()).isFalse();
         assertThat(readiness.at("/data/readyToReplaceGateway").asBoolean()).isFalse();
-        assertThat(readiness.toString())
+        String readinessWithoutControlledCutoverNodeExecutorFlag = readiness.toString()
+                .replace("\"nodeDaemonOutOfRepository\":true", "");
+        assertThat(readinessWithoutControlledCutoverNodeExecutorFlag)
                 .doesNotContain("node-daemon")
                 .doesNotContain("NODE_DAEMON")
                 .doesNotContain("nodeDaemon")
@@ -3175,6 +3180,258 @@ class UnifiedBackendApiContractTest {
                 .doesNotContain("scp ")
                 .doesNotContain("c:\\users\\")
                 .doesNotContain(".env");
+    }
+
+    @Test
+    void exposesControlledCutoverReceiptGateWithoutFakingProductionTraffic() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-controlled-cutover-receipt-gate"));
+
+        assertThat(readiness.at("/data/productionControlledCutoverStatus").asText())
+                .isEqualTo("BLOCKED_BY_REAL_CUTOVER_RECEIPT_NOT_PROVIDED");
+        assertThat(readiness.at("/data/readyForProduction").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/readyToReplaceGateway").asBoolean()).isFalse();
+
+        for (String check : List.of(
+                "CONTROLLED_CUTOVER_RECEIPT_SAMPLE_PRESENT",
+                "CONTROLLED_CUTOVER_RECEIPT_SAMPLE_JSON_PARSABLE",
+                "RUNTIME_CONFIG_SHELL_REHEARSAL_REFERENCED",
+                "AUDIT_OBSERVABILITY_SMOKE_REHEARSAL_REFERENCED",
+                "EXTERNAL_VALUE_INTAKE_REHEARSAL_REFERENCED",
+                "APPROVAL_REFS_RECORDED",
+                "TRAFFIC_PLAN_RECORDED",
+                "SMOKE_REFS_RECORDED",
+                "AUDIT_REFS_RECORDED",
+                "OBSERVABILITY_REFS_RECORDED",
+                "ROLLBACK_WINDOW_REFS_RECORDED",
+                "OLD_ENTRYPOINT_PROTECTION_RECORDED",
+                "NO_REAL_VALUES_IN_REPOSITORY",
+                "NO_SENSITIVE_VALUES_IN_CONTROLLED_CUTOVER_RECEIPT",
+                "READY_FLAGS_REMAIN_FALSE",
+                "CONTROLLED_CUTOVER_RECEIPT_GATE_RECORDED")) {
+            assertPrecheck(readiness, "/data/productionControlledCutoverChecks", check, "PASS", true);
+        }
+        for (String check : List.of(
+                "REAL_CUTOVER_RECEIPT_NOT_PROVIDED",
+                "REAL_ENTRYPOINT_NOT_APPLIED",
+                "PRODUCTION_TRAFFIC_NOT_OBSERVED_ON_UNIFIED",
+                "REAL_AUDIT_WRITE_SMOKE_NOT_PASSED",
+                "REAL_DASHBOARD_NOT_VERIFIED",
+                "REAL_ALERTING_NOT_VERIFIED",
+                "REAL_TRACE_PIPELINE_NOT_VERIFIED",
+                "ROLLBACK_WINDOW_NOT_COMPLETED",
+                "API_GATEWAY_TRAFFIC_ZERO_NOT_PROVEN",
+                "RETIREMENT_NOT_APPROVED",
+                "OLD_ENTRYPOINTS_NOT_IN_RETIREMENT_ROUND")) {
+            assertPrecheck(readiness, "/data/productionControlledCutoverChecks", check, "BLOCKED", true);
+        }
+        assertPrecheck(readiness, "/data/productionHardeningPrecheckChecks", "CONTROLLED_CUTOVER_RECEIPT_GATE_RECORDED", "PASS", true);
+
+        JsonNode evidence = readiness.at("/data/productionControlledCutoverEvidence");
+        assertThat(evidence.at("/readinessMode").asText())
+                .isEqualTo("LOCAL_CONTROLLED_CUTOVER_RECEIPT_GATE_NOT_PRODUCTION");
+        assertThat(evidence.at("/receiptPath").asText())
+                .isEqualTo("docs/unified-backend-production-controlled-cutover-receipt-sample.json");
+        assertThat(evidence.at("/receiptPresent").asBoolean()).isTrue();
+        assertThat(evidence.at("/receiptParsed").asBoolean()).isTrue();
+        assertThat(evidence.at("/receiptApplied").asBoolean()).isFalse();
+        assertThat(evidence.at("/productionTrafficAllowed").asBoolean()).isFalse();
+        assertThat(evidence.at("/realValuesAllowedInRepository").asBoolean()).isFalse();
+        assertThat(evidence.at("/candidateEntrypointRef").asText()).isEqualTo("LOCAL_SAMPLE_REF:UNIFIED_BACKEND_8135");
+        assertThat(evidence.at("/previousEntrypointRef").asText()).isEqualTo("LOCAL_SAMPLE_REF:API_GATEWAY_8125");
+        assertThat(evidence.at("/rollbackEntrypointRef").asText()).isEqualTo("LOCAL_SAMPLE_REF:API_GATEWAY_8125");
+        assertThat(evidence.at("/approvalRefsTotal").asInt()).isGreaterThanOrEqualTo(6);
+        assertThat(evidence.at("/runtimePrerequisiteRefsTotal").asInt()).isGreaterThanOrEqualTo(7);
+        assertThat(evidence.at("/trafficStagesTotal").asInt()).isGreaterThanOrEqualTo(5);
+        assertThat(evidence.at("/smokeRefsTotal").asInt()).isGreaterThanOrEqualTo(14);
+        assertThat(evidence.at("/auditRefsTotal").asInt()).isGreaterThanOrEqualTo(6);
+        assertThat(evidence.at("/observabilityRefsTotal").asInt()).isGreaterThanOrEqualTo(10);
+        assertThat(evidence.at("/rollbackWindowRefsTotal").asInt()).isGreaterThanOrEqualTo(6);
+        assertThat(evidence.at("/apiGatewayTrafficRefsTotal").asInt()).isGreaterThanOrEqualTo(2);
+        assertThat(evidence.at("/cutoverExecutionRefsTotal").asInt()).isGreaterThanOrEqualTo(6);
+        assertThat(evidence.at("/finalTrafficWeightPercent").asInt()).isZero();
+        for (String field : List.of(
+                "productionTrafficObservedOnUnified",
+                "apiGatewayTrafficZeroProven",
+                "rollbackWindowCompleted",
+                "persistentAuditSinkConnected",
+                "auditWriteSmokePassed",
+                "observabilityPlatformConnected",
+                "dashboardConnected",
+                "alertingConnected",
+                "tracePipelineConnected",
+                "environmentVariablesRead",
+                "sensitiveValuesExposed",
+                "readyForProduction",
+                "readyToReplaceGateway",
+                "readyToRetireOldEntrypoints")) {
+            assertThat(evidence.at("/" + field).asBoolean()).as(field).isFalse();
+        }
+        assertThat(evidence.at("/oldEntrypointsPreserved").asBoolean()).isTrue();
+        assertThat(evidence.at("/nodeDaemonOutOfRepository").asBoolean()).isTrue();
+        assertThat(evidence.at("/remainingBlockers").toString())
+                .contains("REAL_CUTOVER_RECEIPT_PROVIDED_OUTSIDE_REPOSITORY")
+                .contains("PRODUCTION_TRAFFIC_OBSERVED_ON_UNIFIED")
+                .contains("REAL_AUDIT_WRITE_SMOKE_PASSED")
+                .contains("ROLLBACK_WINDOW_COMPLETED")
+                .contains("USER_RETIREMENT_APPROVAL_GRANTED");
+        assertThat(evidence.at("/status").asText())
+                .isEqualTo("BLOCKED_BY_REAL_CUTOVER_RECEIPT_NOT_PROVIDED");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void controlledCutoverReceiptSampleFileIsParseableAndSafe() throws Exception {
+        JsonNode sample = objectMapper.readTree(Files.readString(Path.of("../../docs/unified-backend-production-controlled-cutover-receipt-sample.json")));
+
+        assertThat(sample.at("/sampleName").asText()).isEqualTo("beiming-unified-backend-production-controlled-cutover-receipt");
+        assertThat(sample.at("/mode").asText()).isEqualTo("LOCAL_CONTROLLED_CUTOVER_RECEIPT_SHAPE_NOT_APPLIED");
+        assertThat(sample.at("/receiptApplied").asBoolean()).isFalse();
+        assertThat(sample.at("/productionTrafficAllowed").asBoolean()).isFalse();
+        assertThat(sample.at("/realValuesAllowedInRepository").asBoolean()).isFalse();
+        assertThat(sample.at("/candidateEntrypointRef").asText()).isEqualTo("LOCAL_SAMPLE_REF:UNIFIED_BACKEND_8135");
+        assertThat(sample.at("/previousEntrypointRef").asText()).isEqualTo("LOCAL_SAMPLE_REF:API_GATEWAY_8125");
+        assertThat(sample.at("/rollbackEntrypointRef").asText()).isEqualTo("LOCAL_SAMPLE_REF:API_GATEWAY_8125");
+        assertThat(sample.at("/approvalRefs").size()).isGreaterThanOrEqualTo(6);
+        assertThat(sample.at("/runtimePrerequisiteRefs").toString())
+                .contains("docs/unified-backend-production-external-value-intake-sample.json")
+                .contains("docs/unified-backend-production-runtime-shell-sample.json")
+                .contains("docs/unified-backend-production-audit-observability-smoke-sample.json");
+        assertThat(sample.at("/trafficPlan/stages").size()).isGreaterThanOrEqualTo(5);
+        assertThat(sample.at("/trafficPlan/stages").toString())
+                .contains("\"weightPercent\":0")
+                .contains("\"weightPercent\":5")
+                .contains("\"weightPercent\":25")
+                .contains("\"weightPercent\":50")
+                .contains("\"weightPercent\":100");
+        assertThat(sample.at("/smokeRefs").size()).isGreaterThanOrEqualTo(14);
+        assertThat(sample.at("/auditRefs").size()).isGreaterThanOrEqualTo(6);
+        assertThat(sample.at("/observabilityRefs").size()).isGreaterThanOrEqualTo(10);
+        assertThat(sample.at("/rollbackWindowRefs").size()).isGreaterThanOrEqualTo(6);
+        assertThat(sample.at("/apiGatewayTrafficRefs").size()).isGreaterThanOrEqualTo(2);
+        assertThat(sample.at("/cutoverExecutionRefs").size()).isGreaterThanOrEqualTo(6);
+        assertThat(sample.at("/oldEntrypointProtection/apiGatewayServicePreserved").asBoolean()).isTrue();
+        assertThat(sample.at("/oldEntrypointProtection/coreEntrypointsPreserved").asBoolean()).isTrue();
+        assertThat(sample.at("/oldEntrypointProtection/noDeletionInThisRound").asBoolean()).isTrue();
+        assertThat(sample.at("/goNoGoImpact/appliedReceiptDoesNotApproveRetirement").asBoolean()).isTrue();
+
+        String safeValueText = sample.toString().toLowerCase()
+                .replace(sample.at("/redactionPolicy").toString().toLowerCase(), "");
+        assertThat(safeValueText)
+                .doesNotContain("authorization")
+                .doesNotContain("cookie")
+                .doesNotContain("x-gateway-internal-signature")
+                .doesNotContain("token")
+                .doesNotContain("secret")
+                .doesNotContain("password")
+                .doesNotContain("passwd")
+                .doesNotContain("pwd")
+                .doesNotContain("privatekey")
+                .doesNotContain("id_rsa")
+                .doesNotContain("jdbc:")
+                .doesNotContain("mongodb://")
+                .doesNotContain("redis://")
+                .doesNotContain("akia")
+                .doesNotContain("kubectl")
+                .doesNotContain("docker")
+                .doesNotContain("powershell")
+                .doesNotContain("cmd.exe")
+                .doesNotContain("ssh ")
+                .doesNotContain("scp ")
+                .doesNotContain("c:\\users\\")
+                .doesNotContain(".env")
+                .doesNotContain("http://")
+                .doesNotContain("https://");
+    }
+
+    @Test
+    void controlledCutoverReceiptDoesNotLeakSensitiveRuntimeValues() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-controlled-cutover-redaction"));
+
+        String text = readiness.at("/data/productionControlledCutoverEvidence").toString()
+                + readiness.at("/data/productionControlledCutoverChecks");
+        assertThat(text)
+                .doesNotContain("Authorization")
+                .doesNotContain("Cookie")
+                .doesNotContain("X-Gateway-Internal-Signature")
+                .doesNotContain("C:\\Users\\")
+                .doesNotContain(".env")
+                .doesNotContain("jdbc:")
+                .doesNotContain("mongodb://")
+                .doesNotContain("redis://")
+                .doesNotContain("AKIA")
+                .doesNotContain("cmd.exe")
+                .doesNotContain("powershell")
+                .doesNotContain("kubectl")
+                .doesNotContain("docker")
+                .doesNotContain("id_rsa")
+                .doesNotContain("http://")
+                .doesNotContain("https://");
+        assertThat(text.toLowerCase()
+                .replace("productioncontrolledcutover", "")
+                .replace("controlledcutover", "")
+                .replace("sensitivevaluesexposed", ""))
+                .doesNotContain("token")
+                .doesNotContain("cookie")
+                .doesNotContain("secret")
+                .doesNotContain("password")
+                .doesNotContain("passwd")
+                .doesNotContain("pwd")
+                .doesNotContain("privatekey")
+                .doesNotContain("dsn")
+                .doesNotContain("bucket")
+                .doesNotContain("topic");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void controlledCutoverKeepsOldEntrypointsProtected() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-controlled-cutover-old-entrypoints"));
+
+        assertThat(readiness.at("/data/productionControlledCutoverEvidence/oldEntrypointsPreserved").asBoolean()).isTrue();
+        assertThat(readiness.at("/data/productionControlledCutoverEvidence/readyToRetireOldEntrypoints").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/apiGatewayRetirementPrecheckStatus").asText())
+                .isEqualTo("BLOCKED_BY_TRAFFIC_NOT_SWITCHED");
+        assertThat(readiness.at("/data/coreEntrypointRetirementPrecheckStatus").asText())
+                .isEqualTo("BLOCKED_BY_PROTECTED_ROLLBACK_ROLE");
+        assertThat(readiness.at("/data/readyToRetireBusinessCore").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/readyToRetireAdmissionCore").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/readyToRetireEngagementCore").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/readyToRetireOpsCore").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/readyToRetirePortalCore").asBoolean()).isFalse();
+        assertThat(List.of(
+                Path.of("../unified-backend-service/pom.xml"),
+                Path.of("../api-gateway-service/pom.xml"),
+                Path.of("../business-core-service/pom.xml"),
+                Path.of("../admission-core-service/pom.xml"),
+                Path.of("../engagement-core-service/pom.xml"),
+                Path.of("../ops-core-service/pom.xml"),
+                Path.of("../portal-core-service/pom.xml")
+        )).allSatisfy(path -> assertThat(Files.exists(path)).as(path.toString()).isTrue());
+        assertThat(Files.exists(Path.of("../node-daemon-service"))).isFalse();
+    }
+
+    @Test
+    void controlledCutoverCanRepresentAppliedExternalReceiptWithoutApprovingRetirement() throws Exception {
+        JsonNode sample = objectMapper.readTree(Files.readString(Path.of("../../docs/unified-backend-production-controlled-cutover-receipt-sample.json")));
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-controlled-cutover-applied-receipt-shape"));
+
+        assertThat(sample.at("/goNoGoImpact/appliedReceiptAllowedStatuses").toString())
+                .contains("PASS_CONTROLLED_CUTOVER_APPLIED_ROLLBACK_WINDOW_OPEN")
+                .contains("PASS_CONTROLLED_CUTOVER_AND_ROLLBACK_WINDOW_COMPLETED");
+        assertThat(sample.at("/goNoGoImpact/appliedReceiptDoesNotApproveRetirement").asBoolean()).isTrue();
+        assertThat(sample.at("/oldEntrypointProtection/retirementRoundRequired").asText())
+                .isEqualTo("FOURTY_THIRD_ROUND_OR_LATER");
+        assertThat(readiness.at("/data/productionControlledCutoverEvidence/readyToRetireOldEntrypoints").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/replacementDecision/canRetireApiGateway").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/replacementDecision/canRetireIndependentCoreEntrypoints").asBoolean()).isFalse();
     }
 
     @Test

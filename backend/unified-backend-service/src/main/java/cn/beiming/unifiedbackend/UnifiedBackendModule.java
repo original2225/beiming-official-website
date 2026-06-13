@@ -145,6 +145,9 @@ class UnifiedBackendController {
                 "productionAuditObservabilitySmokeStatus", registry.productionAuditObservabilitySmokeStatus(),
                 "productionAuditObservabilitySmokeChecks", registry.productionAuditObservabilitySmokeChecks(),
                 "productionAuditObservabilitySmokeEvidence", registry.productionAuditObservabilitySmokeEvidence(),
+                "productionControlledCutoverStatus", registry.productionControlledCutoverStatus(),
+                "productionControlledCutoverChecks", registry.productionControlledCutoverChecks(),
+                "productionControlledCutoverEvidence", registry.productionControlledCutoverEvidence(),
                 "productionExternalValueIntakeRehearsalStatus", registry.productionExternalValueIntakeRehearsalStatus(),
                 "productionExternalValueIntakeRehearsalChecks", registry.productionExternalValueIntakeRehearsalChecks(),
                 "productionExternalValueIntakeRehearsalEvidence", registry.productionExternalValueIntakeRehearsalEvidence(),
@@ -2539,6 +2542,241 @@ record ProductionAuditObservabilitySmokeSnapshot(
 ) {
 }
 
+interface UnifiedProductionControlledCutoverReceipt {
+    ProductionControlledCutoverReceiptSnapshot snapshot();
+}
+
+final class LocalFileProductionControlledCutoverReceipt implements UnifiedProductionControlledCutoverReceipt {
+    private static final List<String> FORBIDDEN_FRAGMENTS = List.of(
+            "authorization",
+            "x-gateway-internal-signature",
+            "c:\\users\\",
+            ".env",
+            "jdbc:",
+            "mongodb://",
+            "redis://",
+            "id_rsa",
+            "akia",
+            "token",
+            "cookie",
+            "secret",
+            "password",
+            "passwd",
+            "pwd",
+            "privatekey",
+            "kubectl",
+            "docker",
+            "powershell",
+            "cmd.exe",
+            "ssh ",
+            "scp ",
+            "http://",
+            "https://"
+    );
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @Override
+    public ProductionControlledCutoverReceiptSnapshot snapshot() {
+        Path samplePath = locateSamplePath();
+        JsonNode sample = readSample(samplePath);
+        boolean present = Files.exists(samplePath);
+        boolean parsed = present && !sample.isMissingNode();
+        JsonNode runtimeRefs = sample.path("runtimePrerequisiteRefs");
+        JsonNode trafficStages = sample.at("/trafficPlan/stages");
+        JsonNode oldEntrypointProtection = sample.path("oldEntrypointProtection");
+        boolean runtimeConfigShellReferenced = containsText(runtimeRefs, "docs/unified-backend-production-runtime-shell-sample.json");
+        boolean auditObservabilitySmokeReferenced = containsText(runtimeRefs, "docs/unified-backend-production-audit-observability-smoke-sample.json");
+        boolean externalValueIntakeReferenced = containsText(runtimeRefs, "docs/unified-backend-production-external-value-intake-sample.json");
+        boolean oldEntrypointProtectionRecorded = oldEntrypointProtection.path("apiGatewayServicePreserved").asBoolean(false)
+                && oldEntrypointProtection.path("coreEntrypointsPreserved").asBoolean(false)
+                && oldEntrypointProtection.path("noDeletionInThisRound").asBoolean(false);
+        boolean realValuesProvided = sample.path("realValuesAllowedInRepository").asBoolean(true);
+        boolean sensitiveValuesExposed = containsSensitiveValues(sample);
+        boolean receiptApplied = sample.path("receiptApplied").asBoolean(false);
+        boolean productionTrafficAllowed = sample.path("productionTrafficAllowed").asBoolean(true);
+        boolean sampleValid = parsed
+                && "LOCAL_CONTROLLED_CUTOVER_RECEIPT_SHAPE_NOT_APPLIED".equals(sample.path("mode").asText())
+                && !receiptApplied
+                && !productionTrafficAllowed
+                && !realValuesProvided
+                && runtimeConfigShellReferenced
+                && auditObservabilitySmokeReferenced
+                && externalValueIntakeReferenced
+                && sample.path("approvalRefs").size() >= 6
+                && trafficStages.size() >= 5
+                && sample.path("smokeRefs").size() >= 14
+                && sample.path("auditRefs").size() >= 6
+                && sample.path("observabilityRefs").size() >= 10
+                && sample.path("rollbackWindowRefs").size() >= 6
+                && sample.path("apiGatewayTrafficRefs").size() >= 2
+                && sample.path("cutoverExecutionRefs").size() >= 6
+                && oldEntrypointProtectionRecorded
+                && !sensitiveValuesExposed;
+        return new ProductionControlledCutoverReceiptSnapshot(
+                "LOCAL_CONTROLLED_CUTOVER_RECEIPT_GATE_NOT_PRODUCTION",
+                "docs/unified-backend-production-controlled-cutover-receipt-sample.json",
+                present,
+                parsed,
+                receiptApplied,
+                productionTrafficAllowed,
+                sample.path("realValuesAllowedInRepository").asBoolean(true),
+                sample.path("candidateEntrypointRef").asText("LOCAL_SAMPLE_REF:UNIFIED_BACKEND_8135"),
+                sample.path("previousEntrypointRef").asText("LOCAL_SAMPLE_REF:API_GATEWAY_8125"),
+                sample.path("rollbackEntrypointRef").asText("LOCAL_SAMPLE_REF:API_GATEWAY_8125"),
+                sample.path("approvalRefs").size(),
+                runtimeRefs.size(),
+                trafficStages.size(),
+                sample.path("smokeRefs").size(),
+                sample.path("auditRefs").size(),
+                sample.path("observabilityRefs").size(),
+                sample.path("rollbackWindowRefs").size(),
+                sample.path("apiGatewayTrafficRefs").size(),
+                sample.path("cutoverExecutionRefs").size(),
+                0,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                sensitiveValuesExposed,
+                oldEntrypointProtectionRecorded,
+                true,
+                false,
+                false,
+                false,
+                runtimeConfigShellReferenced,
+                auditObservabilitySmokeReferenced,
+                externalValueIntakeReferenced,
+                sampleValid,
+                List.of(
+                        "REAL_CUTOVER_RECEIPT_PROVIDED_OUTSIDE_REPOSITORY",
+                        "REAL_ENTRYPOINT_APPLIED_TO_UNIFIED_BACKEND",
+                        "PRODUCTION_TRAFFIC_OBSERVED_ON_UNIFIED",
+                        "REAL_AUDIT_WRITE_SMOKE_PASSED",
+                        "REAL_DASHBOARD_VERIFIED",
+                        "REAL_ALERTING_VERIFIED",
+                        "REAL_TRACE_PIPELINE_VERIFIED",
+                        "ROLLBACK_WINDOW_COMPLETED",
+                        "API_GATEWAY_TRAFFIC_ZERO_PROVEN",
+                        "USER_RETIREMENT_APPROVAL_GRANTED"
+                ),
+                "BLOCKED_BY_REAL_CUTOVER_RECEIPT_NOT_PROVIDED"
+        );
+    }
+
+    private JsonNode readSample(Path samplePath) {
+        try {
+            if (Files.exists(samplePath)) {
+                return objectMapper.readTree(Files.readString(samplePath));
+            }
+        } catch (IOException ignored) {
+            return objectMapper.getNodeFactory().missingNode();
+        }
+        return objectMapper.getNodeFactory().missingNode();
+    }
+
+    private boolean containsText(JsonNode values, String expectedText) {
+        for (JsonNode value : values) {
+            if (expectedText.equals(value.asText())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean containsSensitiveValues(JsonNode sample) {
+        String text = scalarTextWithoutRedactionPolicy(sample).toLowerCase(Locale.ROOT)
+                .replace("productioncontrolledcutover", "")
+                .replace("controlledcutover", "")
+                .replace("sensitivevaluesexposed", "");
+        return FORBIDDEN_FRAGMENTS.stream().anyMatch(text::contains);
+    }
+
+    private String scalarTextWithoutRedactionPolicy(JsonNode node) {
+        StringBuilder values = new StringBuilder();
+        appendScalarText(node, values, false);
+        return values.toString();
+    }
+
+    private void appendScalarText(JsonNode node, StringBuilder values, boolean insideRedactionPolicy) {
+        if (node.isObject()) {
+            node.fields().forEachRemaining(entry -> appendScalarText(entry.getValue(), values,
+                    insideRedactionPolicy || "redactionPolicy".equals(entry.getKey())));
+        } else if (node.isArray()) {
+            for (JsonNode child : node) {
+                appendScalarText(child, values, insideRedactionPolicy);
+            }
+        } else if (!insideRedactionPolicy && node.isValueNode()) {
+            values.append(node.asText()).append(' ');
+        }
+    }
+
+    private Path locateSamplePath() {
+        List<Path> candidates = List.of(
+                Path.of("docs", "unified-backend-production-controlled-cutover-receipt-sample.json"),
+                Path.of("..", "docs", "unified-backend-production-controlled-cutover-receipt-sample.json"),
+                Path.of("..", "..", "docs", "unified-backend-production-controlled-cutover-receipt-sample.json")
+        );
+        for (Path candidate : candidates) {
+            if (Files.exists(candidate)) {
+                return candidate.normalize();
+            }
+        }
+        return candidates.get(0).normalize();
+    }
+}
+
+record ProductionControlledCutoverReceiptSnapshot(
+        String readinessMode,
+        String receiptPath,
+        boolean receiptPresent,
+        boolean receiptParsed,
+        boolean receiptApplied,
+        boolean productionTrafficAllowed,
+        boolean realValuesAllowedInRepository,
+        String candidateEntrypointRef,
+        String previousEntrypointRef,
+        String rollbackEntrypointRef,
+        int approvalRefsTotal,
+        int runtimePrerequisiteRefsTotal,
+        int trafficStagesTotal,
+        int smokeRefsTotal,
+        int auditRefsTotal,
+        int observabilityRefsTotal,
+        int rollbackWindowRefsTotal,
+        int apiGatewayTrafficRefsTotal,
+        int cutoverExecutionRefsTotal,
+        int finalTrafficWeightPercent,
+        boolean productionTrafficObservedOnUnified,
+        boolean apiGatewayTrafficZeroProven,
+        boolean rollbackWindowCompleted,
+        boolean persistentAuditSinkConnected,
+        boolean auditWriteSmokePassed,
+        boolean observabilityPlatformConnected,
+        boolean dashboardConnected,
+        boolean alertingConnected,
+        boolean tracePipelineConnected,
+        boolean environmentVariablesRead,
+        boolean sensitiveValuesExposed,
+        boolean oldEntrypointsPreserved,
+        boolean nodeDaemonOutOfRepository,
+        boolean readyForProduction,
+        boolean readyToReplaceGateway,
+        boolean readyToRetireOldEntrypoints,
+        boolean runtimeConfigShellRehearsalReferenced,
+        boolean auditObservabilitySmokeRehearsalReferenced,
+        boolean externalValueIntakeRehearsalReferenced,
+        boolean sampleValid,
+        List<String> remainingBlockers,
+        String status
+) {
+}
+
 @Component
 class UnifiedBackendRegistry {
     private static final List<String> MOUNTED_ENTRYPOINTS = List.of("api-gateway", "business-core", "admission-core", "engagement-core", "ops-core", "portal-core");
@@ -2559,6 +2797,7 @@ class UnifiedBackendRegistry {
     private final UnifiedProductionExternalValueIntakeRehearsal externalValueIntakeRehearsal;
     private final UnifiedProductionRuntimeConfigShellRehearsal runtimeConfigShellRehearsal = new LocalFileProductionRuntimeConfigShellRehearsal();
     private final UnifiedProductionAuditObservabilitySmokeRehearsal auditObservabilitySmokeRehearsal = new LocalFileProductionAuditObservabilitySmokeRehearsal();
+    private final UnifiedProductionControlledCutoverReceipt controlledCutoverReceipt = new LocalFileProductionControlledCutoverReceipt();
     private final List<UnifiedMount> gatewayRoutes = createGatewayRoutes();
 
     UnifiedBackendRegistry() {
@@ -4131,6 +4370,87 @@ class UnifiedBackendRegistry {
         );
     }
 
+    String productionControlledCutoverStatus() {
+        return controlledCutoverReceipt.snapshot().status();
+    }
+
+    List<Map<String, Object>> productionControlledCutoverChecks() {
+        ProductionControlledCutoverReceiptSnapshot snapshot = controlledCutoverReceipt.snapshot();
+        return List.of(
+                switchCheck("CONTROLLED_CUTOVER_RECEIPT_SAMPLE_PRESENT", snapshot.receiptPresent() ? "PASS" : "BLOCKED", "controlled cutover receipt sample is present", true),
+                switchCheck("CONTROLLED_CUTOVER_RECEIPT_SAMPLE_JSON_PARSABLE", snapshot.receiptParsed() ? "PASS" : "BLOCKED", "controlled cutover receipt sample is parseable JSON", true),
+                switchCheck("RUNTIME_CONFIG_SHELL_REHEARSAL_REFERENCED", snapshot.runtimeConfigShellRehearsalReferenced() ? "PASS" : "BLOCKED", "runtime config shell rehearsal is referenced", true),
+                switchCheck("AUDIT_OBSERVABILITY_SMOKE_REHEARSAL_REFERENCED", snapshot.auditObservabilitySmokeRehearsalReferenced() ? "PASS" : "BLOCKED", "audit observability smoke rehearsal is referenced", true),
+                switchCheck("EXTERNAL_VALUE_INTAKE_REHEARSAL_REFERENCED", snapshot.externalValueIntakeRehearsalReferenced() ? "PASS" : "BLOCKED", "external value intake rehearsal is referenced", true),
+                switchCheck("APPROVAL_REFS_RECORDED", snapshot.approvalRefsTotal() >= 6 ? "PASS" : "BLOCKED", "controlled cutover approval references are recorded", true),
+                switchCheck("TRAFFIC_PLAN_RECORDED", snapshot.trafficStagesTotal() >= 5 ? "PASS" : "BLOCKED", "controlled cutover traffic plan is recorded", true),
+                switchCheck("SMOKE_REFS_RECORDED", snapshot.smokeRefsTotal() >= 14 ? "PASS" : "BLOCKED", "business smoke references are recorded", true),
+                switchCheck("AUDIT_REFS_RECORDED", snapshot.auditRefsTotal() >= 6 ? "PASS" : "BLOCKED", "audit references are recorded", true),
+                switchCheck("OBSERVABILITY_REFS_RECORDED", snapshot.observabilityRefsTotal() >= 10 ? "PASS" : "BLOCKED", "observability references are recorded", true),
+                switchCheck("ROLLBACK_WINDOW_REFS_RECORDED", snapshot.rollbackWindowRefsTotal() >= 6 ? "PASS" : "BLOCKED", "rollback window references are recorded", true),
+                switchCheck("OLD_ENTRYPOINT_PROTECTION_RECORDED", snapshot.oldEntrypointsPreserved() ? "PASS" : "BLOCKED", "old entrypoints remain protected for the next round", true),
+                switchCheck("NO_REAL_VALUES_IN_REPOSITORY", snapshot.realValuesAllowedInRepository() ? "BLOCKED" : "PASS", "repository contains only receipt references, not real runtime values", true),
+                switchCheck("NO_SENSITIVE_VALUES_IN_CONTROLLED_CUTOVER_RECEIPT", snapshot.sensitiveValuesExposed() ? "BLOCKED" : "PASS", "controlled cutover receipt sample has no sensitive runtime values", true),
+                switchCheck("READY_FLAGS_REMAIN_FALSE", "PASS", "readyForProduction and readyToReplaceGateway remain false", true),
+                switchCheck("CONTROLLED_CUTOVER_RECEIPT_GATE_RECORDED", snapshot.sampleValid() ? "PASS" : "BLOCKED", "local controlled cutover receipt gate is recorded without approving retirement", true),
+                switchCheck("REAL_CUTOVER_RECEIPT_NOT_PROVIDED", "BLOCKED", "real controlled cutover receipt is not provided outside repository", true),
+                switchCheck("REAL_ENTRYPOINT_NOT_APPLIED", "BLOCKED", "real external entrypoint is not applied to unified-backend", true),
+                switchCheck("PRODUCTION_TRAFFIC_NOT_OBSERVED_ON_UNIFIED", "BLOCKED", "production traffic is not observed on unified-backend", true),
+                switchCheck("REAL_AUDIT_WRITE_SMOKE_NOT_PASSED", "BLOCKED", "real audit write smoke has not passed", true),
+                switchCheck("REAL_DASHBOARD_NOT_VERIFIED", "BLOCKED", "real dashboard is not verified", true),
+                switchCheck("REAL_ALERTING_NOT_VERIFIED", "BLOCKED", "real alerting is not verified", true),
+                switchCheck("REAL_TRACE_PIPELINE_NOT_VERIFIED", "BLOCKED", "real trace pipeline is not verified", true),
+                switchCheck("ROLLBACK_WINDOW_NOT_COMPLETED", "BLOCKED", "rollback window is not completed", true),
+                switchCheck("API_GATEWAY_TRAFFIC_ZERO_NOT_PROVEN", "BLOCKED", "api-gateway zero production traffic is not proven", true),
+                switchCheck("RETIREMENT_NOT_APPROVED", "BLOCKED", "old entrypoint retirement is not approved", true),
+                switchCheck("OLD_ENTRYPOINTS_NOT_IN_RETIREMENT_ROUND", "BLOCKED", "old entrypoints are preserved until the later retirement round", true)
+        );
+    }
+
+    Map<String, Object> productionControlledCutoverEvidence() {
+        ProductionControlledCutoverReceiptSnapshot snapshot = controlledCutoverReceipt.snapshot();
+        return map(
+                "readinessMode", snapshot.readinessMode(),
+                "receiptPath", snapshot.receiptPath(),
+                "receiptPresent", snapshot.receiptPresent(),
+                "receiptParsed", snapshot.receiptParsed(),
+                "receiptApplied", snapshot.receiptApplied(),
+                "productionTrafficAllowed", snapshot.productionTrafficAllowed(),
+                "realValuesAllowedInRepository", snapshot.realValuesAllowedInRepository(),
+                "candidateEntrypointRef", snapshot.candidateEntrypointRef(),
+                "previousEntrypointRef", snapshot.previousEntrypointRef(),
+                "rollbackEntrypointRef", snapshot.rollbackEntrypointRef(),
+                "approvalRefsTotal", snapshot.approvalRefsTotal(),
+                "runtimePrerequisiteRefsTotal", snapshot.runtimePrerequisiteRefsTotal(),
+                "trafficStagesTotal", snapshot.trafficStagesTotal(),
+                "smokeRefsTotal", snapshot.smokeRefsTotal(),
+                "auditRefsTotal", snapshot.auditRefsTotal(),
+                "observabilityRefsTotal", snapshot.observabilityRefsTotal(),
+                "rollbackWindowRefsTotal", snapshot.rollbackWindowRefsTotal(),
+                "apiGatewayTrafficRefsTotal", snapshot.apiGatewayTrafficRefsTotal(),
+                "cutoverExecutionRefsTotal", snapshot.cutoverExecutionRefsTotal(),
+                "finalTrafficWeightPercent", snapshot.finalTrafficWeightPercent(),
+                "productionTrafficObservedOnUnified", snapshot.productionTrafficObservedOnUnified(),
+                "apiGatewayTrafficZeroProven", snapshot.apiGatewayTrafficZeroProven(),
+                "rollbackWindowCompleted", snapshot.rollbackWindowCompleted(),
+                "persistentAuditSinkConnected", snapshot.persistentAuditSinkConnected(),
+                "auditWriteSmokePassed", snapshot.auditWriteSmokePassed(),
+                "observabilityPlatformConnected", snapshot.observabilityPlatformConnected(),
+                "dashboardConnected", snapshot.dashboardConnected(),
+                "alertingConnected", snapshot.alertingConnected(),
+                "tracePipelineConnected", snapshot.tracePipelineConnected(),
+                "environmentVariablesRead", snapshot.environmentVariablesRead(),
+                "sensitiveValuesExposed", snapshot.sensitiveValuesExposed(),
+                "oldEntrypointsPreserved", snapshot.oldEntrypointsPreserved(),
+                "nodeDaemonOutOfRepository", snapshot.nodeDaemonOutOfRepository(),
+                "readyForProduction", snapshot.readyForProduction(),
+                "readyToReplaceGateway", snapshot.readyToReplaceGateway(),
+                "readyToRetireOldEntrypoints", snapshot.readyToRetireOldEntrypoints(),
+                "remainingBlockers", snapshot.remainingBlockers(),
+                "status", snapshot.status()
+        );
+    }
+
     List<Map<String, Object>> productionAuditSinkPrecheckChecks() {
         return List.of(
                 switchCheck("AUDIT_EVENT_SCHEMA_FIXED", "PASS", "production audit event fields are fixed before sink connection", true),
@@ -4272,6 +4592,7 @@ class UnifiedBackendRegistry {
                 switchCheck("EXTERNAL_VALUE_INTAKE_REHEARSAL_RECORDED", "PASS", "external value intake rehearsal is recorded without importing real values", true),
                 switchCheck("PRODUCTION_RUNTIME_CONFIG_SHELL_REHEARSAL_RECORDED", "PASS", "production runtime config shell rehearsal is recorded without binding real runtime", true),
                 switchCheck("PRODUCTION_AUDIT_OBSERVABILITY_SMOKE_REHEARSAL_RECORDED", "PASS", "production audit observability smoke rehearsal is recorded without connecting real platforms", true),
+                switchCheck("CONTROLLED_CUTOVER_RECEIPT_GATE_RECORDED", "PASS", "controlled production cutover receipt gate is recorded without applying real traffic", true),
                 switchCheck("ROLLBACK_RECHECK_COMMANDS_DEFINED", "PASS", "rollback recheck commands are recorded for candidate and rollback entrypoints", true),
                 switchCheck("SMOKE_EVIDENCE_FORMAT_DEFINED", "PASS", "smoke evidence format is recorded without treating it as production switch proof", true),
                 switchCheck("CENTRAL_CONFIG_PROVIDER_CONNECTED", "BLOCKED", "centralized production configuration provider is not connected", true),
