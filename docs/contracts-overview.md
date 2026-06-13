@@ -14,6 +14,8 @@
 
 第四十三轮新增 `api-gateway-service:8125` 受控退役预检门禁。`unified-backend-service:8135` readiness 需要暴露 `apiGatewayControlledRetirementStatus`、`apiGatewayControlledRetirementChecks` 和 `apiGatewayControlledRetirementEvidence`，默认 `apiGatewayControlledRetirementStatus=BLOCKED_BY_API_GATEWAY_RETIREMENT_RECEIPT_NOT_PROVIDED`。正式脱敏样板为 `docs/unified-backend-api-gateway-retirement-receipt-sample.json`。该状态只表示仓库内已经具备 `api-gateway-service` 退役收据、删除清单、网关自有 API parity、core 保护和 unified 自承载网关源码的本地校验能力，不表示真实生产流量已经切到 `unified-backend-service:8135`，不表示 `api-gateway:8125` 新流量归零，不表示回滚窗口完成，不表示用户已批准删除清单。当前必须继续保持 `readyToRetireBusinessCore=false`、`readyToRetireAdmissionCore=false`、`readyToRetireEngagementCore=false`、`readyToRetireOpsCore=false` 和 `readyToRetirePortalCore=false`，五个 core 仍不是可删除状态。
 
+第四十四轮新增 `api-gateway-service:8125` 外部退役证据接收与删除审批门禁。`unified-backend-service:8135` readiness 需要暴露 `apiGatewayExternalRetirementEvidenceStatus`、`apiGatewayExternalRetirementEvidenceChecks` 和 `apiGatewayExternalRetirementEvidence`，默认 `apiGatewayExternalRetirementEvidenceStatus=BLOCKED_BY_EXTERNAL_API_GATEWAY_RETIREMENT_EVIDENCE_NOT_PROVIDED`。正式脱敏样板为 `docs/unified-backend-api-gateway-external-retirement-evidence-sample.json`。该状态只表示仓库内已经具备外部退役证据结构、真实切流引用槽位、真实流量归零引用槽位、真实 audit write smoke 引用槽位、dashboard、alert、trace、回滚窗口和删除清单审批门禁，不表示真实生产入口已经切到 `unified-backend-service:8135`，不表示 `api-gateway-service` 已删除，也不批准五个 core。当前仍必须保持 `readyToRetireBusinessCore=false`、`readyToRetireAdmissionCore=false`、`readyToRetireEngagementCore=false`、`readyToRetireOpsCore=false` 和 `readyToRetirePortalCore=false`。
+
 ## 全局接口规则
 
 所有业务成功响应使用统一结构，`code=0` 表示成功，`message` 为成功或错误摘要，业务数据放在 `data` 中。分页响应统一在 `data` 内返回 `items`、`page`、`pageSize` 和 `total`。

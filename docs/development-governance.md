@@ -68,6 +68,8 @@ API 文档必须放在 `docs/`，并按 `docs/contracts-<module>.md` 独立命�
 
 `api-gateway-service:8125` 的受控退役预检也必须单独闭环。`apiGatewayControlledRetirementStatus=BLOCKED_BY_API_GATEWAY_RETIREMENT_RECEIPT_NOT_PROVIDED` 时，只能说明 `docs/unified-backend-api-gateway-retirement-receipt-sample.json`、退役收据结构、删除清单和本地守卫已经入仓，不代表真实退役完成。`unified-backend-service` 可以先自承载网关源码并移除对 `../api-gateway-service/src/main/java` 的 build-helper 编译依赖，但这仍不等于允许删除 `api-gateway-service`。没有真实外部退役收据、真实生产流量归零、真实审计写入 smoke、真实 dashboard、真实 alert、真实 trace、回滚窗口完成和用户删除清单确认时，不得删除 `api-gateway-service`，不得批量退役五个 core，也不得把 `unified-backend-service:8135` 描述成已经替代生产入口。五个 core 必须继续保持 `readyToRetireBusinessCore=false`、`readyToRetireAdmissionCore=false`、`readyToRetireEngagementCore=false`、`readyToRetireOpsCore=false` 和 `readyToRetirePortalCore=false`。
 
+`api-gateway-service:8125` 的外部退役证据接收与删除审批门禁也必须单独闭环。`apiGatewayExternalRetirementEvidenceStatus=BLOCKED_BY_EXTERNAL_API_GATEWAY_RETIREMENT_EVIDENCE_NOT_PROVIDED` 时，只能说明 `docs/unified-backend-api-gateway-external-retirement-evidence-sample.json`、真实切流引用槽位、流量归零引用槽位、真实 audit write smoke 引用槽位、dashboard、alert、trace、回滚窗口和删除清单审批结构已经入仓，不代表真实外部证据已经提供。没有真实生产入口切到 `unified-backend-service:8135`、真实生产流量观测、`api-gateway-service:8125` 新流量归零、真实审计写入 smoke、真实 dashboard、真实 alert、真实 trace、回滚窗口完成、退役审批和用户删除清单确认时，不得删除 `api-gateway-service`，不得批量退役五个 core，也不得把任何本地样板描述成生产退役证明。五个 core 必须继续保持 `readyToRetireBusinessCore=false`、`readyToRetireAdmissionCore=false`、`readyToRetireEngagementCore=false`、`readyToRetireOpsCore=false` 和 `readyToRetirePortalCore=false`。
+
 清理 `.local-docs/` 时也必须遵守删除规则。只能删除一个明确路径的文件，不能删除整个目录，不能使用递归删除命令。需要清理多个文件时，先列出路径并获得用户确认，再逐个删除。
 
 ## 验收要求

@@ -120,6 +120,8 @@ API 网关或后端入口
 
 第四十三轮在候选入口上增加 `api-gateway-service:8125` 受控退役预检门禁。该门禁只读取仓库内脱敏退役收据样板 `docs/unified-backend-api-gateway-retirement-receipt-sample.json`，默认 `apiGatewayControlledRetirementStatus=BLOCKED_BY_API_GATEWAY_RETIREMENT_RECEIPT_NOT_PROVIDED`。它只证明 `unified-backend-service:8135` 已具备退役收据结构、删除清单、网关自有 API parity、回滚入口、五个 core 保护和 unified 自承载网关源码的本地校验能力，不证明真实生产入口已切换，不证明 `api-gateway` 新流量归零，不证明回滚窗口完成，也不允许删除 `api-gateway-service`。`unified-backend-service` 不再通过 build-helper 编译 `../api-gateway-service/src/main/java`，但 `api-gateway-service:8125` 仍是受保护回滚入口。五个 core 继续保持 `readyToRetireBusinessCore=false`、`readyToRetireAdmissionCore=false`、`readyToRetireEngagementCore=false`、`readyToRetireOpsCore=false` 和 `readyToRetirePortalCore=false`。
 
+第四十四轮在候选入口上增加 `api-gateway-service:8125` 外部退役证据接收与删除审批门禁。该门禁只读取仓库内脱敏样板 `docs/unified-backend-api-gateway-external-retirement-evidence-sample.json` 和经过脱敏复核的外部证据结构，默认 `apiGatewayExternalRetirementEvidenceStatus=BLOCKED_BY_EXTERNAL_API_GATEWAY_RETIREMENT_EVIDENCE_NOT_PROVIDED`。它只证明系统已经具备接收真实切流、流量归零、真实 audit write smoke、dashboard、alert、trace、回滚窗口、退役审批和用户删除清单确认的结构化门禁，不证明这些外部事实已经发生。没有真实外部证据和用户删除清单确认时，`api-gateway-service:8125` 仍是受保护回滚入口，五个 core 不进入退役执行。
+
 ## 公共基础契约
 
 所有模块共享统一响应格式、错误码、分页格式、认证方式、审计字段和时间字段。

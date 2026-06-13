@@ -1,0 +1,150 @@
+{
+  "sampleName": "beiming-unified-backend-api-gateway-external-retirement-evidence",
+  "sampleVersion": "1.0",
+  "mode": "LOCAL_API_GATEWAY_EXTERNAL_RETIREMENT_EVIDENCE_SHAPE_NOT_APPLIED",
+  "externalEvidenceApplied": false,
+  "deleteListApproved": false,
+  "productionTrafficAllowed": false,
+  "realValuesAllowedInRepository": false,
+  "candidateEntrypointRef": "LOCAL_SAMPLE_REF:UNIFIED_BACKEND_8135",
+  "retiredEntrypointRef": "LOCAL_SAMPLE_REF:API_GATEWAY_8125",
+  "rollbackEntrypointRefs": [
+    "LOCAL_SAMPLE_REF:API_GATEWAY_8125",
+    "LOCAL_SAMPLE_REF:BUSINESS_CORE_8130",
+    "LOCAL_SAMPLE_REF:ADMISSION_CORE_8131",
+    "LOCAL_SAMPLE_REF:ENGAGEMENT_CORE_8132",
+    "LOCAL_SAMPLE_REF:OPS_CORE_8133",
+    "LOCAL_SAMPLE_REF:PORTAL_CORE_8134"
+  ],
+  "controlledCutoverRefs": [
+    "docs/unified-backend-production-controlled-cutover-receipt-sample.json"
+  ],
+  "apiGatewayRetirementReceiptRefs": [
+    "docs/unified-backend-api-gateway-retirement-receipt-sample.json"
+  ],
+  "approvalRefs": [
+    "LOCAL_APPROVAL_REF:EXTERNAL_RETIREMENT_EVIDENCE_OWNER_REVIEW_PENDING",
+    "LOCAL_APPROVAL_REF:PRODUCTION_ENTRYPOINT_OWNER_REVIEW_PENDING",
+    "LOCAL_APPROVAL_REF:TRAFFIC_OBSERVATION_OWNER_REVIEW_PENDING",
+    "LOCAL_APPROVAL_REF:AUDIT_OWNER_REVIEW_PENDING",
+    "LOCAL_APPROVAL_REF:ROLLBACK_OWNER_REVIEW_PENDING",
+    "LOCAL_APPROVAL_REF:DELETE_LIST_OWNER_REVIEW_PENDING"
+  ],
+  "trafficObservationRefs": [
+    "LOCAL_TRAFFIC_OBSERVATION_REF:UNIFIED_ENTRYPOINT_RECEIVES_TRAFFIC_PENDING",
+    "LOCAL_TRAFFIC_OBSERVATION_REF:BUSINESS_PATH_SUCCESS_RATE_PENDING",
+    "LOCAL_TRAFFIC_OBSERVATION_REF:ENTRYPOINT_LABEL_OBSERVED_PENDING",
+    "LOCAL_TRAFFIC_OBSERVATION_REF:OBSERVATION_WINDOW_SUMMARY_PENDING"
+  ],
+  "trafficZeroRefs": [
+    "LOCAL_TRAFFIC_ZERO_REF:API_GATEWAY_NEW_TRAFFIC_ZERO_PENDING",
+    "LOCAL_TRAFFIC_ZERO_REF:API_GATEWAY_ERROR_RATE_EXPLAINED_PENDING",
+    "LOCAL_TRAFFIC_ZERO_REF:AUTH_PATH_NO_LONGER_HITS_OLD_GATEWAY_PENDING",
+    "LOCAL_TRAFFIC_ZERO_REF:OPS_PATH_NO_LONGER_HITS_OLD_GATEWAY_PENDING",
+    "LOCAL_TRAFFIC_ZERO_REF:ROLLBACK_ENTRYPOINT_STARTABLE_PENDING",
+    "LOCAL_TRAFFIC_ZERO_REF:LOG_RETENTION_WINDOW_PENDING"
+  ],
+  "auditWriteSmokeRefs": [
+    "LOCAL_AUDIT_WRITE_REF:REAL_AUDIT_SINK_CONNECTED_PENDING",
+    "LOCAL_AUDIT_WRITE_REF:WRITE_SMOKE_PENDING",
+    "LOCAL_AUDIT_WRITE_REF:REQUEST_ID_AND_ACTOR_FIELDS_PENDING"
+  ],
+  "observabilityRefs": [
+    "LOCAL_OBSERVABILITY_REF:DASHBOARD_VERIFICATION_PENDING",
+    "LOCAL_OBSERVABILITY_REF:ALERTING_VERIFICATION_PENDING",
+    "LOCAL_OBSERVABILITY_REF:TRACE_PIPELINE_VERIFICATION_PENDING"
+  ],
+  "rollbackWindowRefs": [
+    "LOCAL_ROLLBACK_WINDOW_REF:WINDOW_START_PENDING",
+    "LOCAL_ROLLBACK_WINDOW_REF:WINDOW_END_PENDING",
+    "LOCAL_ROLLBACK_WINDOW_REF:ROLLBACK_TRIGGER_CONDITION_PENDING",
+    "LOCAL_ROLLBACK_WINDOW_REF:ROLLBACK_RECHECK_PENDING"
+  ],
+  "regressionRefs": [
+    "LOCAL_REGRESSION_REF:UNIFIED_BACKEND_FULL_REGRESSION_PENDING",
+    "LOCAL_REGRESSION_REF:API_GATEWAY_REGRESSION_PENDING",
+    "LOCAL_REGRESSION_REF:CORE_ENTRYPOINT_REGRESSION_PENDING",
+    "LOCAL_REGRESSION_REF:ROLLBACK_PLAN_REVALIDATION_PENDING"
+  ],
+  "deleteApproval": {
+    "approved": false,
+    "approvedByRef": "LOCAL_APPROVAL_REF:DELETE_LIST_OWNER_REVIEW_PENDING",
+    "approvedAtRef": "LOCAL_TIME_REF:DELETE_LIST_APPROVAL_PENDING",
+    "scope": "api-gateway-service only",
+    "confirmedFilesTotal": 0,
+    "bulkDeleteAllowed": false
+  },
+  "deleteList": [
+    "backend/api-gateway-service/pom.xml",
+    "backend/api-gateway-service/src/main/resources/application.yml",
+    "backend/api-gateway-service/src/main/java/cn/beiming/apigateway/ApiGatewayServiceApplication.java",
+    "backend/api-gateway-service/src/main/java/cn/beiming/apigateway/GatewayModule.java",
+    "backend/api-gateway-service/src/test/java/cn/beiming/apigateway/GatewayApiContractTest.java",
+    "backend/api-gateway-service/src/test/java/cn/beiming/apigateway/GatewayPortConfigTest.java",
+    "backend/api-gateway-service/src/test/java/cn/beiming/apigateway/GatewayPortalCoreOverrideTest.java",
+    "backend/api-gateway-service/src/test/java/cn/beiming/apigateway/GatewayProductionHardeningTest.java"
+  ],
+  "coreProtection": {
+    "coreEntrypointsPreserved": true,
+    "readyToRetireBusinessCore": false,
+    "readyToRetireAdmissionCore": false,
+    "readyToRetireEngagementCore": false,
+    "readyToRetireOpsCore": false,
+    "readyToRetirePortalCore": false,
+    "protectedCorePaths": [
+      "backend/business-core-service/pom.xml",
+      "backend/admission-core-service/pom.xml",
+      "backend/engagement-core-service/pom.xml",
+      "backend/ops-core-service/pom.xml",
+      "backend/portal-core-service/pom.xml"
+    ]
+  },
+  "redactionPolicy": {
+    "forbiddenValueFragments": [
+      "Authorization",
+      "Cookie",
+      "X-Gateway-Internal-Signature",
+      "token",
+      "secret",
+      "password",
+      "passwd",
+      "pwd",
+      "privateKey",
+      "id_rsa",
+      "jdbc:",
+      "mongodb://",
+      "redis://",
+      "AKIA",
+      "C:\\Users\\",
+      ".env",
+      "real IPv4",
+      "real domain",
+      "real URL",
+      "real dashboard",
+      "real DSN",
+      "real topic",
+      "real bucket",
+      "kubectl",
+      "docker",
+      "powershell",
+      "cmd.exe",
+      "ssh ",
+      "scp "
+    ]
+  },
+  "goNoGoImpact": {
+    "externalEvidenceDoesNotApproveDeletion": true,
+    "deleteListRequiresUserApproval": true,
+    "bulkDeleteAllowed": false,
+    "coreRetirementDeferred": true
+  },
+  "verificationCommands": [
+    "mvn -q -f backend/unified-backend-service/pom.xml test",
+    "mvn -q -f backend/api-gateway-service/pom.xml test",
+    "mvn -q -f backend/business-core-service/pom.xml test",
+    "mvn -q -f backend/admission-core-service/pom.xml test",
+    "mvn -q -f backend/engagement-core-service/pom.xml test",
+    "mvn -q -f backend/ops-core-service/pom.xml test",
+    "mvn -q -f backend/portal-core-service/pom.xml test"
+  ]
+}
