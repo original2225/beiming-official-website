@@ -362,28 +362,28 @@ class UnifiedBackendApiContractTest {
 
     @Test
     void doesNotKeepPluginIntegrationServiceApplicationAsCurrentEntrypoint() {
-        assertThat(Files.exists(Path.of("../ops-core-service/src/main/java/cn/beiming/pluginintegration/PluginIntegrationServiceApplication.java")))
-                .as("../ops-core-service/src/main/java/cn/beiming/pluginintegration/PluginIntegrationServiceApplication.java")
+        assertThat(Files.exists(Path.of("src/main/java/cn/beiming/pluginintegration/PluginIntegrationServiceApplication.java")))
+                .as("src/main/java/cn/beiming/pluginintegration/PluginIntegrationServiceApplication.java")
                 .isFalse();
     }
 
     void doesNotKeepOpsImageMarketServiceApplicationAsCurrentEntrypoint() {
-        assertThat(Files.exists(Path.of("../ops-core-service/src/main/java/cn/beiming/opsimagemarket/OpsImageMarketServiceApplication.java")))
-                .as("../ops-core-service/src/main/java/cn/beiming/opsimagemarket/OpsImageMarketServiceApplication.java")
+        assertThat(Files.exists(Path.of("src/main/java/cn/beiming/opsimagemarket/OpsImageMarketServiceApplication.java")))
+                .as("src/main/java/cn/beiming/opsimagemarket/OpsImageMarketServiceApplication.java")
                 .isFalse();
     }
 
     @Test
     void doesNotKeepAlertingServiceApplicationAsCurrentEntrypoint() {
-        assertThat(Files.exists(Path.of("../ops-core-service/src/main/java/cn/beiming/alerting/AlertingServiceApplication.java")))
-                .as("../ops-core-service/src/main/java/cn/beiming/alerting/AlertingServiceApplication.java")
+        assertThat(Files.exists(Path.of("src/main/java/cn/beiming/alerting/AlertingServiceApplication.java")))
+                .as("src/main/java/cn/beiming/alerting/AlertingServiceApplication.java")
                 .isFalse();
     }
 
     @Test
     void doesNotKeepOpsControlServiceApplicationAsCurrentEntrypoint() {
-        assertThat(Files.exists(Path.of("../ops-core-service/src/main/java/cn/beiming/opscontrol/OpsControlServiceApplication.java")))
-                .as("../ops-core-service/src/main/java/cn/beiming/opscontrol/OpsControlServiceApplication.java")
+        assertThat(Files.exists(Path.of("src/main/java/cn/beiming/opscontrol/OpsControlServiceApplication.java")))
+                .as("src/main/java/cn/beiming/opscontrol/OpsControlServiceApplication.java")
                 .isFalse();
     }
 
@@ -3446,14 +3446,7 @@ class UnifiedBackendApiContractTest {
         assertThat(readiness.at("/data/readyToRetireEngagementCore").asBoolean()).isFalse();
         assertThat(readiness.at("/data/readyToRetireOpsCore").asBoolean()).isFalse();
         assertThat(readiness.at("/data/readyToRetirePortalCore").asBoolean()).isFalse();
-        assertThat(List.of(
-                Path.of("../unified-backend-service/pom.xml"),
-                Path.of("../business-core-service/src/main/java/cn/beiming/core/BusinessCoreModule.java"),
-                Path.of("../admission-core-service/src/main/java/cn/beiming/admission/AdmissionCoreModule.java"),
-                Path.of("../engagement-core-service/src/main/java/cn/beiming/engagement/EngagementCoreModule.java"),
-                Path.of("../ops-core-service/src/main/java/cn/beiming/opscore/OpsCoreModule.java"),
-                Path.of("../portal-core-service/src/main/java/cn/beiming/portalcore/PortalCoreModule.java")
-        )).allSatisfy(path -> assertThat(Files.exists(path)).as(path.toString()).isTrue());
+        assertCoreModuleSourcesMovedIntoUnifiedBackend();
         assertThat(Files.exists(Path.of("../api-gateway-service/pom.xml"))).isFalse();
         assertThat(Files.exists(Path.of("../node-daemon-service"))).isFalse();
     }
@@ -3704,13 +3697,7 @@ class UnifiedBackendApiContractTest {
         assertThat(evidence.at("/readyToRetirePortalCore").asBoolean()).isFalse();
         assertThat(readiness.at("/data/coreEntrypointRetirementPrecheckStatus").asText())
                 .isEqualTo("PASS_LOCAL_CORE_MAVEN_ENTRYPOINTS_RETIRED_UNIFIED_MODULES_PRESERVED");
-        assertThat(List.of(
-                Path.of("../business-core-service/src/main/java/cn/beiming/core/BusinessCoreModule.java"),
-                Path.of("../admission-core-service/src/main/java/cn/beiming/admission/AdmissionCoreModule.java"),
-                Path.of("../engagement-core-service/src/main/java/cn/beiming/engagement/EngagementCoreModule.java"),
-                Path.of("../ops-core-service/src/main/java/cn/beiming/opscore/OpsCoreModule.java"),
-                Path.of("../portal-core-service/src/main/java/cn/beiming/portalcore/PortalCoreModule.java")
-        )).allSatisfy(path -> assertThat(Files.exists(path)).as(path.toString()).isTrue());
+        assertCoreModuleSourcesMovedIntoUnifiedBackend();
         assertThat(Files.exists(Path.of("../api-gateway-service/pom.xml"))).isFalse();
         assertThat(Files.exists(Path.of("../node-daemon-service"))).isFalse();
     }
@@ -4049,13 +4036,7 @@ class UnifiedBackendApiContractTest {
         assertThat(evidence.at("/readyToRetirePortalCore").asBoolean()).isFalse();
         assertThat(readiness.at("/data/coreEntrypointRetirementPrecheckStatus").asText())
                 .isEqualTo("PASS_LOCAL_CORE_MAVEN_ENTRYPOINTS_RETIRED_UNIFIED_MODULES_PRESERVED");
-        assertThat(List.of(
-                Path.of("../business-core-service/src/main/java/cn/beiming/core/BusinessCoreModule.java"),
-                Path.of("../admission-core-service/src/main/java/cn/beiming/admission/AdmissionCoreModule.java"),
-                Path.of("../engagement-core-service/src/main/java/cn/beiming/engagement/EngagementCoreModule.java"),
-                Path.of("../ops-core-service/src/main/java/cn/beiming/opscore/OpsCoreModule.java"),
-                Path.of("../portal-core-service/src/main/java/cn/beiming/portalcore/PortalCoreModule.java")
-        )).allSatisfy(path -> assertThat(Files.exists(path)).as(path.toString()).isTrue());
+        assertCoreModuleSourcesMovedIntoUnifiedBackend();
         assertThat(Files.exists(Path.of("../api-gateway-service/pom.xml"))).isFalse();
         assertThat(Files.exists(Path.of("../node-daemon-service"))).isFalse();
     }
@@ -4302,13 +4283,7 @@ class UnifiedBackendApiContractTest {
                 .isEqualTo("BLOCKED_BY_TRAFFIC_NOT_SWITCHED");
         assertThat(readiness.at("/data/coreEntrypointRetirementPrecheckStatus").asText())
                 .isEqualTo("PASS_LOCAL_CORE_MAVEN_ENTRYPOINTS_RETIRED_UNIFIED_MODULES_PRESERVED");
-        assertThat(List.of(
-                Path.of("../business-core-service/src/main/java/cn/beiming/core/BusinessCoreModule.java"),
-                Path.of("../admission-core-service/src/main/java/cn/beiming/admission/AdmissionCoreModule.java"),
-                Path.of("../engagement-core-service/src/main/java/cn/beiming/engagement/EngagementCoreModule.java"),
-                Path.of("../ops-core-service/src/main/java/cn/beiming/opscore/OpsCoreModule.java"),
-                Path.of("../portal-core-service/src/main/java/cn/beiming/portalcore/PortalCoreModule.java")
-        )).allSatisfy(path -> assertThat(Files.exists(path)).as(path.toString()).isTrue());
+        assertCoreModuleSourcesMovedIntoUnifiedBackend();
         assertThat(Files.exists(Path.of("../api-gateway-service/pom.xml"))).isFalse();
         assertThat(Files.exists(Path.of("../node-daemon-service"))).isFalse();
     }
@@ -4817,14 +4792,7 @@ class UnifiedBackendApiContractTest {
                 Path.of("../ops-core-service/pom.xml"),
                 Path.of("../portal-core-service/pom.xml")
         )).allSatisfy(path -> assertThat(Files.exists(path)).as(path.toString()).isFalse());
-        assertThat(List.of(
-                Path.of("../unified-backend-service/pom.xml"),
-                Path.of("../business-core-service/src/main/java/cn/beiming/core/BusinessCoreModule.java"),
-                Path.of("../admission-core-service/src/main/java/cn/beiming/admission/AdmissionCoreModule.java"),
-                Path.of("../engagement-core-service/src/main/java/cn/beiming/engagement/EngagementCoreModule.java"),
-                Path.of("../ops-core-service/src/main/java/cn/beiming/opscore/OpsCoreModule.java"),
-                Path.of("../portal-core-service/src/main/java/cn/beiming/portalcore/PortalCoreModule.java")
-        )).allSatisfy(path -> assertThat(Files.exists(path)).as(path.toString()).isTrue());
+        assertCoreModuleSourcesMovedIntoUnifiedBackend();
         assertThat(Files.exists(Path.of("../api-gateway-service/pom.xml"))).isFalse();
     }
 
@@ -4879,8 +4847,8 @@ class UnifiedBackendApiContractTest {
                 + Files.readString(Path.of("../../docs/contracts-overview.md"))
                 + Files.readString(Path.of("../../docs/api-reference.md"))
                 + Files.readString(Path.of("../unified-backend-service/src/main/java/cn/beiming/unifiedbackend/UnifiedBackendModule.java"))
-                + Files.readString(Path.of("../ops-core-service/src/main/java/cn/beiming/opscore/OpsCoreModule.java"))
-                + Files.readString(Path.of("../portal-core-service/src/main/java/cn/beiming/portalcore/PortalCoreModule.java"));
+                + Files.readString(Path.of("src/main/java/cn/beiming/opscore/OpsCoreModule.java"))
+                + Files.readString(Path.of("src/main/java/cn/beiming/portalcore/PortalCoreModule.java"));
 
         assertThat(readiness.at("/data/readyForProduction").asBoolean()).isFalse();
         assertThat(readiness.at("/data/readyToReplaceGateway").asBoolean()).isFalse();
@@ -5017,6 +4985,35 @@ class UnifiedBackendApiContractTest {
                 .contains("\"check\":\"" + check + "\"")
                 .contains("\"status\":\"" + status + "\"")
                 .contains("\"requiredForReplacement\":" + requiredForReplacement);
+    }
+
+    private void assertCoreModuleSourcesMovedIntoUnifiedBackend() {
+        assertThat(List.of(
+                Path.of("../unified-backend-service/pom.xml"),
+                Path.of("src/main/java/cn/beiming/core/BusinessCoreModule.java"),
+                Path.of("src/main/java/cn/beiming/admission/AdmissionCoreModule.java"),
+                Path.of("src/main/java/cn/beiming/engagement/EngagementCoreModule.java"),
+                Path.of("src/main/java/cn/beiming/opscore/OpsCoreModule.java"),
+                Path.of("src/main/java/cn/beiming/portalcore/PortalCoreModule.java")
+        )).allSatisfy(path -> assertThat(Files.exists(path)).as(path.toString()).isTrue());
+        assertThat(List.of(
+                Path.of("../business-core-service/src/main/java"),
+                Path.of("../admission-core-service/src/main/java"),
+                Path.of("../engagement-core-service/src/main/java"),
+                Path.of("../ops-core-service/src/main/java"),
+                Path.of("../portal-core-service/src/main/java")
+        )).allSatisfy(path -> assertThat(containsJavaSource(path)).as(path.toString()).isFalse());
+    }
+
+    private boolean containsJavaSource(Path root) {
+        if (!Files.exists(root)) {
+            return false;
+        }
+        try (java.util.stream.Stream<Path> paths = Files.walk(root)) {
+            return paths.anyMatch(path -> path.toString().endsWith(".java"));
+        } catch (java.io.IOException ex) {
+            throw new IllegalStateException("Failed to scan " + root, ex);
+        }
     }
 
     private void assertNoSecrets(JsonNode node) {
