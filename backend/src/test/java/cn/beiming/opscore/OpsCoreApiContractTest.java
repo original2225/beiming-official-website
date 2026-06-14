@@ -452,7 +452,7 @@ class OpsCoreApiContractTest {
                 "contracts-ops-image-market.md"
         )) {
             Path path = docsPath(file);
-            Pattern row = Pattern.compile("\\|[^|]+\\|\\s*(GET|POST|PUT|PATCH|DELETE)\\s*\\|\\s*`([^`]+)`");
+            Pattern row = Pattern.compile("\\|\\s*`?(GET|POST|PUT|PATCH|DELETE)`?\\s*\\|\\s*`([^`]+)`");
             for (String line : Files.readAllLines(path)) {
                 var matcher = row.matcher(line);
                 if (matcher.find()) {

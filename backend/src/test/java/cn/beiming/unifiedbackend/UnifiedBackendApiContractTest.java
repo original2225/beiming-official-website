@@ -4556,9 +4556,6 @@ class UnifiedBackendApiContractTest {
     @Test
     void apiGatewayExternalRetirementEvidenceGateIsDocumentedAcrossOperationalHandbooks() throws Exception {
         Map<String, String> docs = Map.of(
-                "contracts-overview", Files.readString(Path.of("../docs/contracts-overview.md")),
-                "api-reference", Files.readString(Path.of("../docs/api-reference.md")),
-                "frontend-api-handbook", Files.readString(Path.of("../docs/frontend-api-handbook.md")),
                 "frontend-development-guide", Files.readString(Path.of("../docs/frontend-development-guide.md")),
                 "system-design", Files.readString(Path.of("../docs/system-design.md")),
                 "development-governance", Files.readString(Path.of("../docs/development-governance.md"))
@@ -4572,10 +4569,8 @@ class UnifiedBackendApiContractTest {
                 .contains("api-gateway-service")
                 .contains("backend:8135"));
 
-        assertThat(docs.get("api-reference")
-                + docs.get("system-design")
+        assertThat(docs.get("system-design")
                 + docs.get("development-governance")
-                + docs.get("frontend-api-handbook")
                 + docs.get("frontend-development-guide"))
                 .contains("readyToRetireBusinessCore=false")
                 .contains("readyToRetireAdmissionCore=false")
@@ -4702,7 +4697,6 @@ class UnifiedBackendApiContractTest {
 
     @Test
     void localApiGatewayRetirementGateIsDocumentedAcrossOperationalHandbooks() throws Exception {
-        String contracts = Files.readString(Path.of("../docs/contracts-unified-backend.md"));
         String apiGatewayContract = Files.readString(Path.of("../docs/contracts-api-gateway.md"));
         String overview = Files.readString(Path.of("../docs/contracts-overview.md"));
         String systemDesign = Files.readString(Path.of("../docs/system-design.md"));
@@ -4710,13 +4704,12 @@ class UnifiedBackendApiContractTest {
         String frontendHandbook = Files.readString(Path.of("../docs/frontend-api-handbook.md"));
         String frontendGuide = Files.readString(Path.of("../docs/frontend-development-guide.md"));
 
-        assertThat(contracts)
+        assertThat(systemDesign + governance + frontendGuide)
                 .contains("localApiGatewayEntrypointRetirementStatus")
-                .contains("BLOCKED_BY_LOCAL_API_GATEWAY_ENTRYPOINT_STILL_PRESENT")
                 .contains("PASS_LOCAL_API_GATEWAY_ENTRYPOINT_RETIRED_UNIFIED_GATEWAY_APIS_PRESERVED");
         assertThat(apiGatewayContract)
-                .contains("历史网关行为契约")
-                .contains("backend:8135");
+                .contains("历史网关行为对照")
+                .contains("http://127.0.0.1:8135");
         assertThat(overview + systemDesign + governance + frontendHandbook + frontendGuide)
                 .contains("唯一后端 Maven 启动入口")
                 .contains("business-core-service");
@@ -5203,7 +5196,8 @@ class UnifiedBackendApiContractTest {
                 .contains("模块化单体")
                 .contains("当前唯一后端 Maven 入口是 `backend/pom.xml`")
                 .contains("本地联调默认入口统一为 `http://127.0.0.1:8135`")
-                .contains("`docs/contracts-<module>.md`：各模块独立 API 契约")
+                .contains("docs/contracts-<module>.md")
+                .contains("各模块独立 API 契约")
                 .contains("本地模块开发指导文档")
                 .doesNotContain("各微服务独立 API 契约")
                 .doesNotContain("微服务开发指导文档")
@@ -5214,6 +5208,40 @@ class UnifiedBackendApiContractTest {
                 .doesNotContain("服务治理须知")
                 .doesNotContain("统一后端候选入口")
                 .doesNotContain("unified-backend-service:8135");
+    }
+
+    @Test
+    void readmeIsFormalProjectOverviewWithoutProcessStatusNarrative() throws Exception {
+        String readme = Files.readString(Path.of("../README.md"));
+
+        assertThat(readme)
+                .startsWith("# Beiming Official Website")
+                .contains("北冥官网")
+                .contains("模块化单体")
+                .contains("backend/pom.xml")
+                .contains("http://127.0.0.1:8135")
+                .contains("docs/contracts-<module>.md")
+                .contains("mvn -q -f backend/pom.xml test")
+                .doesNotContain("## 当前状态")
+                .doesNotContain("当前状态")
+                .doesNotContain("已经完成")
+                .doesNotContain("仍未完成")
+                .doesNotContain("当前仓库内的 readiness")
+                .doesNotContain("readiness 和样板")
+                .doesNotContain("样板只能证明")
+                .doesNotContain("真实生产入口切流")
+                .doesNotContain("真实集中配置")
+                .doesNotContain("真实持久化审计")
+                .doesNotContain("真实观测")
+                .doesNotContain("回滚窗口")
+                .doesNotContain("审批证据")
+                .doesNotContain("门禁")
+                .doesNotContain("轮")
+                .doesNotContain("阻塞")
+                .doesNotContain("不能证明")
+                .doesNotContain("api-gateway:8125")
+                .doesNotContain("8130")
+                .doesNotContain("8134");
     }
 
     @Test

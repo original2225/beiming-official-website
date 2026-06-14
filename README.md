@@ -1,36 +1,43 @@
 # Beiming Official Website
 
-中文名：北冥官网
+北冥官网是北冥项目的正式线上门户，面向访客、玩家、成员、管理员和运维人员提供统一的官网、用户中心、管理后台和运维控制台能力。
 
-这是北冥官网的正式项目仓库。后端已经完成本地物理单体收束，当前以 `backend` 根目录下的单 Spring Boot 工程作为统一后端开发入口。
+本仓库承载官网前端、后端接口、正式项目文档和自动化验证。系统范围覆盖品牌展示、入服流程、账号权限、成员档案、公告内容、资源分发、社区互动、通知消息、白名单审核、考勤积分、服务器状态、后台运营和服务器资源运维控制。
 
-## 当前状态
+## 架构概览
 
-当前唯一后端 Maven 入口是 `backend/pom.xml`。当前本地后端服务端口是 `8135`，本地联调默认入口统一为 `http://127.0.0.1:8135`。业务路径保持 `/api/v1/**` 原样。
+后端采用模块化单体架构。统一后端工程位于 `backend/`，Maven 入口为 `backend/pom.xml`，本地服务端口为 `8135`，本地 API 基地址为 `http://127.0.0.1:8135`。业务接口统一使用 `/api/v1/**` 路径前缀。
 
-五个 core 模块源码已经物理位于 `backend/src/main/java`，由 `backend/pom.xml` 统一编译和测试，不再通过 build-helper 装配旧 core 源码目录。`api-gateway:8125` 和 `8130` 到 `8134` 的五个 core 端口只作为历史入口、模块来源、回滚引用或外部证据样板引用保留，不是当前本地 Maven 启动入口。
+后端模块按业务边界组织，包括 `auth`、`profile`、`notification`、`content`、`server-status`、`resource`、`admin`、`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、`ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`cross-platform-notification`、`ops-image-market`、`guide`、`material` 和 `online-map`。
 
-真实生产入口切流、真实集中配置、真实持久化审计、真实观测、回滚窗口和审批证据仍未完成。当前仓库内的 readiness 和样板只能证明本地门禁与脱敏证据结构存在，不能证明生产流量已经切到 `8135`。
+前端负责官网公开页、用户中心、管理后台和运维控制台界面。后端负责统一接口、认证授权、业务规则、审计记录和模块边界。服务器节点上的容器、虚拟机、文件、日志和 Minecraft 实例操作由独立节点执行器承载，不并入官网仓库。
 
-## 本地验证
+## 本地运行
 
-后端全量测试命令：
+后端全量测试命令如下。
 
 ```powershell
 mvn -q -f backend/pom.xml test
 ```
 
-## 文档
+后端本地启动使用同一个 Maven 工程。
 
-- `docs/requirements.md`：需求文档
-- `docs/system-design.md`：系统设计文档
-- `docs/development-governance.md`：开发治理文档
-- `docs/contracts-common.md`：P0 公共契约
-- `docs/contracts-<module>.md`：各模块独立 API 契约
-- `AGENTS.md`：开发协作规则
+```powershell
+mvn -f backend/pom.xml spring-boot:run
+```
 
-正式需求、系统设计、开发治理、接口契约和模块验收标准都保存在 `docs/` 并随仓库提交。测试文档、测试记录、本地阶段资料、临时分析和本地模块开发指导文档只保存在 `.local-docs/`，不上传仓库。
+前端开发和接口联调以正式契约为准。需要调整 API 基地址时，应通过前端环境配置指向 `http://127.0.0.1:8135`，不能在页面代码中写死业务结果或权限状态。
 
-## 开发原则
+## 文档体系
 
-先定边界，再写代码。一次只做一个模块。新增模块必须兼容已有模块，不允许顺手修改无关代码。涉及生产切流、旧入口退役、集中配置、持久化审计或观测接入时，必须先补正式契约、本地测试记录和自动化守卫。
+正式项目文档保存在 `docs/`，并随仓库提交。`docs/requirements.md` 是需求文档，`docs/system-design.md` 是系统设计文档，`docs/development-governance.md` 是开发治理文档，`docs/contracts-common.md` 是公共接口契约，`docs/contracts-<module>.md` 是各模块独立 API 契约，`docs/api-reference.md` 是接口总览。
+
+本地测试记录、阶段手册、临时分析和个人交接资料保存在 `.local-docs/`，不提交到仓库。可复用的规则、接口和验收要求需要沉淀到 `docs/`。
+
+## 开发约定
+
+开发以正式文档和 API 契约为准。每个模块先补齐契约，再补齐本地测试文档和自动化测试，随后实现代码并执行相关测试。
+
+模块之间通过明确接口协作。业务模块不能直接读取其他模块的数据表，前端不能绕过后端契约吞业务逻辑，后台运维能力不能混入玩家资源下载或服务器状态展示模块。
+
+提交内容不得包含真实密码、真实 token、数据库连接串、本地环境文件、构建产物、运行日志或 `.local-docs/` 内容。

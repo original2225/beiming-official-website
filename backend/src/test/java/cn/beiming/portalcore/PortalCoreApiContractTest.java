@@ -528,7 +528,7 @@ class PortalCoreApiContractTest {
         Set<String> routes = new TreeSet<>();
         for (String file : List.of("contracts-guide.md", "contracts-material.md", "contracts-online-map.md")) {
             Path path = docsPath(file);
-            Pattern row = Pattern.compile("\\|[^|]+\\|\\s*(GET|POST|PUT|PATCH|DELETE)\\s*\\|\\s*`([^`]+)`");
+            Pattern row = Pattern.compile("\\|\\s*`?(GET|POST|PUT|PATCH|DELETE)`?\\s*\\|\\s*`([^`]+)`");
             for (String line : Files.readAllLines(path)) {
                 var matcher = row.matcher(line);
                 if (matcher.find()) {
