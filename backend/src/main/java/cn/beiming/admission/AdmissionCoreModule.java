@@ -167,13 +167,13 @@ class AdmissionCoreRegistry {
         data.put("port", 8130);
         data.put("status", "REQUIRED_BASELINE");
         data.put("contract", "docs/contracts-business-core.md");
-        data.put("testCommand", "mvn -f backend/business-core-service/pom.xml test");
+        data.put("testCommand", "mvn -q -f backend/pom.xml test");
         return data;
     }
 
     List<Map<String, Object>> legacyBaselines() {
         return List.of(
-                baseline("business-core-service", 8130, "docs/contracts-business-core.md", "mvn -f backend/business-core-service/pom.xml test"),
+                baseline("business-core-service", 8130, "docs/contracts-business-core.md", "mvn -q -f backend/pom.xml test"),
                 baseline("unified-backend-service", 8135, "docs/contracts-unified-backend.md", "mvn -f backend/pom.xml test")
         );
     }

@@ -4445,7 +4445,7 @@ class UnifiedBackendApiContractTest {
         assertPrecheck(readiness, "/data/localApiGatewayEntrypointRetirementChecks", "POST_DELETE_API_GATEWAY_POM_ABSENT_EXPECTED", "PASS", true);
         JsonNode evidence = readiness.at("/data/localApiGatewayEntrypointRetirementEvidence");
         assertThat(evidence.at("/postDeleteExpectedEntrypoints").toString())
-                .contains("unified-backend-service")
+                .contains("backend/pom.xml")
                 .doesNotContain("business-core-service", "admission-core-service",
                         "engagement-core-service", "ops-core-service", "portal-core-service")
                 .doesNotContain("api-gateway-service");

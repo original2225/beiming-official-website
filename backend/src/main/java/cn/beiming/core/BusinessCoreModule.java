@@ -187,7 +187,7 @@ class BusinessCoreController {
 
     private Map<String, Object> testScope() {
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("mockMvcContractTests", Map.of("status", "PASS", "evidence", "mvn -f backend/business-core-service/pom.xml test"));
+        data.put("mockMvcContractTests", Map.of("status", "PASS", "evidence", "mvn -q -f backend/pom.xml test"));
         data.put("legacyBaselineTests", Map.of("status", "RETIRED", "evidence", "old first-batch service sources are removed; inherited business-core contract tests cover runtime behavior"));
         data.put("apiGatewayRouteSwitchTests", Map.of("status", "PASS", "evidence", "unified-backend preserves first-batch prefixes and business-core fallback boundary"));
         data.put("liveHttpSmokeTests", Map.of("status", "NOT_VERIFIED", "evidence", "no live multi-process HTTP smoke record"));

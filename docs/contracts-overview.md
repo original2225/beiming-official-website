@@ -21,7 +21,7 @@
 
 第四十七轮完成本地开发态 `api-gateway-service` 入口退役门禁。`unified-backend-service:8135` readiness 暴露 `localApiGatewayEntrypointRetirementStatus`、`localApiGatewayEntrypointRetirementChecks` 和 `localApiGatewayEntrypointRetirementEvidence`，当前 `localApiGatewayEntrypointRetirementStatus=PASS_LOCAL_API_GATEWAY_ENTRYPOINT_RETIRED_UNIFIED_GATEWAY_APIS_PRESERVED`。该门禁只说明旧网关 Maven 入口已退役，网关能力由 `unified-backend-service:8135` 自承载。
 
-本轮按用户确认完成五个 core 独立 Maven 入口本地退役。仓库内后端 Maven 启动入口收束为 `backend/pom.xml` 一个；`business-core`、`admission-core`、`engagement-core`、`ops-core` 和 `portal-core` 的业务源码仍保留在各自目录，由 unified 的 build-helper 装配。不得恢复五个 core 的独立 `pom.xml`、`*ServiceApplication.java` 或 `application.yml`，不得删除五个 core 目录和模块业务代码，业务路径、认证、响应格式、错误码和审计口径继续按原契约执行。
+本轮按用户确认完成五个 core 独立 Maven 入口本地退役。仓库内后端 Maven 启动入口收束为 `backend/pom.xml` 一个；五个 core 模块源码已经物理位于 `backend/src/main/java`，由 `backend/pom.xml` 统一编译和测试，不再通过 build-helper 装配旧 core 源码目录。不得恢复五个 core 的独立 `pom.xml`、`*ServiceApplication.java` 或 `application.yml`，不得删除五个 core 目录和模块业务代码，业务路径、认证、响应格式、错误码和审计口径继续按原契约执行。
 
 ## 全局接口规则
 
@@ -74,7 +74,7 @@
 
 `api-gateway` 的 8 个自有接口新增只读运行拓扑，不新增业务语义。当前官网后端保持 1 个 Maven 入口，`api-gateway` 行为和五个 core 模块能力由 `unified-backend-service:8135` 自承载。外部节点执行器已出仓且未连接，只能作为生产缺口摘要展示。该拓扑只用于单服务合并准备和测试守卫，不能被描述为真实生产切流完成。
 
-`unified-backend` 是并行候选入口，端口固定为 `8135`。它在同一进程内挂载 `api-gateway` 自有 API、`business-core` 自有 API、`admission-core` 自有 API、`engagement-core` 自有 API、`ops-core` 自有 API、`portal-core` 自有 API、第一批七个基础业务路由、第二批四个入服准入路由、第三批四个社区运营路由、第四批和第六期七个运维通知路由、`guide`、`material` 和 `online-map`，只用于验证稳定运行单元逐步 in-process 装配。当前本地 Maven 入口只有 `unified-backend-service` 一个；`unified-backend-service:8135` 已承接本地网关能力和五个 core 模块能力，仍不代表真实生产入口已经切流。第三十九轮进一步补齐生产外部值接收演练 evidence，明确本仓库只记录真实切流前的外部保管类型、值组、值引用、注入目标、验证引用、回滚引用、审批引用和脱敏规则；旧网关和五个 core 独立 Maven 入口不再作为当前回归命令，前端或代理真实入口切换、生产流量入口、流量归零证明、回滚窗口完成、旧入口退役审批、真实集中配置提供方、生产 profile、敏感配置外置、真实 audit sink 配置、真实写入 smoke、真实回放、真实保留任务和真实导出路径仍为阻塞项。
+`unified-backend` 是并行候选入口，端口固定为 `8135`。它在同一进程内挂载 `api-gateway` 自有 API、`business-core` 自有 API、`admission-core` 自有 API、`engagement-core` 自有 API、`ops-core` 自有 API、`portal-core` 自有 API、第一批七个基础业务路由、第二批四个入服准入路由、第三批四个社区运营路由、第四批和第六期七个运维通知路由、`guide`、`material` 和 `online-map`，只用于验证稳定运行单元逐步 in-process 装配。当前唯一后端 Maven 入口是 `backend/pom.xml`，当前本地后端服务端口是 `8135`，本地联调默认入口统一为 `http://127.0.0.1:8135`，业务路径保持 `/api/v1/**` 原样；`unified-backend-service:8135` 已承接本地网关能力和五个 core 模块能力，仍不代表真实生产入口已经切流。第三十九轮进一步补齐生产外部值接收演练 evidence，明确本仓库只记录真实切流前的外部保管类型、值组、值引用、注入目标、验证引用、回滚引用、审批引用和脱敏规则；旧网关和五个 core 独立 Maven 入口不再作为当前回归命令，前端或代理真实入口切换、生产流量入口、流量归零证明、回滚窗口完成、旧入口退役审批、真实集中配置提供方、生产 profile、敏感配置外置、真实 audit sink 配置、真实写入 smoke、真实回放、真实保留任务和真实导出路径仍为阻塞项。
 
 `engagement-core` 的 3 个自有接口只用于运行单元自检、后台装配摘要和生产就绪诊断。它不新增 community、activity、calendar 或 changelog 的业务语义。第三批 149 个业务路由签名和四个模块完整行为契约必须在 `engagement-core-service` 中自动化验证；生产就绪诊断仍必须公开真实持久化、审计持久化、真实跨服务 adapter、真实通知交付和真实 HTTP smoke 缺口。
 

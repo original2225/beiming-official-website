@@ -5549,7 +5549,7 @@ class UnifiedBackendRegistry {
                 "unsafeDeleteListItemsTotal", snapshot.unsafeDeleteListItemsTotal(),
                 "bulkDeleteAllowed", snapshot.bulkDeleteAllowed(),
                 "deleteList", snapshot.deleteList(),
-                "postDeleteExpectedEntrypoints", List.of("unified-backend-service"),
+                "postDeleteExpectedEntrypoints", List.of("backend/pom.xml"),
                 "unifiedBuildHelperDoesNotReferenceApiGateway", snapshot.unifiedBuildHelperDoesNotReferenceApiGateway(),
                 "deleteListOnlyExplicitFiles", snapshot.deleteListOnlyExplicitFiles(),
                 "deleteListRejectsDirectories", snapshot.deleteListRejectsDirectories(),
@@ -5587,7 +5587,7 @@ class UnifiedBackendRegistry {
         return List.of(
                 switchCheck("REAL_PRODUCTION_CUTOVER_EVIDENCE_SAMPLE_PRESENT", snapshot.evidencePresent() ? "PASS" : "BLOCKED", "real production entrypoint cutover evidence sample is present", true),
                 switchCheck("REAL_PRODUCTION_CUTOVER_EVIDENCE_SAMPLE_JSON_PARSABLE", snapshot.evidenceParsed() ? "PASS" : "BLOCKED", "real production entrypoint cutover evidence sample is parseable JSON", true),
-                switchCheck("CANDIDATE_ENTRYPOINT_TARGETS_UNIFIED_BACKEND_8135", snapshot.candidateEntrypointTargetsUnified() ? "PASS" : "BLOCKED", "candidate entrypoint reference targets unified-backend-service:8135", true),
+                switchCheck("CANDIDATE_ENTRYPOINT_TARGETS_UNIFIED_BACKEND_8135", snapshot.candidateEntrypointTargetsUnified() ? "PASS" : "BLOCKED", "candidate entrypoint reference targets backend/pom.xml on port 8135", true),
                 switchCheck("PREVIOUS_ENTRYPOINT_TARGETS_API_GATEWAY_8125", snapshot.previousEntrypointTargetsApiGateway() ? "PASS" : "BLOCKED", "previous entrypoint reference targets api-gateway-service:8125", true),
                 switchCheck("UNIFIED_BACKEND_SELF_HOSTS_GATEWAY_SOURCE", snapshot.unifiedBuildHelperStillReferencesApiGateway() ? "BLOCKED" : "PASS", "unified-backend compiles its own gateway control source", true),
                 switchCheck("GATEWAY_SELF_APIS_PRESERVED_IN_UNIFIED", "PASS", "gateway self APIs remain mounted in unified-backend", true),
@@ -5764,7 +5764,7 @@ class UnifiedBackendRegistry {
                 "entrypointRetirementScope", "LOCAL_MAVEN_ENTRYPOINTS_ONLY",
                 "moduleSourcePreserved", true,
                 "standaloneServiceStartDisabled", true,
-                "currentMavenEntrypoints", List.of("unified-backend-service"),
+                "currentMavenEntrypoints", List.of("backend/pom.xml"),
                 "retiredCoreEntrypoints", List.of(
                         "business-core-service",
                         "admission-core-service",
