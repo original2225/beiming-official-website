@@ -4894,6 +4894,70 @@ class UnifiedBackendApiContractTest {
     }
 
     @Test
+    void unifiedBackendDocsAndRuntimeDescribeBackendRootAfterPhysicalMonolith() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-backend-root-physical-monolith-docs"));
+        JsonNode summary = performJson(get("/api/v1/unified-backend/admin/ops/summary")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-backend-root-physical-monolith-summary"));
+        JsonNode gatewayTopology = performJson(get("/api/v1/gateway/admin/runtime-topology")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-backend-root-physical-monolith-topology"));
+
+        String docsAndRuntime = Files.readString(Path.of("../README.md"))
+                + Files.readString(Path.of("../docs/contracts-unified-backend.md"))
+                + Files.readString(Path.of("../docs/api-reference.md"))
+                + Files.readString(Path.of("../docs/frontend-api-handbook.md"))
+                + Files.readString(Path.of("../docs/frontend-development-guide.md"))
+                + Files.readString(Path.of("../docs/system-design.md"))
+                + Files.readString(Path.of("../docs/development-governance.md"))
+                + Files.readString(Path.of("../docs/contracts-api-gateway.md"))
+                + Files.readString(Path.of("src/main/java/cn/beiming/unifiedbackend/UnifiedBackendModule.java"))
+                + readiness
+                + summary
+                + gatewayTopology;
+
+        assertThat(readiness.at("/data/readyForProduction").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/readyToReplaceGateway").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/readyToRetireBusinessCore").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/readyToRetireAdmissionCore").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/readyToRetireEngagementCore").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/readyToRetireOpsCore").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/readyToRetirePortalCore").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/currentProductionEntrypointsTotal").asInt()).isEqualTo(1);
+        assertThat(readiness.at("/data/candidateEntrypointsTotal").asInt()).isEqualTo(1);
+
+        assertThat(docsAndRuntime)
+                .contains("当前唯一后端 Maven 入口是 `backend/pom.xml`")
+                .contains("mvn -q -f backend/pom.xml test")
+                .contains("当前本地后端服务端口是 `8135`")
+                .contains("本地联调默认入口统一为 `http://127.0.0.1:8135`")
+                .contains("业务路径保持 `/api/v1/**` 原样")
+                .contains("五个 core 模块源码已经物理位于 `backend/src/main/java`")
+                .contains("不再通过 build-helper")
+                .doesNotContain("系统从零开始开发")
+                .doesNotContain("仓库处于从零开发阶段")
+                .doesNotContain("当前重点是明确开发边界")
+                .doesNotContain("backend/unified-backend-service/pom.xml")
+                .doesNotContain("backend\\unified-backend-service\\pom.xml")
+                .doesNotContain("mvn -q -f backend/unified-backend-service/pom.xml test")
+                .doesNotContain("mvn -f backend/unified-backend-service/pom.xml test")
+                .doesNotContain("当前后端 Maven 启动入口只剩 `unified-backend-service:8135`")
+                .doesNotContain("当前本地后端 Maven 入口和候选入口均为 `unified-backend-service:8135`")
+                .doesNotContain("由 unified 的 build-helper 装配")
+                .doesNotContain("unified 的 build-helper")
+                .doesNotContain("继续由 `unified-backend-service` 装配")
+                .doesNotContain("必须保留五个 core 的 `src/main/java` 模块源码，由 unified 的 build-helper 装配")
+                .doesNotContain("readyForProduction" + "=true")
+                .doesNotContain("readyToReplaceGateway" + "=true")
+                .doesNotContain("oldApiGatewayRetirementAllowed" + "=true")
+                .doesNotContain("productionTrafficSwitched" + "=true")
+                .doesNotContain("trafficSwitchApplied" + "=true")
+                .doesNotContain("rollbackWindowCompleted" + "=true");
+    }
+
+    @Test
     void runsUnifiedBackendHttpSmokeWithoutHidingDegradedTargets() throws Exception {
         JsonNode smoke = performJson(post("/api/v1/unified-backend/admin/http-smoke/run")
                 .header("Authorization", "Bearer admin-token")
