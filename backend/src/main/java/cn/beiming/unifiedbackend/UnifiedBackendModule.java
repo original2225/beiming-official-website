@@ -177,6 +177,9 @@ class UnifiedBackendController {
                 "realProductionEntrypointCutoverStatus", registry.realProductionEntrypointCutoverStatus(),
                 "realProductionEntrypointCutoverChecks", registry.realProductionEntrypointCutoverChecks(),
                 "realProductionEntrypointCutoverEvidence", registry.realProductionEntrypointCutoverEvidence(),
+                "externalEntrypointCutoverEvidenceIntakeStatus", registry.externalEntrypointCutoverEvidenceIntakeStatus(),
+                "externalEntrypointCutoverEvidenceIntakeChecks", registry.externalEntrypointCutoverEvidenceIntakeChecks(),
+                "externalEntrypointCutoverEvidenceIntakeEvidence", registry.externalEntrypointCutoverEvidenceIntakeEvidence(),
                 "productionExternalValueIntakeRehearsalStatus", registry.productionExternalValueIntakeRehearsalStatus(),
                 "productionExternalValueIntakeRehearsalChecks", registry.productionExternalValueIntakeRehearsalChecks(),
                 "productionExternalValueIntakeRehearsalEvidence", registry.productionExternalValueIntakeRehearsalEvidence(),
@@ -3567,6 +3570,246 @@ interface UnifiedLocalApiGatewayEntrypointRetirement {
     LocalApiGatewayEntrypointRetirementSnapshot snapshot();
 }
 
+interface UnifiedExternalEntrypointCutoverEvidenceIntake {
+    ExternalEntrypointCutoverEvidenceIntakeSnapshot snapshot();
+}
+
+class LocalFileExternalEntrypointCutoverEvidenceIntake implements UnifiedExternalEntrypointCutoverEvidenceIntake {
+    private static final List<String> FORBIDDEN_FRAGMENTS = List.of(
+            "authorization", "x-gateway-internal-signature", "c:\\users\\", ".env", "jdbc:", "mongodb://",
+            "redis://", "id_rsa", "akia", "token", "cookie", "secret", "password", "passwd", "pwd",
+            "privatekey", "kubectl", "docker", "powershell", "cmd.exe", "ssh ", "scp ", "http://", "https://"
+    );
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @Override
+    public ExternalEntrypointCutoverEvidenceIntakeSnapshot snapshot() {
+        Path samplePath = locateSamplePath();
+        JsonNode sample = readSample(samplePath);
+        boolean present = Files.exists(samplePath);
+        boolean parsed = present && !sample.isMissingNode();
+        boolean evidenceIntakeApplied = sample.path("evidenceIntakeApplied").asBoolean(true);
+        boolean productionTrafficAllowed = sample.path("productionTrafficAllowed").asBoolean(true);
+        boolean realValuesAllowedInRepository = sample.path("realValuesAllowedInRepository").asBoolean(true);
+        boolean externalEvidenceProvided = sample.path("externalEvidenceProvided").asBoolean(true);
+        String frontendEntrypointRef = sample.path("frontendEntrypointRef").asText("");
+        String reverseProxyUpstreamRef = sample.path("reverseProxyUpstreamRef").asText("");
+        String deploymentEntrypointRef = sample.path("deploymentEntrypointRef").asText("");
+        String rollbackEntrypointRef = sample.path("rollbackEntrypointRef").asText("");
+        String canaryWeightRef = sample.path("canaryWeightRef").asText("");
+        String observabilityRef = sample.path("observabilityRef").asText("");
+        String approvalRef = sample.path("approvalRef").asText("");
+        int evidenceRefsTotal = sample.path("evidenceRefs").size();
+        int requiredEvidenceRefsTotal = countRequiredEvidenceRefs(sample.path("evidenceRefs"));
+        boolean frontendEntrypointApplied = sample.at("/blockedExecution/frontendEntrypointApplied").asBoolean(true);
+        boolean reverseProxyUpstreamApplied = sample.at("/blockedExecution/reverseProxyUpstreamApplied").asBoolean(true);
+        boolean deploymentEntrypointApplied = sample.at("/blockedExecution/deploymentEntrypointApplied").asBoolean(true);
+        boolean rollbackEntrypointApplied = sample.at("/blockedExecution/rollbackEntrypointApplied").asBoolean(true);
+        boolean canaryWeightApplied = sample.at("/blockedExecution/canaryWeightApplied").asBoolean(true);
+        boolean observabilityConnected = sample.at("/blockedExecution/observabilityConnected").asBoolean(true);
+        boolean approvalGranted = sample.at("/blockedExecution/approvalGranted").asBoolean(true);
+        boolean realProductionCutoverExecuted = sample.at("/blockedExecution/realProductionCutoverExecuted").asBoolean(true);
+        boolean sensitiveValuesExposed = containsSensitiveValues(sample);
+        boolean sampleValid = parsed
+                && "LOCAL_EXTERNAL_ENTRYPOINT_CUTOVER_EVIDENCE_INTAKE_NOT_APPLIED".equals(sample.path("mode").asText())
+                && !evidenceIntakeApplied
+                && !productionTrafficAllowed
+                && !realValuesAllowedInRepository
+                && !externalEvidenceProvided
+                && startsWithExternalRef(frontendEntrypointRef)
+                && startsWithExternalRef(reverseProxyUpstreamRef)
+                && startsWithExternalRef(deploymentEntrypointRef)
+                && startsWithExternalRef(rollbackEntrypointRef)
+                && startsWithExternalRef(canaryWeightRef)
+                && startsWithExternalRef(observabilityRef)
+                && approvalRef.startsWith("APPROVAL_REF_REQUIRED:")
+                && evidenceRefsTotal >= 7
+                && requiredEvidenceRefsTotal >= 7
+                && !frontendEntrypointApplied
+                && !reverseProxyUpstreamApplied
+                && !deploymentEntrypointApplied
+                && !rollbackEntrypointApplied
+                && !canaryWeightApplied
+                && !observabilityConnected
+                && !approvalGranted
+                && !realProductionCutoverExecuted
+                && !sensitiveValuesExposed;
+        return new ExternalEntrypointCutoverEvidenceIntakeSnapshot(
+                "LOCAL_EXTERNAL_ENTRYPOINT_CUTOVER_EVIDENCE_INTAKE_GATE_NOT_PRODUCTION",
+                "docs/unified-backend-external-entrypoint-cutover-evidence-intake-sample.json",
+                present,
+                parsed,
+                evidenceIntakeApplied,
+                productionTrafficAllowed,
+                realValuesAllowedInRepository,
+                externalEvidenceProvided,
+                frontendEntrypointRef.isBlank() ? "EXTERNAL_REF_REQUIRED:FRONTEND_ENTRYPOINT_NOT_PROVIDED" : frontendEntrypointRef,
+                reverseProxyUpstreamRef.isBlank() ? "EXTERNAL_REF_REQUIRED:REVERSE_PROXY_UPSTREAM_NOT_PROVIDED" : reverseProxyUpstreamRef,
+                deploymentEntrypointRef.isBlank() ? "EXTERNAL_REF_REQUIRED:DEPLOYMENT_ENTRYPOINT_NOT_PROVIDED" : deploymentEntrypointRef,
+                rollbackEntrypointRef.isBlank() ? "EXTERNAL_REF_REQUIRED:ROLLBACK_ENTRYPOINT_NOT_PROVIDED" : rollbackEntrypointRef,
+                canaryWeightRef.isBlank() ? "EXTERNAL_REF_REQUIRED:CANARY_WEIGHT_NOT_PROVIDED" : canaryWeightRef,
+                observabilityRef.isBlank() ? "EXTERNAL_REF_REQUIRED:OBSERVABILITY_NOT_PROVIDED" : observabilityRef,
+                approvalRef.isBlank() ? "APPROVAL_REF_REQUIRED:CUTOVER_APPROVAL_NOT_PROVIDED" : approvalRef,
+                evidenceRefsTotal,
+                requiredEvidenceRefsTotal,
+                frontendEntrypointApplied,
+                reverseProxyUpstreamApplied,
+                deploymentEntrypointApplied,
+                rollbackEntrypointApplied,
+                canaryWeightApplied,
+                observabilityConnected,
+                approvalGranted,
+                false,
+                false,
+                false,
+                realProductionCutoverExecuted,
+                false,
+                false,
+                false,
+                false,
+                sensitiveValuesExposed,
+                nextRequiredGates(sample),
+                sampleValid,
+                List.of(
+                        "REAL_EXTERNAL_ENTRYPOINT_EVIDENCE_PROVIDED_OUTSIDE_REPOSITORY",
+                        "FRONTEND_ENTRYPOINT_APPLIED",
+                        "REVERSE_PROXY_UPSTREAM_APPLIED",
+                        "DEPLOYMENT_ENTRYPOINT_APPLIED",
+                        "ROLLBACK_ENTRYPOINT_VALIDATED",
+                        "CANARY_WEIGHT_APPLIED",
+                        "OBSERVABILITY_CONNECTED",
+                        "APPROVAL_GRANTED",
+                        "CENTRAL_CONFIG_PROVIDER_CONNECTED",
+                        "PERSISTENT_AUDIT_SINK_CONNECTED",
+                        "REAL_OBSERVABILITY_SMOKE_PASSED",
+                        "REAL_CUTOVER_EXECUTED"
+                ),
+                "BLOCKED_BY_EXTERNAL_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED"
+        );
+    }
+
+    private boolean startsWithExternalRef(String value) {
+        return value.startsWith("EXTERNAL_REF_REQUIRED:") || value.startsWith("OBSERVABILITY_REF_REQUIRED:");
+    }
+
+    private int countRequiredEvidenceRefs(JsonNode refs) {
+        int total = 0;
+        if (refs.isArray()) {
+            for (JsonNode ref : refs) {
+                if (ref.path("required").asBoolean(false)) {
+                    total++;
+                }
+            }
+        }
+        return total;
+    }
+
+    private List<String> nextRequiredGates(JsonNode sample) {
+        List<String> gates = new ArrayList<>();
+        JsonNode node = sample.path("nextRequiredGates");
+        if (node.isArray()) {
+            for (JsonNode item : node) {
+                gates.add(item.asText());
+            }
+        }
+        return List.copyOf(gates);
+    }
+
+    private JsonNode readSample(Path samplePath) {
+        try {
+            if (Files.exists(samplePath)) {
+                return objectMapper.readTree(Files.readString(samplePath));
+            }
+        } catch (IOException ignored) {
+            return objectMapper.getNodeFactory().missingNode();
+        }
+        return objectMapper.getNodeFactory().missingNode();
+    }
+
+    private boolean containsSensitiveValues(JsonNode sample) {
+        String text = scalarTextWithoutRedactionPolicy(sample).toLowerCase(Locale.ROOT)
+                .replace("externalentrypointcutoverevidenceintake", "")
+                .replace("sensitivevaluesexposed", "");
+        return FORBIDDEN_FRAGMENTS.stream().anyMatch(text::contains);
+    }
+
+    private String scalarTextWithoutRedactionPolicy(JsonNode node) {
+        StringBuilder values = new StringBuilder();
+        appendScalarText(node, values, false);
+        return values.toString();
+    }
+
+    private void appendScalarText(JsonNode node, StringBuilder values, boolean insideRedactionPolicy) {
+        if (node.isObject()) {
+            node.fields().forEachRemaining(entry -> appendScalarText(entry.getValue(), values,
+                    insideRedactionPolicy || "redactionPolicy".equals(entry.getKey())
+                            || "verificationCommands".equals(entry.getKey())
+                            || "notes".equals(entry.getKey())));
+        } else if (node.isArray()) {
+            for (JsonNode child : node) {
+                appendScalarText(child, values, insideRedactionPolicy);
+            }
+        } else if (!insideRedactionPolicy && node.isValueNode()) {
+            values.append(node.asText()).append(' ');
+        }
+    }
+
+    private Path locateSamplePath() {
+        List<Path> candidates = List.of(
+                Path.of("docs", "unified-backend-external-entrypoint-cutover-evidence-intake-sample.json"),
+                Path.of("..", "docs", "unified-backend-external-entrypoint-cutover-evidence-intake-sample.json"),
+                Path.of("..", "..", "docs", "unified-backend-external-entrypoint-cutover-evidence-intake-sample.json")
+        );
+        for (Path candidate : candidates) {
+            if (Files.exists(candidate)) {
+                return candidate.normalize();
+            }
+        }
+        return candidates.get(0).normalize();
+    }
+}
+
+record ExternalEntrypointCutoverEvidenceIntakeSnapshot(
+        String readinessMode,
+        String evidencePath,
+        boolean evidencePresent,
+        boolean evidenceParsed,
+        boolean evidenceIntakeApplied,
+        boolean productionTrafficAllowed,
+        boolean realValuesAllowedInRepository,
+        boolean externalEvidenceProvided,
+        String frontendEntrypointRef,
+        String reverseProxyUpstreamRef,
+        String deploymentEntrypointRef,
+        String rollbackEntrypointRef,
+        String canaryWeightRef,
+        String observabilityRef,
+        String approvalRef,
+        int evidenceRefsTotal,
+        int requiredEvidenceRefsTotal,
+        boolean frontendEntrypointApplied,
+        boolean reverseProxyUpstreamApplied,
+        boolean deploymentEntrypointApplied,
+        boolean rollbackEntrypointApplied,
+        boolean canaryWeightApplied,
+        boolean observabilityConnected,
+        boolean approvalGranted,
+        boolean centralConfigProviderConnected,
+        boolean persistentAuditSinkConnected,
+        boolean realObservabilitySmokePassed,
+        boolean realProductionCutoverExecuted,
+        boolean readyForProduction,
+        boolean readyToReplaceGateway,
+        boolean oldApiGatewayRetirementAllowed,
+        boolean environmentVariablesRead,
+        boolean sensitiveValuesExposed,
+        List<String> nextRequiredGates,
+        boolean sampleValid,
+        List<String> remainingBlockers,
+        String status
+) {
+}
+
 final class LocalFileLocalApiGatewayEntrypointRetirement implements UnifiedLocalApiGatewayEntrypointRetirement {
     @Override
     public LocalApiGatewayEntrypointRetirementSnapshot snapshot() {
@@ -3708,6 +3951,7 @@ class UnifiedBackendRegistry {
     private final UnifiedApiGatewayExternalRetirementEvidence apiGatewayExternalRetirementEvidence = new LocalFileApiGatewayExternalRetirementEvidence();
     private final UnifiedLocalApiGatewayEntrypointRetirement localApiGatewayEntrypointRetirement = new LocalFileLocalApiGatewayEntrypointRetirement();
     private final UnifiedRealProductionEntrypointCutoverEvidence realProductionEntrypointCutoverEvidence = new LocalFileRealProductionEntrypointCutoverEvidence();
+    private final UnifiedExternalEntrypointCutoverEvidenceIntake externalEntrypointCutoverEvidenceIntake = new LocalFileExternalEntrypointCutoverEvidenceIntake();
     private final List<UnifiedMount> gatewayRoutes = createGatewayRoutes();
 
     UnifiedBackendRegistry() {
@@ -5646,6 +5890,82 @@ class UnifiedBackendRegistry {
                 "deleteListPermitGenerated", snapshot.deleteListPermitGenerated(),
                 "environmentVariablesRead", snapshot.environmentVariablesRead(),
                 "sensitiveValuesExposed", snapshot.sensitiveValuesExposed(),
+                "remainingBlockers", snapshot.remainingBlockers(),
+                "status", snapshot.status()
+        );
+    }
+
+    String externalEntrypointCutoverEvidenceIntakeStatus() {
+        return externalEntrypointCutoverEvidenceIntake.snapshot().status();
+    }
+
+    List<Map<String, Object>> externalEntrypointCutoverEvidenceIntakeChecks() {
+        ExternalEntrypointCutoverEvidenceIntakeSnapshot snapshot = externalEntrypointCutoverEvidenceIntake.snapshot();
+        return List.of(
+                switchCheck("EXTERNAL_ENTRYPOINT_EVIDENCE_SAMPLE_PRESENT", snapshot.evidencePresent() ? "PASS" : "BLOCKED", "external entrypoint evidence intake sample is present", true),
+                switchCheck("EXTERNAL_ENTRYPOINT_EVIDENCE_SAMPLE_JSON_PARSABLE", snapshot.evidenceParsed() ? "PASS" : "BLOCKED", "external entrypoint evidence intake sample is parseable JSON", true),
+                switchCheck("FRONTEND_ENTRYPOINT_REF_RECORDED", snapshot.frontendEntrypointRef().startsWith("EXTERNAL_REF_REQUIRED:") ? "PASS" : "BLOCKED", "frontend entrypoint reference is recorded without real value", true),
+                switchCheck("REVERSE_PROXY_UPSTREAM_REF_RECORDED", snapshot.reverseProxyUpstreamRef().startsWith("EXTERNAL_REF_REQUIRED:") ? "PASS" : "BLOCKED", "reverse proxy upstream reference is recorded without real value", true),
+                switchCheck("DEPLOYMENT_ENTRYPOINT_REF_RECORDED", snapshot.deploymentEntrypointRef().startsWith("EXTERNAL_REF_REQUIRED:") ? "PASS" : "BLOCKED", "deployment entrypoint reference is recorded without real value", true),
+                switchCheck("ROLLBACK_ENTRYPOINT_REF_RECORDED", snapshot.rollbackEntrypointRef().startsWith("EXTERNAL_REF_REQUIRED:") ? "PASS" : "BLOCKED", "rollback entrypoint reference is recorded without real value", true),
+                switchCheck("CANARY_WEIGHT_REF_RECORDED", snapshot.canaryWeightRef().startsWith("EXTERNAL_REF_REQUIRED:") ? "PASS" : "BLOCKED", "canary weight reference is recorded without applying traffic", true),
+                switchCheck("OBSERVABILITY_REF_RECORDED", snapshot.observabilityRef().startsWith("EXTERNAL_REF_REQUIRED:") ? "PASS" : "BLOCKED", "observability reference is recorded without real dashboard URL", true),
+                switchCheck("APPROVAL_REF_RECORDED", snapshot.approvalRef().startsWith("APPROVAL_REF_REQUIRED:") ? "PASS" : "BLOCKED", "approval reference is recorded without granting approval", true),
+                switchCheck("NO_REAL_VALUES_IN_EXTERNAL_ENTRYPOINT_EVIDENCE", snapshot.realValuesAllowedInRepository() ? "BLOCKED" : "PASS", "sample contains only external references", true),
+                switchCheck("NO_SENSITIVE_VALUES_IN_EXTERNAL_ENTRYPOINT_EVIDENCE", snapshot.sensitiveValuesExposed() ? "BLOCKED" : "PASS", "sample exposes no sensitive runtime values", true),
+                switchCheck("READY_FLAGS_REMAIN_FALSE", "PASS", "readyForProduction and readyToReplaceGateway remain false", true),
+                switchCheck("REAL_EXTERNAL_ENTRYPOINT_EVIDENCE_NOT_PROVIDED", "BLOCKED", "real external entrypoint evidence is not provided outside repository", true),
+                switchCheck("FRONTEND_ENTRYPOINT_NOT_APPLIED", snapshot.frontendEntrypointApplied() ? "PASS" : "BLOCKED", "frontend entrypoint is not applied", true),
+                switchCheck("REVERSE_PROXY_UPSTREAM_NOT_APPLIED", snapshot.reverseProxyUpstreamApplied() ? "PASS" : "BLOCKED", "reverse proxy upstream is not applied", true),
+                switchCheck("DEPLOYMENT_ENTRYPOINT_NOT_APPLIED", snapshot.deploymentEntrypointApplied() ? "PASS" : "BLOCKED", "deployment entrypoint is not applied", true),
+                switchCheck("ROLLBACK_ENTRYPOINT_NOT_VALIDATED", snapshot.rollbackEntrypointApplied() ? "PASS" : "BLOCKED", "rollback entrypoint is not externally validated", true),
+                switchCheck("CANARY_WEIGHT_NOT_APPLIED", snapshot.canaryWeightApplied() ? "PASS" : "BLOCKED", "canary weight is not applied", true),
+                switchCheck("OBSERVABILITY_NOT_CONNECTED", snapshot.observabilityConnected() ? "PASS" : "BLOCKED", "real observability is not connected", true),
+                switchCheck("APPROVAL_NOT_GRANTED", snapshot.approvalGranted() ? "PASS" : "BLOCKED", "cutover approval is not granted", true),
+                switchCheck("CENTRAL_CONFIG_PROVIDER_NOT_CONNECTED", snapshot.centralConfigProviderConnected() ? "PASS" : "BLOCKED", "central config provider remains disconnected", true),
+                switchCheck("PERSISTENT_AUDIT_SINK_NOT_CONNECTED", snapshot.persistentAuditSinkConnected() ? "PASS" : "BLOCKED", "persistent audit sink remains disconnected", true),
+                switchCheck("REAL_OBSERVABILITY_SMOKE_NOT_PASSED", snapshot.realObservabilitySmokePassed() ? "PASS" : "BLOCKED", "real observability smoke has not passed", true),
+                switchCheck("REAL_CUTOVER_NOT_EXECUTED", snapshot.realProductionCutoverExecuted() ? "PASS" : "BLOCKED", "real cutover is not executed", true)
+        );
+    }
+
+    Map<String, Object> externalEntrypointCutoverEvidenceIntakeEvidence() {
+        ExternalEntrypointCutoverEvidenceIntakeSnapshot snapshot = externalEntrypointCutoverEvidenceIntake.snapshot();
+        return map(
+                "readinessMode", snapshot.readinessMode(),
+                "evidencePath", snapshot.evidencePath(),
+                "evidencePresent", snapshot.evidencePresent(),
+                "evidenceParsed", snapshot.evidenceParsed(),
+                "evidenceIntakeApplied", snapshot.evidenceIntakeApplied(),
+                "productionTrafficAllowed", snapshot.productionTrafficAllowed(),
+                "realValuesAllowedInRepository", snapshot.realValuesAllowedInRepository(),
+                "externalEvidenceProvided", snapshot.externalEvidenceProvided(),
+                "frontendEntrypointRef", snapshot.frontendEntrypointRef(),
+                "reverseProxyUpstreamRef", snapshot.reverseProxyUpstreamRef(),
+                "deploymentEntrypointRef", snapshot.deploymentEntrypointRef(),
+                "rollbackEntrypointRef", snapshot.rollbackEntrypointRef(),
+                "canaryWeightRef", snapshot.canaryWeightRef(),
+                "observabilityRef", snapshot.observabilityRef(),
+                "approvalRef", snapshot.approvalRef(),
+                "evidenceRefsTotal", snapshot.evidenceRefsTotal(),
+                "requiredEvidenceRefsTotal", snapshot.requiredEvidenceRefsTotal(),
+                "frontendEntrypointApplied", snapshot.frontendEntrypointApplied(),
+                "reverseProxyUpstreamApplied", snapshot.reverseProxyUpstreamApplied(),
+                "deploymentEntrypointApplied", snapshot.deploymentEntrypointApplied(),
+                "rollbackEntrypointApplied", snapshot.rollbackEntrypointApplied(),
+                "canaryWeightApplied", snapshot.canaryWeightApplied(),
+                "observabilityConnected", snapshot.observabilityConnected(),
+                "approvalGranted", snapshot.approvalGranted(),
+                "centralConfigProviderConnected", snapshot.centralConfigProviderConnected(),
+                "persistentAuditSinkConnected", snapshot.persistentAuditSinkConnected(),
+                "realObservabilitySmokePassed", snapshot.realObservabilitySmokePassed(),
+                "realProductionCutoverExecuted", snapshot.realProductionCutoverExecuted(),
+                "readyForProduction", snapshot.readyForProduction(),
+                "readyToReplaceGateway", snapshot.readyToReplaceGateway(),
+                "oldApiGatewayRetirementAllowed", snapshot.oldApiGatewayRetirementAllowed(),
+                "environmentVariablesRead", snapshot.environmentVariablesRead(),
+                "sensitiveValuesExposed", snapshot.sensitiveValuesExposed(),
+                "nextRequiredGates", snapshot.nextRequiredGates(),
                 "remainingBlockers", snapshot.remainingBlockers(),
                 "status", snapshot.status()
         );

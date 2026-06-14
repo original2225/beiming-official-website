@@ -77,6 +77,7 @@ class UnifiedBackendApiContractTest {
         addRange(mapped, "UBACK-API-GATEWAY-RETIREMENT", 1, 20);
         addRange(mapped, "UBACK-API-GATEWAY-EXTERNAL-RETIREMENT", 1, 24);
         addRange(mapped, "UBACK-REAL-PRODUCTION-CUTOVER", 1, 24);
+        addRange(mapped, "UBACK-EXTERNAL-ENTRYPOINT-EVIDENCE-INTAKE", 1, 12);
         addRange(mapped, "UBACK-LOCAL-API-GATEWAY-RETIREMENT", 1, 30);
 
         assertThat(mapped).contains(
@@ -151,10 +152,12 @@ class UnifiedBackendApiContractTest {
                 "UBACK-API-GATEWAY-EXTERNAL-RETIREMENT-024",
                 "UBACK-REAL-PRODUCTION-CUTOVER-001",
                 "UBACK-REAL-PRODUCTION-CUTOVER-024",
+                "UBACK-EXTERNAL-ENTRYPOINT-EVIDENCE-INTAKE-001",
+                "UBACK-EXTERNAL-ENTRYPOINT-EVIDENCE-INTAKE-012",
                 "UBACK-LOCAL-API-GATEWAY-RETIREMENT-001",
                 "UBACK-LOCAL-API-GATEWAY-RETIREMENT-030"
         );
-        assertThat(mapped).hasSize(369);
+        assertThat(mapped).hasSize(381);
     }
 
     @Test
@@ -4286,6 +4289,177 @@ class UnifiedBackendApiContractTest {
         assertCoreModuleSourcesMovedIntoUnifiedBackend();
         assertThat(Files.exists(Path.of("../api-gateway-service/pom.xml"))).isFalse();
         assertThat(Files.exists(Path.of("../node-daemon-service"))).isFalse();
+    }
+
+    @Test
+    void exposesExternalEntrypointCutoverEvidenceIntakeGateWithoutSwitchingTraffic() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-external-entrypoint-evidence-intake"));
+
+        assertThat(readiness.at("/data/externalEntrypointCutoverEvidenceIntakeStatus").asText())
+                .isEqualTo("BLOCKED_BY_EXTERNAL_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED");
+        assertThat(readiness.at("/data/readyForProduction").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/readyToReplaceGateway").asBoolean()).isFalse();
+
+        for (String check : List.of(
+                "EXTERNAL_ENTRYPOINT_EVIDENCE_SAMPLE_PRESENT",
+                "EXTERNAL_ENTRYPOINT_EVIDENCE_SAMPLE_JSON_PARSABLE",
+                "FRONTEND_ENTRYPOINT_REF_RECORDED",
+                "REVERSE_PROXY_UPSTREAM_REF_RECORDED",
+                "DEPLOYMENT_ENTRYPOINT_REF_RECORDED",
+                "ROLLBACK_ENTRYPOINT_REF_RECORDED",
+                "CANARY_WEIGHT_REF_RECORDED",
+                "OBSERVABILITY_REF_RECORDED",
+                "APPROVAL_REF_RECORDED",
+                "NO_REAL_VALUES_IN_EXTERNAL_ENTRYPOINT_EVIDENCE",
+                "NO_SENSITIVE_VALUES_IN_EXTERNAL_ENTRYPOINT_EVIDENCE",
+                "READY_FLAGS_REMAIN_FALSE")) {
+            assertPrecheck(readiness, "/data/externalEntrypointCutoverEvidenceIntakeChecks", check, "PASS", true);
+        }
+        for (String check : List.of(
+                "REAL_EXTERNAL_ENTRYPOINT_EVIDENCE_NOT_PROVIDED",
+                "FRONTEND_ENTRYPOINT_NOT_APPLIED",
+                "REVERSE_PROXY_UPSTREAM_NOT_APPLIED",
+                "DEPLOYMENT_ENTRYPOINT_NOT_APPLIED",
+                "ROLLBACK_ENTRYPOINT_NOT_VALIDATED",
+                "CANARY_WEIGHT_NOT_APPLIED",
+                "OBSERVABILITY_NOT_CONNECTED",
+                "APPROVAL_NOT_GRANTED",
+                "CENTRAL_CONFIG_PROVIDER_NOT_CONNECTED",
+                "PERSISTENT_AUDIT_SINK_NOT_CONNECTED",
+                "REAL_OBSERVABILITY_SMOKE_NOT_PASSED",
+                "REAL_CUTOVER_NOT_EXECUTED")) {
+            assertPrecheck(readiness, "/data/externalEntrypointCutoverEvidenceIntakeChecks", check, "BLOCKED", true);
+        }
+
+        JsonNode evidence = readiness.at("/data/externalEntrypointCutoverEvidenceIntakeEvidence");
+        assertThat(evidence.at("/readinessMode").asText())
+                .isEqualTo("LOCAL_EXTERNAL_ENTRYPOINT_CUTOVER_EVIDENCE_INTAKE_GATE_NOT_PRODUCTION");
+        assertThat(evidence.at("/evidencePath").asText())
+                .isEqualTo("docs/unified-backend-external-entrypoint-cutover-evidence-intake-sample.json");
+        assertThat(evidence.at("/evidencePresent").asBoolean()).isTrue();
+        assertThat(evidence.at("/evidenceParsed").asBoolean()).isTrue();
+        assertThat(evidence.at("/evidenceIntakeApplied").asBoolean()).isFalse();
+        assertThat(evidence.at("/productionTrafficAllowed").asBoolean()).isFalse();
+        assertThat(evidence.at("/realValuesAllowedInRepository").asBoolean()).isFalse();
+        assertThat(evidence.at("/externalEvidenceProvided").asBoolean()).isFalse();
+        assertThat(evidence.at("/frontendEntrypointRef").asText()).startsWith("EXTERNAL_REF_REQUIRED:");
+        assertThat(evidence.at("/reverseProxyUpstreamRef").asText()).startsWith("EXTERNAL_REF_REQUIRED:");
+        assertThat(evidence.at("/deploymentEntrypointRef").asText()).startsWith("EXTERNAL_REF_REQUIRED:");
+        assertThat(evidence.at("/rollbackEntrypointRef").asText()).startsWith("EXTERNAL_REF_REQUIRED:");
+        assertThat(evidence.at("/canaryWeightRef").asText()).startsWith("EXTERNAL_REF_REQUIRED:");
+        assertThat(evidence.at("/observabilityRef").asText()).startsWith("EXTERNAL_REF_REQUIRED:");
+        assertThat(evidence.at("/approvalRef").asText()).startsWith("APPROVAL_REF_REQUIRED:");
+        assertThat(evidence.at("/evidenceRefsTotal").asInt()).isGreaterThanOrEqualTo(7);
+        assertThat(evidence.at("/requiredEvidenceRefsTotal").asInt()).isGreaterThanOrEqualTo(7);
+        for (String field : List.of(
+                "frontendEntrypointApplied",
+                "reverseProxyUpstreamApplied",
+                "deploymentEntrypointApplied",
+                "rollbackEntrypointApplied",
+                "canaryWeightApplied",
+                "observabilityConnected",
+                "approvalGranted",
+                "centralConfigProviderConnected",
+                "persistentAuditSinkConnected",
+                "realObservabilitySmokePassed",
+                "realProductionCutoverExecuted",
+                "readyForProduction",
+                "readyToReplaceGateway",
+                "oldApiGatewayRetirementAllowed",
+                "environmentVariablesRead",
+                "sensitiveValuesExposed")) {
+            assertThat(evidence.at("/" + field).asBoolean()).as(field).isFalse();
+        }
+        assertThat(evidence.at("/nextRequiredGates").toString())
+                .contains("PRODUCTION_CENTRAL_CONFIG_PROVIDER")
+                .contains("PERSISTENT_AUDIT_SINK")
+                .contains("REAL_OBSERVABILITY_SMOKE")
+                .contains("CONTROLLED_CUTOVER_RUNBOOK")
+                .contains("ROLLBACK_WINDOW")
+                .contains("APPROVAL_EVIDENCE");
+        assertThat(evidence.at("/remainingBlockers").toString())
+                .contains("REAL_EXTERNAL_ENTRYPOINT_EVIDENCE_PROVIDED_OUTSIDE_REPOSITORY")
+                .contains("FRONTEND_ENTRYPOINT_APPLIED")
+                .contains("REVERSE_PROXY_UPSTREAM_APPLIED")
+                .contains("DEPLOYMENT_ENTRYPOINT_APPLIED")
+                .contains("ROLLBACK_ENTRYPOINT_VALIDATED")
+                .contains("CANARY_WEIGHT_APPLIED")
+                .contains("OBSERVABILITY_CONNECTED")
+                .contains("APPROVAL_GRANTED")
+                .contains("CENTRAL_CONFIG_PROVIDER_CONNECTED")
+                .contains("PERSISTENT_AUDIT_SINK_CONNECTED");
+        assertThat(evidence.at("/status").asText())
+                .isEqualTo("BLOCKED_BY_EXTERNAL_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void externalEntrypointCutoverEvidenceIntakeSampleFileIsParseableAndSafe() throws Exception {
+        Path samplePath = Path.of("../docs/unified-backend-external-entrypoint-cutover-evidence-intake-sample.json");
+        assertThat(Files.exists(samplePath)).isTrue();
+        JsonNode sample = objectMapper.readTree(Files.readString(samplePath));
+
+        assertThat(sample.at("/sampleName").asText()).isEqualTo("beiming-unified-backend-external-entrypoint-cutover-evidence-intake");
+        assertThat(sample.at("/mode").asText()).isEqualTo("LOCAL_EXTERNAL_ENTRYPOINT_CUTOVER_EVIDENCE_INTAKE_NOT_APPLIED");
+        assertThat(sample.at("/evidenceIntakeApplied").asBoolean()).isFalse();
+        assertThat(sample.at("/productionTrafficAllowed").asBoolean()).isFalse();
+        assertThat(sample.at("/realValuesAllowedInRepository").asBoolean()).isFalse();
+        assertThat(sample.at("/externalEvidenceProvided").asBoolean()).isFalse();
+        assertThat(sample.at("/frontendEntrypointRef").asText()).startsWith("EXTERNAL_REF_REQUIRED:");
+        assertThat(sample.at("/reverseProxyUpstreamRef").asText()).startsWith("EXTERNAL_REF_REQUIRED:");
+        assertThat(sample.at("/deploymentEntrypointRef").asText()).startsWith("EXTERNAL_REF_REQUIRED:");
+        assertThat(sample.at("/rollbackEntrypointRef").asText()).startsWith("EXTERNAL_REF_REQUIRED:");
+        assertThat(sample.at("/canaryWeightRef").asText()).startsWith("EXTERNAL_REF_REQUIRED:");
+        assertThat(sample.at("/observabilityRef").asText()).startsWith("EXTERNAL_REF_REQUIRED:");
+        assertThat(sample.at("/approvalRef").asText()).startsWith("APPROVAL_REF_REQUIRED:");
+        assertThat(sample.at("/evidenceRefs").size()).isGreaterThanOrEqualTo(7);
+        assertThat(sample.at("/blockedExecution/frontendEntrypointApplied").asBoolean()).isFalse();
+        assertThat(sample.at("/blockedExecution/reverseProxyUpstreamApplied").asBoolean()).isFalse();
+        assertThat(sample.at("/blockedExecution/deploymentEntrypointApplied").asBoolean()).isFalse();
+        assertThat(sample.at("/blockedExecution/rollbackEntrypointApplied").asBoolean()).isFalse();
+        assertThat(sample.at("/blockedExecution/canaryWeightApplied").asBoolean()).isFalse();
+        assertThat(sample.at("/blockedExecution/observabilityConnected").asBoolean()).isFalse();
+        assertThat(sample.at("/blockedExecution/approvalGranted").asBoolean()).isFalse();
+        assertThat(sample.at("/blockedExecution/realProductionCutoverExecuted").asBoolean()).isFalse();
+        assertThat(sample.at("/goNoGoImpact/readyForProduction").asBoolean()).isFalse();
+        assertThat(sample.at("/goNoGoImpact/readyToReplaceGateway").asBoolean()).isFalse();
+        assertThat(sample.at("/goNoGoImpact/oldApiGatewayRetirementAllowed").asBoolean()).isFalse();
+        assertThat(sample.at("/nextRequiredGates").toString())
+                .contains("PRODUCTION_CENTRAL_CONFIG_PROVIDER")
+                .contains("PERSISTENT_AUDIT_SINK")
+                .contains("REAL_OBSERVABILITY_SMOKE");
+
+        String safeValueText = sample.toString().toLowerCase()
+                .replace(sample.at("/redactionPolicy").toString().toLowerCase(), "")
+                .replace(sample.at("/verificationCommands").toString().toLowerCase(), "")
+                .replace(sample.at("/notes").toString().toLowerCase(), "");
+        assertThat(safeValueText)
+                .doesNotContain("authorization")
+                .doesNotContain("cookie")
+                .doesNotContain("x-gateway-internal-signature")
+                .doesNotContain("token")
+                .doesNotContain("secret")
+                .doesNotContain("password")
+                .doesNotContain("passwd")
+                .doesNotContain("pwd")
+                .doesNotContain("privatekey")
+                .doesNotContain("id_rsa")
+                .doesNotContain("jdbc:")
+                .doesNotContain("mongodb://")
+                .doesNotContain("redis://")
+                .doesNotContain("akia")
+                .doesNotContain("kubectl")
+                .doesNotContain("docker")
+                .doesNotContain("powershell")
+                .doesNotContain("cmd.exe")
+                .doesNotContain("ssh ")
+                .doesNotContain("scp ")
+                .doesNotContain("c:\\users\\")
+                .doesNotContain(".env")
+                .doesNotContain("http://")
+                .doesNotContain("https://");
     }
 
     @Test
