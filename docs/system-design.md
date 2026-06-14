@@ -4,15 +4,15 @@
 
 ## 总体方向
 
-北冥官网从零开始开发。当前仓库只以正式需求文档、系统设计文档、开发治理文档和后续接口契约为开发依据。
+北冥官网当前以后端模块化单体和前后端分离为主线继续演进。当前唯一后端 Maven 入口是 `backend/pom.xml`，本地后端服务端口是 `8135`，本地联调默认入口统一为 `http://127.0.0.1:8135`，业务路径保持 `/api/v1/**` 原样。
 
-系统采用前后端分离设计。前端负责官网展示、用户中心、管理后台和运维控制台界面。后端按模块拆分，先保证边界清晰，再按复杂度决定是单体多模块、独立服务，还是完整微服务。
+系统采用前后端分离设计。前端负责官网展示、用户中心、管理后台和运维控制台界面。后端按业务模块拆分边界，在同一个 Spring Boot 工程内统一编译、测试和运行。历史独立入口和端口只作为模块来源、回滚引用或脱敏证据样板引用保留，不再作为当前仓库的开发架构。
 
 服务器运维能力采用控制面和节点守护进程分离。官网后台只发起授权后的管理请求，真实服务器上的容器、虚拟机、文件、日志和 Minecraft 实例操作由节点守护进程执行。
 
 ## 开发原则
 
-认证服务必须独立成边界。网关或后端入口负责统一路由、基础鉴权、请求日志和认证转发。资源服务必须和后台运维控制分开。节点守护进程负责真实服务器上的系统资源、进程、容器、文件和日志操作。
+认证模块必须独立成边界。统一后端入口负责统一路由、基础鉴权、请求日志和认证转发。资源模块必须和后台运维控制分开。外部节点执行器负责真实服务器上的系统资源、进程、容器、文件和日志操作，当前不属于本仓库源码。
 
 账号模块必须覆盖注册、登录、当前用户、退出、会话校验、用户列表和用户修改。认证方案在实现前单独确认，最终必须兼容 `OWNER`、`ADMIN`、`HELPER`、`USER` 和细粒度能力点。
 
@@ -31,7 +31,7 @@
   |
 API 网关或后端入口
   |
-业务服务层
+业务模块层
   |-- auth            账号、登录、权限、邀请码
   |-- profile         成员档案、Minecraft 身份
   |-- content         公告、页面、作品、专题
@@ -50,7 +50,7 @@ API 网关或后端入口
   |-- online-map      在线地图接入控制面和公开展示快照，由 portal-core 承载
   |-- admin           后台聚合、配置、审计
   |-- ops-core        运维控制面合并运行单元，承载 ops-control、cloudreve-sync、backup-recovery、alerting、plugin-integration 和 ops-image-market
-  |-- unified-backend 统一后端候选入口，并行挂载 api-gateway、business-core、admission-core、engagement-core 与 portal-core 试点
+  |-- unified-backend 统一后端入口，当前由 backend/pom.xml 承载
   |-- ops-control     服务器与资源运维控制面
   |-- cloudreve-sync  Cloudreve API 深度接入与同步快照
   |-- backup-recovery 备份策略、备份点、校验、恢复演练和恢复申请
@@ -114,20 +114,20 @@ API 网关或后端入口
 
 第八轮单服务合并准备不真正合并进程。`api-gateway` 增加只读运行拓扑，用来固化当时 6 个官网后端回滚入口、25 条业务转发路由、五个 core 运行单元和外部节点执行器出仓边界。后续如果把 `api-gateway` 与五个 core 收敛成统一后端入口，必须先保持现有路径前缀、认证方式、响应格式、模块数据归属和测试守卫不变，再逐步替换为 in-process 装配。外部节点执行器不进入统一后端候选。
 
-第九轮新增 `unified-backend-service:8135` 作为统一后端并行候选入口，先把 `api-gateway` 与低风险的 `portal-core` 放进同一 Spring Boot 进程验证 in-process 挂载。后续优化已把第一批基础业务运行单元 `business-core`、第二批入服准入运行单元 `admission-core` 和第三批社区运营运行单元 `engagement-core` 挂入同一候选进程。第十轮把第四批和第六期后台运维通知运行单元 `ops-core` 挂入同一候选进程，作为最终合并成一个后端服务前的完整装配试点。第十一轮把候选入口推进到生产替换预演阶段，新增真实 HTTP 演练、路由漂移、回滚窗口和入口切换开关预检。第十二轮补齐真实 Web 环境 HTTP 演练和网关到候选挂载清单的路由漂移自动化扫描，第十五轮补齐生产灰度计划 evidence，第十六轮进入后端侧单服务入口准备阶段，但仍不修改前端，不把生产流量切到候选入口。候选入口必须保留 `/api/v1/gateway/**`、`/api/v1/business-core/**`、`/api/v1/admission-core/**`、`/api/v1/engagement-core/**`、`/api/v1/ops-core/**`、`/api/v1/portal-core/**`、`/api/v1/auth/**`、`/api/v1/profile/**`、`/api/v1/notifications/**`、`/api/v1/content/**`、`/api/v1/server-status/**`、`/api/v1/resources/**`、`/api/v1/admin/**`、`/api/v1/onboarding/**`、`/api/v1/exams/**`、`/api/v1/whitelist/**`、`/api/v1/attendance/**`、`/api/v1/community/**`、`/api/v1/activity/**`、`/api/v1/calendar/**`、`/api/v1/changelog/**`、`/api/v1/ops-control/**`、`/api/v1/cloudreve-sync/**`、`/api/v1/backup-recovery/**`、`/api/v1/alerting/**`、`/api/v1/plugin-integration/**`、`/api/v1/cross-platform-notification/**`、`/api/v1/ops-image-market/**`、`/api/v1/guides/**`、`/api/v1/materials/**` 和 `/api/v1/online-map/**` 原路径、原响应格式、原认证方式和原错误码。第四十七轮后本地开发态 Maven 入口逐步收束，当前唯一后端 Maven 入口是 `backend/pom.xml`，当前本地后端服务端口是 `8135`，本地联调默认入口统一为 `http://127.0.0.1:8135`，业务路径保持 `/api/v1/**` 原样；五个 core 模块源码已经物理位于 `backend/src/main/java`，由 `backend/pom.xml` 统一编译和测试，不再通过 build-helper 装配旧 core 源码目录，外部节点执行器已出仓且未连接。候选入口完成全路径装配、真实 HTTP 演练、路由漂移扫描和后端单服务准备 evidence 后仍只能说明后端候选入口具备更完整的受控切流证据，不能描述成生产单服务替换完成。
+当前统一后端入口由 `backend:8135` 承载。它在同一 Spring Boot 工程内挂载 `api-gateway`、`business-core`、`admission-core`、`engagement-core`、`ops-core`、`portal-core` 和全部业务模块，当前必须保留 `/api/v1/gateway/**`、`/api/v1/business-core/**`、`/api/v1/admission-core/**`、`/api/v1/engagement-core/**`、`/api/v1/ops-core/**`、`/api/v1/portal-core/**`、`/api/v1/auth/**`、`/api/v1/profile/**`、`/api/v1/notifications/**`、`/api/v1/content/**`、`/api/v1/server-status/**`、`/api/v1/resources/**`、`/api/v1/admin/**`、`/api/v1/onboarding/**`、`/api/v1/exams/**`、`/api/v1/whitelist/**`、`/api/v1/attendance/**`、`/api/v1/community/**`、`/api/v1/activity/**`、`/api/v1/calendar/**`、`/api/v1/changelog/**`、`/api/v1/ops-control/**`、`/api/v1/cloudreve-sync/**`、`/api/v1/backup-recovery/**`、`/api/v1/alerting/**`、`/api/v1/plugin-integration/**`、`/api/v1/cross-platform-notification/**`、`/api/v1/ops-image-market/**`、`/api/v1/guides/**`、`/api/v1/materials/**` 和 `/api/v1/online-map/**` 原路径、原响应格式、原认证方式和原错误码。五个 core 模块源码已经物理位于 `backend/src/main/java`，由 `backend/pom.xml` 统一编译和测试，不再通过 build-helper 装配旧 core 源码目录。真实生产入口切流、真实集中配置 provider、持久化审计 sink、真实观测 smoke、回滚窗口完成和审批证据仍在仓库外阻塞。
 
-第四十二轮在候选入口上增加受控生产入口切流收据门禁。该门禁只读取仓库内脱敏收据样板或经过脱敏复核的外部收据结构，默认 `productionControlledCutoverStatus=BLOCKED_BY_REAL_CUTOVER_RECEIPT_NOT_PROVIDED`。没有真实外部切流收据、真实生产流量观测、真实审计写入 smoke、真实 dashboard、真实 alert、真实 trace 和回滚窗口完成证据时，`readyForProduction`、`readyToReplaceGateway` 和所有旧入口退役字段必须保持 false。第四十二轮不删除 `api-gateway-service` 或五个 core，旧入口退役只能在后续轮次按顺序逐个处理。
+第四十二轮在统一后端入口上增加受控生产入口切流收据门禁。该门禁只读取仓库内脱敏收据样板或经过脱敏复核的外部收据结构，默认 `productionControlledCutoverStatus=BLOCKED_BY_REAL_CUTOVER_RECEIPT_NOT_PROVIDED`。没有真实外部切流收据、真实生产流量观测、真实审计写入 smoke、真实 dashboard、真实 alert、真实 trace 和回滚窗口完成证据时，`readyForProduction`、`readyToReplaceGateway` 和所有旧入口退役字段必须保持 false。第四十二轮不删除 `api-gateway-service` 或五个 core，旧入口退役只能在后续轮次按顺序逐个处理。
 
-第四十三轮在候选入口上增加 `api-gateway-service:8125` 受控退役预检门禁。该门禁只读取仓库内脱敏退役收据样板 `docs/unified-backend-api-gateway-retirement-receipt-sample.json`，默认 `apiGatewayControlledRetirementStatus=BLOCKED_BY_API_GATEWAY_RETIREMENT_RECEIPT_NOT_PROVIDED`。它只证明 `unified-backend-service:8135` 已具备退役收据结构、删除清单、网关自有 API parity、回滚入口、五个 core 保护和 unified 自承载网关源码的本地校验能力，不证明真实生产入口已切换，不证明 `api-gateway` 新流量归零，不证明回滚窗口完成，也不允许删除 `api-gateway-service`。`unified-backend-service` 不再通过 build-helper 编译 `../api-gateway-service/src/main/java`，但 `api-gateway-service:8125` 仍是受保护回滚入口。五个 core 继续保持 `readyToRetireBusinessCore=false`、`readyToRetireAdmissionCore=false`、`readyToRetireEngagementCore=false`、`readyToRetireOpsCore=false` 和 `readyToRetirePortalCore=false`。
+第四十三轮在统一后端入口上增加 `api-gateway-service:8125` 受控退役预检门禁。该门禁只读取仓库内脱敏退役收据样板 `docs/unified-backend-api-gateway-retirement-receipt-sample.json`，默认 `apiGatewayControlledRetirementStatus=BLOCKED_BY_API_GATEWAY_RETIREMENT_RECEIPT_NOT_PROVIDED`。它只证明 `backend:8135` 已具备退役收据结构、删除清单、网关自有 API parity、回滚入口、五个 core 保护和 unified 自承载网关源码的本地校验能力，不证明真实生产入口已切换，不证明 `api-gateway` 新流量归零，不证明回滚窗口完成，也不允许删除 `api-gateway-service`。`backend` 不再通过 build-helper 编译 `../api-gateway-service/src/main/java`，但 `api-gateway-service:8125` 仍是受保护回滚入口。五个 core 继续保持 `readyToRetireBusinessCore=false`、`readyToRetireAdmissionCore=false`、`readyToRetireEngagementCore=false`、`readyToRetireOpsCore=false` 和 `readyToRetirePortalCore=false`。
 
-第四十四轮在候选入口上增加 `api-gateway-service:8125` 外部退役证据接收与删除审批门禁。该门禁只读取仓库内脱敏样板 `docs/unified-backend-api-gateway-external-retirement-evidence-sample.json` 和经过脱敏复核的外部证据结构，默认 `apiGatewayExternalRetirementEvidenceStatus=BLOCKED_BY_EXTERNAL_API_GATEWAY_RETIREMENT_EVIDENCE_NOT_PROVIDED`。它只证明系统已经具备接收真实切流、流量归零、真实 audit write smoke、dashboard、alert、trace、回滚窗口、退役审批和用户删除清单确认的结构化门禁，不证明这些外部事实已经发生。没有真实外部证据和用户删除清单确认时，`api-gateway-service:8125` 仍是受保护回滚入口，五个 core 不进入退役执行。
+第四十四轮在统一后端入口上增加 `api-gateway-service:8125` 外部退役证据接收与删除审批门禁。该门禁只读取仓库内脱敏样板 `docs/unified-backend-api-gateway-external-retirement-evidence-sample.json` 和经过脱敏复核的外部证据结构，默认 `apiGatewayExternalRetirementEvidenceStatus=BLOCKED_BY_EXTERNAL_API_GATEWAY_RETIREMENT_EVIDENCE_NOT_PROVIDED`。它只证明系统已经具备接收真实切流、流量归零、真实 audit write smoke、dashboard、alert、trace、回滚窗口、退役审批和用户删除清单确认的结构化门禁，不证明这些外部事实已经发生。没有真实外部证据和用户删除清单确认时，`api-gateway-service:8125` 仍是受保护回滚入口，五个 core 不进入退役执行。
 
-第四十六轮在候选入口上增加真实生产入口切流证据闭环门禁。该门禁只读取仓库内脱敏样板 `docs/unified-backend-real-production-entrypoint-cutover-evidence-sample.json` 和经过脱敏复核的切流证据结构，默认 `realProductionEntrypointCutoverStatus=BLOCKED_BY_REAL_PRODUCTION_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED`。它只证明系统已经具备接收真实生产入口切流、切流窗口、生产流量观测、旧网关新流量归零、真实 audit write smoke、dashboard、alert、trace、回滚和审批的结构化门禁，不证明这些外部事实已经发生。即使切流证据样板完整，`oldApiGatewayRetirementAllowed` 仍保持 `false`，`api-gateway-service:8125` 仍是受保护回滚入口，五个 core 不进入退役执行。
+第四十六轮在统一后端入口上增加真实生产入口切流证据闭环门禁。该门禁只读取仓库内脱敏样板 `docs/unified-backend-real-production-entrypoint-cutover-evidence-sample.json` 和经过脱敏复核的切流证据结构，默认 `realProductionEntrypointCutoverStatus=BLOCKED_BY_REAL_PRODUCTION_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED`。它只证明系统已经具备接收真实生产入口切流、切流窗口、生产流量观测、旧网关新流量归零、真实 audit write smoke、dashboard、alert、trace、回滚和审批的结构化门禁，不证明这些外部事实已经发生。即使切流证据样板完整，`oldApiGatewayRetirementAllowed` 仍保持 `false`，`api-gateway-service:8125` 仍是受保护回滚入口，五个 core 不进入退役执行。
 
-第五十一轮在候选入口上增加外部入口与切流证据接收门禁。该门禁只读取仓库内脱敏样板 `docs/unified-backend-external-entrypoint-cutover-evidence-intake-sample.json` 和经过脱敏复核的外部入口证据结构，默认 `externalEntrypointCutoverEvidenceIntakeStatus=BLOCKED_BY_EXTERNAL_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED`。它只证明系统已经具备接收前端入口、反向代理 upstream、部署入口、回滚入口、灰度权重、观测引用和审批引用的结构化格式，不证明真实外部入口已配置，不读取真实域名、token、连接串或 dashboard 地址，不执行真实切流。没有真实外部入口证据、集中配置 provider、持久化审计 sink 和真实观测 smoke 时，`readyForProduction=false`、`readyToReplaceGateway=false` 和 `oldApiGatewayRetirementAllowed=false` 必须保持不变，`unified-backend-service:8135` 仍只能作为受控候选入口。
+第五十一轮在统一后端入口上增加外部入口与切流证据接收门禁。该门禁只读取仓库内脱敏样板 `docs/unified-backend-external-entrypoint-cutover-evidence-intake-sample.json` 和经过脱敏复核的外部入口证据结构，默认 `externalEntrypointCutoverEvidenceIntakeStatus=BLOCKED_BY_EXTERNAL_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED`。它只证明系统已经具备接收前端入口、反向代理 upstream、部署入口、回滚入口、灰度权重、观测引用和审批引用的结构化格式，不证明真实外部入口已配置，不读取真实域名、token、连接串或 dashboard 地址，不执行真实切流。没有真实外部入口证据、集中配置 provider、持久化审计 sink 和真实观测 smoke 时，`readyForProduction=false`、`readyToReplaceGateway=false` 和 `oldApiGatewayRetirementAllowed=false` 必须保持不变。
 
 
-第四十七轮在候选入口上完成本地开发态 `api-gateway-service` 入口退役门禁。当前 `localApiGatewayEntrypointRetirementStatus=PASS_LOCAL_API_GATEWAY_ENTRYPOINT_RETIRED_UNIFIED_GATEWAY_APIS_PRESERVED`，只证明 `unified-backend-service:8135` 已自承载网关能力，不证明真实生产切流完成。
+第四十七轮在统一后端入口上完成本地开发态 `api-gateway-service` 入口退役门禁。当前 `localApiGatewayEntrypointRetirementStatus=PASS_LOCAL_API_GATEWAY_ENTRYPOINT_RETIRED_UNIFIED_GATEWAY_APIS_PRESERVED`，只证明 `backend:8135` 已自承载网关能力，不证明真实生产切流完成。
 
 本轮在用户确认下完成五个 core 独立 Maven 入口本地退役。`backend/pom.xml` 成为仓库内唯一后端 Maven 启动入口，五个 core 模块源码已经物理位于 `backend/src/main/java`，由 `backend/pom.xml` 统一编译和测试，不再通过 build-helper 装配旧 core 源码目录。该调整只退出 `pom.xml`、独立 Spring Boot 启动类和独立 `application.yml`，不改变 `auth`、`profile`、`notification`、`content`、`server-status`、`resource`、`admin`、`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、`ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`cross-platform-notification`、`ops-image-market`、`guide`、`material` 和 `online-map` 的正式路径、权限、响应格式、错误码、审计或降级规则。真实生产入口切流、真实流量观测、集中配置和持久化审计仍未完成。
 
@@ -254,11 +254,11 @@ Cloudreve 第一阶段可以作为外部分享链接存在。后续接入 API �
 
 ## 部署原则
 
-官网前端、后端业务服务、数据库、缓存、Cloudreve、Minecraft 服务器和外部节点执行器应分开部署。开发阶段可以先用较少进程模拟模块边界，但接口、权限和数据归属不能混乱。当前第四批运维控制面模块源码保留在 `ops-core-service` 目录，第五批玩家门户体验模块源码保留在 `portal-core-service` 目录，本地开发态 `api-gateway-service:8125` Maven 入口已退役，五个 core 独立 Maven 入口也已退役，网关能力和五个 core 模块由 `unified-backend-service:8135` 自承载；第九轮新增 `unified-backend-service:8135` 作为并行候选入口，第十轮候选入口逐步挂载 `api-gateway`、`business-core`、`admission-core`、`engagement-core`、`ops-core` 和 `portal-core`，第十六轮候选入口进入后端侧单服务入口准备阶段，仍不替代生产入口；外部节点执行器已出仓且未接入。
+官网前端、后端模块化单体、数据库、缓存、Cloudreve、Minecraft 服务器和外部节点执行器应分开部署。开发阶段以 `backend/pom.xml` 这一个 Spring Boot 工程模拟和验证后端模块边界，但接口、权限和数据归属不能混乱。本地开发态 `api-gateway-service:8125` Maven 入口已退役，五个 core 独立 Maven 入口也已退役，网关能力和五个 core 模块由 `backend:8135` 自承载。外部节点执行器已出仓且未接入。
 
 节点守护进程部署在被管理服务器上。它只开放必要管理端口，优先由控制面主动连接或通过受控通道通信，不暴露无鉴权的系统操作接口。
 
-后续如果采用微服务，网关负责路由、跨域、基础鉴权、可信身份签名、限流和请求日志。业务服务负责自己的业务规则。网关不直接访问数据库。
+统一后端入口负责路由、跨域、基础鉴权、可信身份签名、限流和请求日志。业务模块负责自己的业务规则。网关能力不直接访问业务数据库。
 
 本地开发端口必须固定，避免 IDEA、命令行、前端代理和后续网关联调互相抢占默认端口。当前唯一后端 Maven 入口是 `backend/pom.xml`，当前本地后端服务端口是 `8135`，本地联调默认入口统一为 `http://127.0.0.1:8135`，业务路径保持 `/api/v1/**` 原样。`auth`、`profile`、`notification`、`content`、`server-status`、`resource` 和 `admin` 由统一后端装配的 `business-core` 模块承载；`onboarding`、`exam`、`whitelist` 和 `attendance` 由统一后端装配的 `admission-core` 模块承载；`community`、`activity`、`calendar` 和 `changelog` 由统一后端装配的 `engagement-core` 模块承载；`ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`ops-image-market` 和 `cross-platform-notification` 由统一后端装配的 `ops-core` 模块承载；`guide`、`material` 和 `online-map` 由统一后端装配的 `portal-core` 模块承载。五个 core 模块源码已经物理位于 `backend/src/main/java`，由 `backend/pom.xml` 统一编译和测试，不再通过 build-helper 装配旧 core 源码目录。端口 `8130` 到 `8134` 只保留为五个 core 历史独立入口和模块来源记录，不再作为当前本地 Maven 启动入口。历史端口 `8101` 到 `8116`、`8118` 到 `8124`、`8126` 和 `8127` 只保留为模块原端口记录，不作为当前网关上游。外部节点执行器端口不在本仓库分配。旧 `backend/online-map-service` 已退役且不得恢复；第六期完成后旧 `backend/cross-platform-notification-service` 不得恢复。新增或调整端口时，必须同步更新正式文档和对应自动化测试。
 

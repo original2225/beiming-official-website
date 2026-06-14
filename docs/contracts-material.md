@@ -4,11 +4,11 @@
 
 ## 文档定位
 
-本文档是 `material` 微服务的正式 API 契约。后续 `content`、`community`、`resource`、`admin`、前端适配和精彩瞬间展示只能通过本文档定义的接口读取或管理玩家投稿素材，不能直接读取或修改 `material` 数据库。
+本文档是 `material` 模块的正式 API 契约。后续 `content`、`community`、`resource`、`admin`、前端适配和精彩瞬间展示只能通过本文档定义的接口读取或管理玩家投稿素材，不能直接读取或修改 `material` 数据库。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、时间格式、基础角色、能力点、审计字段、风险等级、通用状态模型和通用错误码均以公共契约为准。本文档只补充 `material` 的职责边界、上传模型、授权声明、文件安全状态、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
 
-`material` 适配 `auth`、`profile` 和 `notification`，不要求前序服务反向适配 `material`。它通过后端入口传入的认证上下文、`/api/v1/auth/me`、`/api/v1/auth/session/verify` 或测试环境 auth stub 读取当前用户、角色和能力点；通过 profile 正式接口或受控 stub 读取投稿作者公开快照和成员状态；通过 notification 正式接口或受控适配层投递审核结果通知。`material` 不能导入前序服务的实体、Repository、内存存储、测试种子或内部实现。
+`material` 适配 `auth`、`profile` 和 `notification`，不要求前序模块反向适配 `material`。它通过后端入口传入的认证上下文、`/api/v1/auth/me`、`/api/v1/auth/session/verify` 或测试环境 auth stub 读取当前用户、角色和能力点；通过 profile 正式接口或受控 stub 读取投稿作者公开快照和成员状态；通过 notification 正式接口或受控适配层投递审核结果通知。`material` 不能导入前序模块的实体、Repository、内存存储、测试种子或内部实现。
 
 ## 参考生态
 
@@ -440,4 +440,4 @@ auth 认证上下文失败时，当前用户和后台接口不得使用旧用户
 
 `material` API 文档按 `docs/contracts-material.md` 独立存在，并由 `.local-docs/tests-material.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求和模块验收口径。
 
-`material` 完成时必须满足以下条件：全部接口按本文档实现；公开接口不泄露后台字段、上传票据、内部路径、对象存储密钥、通知结果和审计字段；当前用户只能管理自己的投稿；后台接口按角色限制；上传会话、文件安全摘要、授权声明、profile 作者快照、审核通知、精选展示、状态流转、幂等、审计、自检摘要、端口配置和前序服务适配都有自动化测试；`.local-docs/tests-material.md` 中全部测试用例都有对应自动化验证；未实现时自动化测试必须先失败；实现后 material 在 `portal-core-service:8134` 中全部测试通过；api-gateway `/api/v1/materials` 路由指向 `8134` 并测试通过；旧 `material-service:8126` Maven 入口已退役且不得恢复；没有修改前序服务稳定接口；没有把 `.local-docs/` 提交到仓库；没有把玩家资源下载、Cloudreve 管理、服务器文件管理、容器、终端、节点执行、真实文件删除或真实对象存储密钥塞进 `material`。
+`material` 完成时必须满足以下条件：全部接口按本文档实现；公开接口不泄露后台字段、上传票据、内部路径、对象存储密钥、通知结果和审计字段；当前用户只能管理自己的投稿；后台接口按角色限制；上传会话、文件安全摘要、授权声明、profile 作者快照、审核通知、精选展示、状态流转、幂等、审计、自检摘要、端口配置和前序模块适配都有自动化测试；`.local-docs/tests-material.md` 中全部测试用例都有对应自动化验证；未实现时自动化测试必须先失败；实现后 material 在 `portal-core-service:8134` 中全部测试通过；api-gateway `/api/v1/materials` 路由指向 `8134` 并测试通过；旧 `material-service:8126` Maven 入口已退役且不得恢复；没有修改前序模块稳定接口；没有把 `.local-docs/` 提交到仓库；没有把玩家资源下载、Cloudreve 管理、服务器文件管理、容器、终端、节点执行、真实文件删除或真实对象存储密钥塞进 `material`。

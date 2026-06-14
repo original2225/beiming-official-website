@@ -12,7 +12,7 @@
 
 `ops-core` 承载 `ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`ops-image-market` 和 `cross-platform-notification` 七个后台运维与通知控制面模块。合并后这些模块继续使用原路径前缀，分别是 `/api/v1/ops-control`、`/api/v1/cloudreve-sync`、`/api/v1/backup-recovery`、`/api/v1/alerting`、`/api/v1/plugin-integration`、`/api/v1/ops-image-market` 和 `/api/v1/cross-platform-notification`。
 
-`ops-core` 不新增七个业务模块的业务语义，不把七套 store、状态机、错误码、审计对象或主数据揉成一个大模块，不直接读取前序服务数据库，不绕过正式 API 适配前序服务，也不执行真实宿主机、容器、节点、Cloudreve、registry、scanner、插件命令或真实外部消息发送。
+`ops-core` 不新增七个业务模块的业务语义，不把七套 store、状态机、错误码、审计对象或主数据揉成一个大模块，不直接读取前序模块数据库，不绕过正式 API 适配前序模块，也不执行真实宿主机、容器、节点、Cloudreve、registry、scanner、插件命令或真实外部消息发送。
 
 `api-gateway-service` 仍保持独立。外部节点执行器已出仓，不再作为官网仓库内 `ops-core` 合并对象。第六期完成后 `cross-platform-notification` 只保留独立模块契约身份，不再保留独立 Maven 运行入口。`ops-core` 可以展示真实能力未接入的缺口，但不能把模拟、stub、fake 或 blocked 状态伪造成生产完成。
 
@@ -34,17 +34,17 @@
 
 ## 模块装配表
 
-| 模块 | 原服务目录 | 原端口 | 当前服务目录 | 当前端口 | API 数 | 正式契约 | 旧测试入口状态 | 当前测试入口 |
+| 模块 | 历史来源目录 | 历史端口 | 当前模块源码归属 | 当前后端入口 | API 数 | 正式契约 | 历史测试入口状态 | 当前测试入口 |
 | --- | --- | ---: | --- | ---: | ---: | --- | --- | --- |
-| `ops-control` | `backend/ops-control-service` | 8116 | `backend/ops-core-service` | 8133 | 31 | `docs/contracts-ops-control.md` | 已退役，`legacyTestCommand=null` | `mvn -q -f backend/pom.xml test` |
-| `cloudreve-sync` | `backend/cloudreve-sync-service` | 8118 | `backend/ops-core-service` | 8133 | 16 | `docs/contracts-cloudreve-sync.md` | 已退役，`legacyTestCommand=null` | `mvn -q -f backend/pom.xml test` |
-| `backup-recovery` | `backend/backup-recovery-service` | 8119 | `backend/ops-core-service` | 8133 | 25 | `docs/contracts-backup-recovery.md` | 已退役，`legacyTestCommand=null` | `mvn -q -f backend/pom.xml test` |
-| `alerting` | `backend/alerting-service` | 8120 | `backend/ops-core-service` | 8133 | 24 | `docs/contracts-alerting.md` | 已退役，`legacyTestCommand=null` | `mvn -q -f backend/pom.xml test` |
-| `plugin-integration` | `backend/plugin-integration-service` | 8122 | `backend/ops-core-service` | 8133 | 38 | `docs/contracts-plugin-integration.md` | 已退役，`legacyTestCommand=null` | `mvn -q -f backend/pom.xml test` |
-| `ops-image-market` | `backend/ops-image-market-service` | 8124 | `backend/ops-core-service` | 8133 | 49 | `docs/contracts-ops-image-market.md` | 已退役，`legacyTestCommand=null` | `mvn -q -f backend/pom.xml test` |
-| `cross-platform-notification` | `backend/cross-platform-notification-service` | 8123 | `backend/ops-core-service` | 8133 | 36 | `docs/contracts-cross-platform-notification.md` | 已退役，`legacyTestCommand=null` | `mvn -q -f backend/pom.xml test` |
+| `ops-control` | `backend/ops-control-service` | 8116 | `backend/src/main/java` | `backend:8135` | 31 | `docs/contracts-ops-control.md` | 已退役，`legacyTestCommand=null` | `mvn -q -f backend/pom.xml test` |
+| `cloudreve-sync` | `backend/cloudreve-sync-service` | 8118 | `backend/src/main/java` | `backend:8135` | 16 | `docs/contracts-cloudreve-sync.md` | 已退役，`legacyTestCommand=null` | `mvn -q -f backend/pom.xml test` |
+| `backup-recovery` | `backend/backup-recovery-service` | 8119 | `backend/src/main/java` | `backend:8135` | 25 | `docs/contracts-backup-recovery.md` | 已退役，`legacyTestCommand=null` | `mvn -q -f backend/pom.xml test` |
+| `alerting` | `backend/alerting-service` | 8120 | `backend/src/main/java` | `backend:8135` | 24 | `docs/contracts-alerting.md` | 已退役，`legacyTestCommand=null` | `mvn -q -f backend/pom.xml test` |
+| `plugin-integration` | `backend/plugin-integration-service` | 8122 | `backend/src/main/java` | `backend:8135` | 38 | `docs/contracts-plugin-integration.md` | 已退役，`legacyTestCommand=null` | `mvn -q -f backend/pom.xml test` |
+| `ops-image-market` | `backend/ops-image-market-service` | 8124 | `backend/src/main/java` | `backend:8135` | 49 | `docs/contracts-ops-image-market.md` | 已退役，`legacyTestCommand=null` | `mvn -q -f backend/pom.xml test` |
+| `cross-platform-notification` | `backend/cross-platform-notification-service` | 8123 | `backend/src/main/java` | `backend:8135` | 36 | `docs/contracts-cross-platform-notification.md` | 已退役，`legacyTestCommand=null` | `mvn -q -f backend/pom.xml test` |
 
-七个继承模块合计 219 个业务 API 路由。`ops-core` 自有接口为 5 个。`ops-core-service` 当前进程应注册 224 个 `/api/v1/**` 方法路由。
+七个继承模块合计 219 个业务 API 路由。`ops-core` 自有接口为 5 个。当前统一后端 `backend:8135` 应注册 224 个 `/api/v1/**` 方法路由。
 
 ## 生产就绪能力状态
 
@@ -53,7 +53,7 @@
 | 能力 | 第一版状态 | 说明 |
 | --- | --- | --- |
 | 真实数据库持久化 | `BLOCKED` | 七个继承模块仍以本地内存或契约 stub 为主。 |
-| 真实跨服务 HTTP adapter | `BLOCKED` | 前序服务依赖仍以本地安全快照或测试适配器表示。 |
+| 真实跨服务 HTTP adapter | `BLOCKED` | 前序模块依赖仍以本地安全快照或测试适配器表示。 |
 | 真实审计持久化 | `BLOCKED` | 审计闭环已覆盖回滚和脱敏，但未接持久化审计库。 |
 | 外部节点执行器连接 | `BLOCKED` | 控制面不得直连宿主机命令，真实执行由独立外部项目后续闭环。 |
 | 真实 Cloudreve API | `BLOCKED` | `cloudreve-sync` 只保存 provider、文件、分享和同步摘要，不保存真实 token。 |

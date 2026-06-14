@@ -4,9 +4,9 @@
 
 ## 文档定位
 
-本文件是贯穿北冥官网整个开发周期的正式开发治理文档，会随仓库上传。所有模块、微服务、前端页面、后台能力、运维控制能力和文档调整，都必须遵守本文件。
+本文件是贯穿北冥官网整个开发周期的正式开发治理文档，会随仓库上传。所有后端模块、前端页面、后台能力、运维控制能力和文档调整，都必须遵守本文件。当前后端架构是模块化单体，仓库内唯一后端 Maven 入口是 `backend/pom.xml`，本地后端端口是 `8135`。
 
-开发前必须先读取 `AGENTS.md`、`docs/requirements.md`、`docs/system-design.md` 和本文件。开发某个微服务或模块前，还必须读取该模块相关的正式文档、接口契约、现有代码、配置、路由、数据结构、测试和本地交接记录。
+开发前必须先读取 `AGENTS.md`、`docs/requirements.md`、`docs/system-design.md` 和本文件。开发某个模块前，还必须读取该模块相关的正式文档、接口契约、现有代码、配置、路由、数据结构、测试和本地交接记录。
 
 ## 文档存放边界
 
@@ -14,11 +14,11 @@
 
 `docs/requirements.md`、`docs/system-design.md` 和 `docs/development-governance.md` 是项目开发的核心正式文档，必须随仓库上传，供所有同伴查看和遵守。后续新增的正式接口契约、模块设计和验收标准也应放在 `docs/` 并提交。API 文档按 `docs/contracts-<module>.md` 独立命名，公共规则只放在 `docs/contracts-common.md`，不得把多个业务模块混写到一个 API 文档中。
 
-`.local-docs/` 只保存不需要上传的本地资料，包括开发手册、阶段计划、本地测试文档、本地测试记录、AI 对话交接文档、临时分析、调研草稿、排障记录、个人工作笔记和微服务开发指导文档。测试文档按 `.local-docs/tests-<module>.md` 独立命名。`.local-docs/` 必须被 `.gitignore` 忽略，不得提交到 GitHub。
+`.local-docs/` 只保存不需要上传的本地资料，包括开发手册、阶段计划、本地测试文档、本地测试记录、AI 对话交接文档、临时分析、调研草稿、排障记录、个人工作笔记和本地模块开发指导文档。测试文档按 `.local-docs/tests-<module>.md` 独立命名。`.local-docs/` 必须被 `.gitignore` 忽略，不得提交到 GitHub。
 
 `.local-docs/` 不是长期资料库。阶段资料完成参考价值后，应把可复用经验提炼进 `docs/` 中的正式文档、接口契约或模块手册，再清理对应本地文件。过期资料不得长期堆积，也不得作为后续开发的唯一依据。
 
-微服务开发指导文档可以先放在 `.local-docs/`，用于记录本地启动方式、验证命令、阶段问题和交接说明。模块进入正式开发或交付后，接口契约、数据边界、权限规则、验收标准和长期维护要求必须沉淀到 `docs/`，不能只留在本地指导文档里。
+本地模块开发指导文档可以先放在 `.local-docs/`，用于记录本地启动方式、验证命令、阶段问题和交接说明。模块进入正式开发或交付后，接口契约、数据边界、权限规则、验收标准和长期维护要求必须沉淀到 `docs/`，不能只留在本地指导文档里。
 
 发现本地临时资料误放进可提交路径时，应先移动到 `.local-docs/`，再确认 `git status --short --branch` 不再把它列为待提交文件。
 
@@ -26,29 +26,29 @@
 
 每次开发、修改、重构、删除、迁移、依赖调整、配置调整或文档调整前，必须先记录当前分支和 `git status --short --branch`。如果发现与当前任务无关的改动，不得回滚、覆盖或顺手整理，应避开这些改动继续当前任务。
 
-每个微服务或模块正式开发必须遵守固定闭环：先根据 `docs/requirements.md`、`docs/system-design.md`、本文件和该模块相关正式资料生成或补齐 API 文档，再根据 API 文档生成本地测试文档和自动化测试用例，然后才允许编码。开发计划只用于确定先后顺序和维护节奏，不能替代 API 文档、测试文档、测试用例或验收标准。
+每个模块正式开发必须遵守固定闭环：先根据 `docs/requirements.md`、`docs/system-design.md`、本文件和该模块相关正式资料生成或补齐 API 文档，再根据 API 文档生成本地测试文档和自动化测试用例，然后才允许编码。开发计划只用于确定先后顺序和维护节奏，不能替代 API 文档、测试文档、测试用例或验收标准。
 
-API 文档必须放在 `docs/`，并按 `docs/contracts-<module>.md` 独立命名。每个微服务或模块只能维护自己的独立 API 文档，共享规则只放在 `docs/contracts-common.md`。API 文档必须明确接口路径、方法、认证要求、权限点、请求字段、响应字段、错误码、分页规则、幂等规则、状态流转、失败降级、审计要求和验收口径。没有正式 API 文档时，不得编写测试文档、测试用例或生产代码。
+API 文档必须放在 `docs/`，并按 `docs/contracts-<module>.md` 独立命名。每个模块只能维护自己的独立 API 文档，共享规则只放在 `docs/contracts-common.md`。API 文档必须明确接口路径、方法、认证要求、权限点、请求字段、响应字段、错误码、分页规则、幂等规则、状态流转、失败降级、审计要求和验收口径。没有正式 API 文档时，不得编写测试文档、测试用例或生产代码。
 
-测试文档必须根据 API 文档生成，必须放在 `.local-docs/`，并按 `.local-docs/tests-<module>.md` 独立命名，不得提交到仓库。测试文档必须覆盖该微服务或模块的全部 API。测试用例必须完整覆盖每个接口的成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求和模块验收口径。测试目标是让所有测试用例最终全部通过，不是抽样验证，也不是只覆盖主要接口。
+测试文档必须根据 API 文档生成，必须放在 `.local-docs/`，并按 `.local-docs/tests-<module>.md` 独立命名，不得提交到仓库。测试文档必须覆盖该模块的全部 API。测试用例必须完整覆盖每个接口的成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求和模块验收口径。测试目标是让所有测试用例最终全部通过，不是抽样验证，也不是只覆盖主要接口。
 
-测试文档和测试用例完成后，必须先确认自动化测试会因为接口未实现或行为未满足而失败，再开始根据 API 文档编码。编码时必须以 API 文档为准，以测试文档和测试用例作为完成判定。编码完成后必须运行该微服务或模块的全部相关测试。
+测试文档和测试用例完成后，必须先确认自动化测试会因为接口未实现或行为未满足而失败，再开始根据 API 文档编码。编码时必须以 API 文档为准，以测试文档和测试用例作为完成判定。编码完成后必须运行该模块的全部相关测试。
 
 测试不通过时，必须根据失败原因修复实现、API 文档或测试用例，直到所有 bug 都修完，所有相关测试用例全部通过。不能跳过失败测试，不能只手工验证，不能为了通过测试降低正式需求、系统设计或 API 契约。
 
-只有当该微服务或模块的全部 API 都已按 API 文档实现，并且测试文档中的全部测试用例都有对应自动化验证，所有相关测试全部通过后，才算该微服务或模块开发完成。当前微服务没有完成这个闭环前，不得开始下一个微服务。
+只有当该模块的全部 API 都已按 API 文档实现，并且测试文档中的全部测试用例都有对应自动化验证，所有相关测试全部通过后，才算该模块开发完成。当前模块没有完成这个闭环前，不得开始下一个模块。
 
-一次只能开发一个模块或一个微服务。没有用户明确确认时，不得修改其他模块，不得顺手重构无关代码。
+一次只能开发一个模块。没有用户明确确认时，不得修改其他模块，不得顺手重构无关代码。
 
-开发下一个模块或微服务前，必须重新检索并理解现有模块的接口、配置、数据结构、路由和测试，确认新模块不会破坏已有接口、端口、环境变量、响应格式、认证方式和构建脚本。
+开发下一个模块前，必须重新检索并理解现有模块的接口、配置、数据结构、路由和测试，确认新模块不会破坏已有接口、端口、环境变量、响应格式、认证方式和构建脚本。
 
-## 微服务开发规则
+## 模块开发规则
 
-每个微服务开始实现前，必须先形成可执行边界。边界至少说明该服务负责什么数据、暴露哪些接口、依赖哪些服务、使用哪些权限点、有哪些状态流转、失败时如何降级、如何审计、如何测试和怎样验收。
+每个模块开始实现前，必须先形成可执行边界。边界至少说明该模块负责什么数据、暴露哪些接口、依赖哪些模块、使用哪些权限点、有哪些状态流转、失败时如何降级、如何审计、如何测试和怎样验收。
 
-业务服务不能直接读取其他服务的数据表。跨模块或跨服务读取必须通过明确接口。允许保存高频展示快照，但快照不能成为主数据来源。
+业务模块不能直接读取其他模块的数据表。跨模块读取必须通过明确接口。允许保存高频展示快照，但快照不能成为主数据来源。
 
-认证、权限、统一响应、错误码、分页格式、审计字段和时间字段必须遵守统一契约。任何服务都不能单独实现一套登录逻辑或权限判断。
+认证、权限、统一响应、错误码、分页格式、审计字段和时间字段必须遵守统一契约。任何模块都不能单独实现一套登录逻辑或权限判断。
 
 服务器状态展示、玩家资源下载和后台运维控制必须分开。`server-status` 只面向玩家展示状态。`resource` 只面向玩家分发资源。真实服务器、容器、虚拟机、Minecraft 实例、文件、日志和终端操作必须归入 `ops-control` 和节点守护进程边界。
 
@@ -64,25 +64,25 @@ API 文档必须放在 `docs/`，并按 `docs/contracts-<module>.md` 独立命�
 
 已合并进 `business-core-service` 的第一批旧服务目录 `backend/auth-service`、`backend/profile-service`、`backend/notification-service`、`backend/content-service`、`backend/server-status-service`、`backend/resource-service` 和 `backend/admin-service` 不得恢复。已合并进 `admission-core-service` 的第二批旧服务目录 `backend/onboarding-service`、`backend/exam-service`、`backend/whitelist-service` 和 `backend/attendance-service` 不得恢复。已合并进 `engagement-core-service` 的第三批旧服务目录 `backend/community-service`、`backend/activity-service`、`backend/calendar-service` 和 `backend/changelog-service` 不得恢复。已合并进 `ops-core-service` 的第四批旧服务目录 `backend/ops-control-service`、`backend/cloudreve-sync-service`、`backend/backup-recovery-service`、`backend/alerting-service`、`backend/plugin-integration-service` 和 `backend/ops-image-market-service` 不得恢复。已合并进 `portal-core-service` 的第五批旧服务目录 `backend/guide-service`、`backend/material-service` 和 `backend/online-map-service` 不得恢复。第六期合并进 `ops-core-service` 后，`backend/cross-platform-notification-service` 不得恢复，后续测试不能再运行 `mvn -q -f backend/cross-platform-notification-service/pom.xml test` 作为当前入口。`backend` 是官网后端单服务目标入口，本地开发态 `api-gateway-service` Maven 入口已退役，本轮五个 core 独立 Maven 入口也已退役。不得恢复 `backend/business-core-service/pom.xml`、`backend/admission-core-service/pom.xml`、`backend/engagement-core-service/pom.xml`、`backend/ops-core-service/pom.xml`、`backend/portal-core-service/pom.xml`、对应独立启动类、对应独立 `application.yml` 或旧服务测试命令。五个 core 的模块源码已经物理位于 `backend/src/main/java`，正式业务契约必须保留，当前由 `backend/pom.xml` 统一编译和测试，不再通过 build-helper 装配旧 core 源码目录。外部节点执行器后续必须在独立项目闭环，当前官网仓库只保留 `EXTERNAL_EXECUTOR_NOT_CONNECTED` 等抽象状态。
 
-受控生产入口切流和旧入口退役必须分开闭环。`unified-backend-service:8135` 的受控切流收据门禁只允许提交脱敏样板、脱敏引用、正式契约、自动化测试和 readiness evidence；没有真实外部切流收据、真实审计写入、真实观测、真实回滚窗口和退役审批时，不能把 `readyToReplaceGateway`、`readyToRetireBusinessCore=false`、`readyToRetireAdmissionCore=false`、`readyToRetireEngagementCore=false`、`readyToRetireOpsCore=false` 或 `readyToRetirePortalCore=false` 对应的生产阻断改成通过。五个 core 独立 Maven 入口退役只代表本地启动入口收束，不代表真实生产切流完成。
+受控生产入口切流和旧入口退役必须分开闭环。`backend:8135` 的受控切流收据门禁只允许提交脱敏样板、脱敏引用、正式契约、自动化测试和 readiness evidence；没有真实外部切流收据、真实审计写入、真实观测、真实回滚窗口和退役审批时，不能把 `readyToReplaceGateway`、`readyToRetireBusinessCore=false`、`readyToRetireAdmissionCore=false`、`readyToRetireEngagementCore=false`、`readyToRetireOpsCore=false` 或 `readyToRetirePortalCore=false` 对应的生产阻断改成通过。五个 core 独立 Maven 入口退役只代表本地启动入口收束，不代表真实生产切流完成。
 
-`api-gateway-service:8125` 的受控退役预检也必须单独闭环。`apiGatewayControlledRetirementStatus=BLOCKED_BY_API_GATEWAY_RETIREMENT_RECEIPT_NOT_PROVIDED` 时，只能说明 `docs/unified-backend-api-gateway-retirement-receipt-sample.json`、退役收据结构、删除清单和本地守卫已经入仓，不代表真实退役完成。`unified-backend-service` 可以先自承载网关源码并移除对 `../api-gateway-service/src/main/java` 的 build-helper 编译依赖。没有真实外部退役收据、真实生产流量归零、真实审计写入 smoke、真实 dashboard、真实 alert、真实 trace、回滚窗口完成和用户删除清单确认时，不得把 `unified-backend-service:8135` 描述成已经替代生产入口。
+`api-gateway-service:8125` 的受控退役预检也必须单独闭环。`apiGatewayControlledRetirementStatus=BLOCKED_BY_API_GATEWAY_RETIREMENT_RECEIPT_NOT_PROVIDED` 时，只能说明 `docs/unified-backend-api-gateway-retirement-receipt-sample.json`、退役收据结构、删除清单和本地守卫已经入仓，不代表真实退役完成。`backend` 可以先自承载网关源码并移除对 `../api-gateway-service/src/main/java` 的 build-helper 编译依赖。没有真实外部退役收据、真实生产流量归零、真实审计写入 smoke、真实 dashboard、真实 alert、真实 trace、回滚窗口完成和用户删除清单确认时，不得把 `backend:8135` 描述成已经替代生产入口。
 
-`api-gateway-service:8125` 的外部退役证据接收与删除审批门禁也必须单独闭环。`apiGatewayExternalRetirementEvidenceStatus=BLOCKED_BY_EXTERNAL_API_GATEWAY_RETIREMENT_EVIDENCE_NOT_PROVIDED` 时，只能说明 `docs/unified-backend-api-gateway-external-retirement-evidence-sample.json`、真实切流引用槽位、流量归零引用槽位、真实 audit write smoke 引用槽位、dashboard、alert、trace、回滚窗口和删除清单审批结构已经入仓，不代表真实外部证据已经提供。没有真实生产入口切到 `unified-backend-service:8135`、真实生产流量观测、旧 `api-gateway-service:8125` 新流量归零、真实审计写入 smoke、真实 dashboard、真实 alert、真实 trace、回滚窗口完成和退役审批时，不得把任何本地样板描述成生产退役证明。
+`api-gateway-service:8125` 的外部退役证据接收与删除审批门禁也必须单独闭环。`apiGatewayExternalRetirementEvidenceStatus=BLOCKED_BY_EXTERNAL_API_GATEWAY_RETIREMENT_EVIDENCE_NOT_PROVIDED` 时，只能说明 `docs/unified-backend-api-gateway-external-retirement-evidence-sample.json`、真实切流引用槽位、流量归零引用槽位、真实 audit write smoke 引用槽位、dashboard、alert、trace、回滚窗口和删除清单审批结构已经入仓，不代表真实外部证据已经提供。没有真实生产入口切到 `backend:8135`、真实生产流量观测、旧 `api-gateway-service:8125` 新流量归零、真实审计写入 smoke、真实 dashboard、真实 alert、真实 trace、回滚窗口完成和退役审批时，不得把任何本地样板描述成生产退役证明。
 
-第四十六轮真实生产入口切流证据闭环门禁也必须单独闭环。`realProductionEntrypointCutoverStatus=BLOCKED_BY_REAL_PRODUCTION_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED` 时，只能说明 `docs/unified-backend-real-production-entrypoint-cutover-evidence-sample.json`、候选入口引用、旧入口引用、切流窗口引用、生产流量观测引用、旧网关新流量归零引用、真实 audit write smoke 引用、dashboard、alert、trace、回滚和审批结构已经入仓，不代表真实生产入口切流已经发生。没有仓库外真实脱敏切流证据时，不得声明生产入口已经切到 `unified-backend-service:8135`。即使切流证据样板完整，`oldApiGatewayRetirementAllowed` 仍必须保持 `false`，生产态旧网关退役仍需要后续外部证据闭环。
+第四十六轮真实生产入口切流证据闭环门禁也必须单独闭环。`realProductionEntrypointCutoverStatus=BLOCKED_BY_REAL_PRODUCTION_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED` 时，只能说明 `docs/unified-backend-real-production-entrypoint-cutover-evidence-sample.json`、统一后端入口引用、旧入口引用、切流窗口引用、生产流量观测引用、旧网关新流量归零引用、真实 audit write smoke 引用、dashboard、alert、trace、回滚和审批结构已经入仓，不代表真实生产入口切流已经发生。没有仓库外真实脱敏切流证据时，不得声明生产入口已经切到 `backend:8135`。即使切流证据样板完整，`oldApiGatewayRetirementAllowed` 仍必须保持 `false`，生产态旧网关退役仍需要后续外部证据闭环。
 
 第五十一轮外部入口与切流证据接收门禁也必须单独闭环。`externalEntrypointCutoverEvidenceIntakeStatus=BLOCKED_BY_EXTERNAL_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED` 时，只能说明 `docs/unified-backend-external-entrypoint-cutover-evidence-intake-sample.json`、前端入口引用、反向代理 upstream 引用、部署入口引用、回滚入口引用、灰度权重引用、观测引用和审批引用这些脱敏证据格式已经入仓，不代表真实外部入口已配置，不代表真实生产切流已经发生。仓库内不得写真实域名、token、连接串、dashboard 地址或部署平台地址；没有真实外部证据、集中配置 provider、持久化审计 sink 和真实观测 smoke 前，`readyForProduction=false`、`readyToReplaceGateway=false` 和 `oldApiGatewayRetirementAllowed=false` 必须保持不变。
 
 清理 `.local-docs/` 时也必须遵守删除规则。只能删除一个明确路径的文件，不能删除整个目录，不能使用递归删除命令。需要清理多个文件时，先列出路径并获得用户确认，再逐个删除。
 
 
-第四十七轮本地开发态 `api-gateway-service` 入口退役必须单独闭环。当前 `localApiGatewayEntrypointRetirementStatus=PASS_LOCAL_API_GATEWAY_ENTRYPOINT_RETIRED_UNIFIED_GATEWAY_APIS_PRESERVED`，只说明旧网关 Maven 入口已逐文件退役，`unified-backend-service:8135` 已自承载网关能力。不得批量删除目录。
+第四十七轮本地开发态 `api-gateway-service` 入口退役必须单独闭环。当前 `localApiGatewayEntrypointRetirementStatus=PASS_LOCAL_API_GATEWAY_ENTRYPOINT_RETIRED_UNIFIED_GATEWAY_APIS_PRESERVED`，只说明旧网关 Maven 入口已逐文件退役，`backend:8135` 已自承载网关能力。不得批量删除目录。
 
 本轮五个 core 独立 Maven 入口退役必须单独闭环。只允许逐个明确路径删除五个 core 的 `pom.xml`、独立 Spring Boot 启动类和独立 `application.yml`，不得删除目录，不得删除模块源码。完成后只能运行 `backend/pom.xml` 的统一后端回归，不能再运行五个 core 的独立 Maven 命令作为当前入口。
 
 ## 验收要求
 
-每个模块或微服务完成后，必须按该模块的验收口径执行验证。能跑自动化测试就跑自动化测试。没有自动化测试时，要留下可复现的人工验证记录到 `.local-docs/`。
+每个模块完成后，必须按该模块的验收口径执行验证。能跑自动化测试就跑自动化测试。没有自动化测试时，要留下可复现的人工验证记录到 `.local-docs/`。
 
 交付前必须确认 `git status --short --branch`。正式文档和源码可以提交，本地测试记录、临时分析、真实密码、真实 token、本地环境文件、构建产物和运行日志不得提交。

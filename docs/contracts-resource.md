@@ -4,11 +4,11 @@
 
 ## 文档定位
 
-本文档是 `resource` 微服务的正式 API 契约。后续 `admin`、`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、前端适配和 `ops-control` 只能通过本文档定义的接口读取或管理玩家可见资源，不能直接读取或修改 `resource` 数据库。
+本文档是 `resource` 模块的正式 API 契约。后续 `admin`、`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、前端适配和 `ops-control` 只能通过本文档定义的接口读取或管理玩家可见资源，不能直接读取或修改 `resource` 数据库。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、时间格式、基础角色、能力点、审计字段、风险等级、通用状态模型和通用错误码均以公共契约为准。本文档只补充 `resource` 的职责边界、数据归属、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
 
-`resource` 适配 `auth`、`profile` 和 `notification`，不要求前序服务反向适配 `resource`。它通过后端入口传入的认证上下文、`/api/v1/auth/me`、`/api/v1/auth/session/verify` 或测试环境 auth stub 读取当前用户、角色、能力点和用户状态。它通过 profile 正式接口或受控 profile stub 判断 `MEMBER_ONLY` 资源的成员资格。资源审核、发布、下架、版本更新需要通知时，只能调用 notification 正式投递接口或受控适配层，不能自建通知主数据、未读数或模板系统。
+`resource` 适配 `auth`、`profile` 和 `notification`，不要求前序模块反向适配 `resource`。它通过后端入口传入的认证上下文、`/api/v1/auth/me`、`/api/v1/auth/session/verify` 或测试环境 auth stub 读取当前用户、角色、能力点和用户状态。它通过 profile 正式接口或受控 profile stub 判断 `MEMBER_ONLY` 资源的成员资格。资源审核、发布、下架、版本更新需要通知时，只能调用 notification 正式投递接口或受控适配层，不能自建通知主数据、未读数或模板系统。
 
 ## 参考口径
 
@@ -722,4 +722,4 @@ Cloudreve 分享链接不可用时，下载解析可以在旧快照仍合法时�
 
 `resource` API 文档按 `docs/contracts-resource.md` 独立存在，并由 `.local-docs/tests-resource.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求和模块验收口径。
 
-`resource` 完成时必须满足以下条件：全部接口按本文档实现；公开接口不泄露后台字段、Cloudreve 管理字段、分享密码、内部路径、审计字段和运维入口；后台接口按角色限制；受限下载按 `PUBLIC`、`AUTHENTICATED`、`MEMBER_ONLY` 和 `ADMIN_ONLY` 正确校验；Cloudreve 分享链接失败可测试降级；分类、资源、版本、下载入口、状态流转、幂等、审计、自检摘要、requestId、端口配置和前序服务适配都有自动化测试；`.local-docs/tests-resource.md` 中全部测试用例都有对应自动化验证；未实现时自动化测试必须先失败；实现后 `resource` 全部测试通过；`auth`、`profile`、`notification`、`content` 和 `server-status` 前序服务回归测试通过；没有修改前序服务稳定接口；没有把后台文件管理、容器、终端、日志流、节点注册、external-node-executor、真实服务器操作或 ops-control 能力塞进 `resource`。
+`resource` 完成时必须满足以下条件：全部接口按本文档实现；公开接口不泄露后台字段、Cloudreve 管理字段、分享密码、内部路径、审计字段和运维入口；后台接口按角色限制；受限下载按 `PUBLIC`、`AUTHENTICATED`、`MEMBER_ONLY` 和 `ADMIN_ONLY` 正确校验；Cloudreve 分享链接失败可测试降级；分类、资源、版本、下载入口、状态流转、幂等、审计、自检摘要、requestId、端口配置和前序模块适配都有自动化测试；`.local-docs/tests-resource.md` 中全部测试用例都有对应自动化验证；未实现时自动化测试必须先失败；实现后 `resource` 全部测试通过；`auth`、`profile`、`notification`、`content` 和 `server-status` 前序模块回归测试通过；没有修改前序模块稳定接口；没有把后台文件管理、容器、终端、日志流、节点注册、external-node-executor、真实服务器操作或 ops-control 能力塞进 `resource`。

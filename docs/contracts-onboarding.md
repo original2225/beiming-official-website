@@ -4,7 +4,7 @@
 
 ## 文档定位
 
-本文档是 `onboarding` 微服务的正式 API 契约。后续 `exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、前端适配和 `ops-control` 只能通过本文档定义的接口读取或维护入服引导状态，不能直接读取或修改 `onboarding` 数据库，也不能把考试、白名单、成员激活或考勤积分逻辑塞进 `onboarding`。
+本文档是 `onboarding` 模块的正式 API 契约。后续 `exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、前端适配和 `ops-control` 只能通过本文档定义的接口读取或维护入服引导状态，不能直接读取或修改 `onboarding` 数据库，也不能把考试、白名单、成员激活或考勤积分逻辑塞进 `onboarding`。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `onboarding` 的职责边界、数据归属、路径、字段、状态、权限、错误码、幂等、降级、审计和验收口径。
 
@@ -53,7 +53,7 @@
 
 经 `api-gateway` 访问时，`onboarding` 可以优先读取网关注入的可信身份头。只有 `X-Gateway-Internal-Request-Id` 存在时，才进入可信上下文解析；若该头缺失，即使请求带有 `X-Beiming-Actor-*`，也必须忽略这些头并继续走 `Authorization: Bearer <token>` 兼容路径。可信上下文缺少 `X-Beiming-Actor-User-Id`、角色枚举不兼容或字段无法解析时返回 HTTP `502` 和 `46802`，不得静默降级成匿名用户。
 
-## 前序服务兼容契约
+## 前序模块兼容契约
 
 `onboarding` 适配 `auth`。当前请求认证上下文至少包含 `userId`、`displayName`、`roles`、`permissions`、`status` 和 `minecraftBinding`。`minecraftBinding` 结构必须兼容 `docs/contracts-auth.md`。用户状态为 `PENDING_PROFILE` 或 `ACTIVE` 时允许启动或读取流程；`DISABLED`、`BANNED`、`DELETED` 不允许启动、确认或推进流程。auth 不可用返回 `46800`，auth 超时返回 `46801`，auth 字段或枚举不兼容返回 `46802`。
 
@@ -525,4 +525,4 @@ exam、whitelist 和 attendance 未实现时，onboarding 只返回下一步占�
 
 `onboarding` API 文档按 `docs/contracts-onboarding.md` 独立存在，并由 `.local-docs/tests-onboarding.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求和模块验收口径。
 
-`onboarding` 完成时必须满足以下条件：全部接口按本文档实现；当前用户接口只能访问当前用户自己的流程；后台接口按角色限制；服务端决定状态和下一步，不信任浏览器传入的可信字段；auth、profile、content 和 notification 适配不直接读取前序服务数据库或内部类；规则确认、资料确认、方向选择、推进、阻塞、重置、幂等、审计、自检摘要、requestId 和端口配置都有自动化测试；当前运行入口为 `admission-core-service:8131`，历史端口只作为 `legacyPort=8108` 返回；默认关闭测试控制头，直连伪造 `X-Beiming-Actor-*` 不能绕过 Bearer，网关注入可信上下文可被识别；`.local-docs/tests-onboarding.md` 中全部测试用例都有对应自动化验证；未实现时自动化测试必须先失败；实现后 onboarding 全部测试通过；auth、profile、notification、content、server-status、resource 和 admin 前序服务回归测试通过；没有修改前序服务稳定接口；没有把考试判分、白名单审核、成员激活、考勤积分、社区、资源下载、服务器状态采集、后台聚合、真实运维、节点、容器、终端、文件管理、备份恢复或 Cloudreve 管理能力塞进 onboarding。
+`onboarding` 完成时必须满足以下条件：全部接口按本文档实现；当前用户接口只能访问当前用户自己的流程；后台接口按角色限制；服务端决定状态和下一步，不信任浏览器传入的可信字段；auth、profile、content 和 notification 适配不直接读取前序模块数据库或内部类；规则确认、资料确认、方向选择、推进、阻塞、重置、幂等、审计、自检摘要、requestId 和端口配置都有自动化测试；当前运行入口为 `admission-core-service:8131`，历史端口只作为 `legacyPort=8108` 返回；默认关闭测试控制头，直连伪造 `X-Beiming-Actor-*` 不能绕过 Bearer，网关注入可信上下文可被识别；`.local-docs/tests-onboarding.md` 中全部测试用例都有对应自动化验证；未实现时自动化测试必须先失败；实现后 onboarding 全部测试通过；auth、profile、notification、content、server-status、resource 和 admin 前序模块回归测试通过；没有修改前序模块稳定接口；没有把考试判分、白名单审核、成员激活、考勤积分、社区、资源下载、服务器状态采集、后台聚合、真实运维、节点、容器、终端、文件管理、备份恢复或 Cloudreve 管理能力塞进 onboarding。

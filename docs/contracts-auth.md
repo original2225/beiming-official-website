@@ -4,7 +4,7 @@
 
 ## 文档定位
 
-本文档是 `auth` 微服务的正式 API 契约。后续 `profile`、`notification`、`content`、`admin`、`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`ops-control` 等服务只能通过本文档定义的接口或后端入口提供的认证上下文适配 `auth`，不能直接读取 `auth` 数据库，也不能自行实现登录、会话或权限判断。
+本文档是 `auth` 模块的正式 API 契约。后续 `profile`、`notification`、`content`、`admin`、`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`ops-control` 等服务只能通过本文档定义的接口或后端入口提供的认证上下文适配 `auth`，不能直接读取 `auth` 数据库，也不能自行实现登录、会话或权限判断。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、时间格式、基础角色、运维能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `auth` 模块自己的路径、字段、状态、权限、错误码、审计和验收口径。
 
@@ -246,7 +246,7 @@
 }
 ```
 
-业务规则：只要会话不可继续使用，就返回对应错误，不返回 `valid: false` 的成功响应。后端入口和后序服务可用该接口验证认证上下文。
+业务规则：只要会话不可继续使用，就返回对应错误，不返回 `valid: false` 的成功响应。后端入口和后序模块可用该接口验证认证上下文。
 
 ### 当前用户会话列表
 

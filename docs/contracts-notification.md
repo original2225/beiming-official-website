@@ -4,7 +4,7 @@
 
 ## 文档定位
 
-本文档是 `notification` 微服务的正式 API 契约。后续 `content`、`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、`admin` 和 `ops-control` 只能通过本文档定义的接口投递或读取通知结果，不能在各自模块内自建通知主数据、未读数或模板系统。
+本文档是 `notification` 模块的正式 API 契约。后续 `content`、`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、`admin` 和 `ops-control` 只能通过本文档定义的接口投递或读取通知结果，不能在各自模块内自建通知主数据、未读数或模板系统。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、时间格式、基础角色、能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `notification` 的职责边界、数据归属、路径、字段、状态、权限、错误码、幂等、降级、审计和验收口径。
 
@@ -179,7 +179,7 @@ notification 需要消费的网关上下文字段如下。
 
 `actorPermissions` 必须来自已解析认证上下文，不能从浏览器请求体读取。`sourceIp` 来自请求上下文，优先使用网关传入的安全来源摘要，缺失时使用服务端看到的远端地址或 `unknown`。`riskLevel` 必须使用实际操作风险等级，不能在审计响应中固定为 `MEDIUM`。
 
-`paramsSummary`、`beforeState` 和 `afterState` 只能保存安全摘要。创建通知可以记录 `sourceModule`、`sourceId`、`recipientTotal`、`channels`、`riskLevel`、`idempotencyKeyPresent` 和 `templateCode` 等字段；模板修改可以记录模板 ID、编码、版本和状态变化。审计摘要不得包含完整通知正文、完整模板正文、完整模板变量值、完整请求头、Authorization、token、外部渠道凭据、内部 URL、异常堆栈或前序服务私有字段。
+`paramsSummary`、`beforeState` 和 `afterState` 只能保存安全摘要。创建通知可以记录 `sourceModule`、`sourceId`、`recipientTotal`、`channels`、`riskLevel`、`idempotencyKeyPresent` 和 `templateCode` 等字段；模板修改可以记录模板 ID、编码、版本和状态变化。审计摘要不得包含完整通知正文、完整模板正文、完整模板变量值、完整请求头、Authorization、token、外部渠道凭据、内部 URL、异常堆栈或前序模块私有字段。
 
 ## notification 错误码
 
@@ -620,7 +620,7 @@ notification 需要消费的网关上下文字段如下。
 
 后台写操作必须记录 `reason`。审计字段继承公共契约，必须记录 actor、actor 权限摘要、来源 IP、目标、动作、风险等级、请求编号、参数安全摘要、操作前安全摘要、操作后安全摘要、结果和失败原因。审计写入失败时，后台写操作和模板写操作不得假装成功，必须返回 `51301` 或 `51300`，并保持业务数据不变。当前用户已读操作不强制写审计，归档操作建议写低风险审计或用户行为日志。
 
-生产化硬化验收还必须满足：审计响应不再返回空的 `actorPermissions`、`sourceIp` 和 `paramsSummary`；风险等级按真实操作写入；幂等记录 24 小时过期并可清理；自检摘要暴露幂等记录数量和审计摘要模式但不泄露响应快照；测试控制、测试桩和边界扫描不得引入真实外部渠道发送、节点运维、文件管理、批量删除或前序服务内部实现依赖。
+生产化硬化验收还必须满足：审计响应不再返回空的 `actorPermissions`、`sourceIp` 和 `paramsSummary`；风险等级按真实操作写入；幂等记录 24 小时过期并可清理；自检摘要暴露幂等记录数量和审计摘要模式但不泄露响应快照；测试控制、测试桩和边界扫描不得引入真实外部渠道发送、节点运维、文件管理、批量删除或前序模块内部实现依赖。
 
 ## 失败降级
 
@@ -634,4 +634,4 @@ notification 需要消费的网关上下文字段如下。
 
 `notification` API 文档按 `docs/contracts-notification.md` 独立存在，并由 `.local-docs/tests-notification.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级和审计要求。
 
-`notification` 完成时必须满足以下条件：全部接口按本文档实现；当前用户接口只能访问当前用户自己的通知；未读数准确且失败时不伪造 0；后台接口按角色限制；创建通知和模板写操作全有或全无；模板变量校验、模板预览和渲染失败可测试；自检摘要能暴露当前运行模式、审计摘要模式和幂等记录数量但不泄露敏感数据；auth 适配不直接读取 auth 实现；受保护接口同时支持网关可信认证上下文和旧 Bearer 兼容路径；审计 actor、权限判断、当前用户隔离、未读数、目标收件人快照、actor 权限摘要、来源 IP、安全参数摘要和幂等过期语义均以服务端解析结果为准；`.local-docs/tests-notification.md` 中全部测试用例都有对应自动化验证；未实现时自动化测试必须先失败；实现后 notification 全部测试通过；api-gateway、auth 和 profile 前序服务回归测试通过；没有修改前序服务稳定接口。
+`notification` 完成时必须满足以下条件：全部接口按本文档实现；当前用户接口只能访问当前用户自己的通知；未读数准确且失败时不伪造 0；后台接口按角色限制；创建通知和模板写操作全有或全无；模板变量校验、模板预览和渲染失败可测试；自检摘要能暴露当前运行模式、审计摘要模式和幂等记录数量但不泄露敏感数据；auth 适配不直接读取 auth 实现；受保护接口同时支持网关可信认证上下文和旧 Bearer 兼容路径；审计 actor、权限判断、当前用户隔离、未读数、目标收件人快照、actor 权限摘要、来源 IP、安全参数摘要和幂等过期语义均以服务端解析结果为准；`.local-docs/tests-notification.md` 中全部测试用例都有对应自动化验证；未实现时自动化测试必须先失败；实现后 notification 全部测试通过；api-gateway、auth 和 profile 前序模块回归测试通过；没有修改前序模块稳定接口。

@@ -4,7 +4,7 @@
 
 ## 文档定位
 
-本文档是 `activity` 微服务的正式 API 契约。后续 `calendar`、`changelog`、前端适配、`admin` 聚合、`ops-control` 和 `external-node-executor` 只能通过本文档定义的接口读取活动、报名、参与确认、结果、奖励、贡献候选、审计和自检摘要，不能直接读取或修改 `activity` 数据库，也不能把活动报名、活动结果或活动奖励逻辑塞进其他服务。
+本文档是 `activity` 模块的正式 API 契约。后续 `calendar`、`changelog`、前端适配、`admin` 聚合、`ops-control` 和 `external-node-executor` 只能通过本文档定义的接口读取活动、报名、参与确认、结果、奖励、贡献候选、审计和自检摘要，不能直接读取或修改 `activity` 数据库，也不能把活动报名、活动结果或活动奖励逻辑塞进其他服务。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `activity` 的职责边界、数据归属、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
 
@@ -26,7 +26,7 @@
 
 `activity` 不负责注册、登录、邀请码、会话、账号角色能力点、Minecraft 绑定主数据、成员档案主数据、站内通知主数据、官网公告主发布、资源下载主数据、考勤积分主数据、社区帖子评论、工单举报处罚、日历主数据、更新日志主数据、后台聚合入口、真实服务器运维控制、节点守护进程、容器、终端、文件管理、备份恢复、Cloudreve 管理或外部支付。
 
-`activity` 只能后序适配前序服务。它通过 `auth` 认证上下文读取当前用户、角色、能力点和用户状态；通过 `profile` 的正式接口或未来服务间适配器读取成员展示快照和成员状态；通过 `notification` 投递报名、候补、取消、签到、结果和奖励通知；通过 `attendance` 未来正式贡献入口接收贡献结果；通过 `community`、`content` 和 `resource` 的公开快照关联讨论、说明页和活动资源。`activity` 不能导入前序服务内存存储、实体、Repository、测试种子或内部类，不能要求前序服务为了 activity 反向修改稳定接口。
+`activity` 只能后序适配前序模块。它通过 `auth` 认证上下文读取当前用户、角色、能力点和用户状态；通过 `profile` 的正式接口或未来服务间适配器读取成员展示快照和成员状态；通过 `notification` 投递报名、候补、取消、签到、结果和奖励通知；通过 `attendance` 未来正式贡献入口接收贡献结果；通过 `community`、`content` 和 `resource` 的公开快照关联讨论、说明页和活动资源。`activity` 不能导入前序模块内存存储、实体、Repository、测试种子或内部类，不能要求前序模块为了 activity 反向修改稳定接口。
 
 ## 数据归属
 
@@ -50,7 +50,7 @@
 
 生产和默认运行环境必须关闭测试控制头。关闭后这些请求头必须被忽略，不能触发依赖失败、审计失败、状态失败、通知失败、报名失败或快照 stale。自检摘要必须返回 `testControlsEnabled`，并在测试控制关闭时把 `TEST_CONTROLS_DISABLED_OUTSIDE_TEST` 视为已满足的生产化硬化项。
 
-## 前序服务兼容契约
+## 前序模块兼容契约
 
 `auth` 是所有登录接口强依赖。当前请求认证上下文至少包含 `userId`、`displayName`、`roles`、`permissions`、`status` 和可选 `minecraftBinding`。用户状态为 `ACTIVE` 时可报名和签到；`PENDING_PROFILE` 可以查看公开活动但不能报名成员限定活动；`DISABLED`、`BANNED`、`DELETED` 不允许写入活动状态。auth 不可用返回 `49400`，auth 超时返回 `49401`，字段或枚举不兼容返回 `49402`。
 
@@ -395,7 +395,7 @@
 
 `GET /api/v1/activity/admin/events` 返回后台活动分页，支持 `page`、`pageSize`、`keyword`、`type`、`visibility`、`status`、`from`、`to`、`createdBy` 和 `sort`。
 
-`GET /api/v1/activity/admin/events/{activityId}` 返回后台活动详情，包含活动、报名统计、结果、奖励摘要、贡献候选摘要、依赖摘要和最近审计。响应不得返回 token、完整请求头、通知正文、前序服务内部路径、异常堆栈、真实服务器命令、节点凭据或 Cloudreve token。
+`GET /api/v1/activity/admin/events/{activityId}` 返回后台活动详情，包含活动、报名统计、结果、奖励摘要、贡献候选摘要、依赖摘要和最近审计。响应不得返回 token、完整请求头、通知正文、前序模块内部路径、异常堆栈、真实服务器命令、节点凭据或 Cloudreve token。
 
 `POST /api/v1/activity/admin/events` 创建草稿。请求字段为 `slug`、`title`、`summary`、`description`、`type`、`visibility`、`registrationPolicy`、`startAt`、`endAt`、`registrationOpenAt`、`registrationCloseAt`、`capacity`、`waitlistCapacity`、`locationText`、`coverImageUrl`、`tags`、`linkedCommunityId`、`linkedContentId`、`linkedResourceIds`、`internalNote`、`reason` 和 `idempotencyKey`。成功响应 HTTP `201`，状态为 `DRAFT`。slug 冲突返回 `49619`。
 
@@ -527,7 +527,7 @@ P1 内存实现必须用本服务内的串行临界区保护名额、候补、�
 
 必须审计的动作包括活动创建、活动修改、提交审核、审核通过、审核拒绝、要求修改、发布、开放报名、关闭报名、开始、完成、下架、归档、软删除、报名创建、报名取消、报名确认、报名拒绝、候补转正、签到、缺席、结果创建或修改、结果发布、奖励创建、奖励发放、奖励撤销、贡献候选生成、通知失败、依赖降级、自检读取、审计写入失败和状态写入失败。
 
-后台写操作必须记录 `reason`、操作者、目标对象、操作前状态、操作后状态、请求编号、参数摘要和结果。审计字段继承公共契约。审计不得泄露 token、完整请求头、Minecraft 验证凭据、profile 后台备注全文、通知正文全文、真实服务器命令、节点凭据、Cloudreve token、内部异常堆栈或前序服务内部路径。
+后台写操作必须记录 `reason`、操作者、目标对象、操作前状态、操作后状态、请求编号、参数摘要和结果。审计字段继承公共契约。审计不得泄露 token、完整请求头、Minecraft 验证凭据、profile 后台备注全文、通知正文全文、真实服务器命令、节点凭据、Cloudreve token、内部异常堆栈或前序模块内部路径。
 
 审计写入失败时，活动审核、发布、下架、归档、软删除、报名确认、报名拒绝、候补转正、签到、缺席、结果发布、奖励创建、奖励发放、奖励撤销和贡献候选生成不得假装成功，必须返回 `54601` 或 `54600`，并保持业务数据不变。通知失败不回滚主状态，但必须记录失败摘要和审计。
 
@@ -551,6 +551,6 @@ community、content 和 resource 是关联快照辅助依赖。创建或修改�
 
 `activity` API 文档按 `docs/contracts-activity.md` 独立存在，并由 `.local-docs/tests-activity.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求和模块验收口径。
 
-`activity` 完成时必须满足以下条件：全部接口按本文档实现；公开接口只返回公开可见活动、结果和摘要；当前用户接口只能访问自己的报名、签到和奖励；后台接口按角色限制；活动、报名、签到、结果和奖励有服务端状态机；名额、候补和签到由服务端计数和幂等保证；所有后台写操作和高风险操作有审计；通知失败按辅助降级记录；贡献奖励只生成 activity 贡献候选，不直接写 attendance 积分；当前运行端口固定为 `8132`，自检摘要返回 `port=8132` 和 `legacyPort=8113`；`.local-docs/tests-activity.md` 与 `.local-docs/tests-engagement-core.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 activity 在 `engagement-core-service` 中全部测试通过；auth、profile、notification、content、server-status、resource、admin、onboarding、exam、whitelist、attendance 和 community 前序服务回归测试通过；不恢复 `backend/activity-service` 旧入口；没有修改前序服务稳定接口；没有把日历、更新日志、后台聚合、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复或 Cloudreve 管理能力塞进 activity。
+`activity` 完成时必须满足以下条件：全部接口按本文档实现；公开接口只返回公开可见活动、结果和摘要；当前用户接口只能访问自己的报名、签到和奖励；后台接口按角色限制；活动、报名、签到、结果和奖励有服务端状态机；名额、候补和签到由服务端计数和幂等保证；所有后台写操作和高风险操作有审计；通知失败按辅助降级记录；贡献奖励只生成 activity 贡献候选，不直接写 attendance 积分；当前运行端口固定为 `8132`，自检摘要返回 `port=8132` 和 `legacyPort=8113`；`.local-docs/tests-activity.md` 与 `.local-docs/tests-engagement-core.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 activity 在 `engagement-core-service` 中全部测试通过；auth、profile、notification、content、server-status、resource、admin、onboarding、exam、whitelist、attendance 和 community 前序模块回归测试通过；不恢复 `backend/activity-service` 旧入口；没有修改前序模块稳定接口；没有把日历、更新日志、后台聚合、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复或 Cloudreve 管理能力塞进 activity。
 
 生产化硬化验收还必须满足：测试控制头默认关闭，只有本地自动化测试显式启用时才生效；关闭状态下依赖失败模拟头、写入失败模拟头、时间模拟头和通知失败模拟头全部被忽略；自检摘要明确返回当前测试控制头开关状态。

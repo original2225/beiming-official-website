@@ -4,9 +4,9 @@
 
 ## 文档定位
 
-本文档是 `ops-image-market` 微服务的正式 API 契约。`ops-image-market` 负责运维镜像市场控制面，包括 registry provider 摘要、镜像目录、镜像版本、兼容性配置、部署模板摘要、风险扫描摘要、拉取计划、节点镜像缓存快照、依赖健康摘要、幂等记录、审计日志和自检摘要。
+本文档是 `ops-image-market` 模块的正式 API 契约。`ops-image-market` 负责运维镜像市场控制面，包括 registry provider 摘要、镜像目录、镜像版本、兼容性配置、部署模板摘要、风险扫描摘要、拉取计划、节点镜像缓存快照、依赖健康摘要、幂等记录、审计日志和自检摘要。
 
-本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、运维能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `ops-image-market` 的职责边界、数据归属、前序服务兼容、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
+本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、运维能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `ops-image-market` 的职责边界、数据归属、前序模块兼容、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
 
 本文档参考 Docker Hub、OCI Image Specification、Harbor、GitHub Container Registry、Portainer App Templates、Kubernetes ImagePolicyWebhook、Trivy 和 Renovate 的公开设计。Docker Hub 和 GitHub Container Registry 的 repository、tag、package 权限和访问控制适合本服务拆分 provider、repository 和可见范围。OCI Image Specification 的 manifest、image index、platform 和 digest 适合本服务保存脱敏镜像版本摘要。Harbor 的项目、机器人账号、扫描、复制策略和信任模型适合本服务建立 provider、凭据引用、扫描摘要和高风险启用规则。Portainer App Templates 的 image、env、ports、volumes 和 stack 模板思路适合本服务建立部署模板摘要。Kubernetes ImagePolicyWebhook 的准入判断适合本服务在拉取计划前做风险和兼容性阻断。Trivy 的漏洞严重级别、修复状态和扫描时间适合本服务定义风险扫描摘要。Renovate 的 Docker 版本更新和 digest pinning 思路适合本服务记录版本建议、digest 摘要和漂移风险。
 
@@ -39,7 +39,7 @@
 
 `ops-image-market` 可以保存来自 `auth` 的操作者用户 ID、展示名、角色、能力点和状态快照；可以保存来自 `ops-control` 的节点、资产、容器运行时和 Minecraft 实例只读摘要；可以保存来自 `external-node-executor` 经过 `ops-control` 或测试适配器回写的节点镜像缓存摘要；可以保存来自 `alerting` 可消费的风险事件摘要；可以保存来自 `cross-platform-notification` 的通知意图或投递结果摘要；可以保存来自 `plugin-integration` 的插件运行环境需求摘要。所有跨服务字段只能是安全快照，不得成为来源模块主数据，不得用于绕过来源模块权限，不得反向修改来源模块状态。
 
-`ops-image-market` 不能直接读取其他服务数据库，不能导入前序服务 Java package，不能复用前序服务内存 store，不能修改 `ops-control` 节点、资产、任务或审批，不能直连 `external-node-executor`，不能创建 `alerting` 告警实例，不能发送 `cross-platform-notification` 外部消息，不能安装插件或写入 Minecraft 配置。
+`ops-image-market` 不能直接读取其他服务数据库，不能导入前序模块 Java package，不能复用前序模块内存 store，不能修改 `ops-control` 节点、资产、任务或审批，不能直连 `external-node-executor`，不能创建 `alerting` 告警实例，不能发送 `cross-platform-notification` 外部消息，不能安装插件或写入 Minecraft 配置。
 
 ## 基础路径、端口和认证
 
@@ -57,7 +57,7 @@
 
 生产和默认运行环境必须关闭测试控制头。关闭后这些请求头必须被忽略，不能触发认证失败、依赖失败、registry 失败、scanner 失败、审计失败、存储失败、计划失败或时间模拟。自检摘要必须返回 `testControlsEnabled`，并在测试控制关闭时把 `TEST_CONTROLS_DISABLED_OUTSIDE_TEST` 纳入生产化硬化项。
 
-## 前序服务兼容契约
+## 前序模块兼容契约
 
 `auth` 是后台接口强依赖。当前请求认证上下文至少包含 `userId`、`displayName`、`roles`、`permissions` 和 `status`。用户状态为 `DISABLED`、`BANNED` 或 `DELETED` 时不得访问后台接口。auth 不可用返回 `47200`，auth 超时返回 `47201`，字段或枚举不兼容返回 `47202`。
 
@@ -269,7 +269,7 @@
 
 ### ImageMarketAuditLog
 
-审计字段继承公共契约，允许补充 `providerId`、`imageId`、`imageVersionId`、`profileId`、`templateId`、`scanId`、`planId`、`snapshotId`、`stateFrom`、`stateTo`、`dependencyStatus` 和 `idempotencyKey`。审计列表不得提供删除、修改或恢复接口。审计响应不得返回 registry token、完整 endpoint、完整 digest 清单、完整 manifest、layer URL、宿主路径、节点凭据、请求头、异常栈或前序服务私有数据。
+审计字段继承公共契约，允许补充 `providerId`、`imageId`、`imageVersionId`、`profileId`、`templateId`、`scanId`、`planId`、`snapshotId`、`stateFrom`、`stateTo`、`dependencyStatus` 和 `idempotencyKey`。审计列表不得提供删除、修改或恢复接口。审计响应不得返回 registry token、完整 endpoint、完整 digest 清单、完整 manifest、layer URL、宿主路径、节点凭据、请求头、异常栈或前序模块私有数据。
 
 ### OpsImageMarketSummary
 
@@ -512,7 +512,7 @@ provider 状态流转为 `DRAFT` 可到 `ENABLED`、`DISABLED` 或 `ARCHIVED`；
 
 endpoint、repository、tag、namespace 和 URL 摘要必须拒绝 `file:`、`data:`、`javascript:`、带用户名密码 URL、localhost、回环 IP、内网 IP、链路本地地址、未解析 host、通配符 `*`、空 host、控制字符、反斜杠、路径穿越和非法 URI。repository 必须是 registry 内 namespace/repository 摘要，不允许浏览器提交完整 registry 登录串。
 
-任何请求体和响应都不得包含 registry token、registry password、Docker password、image secret、pull secret、完整 Authorization 请求头、完整请求 headers、完整 manifest、完整 layer URL、内部 registry 地址、内部 URL、内部路径、节点本地镜像层路径、宿主绝对路径、真实 shell 命令、异常栈、数据库连接串、`.env`、`authorized_keys`、`id_rsa` 或前序服务私有数据。检查必须递归覆盖嵌套对象和数组。
+任何请求体和响应都不得包含 registry token、registry password、Docker password、image secret、pull secret、完整 Authorization 请求头、完整请求 headers、完整 manifest、完整 layer URL、内部 registry 地址、内部 URL、内部路径、节点本地镜像层路径、宿主绝对路径、真实 shell 命令、异常栈、数据库连接串、`.env`、`authorized_keys`、`id_rsa` 或前序模块私有数据。检查必须递归覆盖嵌套对象和数组。
 
 扫描失败、扫描过期、签名不满足、provider 降级、registry 限流、节点摘要不可用或兼容性失败时，读取类接口可以返回已有快照并标记 `degraded=true`、`stale=true` 和 `degradeReasons`。写入类接口不得假装成功。高风险或严重风险计划必须按权限、确认文本、状态和审计规则阻断或进入 `RISK_REVIEW_REQUIRED`，不能靠前端展示来兜底。
 
@@ -522,4 +522,4 @@ endpoint、repository、tag、namespace 和 URL 摘要必须拒绝 `file:`、`da
 
 `ops-image-market` API 文档必须按 `docs/contracts-ops-image-market.md` 独立存在，并由 `.local-docs/tests-ops-core.md` 记录合并后的本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、能力点不足、高风险确认缺失、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求、敏感字段脱敏、测试控制头默认关闭和模块验收口径。
 
-`ops-image-market` 完成时必须满足以下条件：当前运行入口为 `ops-core-service:8133`，历史端口 `8124` 只作为 `legacyPort` 返回；健康检查公开且不泄露敏感信息；后台接口按角色、能力点、风险等级和确认文本限制；provider、镜像目录、镜像版本、兼容配置、模板、风险扫描、拉取计划、节点缓存快照、审计、幂等、状态流转、依赖降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；自动化测试必须先红灯；实现后本模块在 `ops-core-service` 中全量测试通过；当前后端运行入口回归测试通过；边界扫描无违规命中；不修改前序服务稳定接口；不直接读取前序服务数据库；不导入前序服务 Java package；不调用真实 `external-node-executor`；不执行真实 Docker、containerd、registry、scanner、镜像拉取、镜像删除或容器创建；不保存真实 registry token、完整 manifest、layer URL、内部地址、宿主路径、节点凭据、完整请求头或前序服务私有数据；不把玩家资源下载、Cloudreve 文件同步、运维任务执行、节点文件管理、终端能力、告警规则、外部通知发送或插件安装塞进本服务。
+`ops-image-market` 完成时必须满足以下条件：当前运行入口为 `ops-core-service:8133`，历史端口 `8124` 只作为 `legacyPort` 返回；健康检查公开且不泄露敏感信息；后台接口按角色、能力点、风险等级和确认文本限制；provider、镜像目录、镜像版本、兼容配置、模板、风险扫描、拉取计划、节点缓存快照、审计、幂等、状态流转、依赖降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；自动化测试必须先红灯；实现后本模块在 `ops-core-service` 中全量测试通过；当前后端运行入口回归测试通过；边界扫描无违规命中；不修改前序模块稳定接口；不直接读取前序模块数据库；不导入前序模块 Java package；不调用真实 `external-node-executor`；不执行真实 Docker、containerd、registry、scanner、镜像拉取、镜像删除或容器创建；不保存真实 registry token、完整 manifest、layer URL、内部地址、宿主路径、节点凭据、完整请求头或前序模块私有数据；不把玩家资源下载、Cloudreve 文件同步、运维任务执行、节点文件管理、终端能力、告警规则、外部通知发送或插件安装塞进本服务。

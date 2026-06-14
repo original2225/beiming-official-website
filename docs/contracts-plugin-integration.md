@@ -4,9 +4,9 @@
 
 ## 文档定位
 
-本文档是 `plugin-integration` 微服务的正式 API 契约。后续前端插件联动页面、管理后台、`online-map`、`alerting`、`changelog`、`ops-control`、`external-node-executor` 和其他业务模块只能通过本文档定义的接口读取或管理插件 provider、插件实例快照、事件 schema、事件、路由规则、同步任务、健康快照、对象映射和审计摘要，不能直接读取或修改 `plugin-integration` 数据，也不能把真实 Minecraft 插件运行、节点命令、地图主数据、告警规则、通知渠道或服务器文件操作塞进本服务。
+本文档是 `plugin-integration` 模块的正式 API 契约。后续前端插件联动页面、管理后台、`online-map`、`alerting`、`changelog`、`ops-control`、`external-node-executor` 和其他业务模块只能通过本文档定义的接口读取或管理插件 provider、插件实例快照、事件 schema、事件、路由规则、同步任务、健康快照、对象映射和审计摘要，不能直接读取或修改 `plugin-integration` 数据，也不能把真实 Minecraft 插件运行、节点命令、地图主数据、告警规则、通知渠道或服务器文件操作塞进本服务。
 
-本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、运维能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `plugin-integration` 的职责边界、数据归属、前序服务兼容、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
+本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、运维能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `plugin-integration` 的职责边界、数据归属、前序模块兼容、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
 
 本文档参考 Paper、Bukkit/Spigot、Velocity、BlueMap、Dynmap、LuckPerms、PlaceholderAPI、DiscordSRV、Prometheus exporter、Modrinth、CurseForge 和 Hangar 的公开设计。Paper、Bukkit 和 Velocity 的事件监听模型说明事件必须有来源、类型、版本和受控 payload；BlueMap 和 Dynmap 的 marker 模型说明插件对象只能同步为地图对象建议或快照，不能直接接管地图服务主数据；LuckPerms 说明外部权限插件只能作为权限来源摘要，不能替代官网 `auth`；PlaceholderAPI 说明跨插件变量要有命名空间和白名单；DiscordSRV 说明跨平台通知必须走受控渠道，不能泄露外部 token；Prometheus exporter 说明插件指标应作为指标快照，不应混入业务主数据；Modrinth、CurseForge 和 Hangar 的项目、版本、文件、依赖和平台拆分说明插件来源、插件版本和分发元数据要结构化。本文档只吸收这些生态的设计思路，不导入它们的 Java API、插件 jar、平台 SDK、私有 token、Webhook secret、配置文件或命令能力。
 
@@ -40,7 +40,7 @@
 
 `plugin-integration` 可以保存来自 `auth` 的操作者用户 ID、展示名、角色、能力点和用户状态快照；可以保存来自 `ops-control` 的节点和 Minecraft 实例只读摘要；可以保存来自 `external-node-executor` 的安全回写摘要；可以保存来自 `server-status` 的公开实例状态摘要；可以保存来自 `online-map` 的 provider、world、layer、marker 和 region 引用摘要；可以保存来自 `changelog` 的插件版本变更摘要；可以保存来自 `notification` 的投递结果摘要；可以保存供 `alerting` 消费的插件健康和事件异常摘要。所有快照只用于展示、过滤、降级、审计和后续同步建议，不能成为来源模块主数据，也不能反写来源模块。
 
-`plugin-integration` 不能直接读取其他服务数据库，不能导入前序服务 Java package，不能复用前序服务内存 store，不能调用 `external-node-executor` 执行真实命令，不能读取插件目录、世界目录、服务端配置、RCON 密码或节点文件，不能保存 Cloudreve token、Webhook secret、Discord token、插件后台密码、完整请求头、内部 URL 或绝对路径。
+`plugin-integration` 不能直接读取其他服务数据库，不能导入前序模块 Java package，不能复用前序模块内存 store，不能调用 `external-node-executor` 执行真实命令，不能读取插件目录、世界目录、服务端配置、RCON 密码或节点文件，不能保存 Cloudreve token、Webhook secret、Discord token、插件后台密码、完整请求头、内部 URL 或绝对路径。
 
 ## 基础路径、端口和认证
 
@@ -58,7 +58,7 @@
 
 生产和默认运行环境必须关闭测试控制头。关闭后这些请求头必须被忽略，不能触发认证失败、依赖失败、通知失败、审计失败、存储失败或时间模拟。自检摘要必须返回 `testControlsEnabled`，并在测试控制关闭时把 `TEST_CONTROLS_DISABLED_OUTSIDE_TEST` 纳入生产化硬化项。
 
-## 前序服务兼容契约
+## 前序模块兼容契约
 
 `auth` 是后台接口强依赖。当前请求认证上下文至少包含 `userId`、`displayName`、`roles`、`permissions` 和 `status`。用户状态为 `DISABLED`、`BANNED` 或 `DELETED` 时不得访问后台接口。auth 不可用返回 `47050`，auth 超时返回 `47051`，字段或枚举不兼容返回 `47052`。
 
@@ -272,7 +272,7 @@
 
 ### PluginAuditLog
 
-审计字段继承公共契约，允许补充 `providerId`、`eventId`、`schemaId`、`ruleId`、`taskId`、`mappingId`、`dependencyStatus`、`notificationStatus`、`idempotencyKey` 和 `failureReason`。审计列表不得提供删除、修改或恢复接口。审计响应不得返回 token、密钥、webhook secret、完整请求头、完整 payload、内部 URL、内部路径、真实世界目录、节点地址、完整异常栈或前序服务私有数据。
+审计字段继承公共契约，允许补充 `providerId`、`eventId`、`schemaId`、`ruleId`、`taskId`、`mappingId`、`dependencyStatus`、`notificationStatus`、`idempotencyKey` 和 `failureReason`。审计列表不得提供删除、修改或恢复接口。审计响应不得返回 token、密钥、webhook secret、完整请求头、完整 payload、内部 URL、内部路径、真实世界目录、节点地址、完整异常栈或前序模块私有数据。
 
 ### PluginIntegrationOpsSummary
 
@@ -482,7 +482,7 @@ schema 状态流转为 `DRAFT` 可到 `ENABLED`、`DISABLED` 或 `ARCHIVED`；`E
 
 ## 安全、降级和脱敏
 
-任何请求体和响应都不得包含访问 token、插件 token、插件 secret、webhook secret、Discord token、SMTP 密码、短信 token、完整 Authorization 请求头、完整请求 headers、完整 raw payload、内部 URL、内部路径、真实世界目录、节点地址、服务器密码、RCON 密码、完整异常栈、数据库连接串、`.env`、`authorized_keys`、`id_rsa`、shell 命令或前序服务私有数据。检查必须递归覆盖嵌套对象和数组。
+任何请求体和响应都不得包含访问 token、插件 token、插件 secret、webhook secret、Discord token、SMTP 密码、短信 token、完整 Authorization 请求头、完整请求 headers、完整 raw payload、内部 URL、内部路径、真实世界目录、节点地址、服务器密码、RCON 密码、完整异常栈、数据库连接串、`.env`、`authorized_keys`、`id_rsa`、shell 命令或前序模块私有数据。检查必须递归覆盖嵌套对象和数组。
 
 外部 endpoint 和 allowed origins 必须拒绝 `file:`、`data:`、`javascript:`、带用户名密码 URL、localhost、回环 IP、内网 IP、链路本地地址、未解析 host、通配符 `*`、空 host、控制字符和非法 URI。`eventEndpointSummary` 只能是公开安全摘要或站内受控路径，不得是内网完整地址。站内受控路径必须以 `/` 开头，不能以 `//` 开头，不能包含反斜杠或控制字符。
 
@@ -496,4 +496,4 @@ schema 状态流转为 `DRAFT` 可到 `ENABLED`、`DISABLED` 或 `ARCHIVED`；`E
 
 `plugin-integration` API 文档必须按 `docs/contracts-plugin-integration.md` 独立存在，并由 `.local-docs/tests-ops-core.md` 记录合并后的本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、能力点不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求、敏感字段脱敏、测试控制头默认关闭和模块验收口径。
 
-`plugin-integration` 完成时必须满足以下条件：当前运行入口为 `ops-core-service:8133`，历史端口 `8122` 只作为 `legacyPort` 返回；健康检查公开且不泄露敏感信息；后台接口按角色和能力点限制；provider、实例、能力、schema、事件、路由规则、同步任务、健康快照、对象映射、审计、幂等、状态流转、来源 allowlist、payload 脱敏、依赖降级、通知失败摘要、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；自动化测试必须先红灯；实现后 `plugin-integration` 在 `ops-core-service` 中全部测试通过；当前后端运行入口回归测试通过；边界扫描无违规命中；不修改前序服务稳定接口；不直接读取前序服务数据库；不导入前序服务 Java package；不调用真实 `external-node-executor`；不执行真实插件命令；不写真实插件配置；不保存真实插件 token、webhook secret 或外部平台密钥；不把地图主数据、告警规则、通知渠道、资源下载、节点文件管理、终端、备份恢复或跨平台通知主数据塞进 `plugin-integration`。
+`plugin-integration` 完成时必须满足以下条件：当前运行入口为 `ops-core-service:8133`，历史端口 `8122` 只作为 `legacyPort` 返回；健康检查公开且不泄露敏感信息；后台接口按角色和能力点限制；provider、实例、能力、schema、事件、路由规则、同步任务、健康快照、对象映射、审计、幂等、状态流转、来源 allowlist、payload 脱敏、依赖降级、通知失败摘要、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；自动化测试必须先红灯；实现后 `plugin-integration` 在 `ops-core-service` 中全部测试通过；当前后端运行入口回归测试通过；边界扫描无违规命中；不修改前序模块稳定接口；不直接读取前序模块数据库；不导入前序模块 Java package；不调用真实 `external-node-executor`；不执行真实插件命令；不写真实插件配置；不保存真实插件 token、webhook secret 或外部平台密钥；不把地图主数据、告警规则、通知渠道、资源下载、节点文件管理、终端、备份恢复或跨平台通知主数据塞进 `plugin-integration`。

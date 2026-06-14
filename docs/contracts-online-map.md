@@ -4,9 +4,9 @@
 
 ## 文档定位
 
-本文档是 `online-map` 微服务的正式 API 契约。后续前端在线地图页面、管理后台、`admin` 聚合、`alerting`、`ops-control` 和其他业务模块只能通过本文档定义的接口读取或管理在线地图公开入口、世界、图层、marker、区域、嵌入配置、健康快照和审计摘要，不能直接读取或修改 `online-map` 数据。
+本文档是 `online-map` 模块的正式 API 契约。后续前端在线地图页面、管理后台、`admin` 聚合、`alerting`、`ops-control` 和其他业务模块只能通过本文档定义的接口读取或管理在线地图公开入口、世界、图层、marker、区域、嵌入配置、健康快照和审计摘要，不能直接读取或修改 `online-map` 数据。
 
-本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、运维能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `online-map` 的职责边界、数据归属、前序服务兼容、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
+本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、运维能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `online-map` 的职责边界、数据归属、前序模块兼容、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
 
 本文档参考 BlueMap、Dynmap、squaremap 和 Minecraft Overviewer 的公开设计。BlueMap 的 marker set、POI、HTML、line、shape 和 extrusion marker 适合抽象 marker 图层；Dynmap 的世界、地图视图、marker、area 和 line 适合作为二维地图 provider 兼容参考；squaremap 的轻量地图、marker、shape 和 icon API 适合第一版 provider 摘要；Minecraft Overviewer 的静态地图生成和浏览器查看模型说明官网不应接管渲染任务。本文档只吸收 provider、world、layer、marker、region、embed 和健康摘要的设计思路，不直接依赖这些项目的 Java API、配置文件、插件命令或内部数据结构。
 
@@ -33,7 +33,7 @@
 
 `online-map` 可以保存来自 `auth` 的操作者用户 ID、展示名、角色、能力点和用户状态快照；可以保存来自 `server-status` 的公开实例状态摘要；可以保存来自 `ops-control` 的只读节点或 Minecraft 实例健康摘要；可以保存来自 `content` 的公开页面引用摘要；可以保存来自 `changelog` 的地图版本摘要；可以保存供 `alerting` 读取的健康摘要；可以保存来自 `notification` 的投递结果摘要。所有快照只用于展示、过滤、降级和审计，不能成为来源模块主数据，也不能反写来源模块。
 
-`online-map` 不能直接读取其他服务数据库，不能导入前序服务 Java package，不能复用前序服务内存 store，不能调用 `external-node-executor` 执行真实命令，不能代理真实瓦片目录，不能读取 Minecraft 世界文件，不能保存 Cloudreve token，不能把玩家资源下载塞进地图服务。
+`online-map` 不能直接读取其他服务数据库，不能导入前序模块 Java package，不能复用前序模块内存 store，不能调用 `external-node-executor` 执行真实命令，不能代理真实瓦片目录，不能读取 Minecraft 世界文件，不能保存 Cloudreve token，不能把玩家资源下载塞进地图服务。
 
 ## 基础路径、端口和认证
 
@@ -53,7 +53,7 @@
 
 生产和默认运行环境必须关闭测试控制头。关闭后这些请求头必须被忽略，不能触发认证失败、provider 失败、依赖失败、通知失败、审计失败、存储失败或时间模拟。自检摘要必须返回 `testControlsEnabled`，并在测试控制关闭时把 `TEST_CONTROLS_DISABLED_OUTSIDE_TEST` 纳入生产化硬化项。
 
-## 前序服务兼容契约
+## 前序模块兼容契约
 
 `auth` 是后台接口强依赖。当前请求认证上下文至少包含 `userId`、`displayName`、`roles`、`permissions` 和 `status`。用户状态为 `DISABLED`、`BANNED` 或 `DELETED` 时不得访问后台接口。auth 不可用返回 `46820`，auth 超时返回 `46821`，auth 字段或枚举不兼容返回 `46822`。
 
@@ -485,4 +485,4 @@ provider 探测失败时不清空旧公开入口。公开接口可以返回最�
 
 `online-map` API 文档必须按 `docs/contracts-online-map.md` 独立存在，并由 `.local-docs/tests-online-map.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、能力点不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求、敏感字段脱敏、测试控制头默认关闭和模块验收口径。
 
-`online-map` 完成时必须满足以下条件：当前运行入口由 `unified-backend-service:8135` 挂载，历史 `online-map-service:8121` Maven 入口已退役且不得恢复；健康检查公开且不泄露敏感信息；公开接口只返回公开可见、已启用、未归档且脱敏的数据；后台接口按角色和能力点限制；provider、world、layer、marker、region、embed、健康快照、审计、幂等、状态流转、URL 安全、坐标边界、依赖降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；自动化测试必须先红灯；实现后 `mvn -q -f backend/pom.xml test` 通过并覆盖 `online-map` 全部 34 个 API；当前后端运行入口回归通过；边界扫描无违规命中；不修改前序服务稳定接口；不直接调用 `external-node-executor`；不读取真实世界目录；不代理真实瓦片；不执行真实地图插件命令；不把地图渲染、资源下载、节点文件管理、终端、备份恢复或告警规则塞进 `online-map`。
+`online-map` 完成时必须满足以下条件：当前运行入口由 `backend:8135` 挂载，历史 `online-map-service:8121` Maven 入口已退役且不得恢复；健康检查公开且不泄露敏感信息；公开接口只返回公开可见、已启用、未归档且脱敏的数据；后台接口按角色和能力点限制；provider、world、layer、marker、region、embed、健康快照、审计、幂等、状态流转、URL 安全、坐标边界、依赖降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；自动化测试必须先红灯；实现后 `mvn -q -f backend/pom.xml test` 通过并覆盖 `online-map` 全部 34 个 API；当前后端运行入口回归通过；边界扫描无违规命中；不修改前序模块稳定接口；不直接调用 `external-node-executor`；不读取真实世界目录；不代理真实瓦片；不执行真实地图插件命令；不把地图渲染、资源下载、节点文件管理、终端、备份恢复或告警规则塞进 `online-map`。

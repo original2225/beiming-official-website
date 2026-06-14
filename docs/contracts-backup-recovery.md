@@ -4,7 +4,7 @@
 
 ## 文档定位
 
-本文档是 `backup-recovery` 微服务的正式 API 契约。`backup-recovery` 负责备份域、备份策略、备份任务、备份点索引、备份校验、恢复演练、恢复申请、审批摘要、保留策略、加密摘要、依赖健康摘要、风险审计和自检摘要。
+本文档是 `backup-recovery` 模块的正式 API 契约。`backup-recovery` 负责备份域、备份策略、备份任务、备份点索引、备份校验、恢复演练、恢复申请、审批摘要、保留策略、加密摘要、依赖健康摘要、风险审计和自检摘要。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `backup-recovery` 的职责边界、数据归属、路径、字段、状态、权限、错误码、幂等、任务流转、恢复流转、失败降级、审计和验收口径。
 
@@ -35,7 +35,7 @@
 
 `backup-recovery` 拥有以下主数据：BackupDomain、BackupPolicy、BackupJob、BackupPoint、BackupVerification、RestoreDrill、RestoreRequest、BackupRecoveryAuditLog、BackupRecoveryOpsSummary 和幂等记录。
 
-`backup-recovery` 可以保存来自 `auth` 的操作者用户 ID、展示名、角色、能力点和状态快照；可以保存来自 `ops-control` 的节点、资产、备份盘和受控任务引用摘要；可以保存来自 `admin` 的模块健康聚合引用；可以保存来自 `notification` 的投递降级摘要。所有跨服务字段只能来自正式接口、后端入口可信上下文或契约允许的本地测试 stub，不能直接读取前序服务数据库、内存 store、测试种子或私有类。
+`backup-recovery` 可以保存来自 `auth` 的操作者用户 ID、展示名、角色、能力点和状态快照；可以保存来自 `ops-control` 的节点、资产、备份盘和受控任务引用摘要；可以保存来自 `admin` 的模块健康聚合引用；可以保存来自 `notification` 的投递降级摘要。所有跨服务字段只能来自正式接口、后端入口可信上下文或契约允许的本地测试 stub，不能直接读取前序模块数据库、内存 store、测试种子或私有类。
 
 备份点中的 `storageRef` 只能返回安全摘要，例如存储别名、区域摘要、保留分层和加密模式。不得返回真实绝对路径、数据库连接串、对象存储密钥、加密密钥、节点 token、Cloudreve 管理凭据或完整上游响应。
 
@@ -55,7 +55,7 @@
 
 生产和默认运行环境必须关闭测试控制头。关闭后这些请求头必须被忽略，不能触发认证失败、ops-control 失败、notification 失败、备份任务失败、审计失败、存储失败或时间模拟。自检摘要必须返回 `testControlsEnabled`，并在测试控制关闭时把 `TEST_CONTROLS_DISABLED_OUTSIDE_TEST` 纳入生产化硬化项。
 
-## 前序服务兼容契约
+## 前序模块兼容契约
 
 `auth` 是强依赖。当前请求认证上下文至少包含 `userId`、`displayName`、`roles`、`permissions` 和 `status`。用户状态为 `DISABLED`、`BANNED` 或 `DELETED` 时不得访问后台接口。auth 不可用返回 `46810`，auth 超时返回 `46811`，auth 字段或枚举不兼容返回 `46812`。
 
@@ -345,4 +345,4 @@
 
 `backup-recovery` API 文档必须按 `docs/contracts-backup-recovery.md` 独立存在，并由 `.local-docs/tests-ops-core.md` 记录合并后的本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、能力点不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求、敏感字段脱敏、测试控制头默认关闭和模块验收口径。
 
-`backup-recovery` 完成时必须满足以下条件：当前运行入口为 `ops-core-service:8133`，历史端口 `8119` 只作为 `legacyPort` 返回；健康检查不泄露敏感信息；除健康检查外全部接口要求后台认证；备份域、策略、任务、备份点、校验、恢复演练、恢复申请、审批、审计、幂等、状态流转、依赖失败降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；不修改前序服务稳定接口；不直接调用 `external-node-executor`；不执行真实恢复；不把备份恢复能力塞回 `ops-control`、`admin`、`resource` 或 `cloudreve-sync`；自动化测试必须先红灯；实现后 `backup-recovery` 在 `ops-core-service` 中全部测试通过；当前后端运行入口回归测试通过；边界扫描无违规命中；测试过程记录完整。
+`backup-recovery` 完成时必须满足以下条件：当前运行入口为 `ops-core-service:8133`，历史端口 `8119` 只作为 `legacyPort` 返回；健康检查不泄露敏感信息；除健康检查外全部接口要求后台认证；备份域、策略、任务、备份点、校验、恢复演练、恢复申请、审批、审计、幂等、状态流转、依赖失败降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；不修改前序模块稳定接口；不直接调用 `external-node-executor`；不执行真实恢复；不把备份恢复能力塞回 `ops-control`、`admin`、`resource` 或 `cloudreve-sync`；自动化测试必须先红灯；实现后 `backup-recovery` 在 `ops-core-service` 中全部测试通过；当前后端运行入口回归测试通过；边界扫描无违规命中；测试过程记录完整。

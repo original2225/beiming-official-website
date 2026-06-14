@@ -23,15 +23,15 @@
 | 自检摘要 | 暴露 `business-core` 自身健康检查、后台装配摘要和生产就绪摘要，便于迁移验证和生产化排障。 |
 | 网关切换状态 | 为 `api-gateway` 第一批路径上游切换提供稳定目标，并在切换完成后暴露完成状态。 |
 
-`business-core` 不负责吸收网关能力。第四十七轮后，本地开发态 `api-gateway-service` Maven 入口已退役，网关自有 API 和第一批业务路径统一由 `unified-backend-service:8135` 承接。`business-core` 不负责后续模块，如 `onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、`ops-control`、`external-node-executor` 和 P3 扩展。
+`business-core` 不负责吸收网关能力。第四十七轮后，本地开发态 `api-gateway-service` Maven 入口已退役，网关自有 API 和第一批业务路径统一由 `backend:8135` 承接。`business-core` 不负责后续模块，如 `onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、`ops-control`、`external-node-executor` 和 P3 扩展。
 
 `business-core` 不允许把后续模块逻辑塞进第一批模块，不允许让前端直连新增路径吞掉业务，也不允许为了合并修改旧模块的稳定契约。
 
-`unified-backend-service:8135` 可以把 `business-core` 作为 in-process 稳定运行单元挂载，用于验证最终合并成一个后端服务的候选形态。该挂载不得改变 `business-core-service:8130` 的独立入口，不得改变 `/api/v1/business-core/**` 或第一批七个业务路径的认证、响应格式、错误码、请求编号、状态流转、幂等和审计规则，不得把 `business-core` 路径改写到 `/api/v1/unified-backend/**` 下。
+`backend:8135` 可以把 `business-core` 作为 in-process 稳定运行单元挂载，用于验证最终合并成一个后端服务的候选形态。该挂载不得改变 `business-core-service:8130` 的独立入口，不得改变 `/api/v1/business-core/**` 或第一批七个业务路径的认证、响应格式、错误码、请求编号、状态流转、幂等和审计规则，不得把 `business-core` 路径改写到 `/api/v1/unified-backend/**` 下。
 
 ## 运行形态
 
-本地验证运行单元为 `backend/business-core-service`，本地验证端口为 `8130`。端口 `8101` 到 `8107` 只作为第一批模块历史原服务端口登记，当前仓库不再保留旧七个微服务源码和 Maven 运行入口。端口 `8125` 只作为已退役旧 `api-gateway-service` 历史端口记录；当前网关能力由 `unified-backend-service:8135` 自承载。
+本地验证运行单元为 `backend/business-core-service`，本地验证端口为 `8130`。端口 `8101` 到 `8107` 只作为第一批模块历史原服务端口登记，当前仓库不再保留旧七个模块源码和 Maven 运行入口。端口 `8125` 只作为已退役旧 `api-gateway-service` 历史端口记录；当前网关能力由 `backend:8135` 自承载。
 
 Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `cn.beiming`。第一批模块应保留原包名 `cn.beiming.auth`、`cn.beiming.profile`、`cn.beiming.notification`、`cn.beiming.content`、`cn.beiming.serverstatus`、`cn.beiming.resource` 和 `cn.beiming.admin`。不得为了合并进行无业务收益的大规模包名迁移。
 
@@ -78,7 +78,7 @@ Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `
 | `moduleName` | string | 是 | 模块展示名。 |
 | `pathPrefix` | string | 是 | 模块路径前缀。 |
 | `contract` | string | 是 | 模块正式契约文件路径。 |
-| `legacyPort` | integer | 是 | 旧微服务端口。 |
+| `legacyPort` | integer | 是 | 旧模块端口。 |
 | `mounted` | boolean | 是 | 模块是否已装配到 `business-core`。 |
 | `routesTotal` | integer | 是 | 该模块在当前运行单元内登记的路由数量。 |
 | `contractRoutesTotal` | integer | 是 | 该模块契约期望路由数量。 |
@@ -103,7 +103,7 @@ Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `
 | `moduleRoutes` | `BusinessCoreModuleStatus[]` | 是 | 七个模块装配状态。 |
 | `gatewaySwitchReady` | boolean | 是 | 是否已满足网关切换前置条件。网关切换完成后仍为 `true`。 |
 | `gatewaySwitchStatus` | string | 是 | 网关切换状态，允许 `NOT_READY`、`READY` 或 `COMPLETED`。 |
-| `legacyBaselines` | object[] | 是 | 当前仍保留的外部基线摘要。第四十七轮后指向 `unified-backend-service`，不再要求运行已退役的 `api-gateway-service` Maven 入口。 |
+| `legacyBaselines` | object[] | 是 | 当前仍保留的外部基线摘要。第四十七轮后指向 `backend`，不再要求运行已退役的 `api-gateway-service` Maven 入口。 |
 | `retiredLegacyServices` | string[] | 是 | 已由 `business-core` 替代并清理源码的第一批旧服务。 |
 | `productionGaps` | string[] | 是 | 生产化差距摘要。 |
 | `generatedAt` | string | 是 | 摘要生成时间。 |
@@ -417,7 +417,7 @@ Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `
 
 ## 网关策略
 
-第一批网关切换已完成。第四十七轮后，本地开发态 `api-gateway-service` 独立 Maven 入口已退役；`unified-backend-service:8135` 自承载网关能力，并保持 `auth`、`profile`、`notification`、`content`、`server-status`、`resource` 和 `admin` 业务路径对 `business-core-service` 约定边界的兼容。前端仍通过原 API 路径访问，不新增前端直连约定。
+第一批网关切换已完成。第四十七轮后，本地开发态 `api-gateway-service` 独立 Maven 入口已退役；`backend:8135` 自承载网关能力，并保持 `auth`、`profile`、`notification`、`content`、`server-status`、`resource` 和 `admin` 业务路径对 `business-core-service` 约定边界的兼容。前端仍通过原 API 路径访问，不新增前端直连约定。
 
 后续若再次调整网关路由，必须先更新 `docs/contracts-api-gateway.md` 和 `.local-docs/tests-api-gateway.md`，确认测试红灯后再修改网关实现。
 
@@ -437,6 +437,6 @@ Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `
 
 当前统一后端回归命令 `mvn -q -f backend/pom.xml test` 必须覆盖本文档三个自有接口和七个模块继承过来的全部契约测试。第一批旧服务源码清理后，旧服务运行文件不得恢复，七个模块正式契约和 `business-core` 模块源码必须继续由统一后端装配。
 
-`business-core` 直连合并和第一批网关切换均已完成测试闭环。用户确认后，第一批旧服务源码和 Maven 运行入口已按明确文件路径逐个清理，当前本地运行以 `unified-backend-service:8135` 装配的 `business-core` 模块为准。
+`business-core` 直连合并和第一批网关切换均已完成测试闭环。用户确认后，第一批旧服务源码和 Maven 运行入口已按明确文件路径逐个清理，当前本地运行以 `backend:8135` 装配的 `business-core` 模块为准。
 
 旧服务目录不得因本契约自动批量删除。需要继续清理残留空目录或其他批次旧服务时，必须单独确认范围；删除文件只能逐个明确路径处理。

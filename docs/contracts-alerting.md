@@ -4,9 +4,9 @@
 
 ## 文档定位
 
-本文档是 `alerting` 微服务的正式 API 契约。`alerting` 负责告警源摘要、告警规则、规则评估、告警实例、去重分组、静默、通知路由、投递摘要、确认关闭、审计列表和自检摘要。
+本文档是 `alerting` 模块的正式 API 契约。`alerting` 负责告警源摘要、告警规则、规则评估、告警实例、去重分组、静默、通知路由、投递摘要、确认关闭、审计列表和自检摘要。
 
-本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `alerting` 的职责边界、数据归属、前序服务兼容、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
+本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `alerting` 的职责边界、数据归属、前序模块兼容、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
 
 本文档参考 Prometheus Alertmanager、Grafana Alerting、PagerDuty、Opsgenie、Amazon CloudWatch 和 Datadog Monitor 的公开设计。Alertmanager 的 grouping、deduplication、routing、silencing 和 inhibition 适合告警风暴控制；Grafana 的 contact point、notification policy、silence 和 mute timing 适合把告警规则与通知渠道拆开；PagerDuty 的事件编排、`dedup_key` 和通用事件字段适合把来源事件整理成可处理事件；Opsgenie 的 `alias` 去重和 acknowledge、close、snooze 生命周期适合告警处理闭环；CloudWatch 的复合告警和抑制等待窗口适合维护窗口和上游故障抑制；Datadog 的 monitor、renotify 和 escalation message 适合重复提醒和升级摘要。本文档只吸收规则、事件、抑制、路由、去重键和闭环模型，不接入这些平台的主数据，也不在第一版发送真实外部通知。
 
@@ -27,7 +27,7 @@
 
 `alerting` 不负责用户登录、角色能力点主数据、站内通知主数据、真实短信、真实邮件、真实 Webhook、真实指标采集、真实节点操作、真实备份恢复、真实 Cloudreve 调用、真实容器或虚拟机控制、玩家资源下载、社区工单主数据或后台聚合主数据。
 
-第一版固定为内存存储和受控测试适配器。它可以使用前序服务健康、指标、任务失败和风险摘要的快照，不能直接导入前序服务 Java 类、内存 store、测试种子或私有数据结构。跨服务字段只能来自正式 API、后端入口可信认证上下文或契约允许的本地测试 stub。
+第一版固定为内存存储和受控测试适配器。它可以使用前序模块健康、指标、任务失败和风险摘要的快照，不能直接导入前序模块 Java 类、内存 store、测试种子或私有数据结构。跨服务字段只能来自正式 API、后端入口可信认证上下文或契约允许的本地测试 stub。
 
 ## 数据归属
 
@@ -51,7 +51,7 @@
 
 生产和默认运行环境必须关闭测试控制头。关闭后这些请求头必须被忽略，不能触发认证失败、来源失败、通知失败、审计失败、存储失败或时间模拟。自检摘要必须返回 `testControlsEnabled`，并在测试控制关闭时把 `TEST_CONTROLS_DISABLED_OUTSIDE_TEST` 纳入生产化硬化项。
 
-## 前序服务兼容契约
+## 前序模块兼容契约
 
 `auth` 是强依赖。当前请求认证上下文至少包含 `userId`、`displayName`、`roles`、`permissions` 和 `status`。用户状态为 `DISABLED`、`BANNED` 或 `DELETED` 时不得访问后台接口。auth 不可用返回 `46920`，auth 超时返回 `46921`，auth 字段或枚举不兼容返回 `46922`。
 
@@ -349,4 +349,4 @@
 
 `alerting` API 文档必须按 `docs/contracts-alerting.md` 独立存在，并由 `.local-docs/tests-ops-core.md` 记录合并后的本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、能力点不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求、敏感字段脱敏、测试控制头默认关闭和模块验收口径。
 
-`alerting` 完成时必须满足以下条件：当前运行入口为 `ops-core-service:8133`，历史端口 `8120` 只作为 `legacyPort` 返回；健康检查不泄露敏感信息；除健康检查外全部接口要求后台认证；告警源、规则、评估、实例、确认关闭、静默、通知路由、投递摘要、审计、幂等、状态流转、去重分组、通知失败降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；不修改前序服务稳定接口；不直接调用 `external-node-executor`；不执行真实外部通知发送；不把告警规则塞进 `notification`、`admin`、`ops-control`、`server-status`、`cloudreve-sync` 或 `backup-recovery`；自动化测试必须先红灯；实现后 `alerting` 在 `ops-core-service` 中全部测试通过；当前后端运行入口回归测试通过；边界扫描无违规命中；测试过程记录完整。
+`alerting` 完成时必须满足以下条件：当前运行入口为 `ops-core-service:8133`，历史端口 `8120` 只作为 `legacyPort` 返回；健康检查不泄露敏感信息；除健康检查外全部接口要求后台认证；告警源、规则、评估、实例、确认关闭、静默、通知路由、投递摘要、审计、幂等、状态流转、去重分组、通知失败降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；不修改前序模块稳定接口；不直接调用 `external-node-executor`；不执行真实外部通知发送；不把告警规则塞进 `notification`、`admin`、`ops-control`、`server-status`、`cloudreve-sync` 或 `backup-recovery`；自动化测试必须先红灯；实现后 `alerting` 在 `ops-core-service` 中全部测试通过；当前后端运行入口回归测试通过；边界扫描无违规命中；测试过程记录完整。

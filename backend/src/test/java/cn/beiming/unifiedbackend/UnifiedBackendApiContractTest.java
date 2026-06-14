@@ -3765,12 +3765,18 @@ class UnifiedBackendApiContractTest {
                 .contains("BLOCKED_BY_API_GATEWAY_RETIREMENT_RECEIPT_NOT_PROVIDED")
                 .contains("docs/unified-backend-api-gateway-retirement-receipt-sample.json")
                 .contains("api-gateway-service")
-                .contains("unified-backend-service:8135")
+                .contains("backend:8135"));
+
+        assertThat(docs.get("api-reference")
+                + docs.get("system-design")
+                + docs.get("development-governance")
+                + docs.get("frontend-api-handbook")
+                + docs.get("frontend-development-guide"))
                 .contains("readyToRetireBusinessCore=false")
                 .contains("readyToRetireAdmissionCore=false")
                 .contains("readyToRetireEngagementCore=false")
                 .contains("readyToRetireOpsCore=false")
-                .contains("readyToRetirePortalCore=false"));
+                .contains("readyToRetirePortalCore=false");
 
         assertThat(docs.get("frontend-api-handbook"))
                 .contains("VITE_API_BASE_URL")
@@ -4480,12 +4486,18 @@ class UnifiedBackendApiContractTest {
                 .contains("docs/unified-backend-real-production-entrypoint-cutover-evidence-sample.json")
                 .contains("oldApiGatewayRetirementAllowed")
                 .contains("api-gateway-service")
-                .contains("unified-backend-service:8135")
+                .contains("backend:8135"));
+
+        assertThat(docs.get("api-reference")
+                + docs.get("system-design")
+                + docs.get("development-governance")
+                + docs.get("frontend-api-handbook")
+                + docs.get("frontend-development-guide"))
                 .contains("readyToRetireBusinessCore=false")
                 .contains("readyToRetireAdmissionCore=false")
                 .contains("readyToRetireEngagementCore=false")
                 .contains("readyToRetireOpsCore=false")
-                .contains("readyToRetirePortalCore=false"));
+                .contains("readyToRetirePortalCore=false");
 
         assertThat(docs.get("frontend-api-handbook"))
                 .contains("VITE_API_BASE_URL")
@@ -4522,7 +4534,7 @@ class UnifiedBackendApiContractTest {
                 .contains("readyForProduction=false")
                 .contains("readyToReplaceGateway=false")
                 .contains("oldApiGatewayRetirementAllowed=false")
-                .contains("unified-backend-service:8135"));
+                .contains("backend:8135"));
 
         assertThat(docs.get("api-reference"))
                 .contains("frontendEntrypointRef")
@@ -4558,12 +4570,18 @@ class UnifiedBackendApiContractTest {
                 .contains("BLOCKED_BY_EXTERNAL_API_GATEWAY_RETIREMENT_EVIDENCE_NOT_PROVIDED")
                 .contains("docs/unified-backend-api-gateway-external-retirement-evidence-sample.json")
                 .contains("api-gateway-service")
-                .contains("unified-backend-service:8135")
+                .contains("backend:8135"));
+
+        assertThat(docs.get("api-reference")
+                + docs.get("system-design")
+                + docs.get("development-governance")
+                + docs.get("frontend-api-handbook")
+                + docs.get("frontend-development-guide"))
                 .contains("readyToRetireBusinessCore=false")
                 .contains("readyToRetireAdmissionCore=false")
                 .contains("readyToRetireEngagementCore=false")
                 .contains("readyToRetireOpsCore=false")
-                .contains("readyToRetirePortalCore=false"));
+                .contains("readyToRetirePortalCore=false");
     }
 
     @Test
@@ -4698,7 +4716,7 @@ class UnifiedBackendApiContractTest {
                 .contains("PASS_LOCAL_API_GATEWAY_ENTRYPOINT_RETIRED_UNIFIED_GATEWAY_APIS_PRESERVED");
         assertThat(apiGatewayContract)
                 .contains("历史网关行为契约")
-                .contains("unified-backend-service:8135");
+                .contains("backend:8135");
         assertThat(overview + systemDesign + governance + frontendHandbook + frontendGuide)
                 .contains("唯一后端 Maven 启动入口")
                 .contains("business-core-service");
@@ -5167,6 +5185,35 @@ class UnifiedBackendApiContractTest {
                 .doesNotContain("productionTrafficSwitched" + "=true")
                 .doesNotContain("trafficSwitchApplied" + "=true")
                 .doesNotContain("rollbackWindowCompleted" + "=true");
+    }
+
+    @Test
+    void officialDocsUseModularMonolithTerminologyAfterMicroserviceGovernanceRetirement() throws Exception {
+        String primaryDocs = Files.readString(Path.of("../README.md"))
+                + Files.readString(Path.of("../AGENTS.md"))
+                + Files.readString(Path.of("../docs/requirements.md"))
+                + Files.readString(Path.of("../docs/system-design.md"))
+                + Files.readString(Path.of("../docs/development-governance.md"))
+                + Files.readString(Path.of("../docs/contracts-overview.md"))
+                + Files.readString(Path.of("../docs/api-reference.md"))
+                + Files.readString(Path.of("../docs/frontend-api-handbook.md"))
+                + Files.readString(Path.of("../docs/frontend-development-guide.md"));
+
+        assertThat(primaryDocs)
+                .contains("模块化单体")
+                .contains("当前唯一后端 Maven 入口是 `backend/pom.xml`")
+                .contains("本地联调默认入口统一为 `http://127.0.0.1:8135`")
+                .contains("`docs/contracts-<module>.md`：各模块独立 API 契约")
+                .contains("本地模块开发指导文档")
+                .doesNotContain("各微服务独立 API 契约")
+                .doesNotContain("微服务开发指导文档")
+                .doesNotContain("完整微服务")
+                .doesNotContain("微服务开发规则")
+                .doesNotContain("当前微服务")
+                .doesNotContain("每个微服务")
+                .doesNotContain("服务治理须知")
+                .doesNotContain("统一后端候选入口")
+                .doesNotContain("unified-backend-service:8135");
     }
 
     @Test

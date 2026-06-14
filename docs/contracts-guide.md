@@ -4,7 +4,7 @@
 
 ## 文档定位
 
-本文档是 `guide` 微服务的正式 API 契约。后续 `content`、`onboarding`、`exam`、`whitelist`、`resource`、`server-status`、`community`、`admin` 和前端指南中心只能通过本文档定义的接口读取或维护指南与知识库主数据，不能直接读取或修改 `guide` 数据库。
+本文档是 `guide` 模块的正式 API 契约。后续 `content`、`onboarding`、`exam`、`whitelist`、`resource`、`server-status`、`community`、`admin` 和前端指南中心只能通过本文档定义的接口读取或维护指南与知识库主数据，不能直接读取或修改 `guide` 数据库。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、时间格式、基础角色、能力点、审计字段、风险等级、通用状态模型和通用错误码均以公共契约为准。本文档只补充 `guide` 的职责边界、数据归属、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
 
@@ -40,7 +40,7 @@
 
 `guide` 当前由 `portal-core-service:8134` 承载。历史原服务端口 `8127` 只作为对照记录，不再作为当前网关默认上游。`api-gateway` 必须以兼容方式保留 `/api/v1/guides` 路由，不能改变已有服务路径、认证方式、响应格式或测试。
 
-## 前序服务兼容契约
+## 前序模块兼容契约
 
 `guide` 适配 `auth`。当前请求认证上下文至少包含 `userId`、`displayName`、`roles`、`permissions`、`status` 和可选 Minecraft 绑定。用户状态为 `DISABLED`、`BANNED` 或 `DELETED` 时不得提交反馈或访问后台接口。auth 不可用返回 `46940`，auth 超时返回 `46941`，auth 字段或枚举不兼容返回 `46942`。
 
@@ -531,4 +531,4 @@ resource 和 server-status 引用失败时不得影响指南正文公开读取�
 
 `guide` API 文档按 `docs/contracts-guide.md` 独立存在，并由 `.local-docs/tests-guide.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求和模块验收口径。
 
-`guide` 完成时必须满足以下条件：全部接口按本文档实现；公开接口不泄露后台字段、审计字段、通知结果、资源下载密钥、服务器检测目标和外部渠道管理凭据；当前用户反馈只能写入自己的反馈；后台接口按角色限制；指南分类、文章、版本、规则版本、指令索引、外部入口、反馈、搜索摘要、状态流转、幂等、审计、自检摘要、端口配置和前序服务适配都有自动化测试；`.local-docs/tests-guide.md` 中全部测试用例都有对应自动化验证；未实现时自动化测试必须先失败；实现后 guide 在 `portal-core-service:8134` 中全部测试通过；api-gateway `/api/v1/guides` 路由指向 `8134` 并测试通过；旧 `guide-service:8127` Maven 入口已退役且不得恢复；auth、profile、notification、content、server-status、resource、admin 和 material 回归测试通过；没有修改前序服务稳定接口；没有把 `.local-docs/` 提交到仓库；没有把首页配置、公告文章、真实资源下载、素材投稿、社区讨论、考试判分、白名单审核、实时状态采集、服务器文件管理、容器、终端、节点执行、备份恢复或外部聊天同步塞进 `guide`。
+`guide` 完成时必须满足以下条件：全部接口按本文档实现；公开接口不泄露后台字段、审计字段、通知结果、资源下载密钥、服务器检测目标和外部渠道管理凭据；当前用户反馈只能写入自己的反馈；后台接口按角色限制；指南分类、文章、版本、规则版本、指令索引、外部入口、反馈、搜索摘要、状态流转、幂等、审计、自检摘要、端口配置和前序模块适配都有自动化测试；`.local-docs/tests-guide.md` 中全部测试用例都有对应自动化验证；未实现时自动化测试必须先失败；实现后 guide 在 `portal-core-service:8134` 中全部测试通过；api-gateway `/api/v1/guides` 路由指向 `8134` 并测试通过；旧 `guide-service:8127` Maven 入口已退役且不得恢复；auth、profile、notification、content、server-status、resource、admin 和 material 回归测试通过；没有修改前序模块稳定接口；没有把 `.local-docs/` 提交到仓库；没有把首页配置、公告文章、真实资源下载、素材投稿、社区讨论、考试判分、白名单审核、实时状态采集、服务器文件管理、容器、终端、节点执行、备份恢复或外部聊天同步塞进 `guide`。

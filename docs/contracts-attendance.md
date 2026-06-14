@@ -4,7 +4,7 @@
 
 ## 文档定位
 
-本文档是 `attendance` 微服务的正式 API 契约。后续 `community`、`activity`、`calendar`、`changelog`、前端适配、`admin` 聚合、`ops-control` 和 `external-node-executor` 只能通过本文档定义的接口读取考勤账户、积分流水、贡献记录、月度扣分、榜单、白名单移除候选、审计和自检摘要，不能直接读取或修改 `attendance` 数据库，也不能把考勤积分逻辑塞进其他服务。
+本文档是 `attendance` 模块的正式 API 契约。后续 `community`、`activity`、`calendar`、`changelog`、前端适配、`admin` 聚合、`ops-control` 和 `external-node-executor` 只能通过本文档定义的接口读取考勤账户、积分流水、贡献记录、月度扣分、榜单、白名单移除候选、审计和自检摘要，不能直接读取或修改 `attendance` 数据库，也不能把考勤积分逻辑塞进其他服务。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `attendance` 的职责边界、数据归属、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
 
@@ -27,7 +27,7 @@
 
 `attendance` 不负责注册、登录、邀请码、会话、账号角色能力点、Minecraft 绑定主数据、成员档案主数据、考试判分、白名单申请审核、真实服务器在线采集、真实 Minecraft 白名单移除命令、社区帖子、活动报名、内容审核、资源下载、后台聚合入口、服务器运维控制、节点守护进程、容器、终端、文件管理、备份恢复或 Cloudreve 管理。
 
-`attendance` 只能适配前序服务。它通过 `auth` 认证上下文读取当前用户和后台操作者，通过 `whitelist` 的 attendance handoff 初始化考勤账户，通过 `profile` 正式接口或未来服务间适配器校验成员状态并保存展示快照，通过 `notification` 投递积分变化、扣分预警和候选提醒。它不能要求前序服务反向写入 attendance 状态，不能导入前序服务内存存储、实体、Repository、测试种子或内部类。
+`attendance` 只能适配前序模块。它通过 `auth` 认证上下文读取当前用户和后台操作者，通过 `whitelist` 的 attendance handoff 初始化考勤账户，通过 `profile` 正式接口或未来服务间适配器校验成员状态并保存展示快照，通过 `notification` 投递积分变化、扣分预警和候选提醒。它不能要求前序模块反向写入 attendance 状态，不能导入前序模块内存存储、实体、Repository、测试种子或内部类。
 
 ## 数据归属
 
@@ -55,7 +55,7 @@ attendance 允许在本地自动化测试中使用 `X-Test-Whitelist-Mode`、`X-
 
 经 `api-gateway` 访问时，`attendance` 可以优先读取网关注入的可信身份头。只有 `X-Gateway-Internal-Request-Id` 存在时，才进入可信上下文解析；若该头缺失，即使请求带有 `X-Beiming-Actor-*`，也必须忽略这些头并继续走 `Authorization: Bearer <token>` 兼容路径。可信上下文缺少 `X-Beiming-Actor-User-Id`、角色枚举不兼容或字段无法解析时返回 HTTP `502` 和 `48002`，不得静默降级成匿名用户。
 
-## 前序服务兼容契约
+## 前序模块兼容契约
 
 `auth` 是强依赖。当前请求认证上下文至少包含 `userId`、`displayName`、`roles`、`permissions` 和 `status`。用户状态为 `ACTIVE` 时可读取自己的考勤数据；`DISABLED`、`BANNED`、`DELETED` 不允许读取或写入。auth 不可用返回 `48000`，auth 超时返回 `48001`，字段或枚举不兼容返回 `48002`。
 
@@ -703,7 +703,7 @@ P0 的正向贡献可以由后台受控写入。未来接入 `activity`、`commu
 
 必须审计的动作包括初始化考勤账户、初始化 handoff 重放、初始化失败、管理员积分调整、流水撤销、贡献记录创建、贡献记录修正、月度扣分预检、月度扣分执行、扣分任务部分失败、候选生成、候选确认、候选驳回、榜单重算、通知失败、依赖降级、自检读取、审计写入失败和状态写入失败。
 
-后台写操作必须记录 `reason`、操作者、目标对象、操作前状态、操作后状态、请求编号、参数摘要和结果。审计字段继承公共契约。审计不得泄露 token、完整请求头、Minecraft 验证凭据、profile 后台备注全文、通知正文全文、真实服务器命令、节点凭据、内部异常堆栈或前序服务内部路径。
+后台写操作必须记录 `reason`、操作者、目标对象、操作前状态、操作后状态、请求编号、参数摘要和结果。审计字段继承公共契约。审计不得泄露 token、完整请求头、Minecraft 验证凭据、profile 后台备注全文、通知正文全文、真实服务器命令、节点凭据、内部异常堆栈或前序模块内部路径。
 
 审计写入失败时，初始化、积分调整、流水撤销、贡献创建、贡献修正、月度扣分、候选确认、候选驳回和榜单重算不得假装成功，必须返回 `53001` 或 `53000`，并保持业务数据不变。
 
@@ -723,6 +723,6 @@ notification 是辅助依赖。通知失败不得回滚初始化、积分调整�
 
 `attendance` API 文档按 `docs/contracts-attendance.md` 独立存在，并由 `.local-docs/tests-attendance.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求和模块验收口径。
 
-`attendance` 完成时必须满足以下条件：全部接口按本文档实现；当前用户接口只能访问自己的账户、流水、贡献和排名；后台接口按角色限制；初始化只通过 whitelist handoff 和 profile 正式适配读取快照，不直接读前序服务实现；所有积分变化都有流水；月度扣分按 `cycleKey` 幂等；移除候选只生成建议，不执行真实 whitelist 移除或服务器命令；通知失败按辅助降级记录；当前运行入口为 `admission-core-service:8131`，历史端口只作为 `legacyPort=8111` 返回；默认关闭测试控制头，直连伪造 `X-Beiming-Actor-*` 不能绕过 Bearer，网关注入可信上下文可被识别；`.local-docs/tests-attendance.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 attendance 全部测试通过；auth、profile、notification、content、server-status、resource、admin、onboarding、exam 和 whitelist 前序服务回归测试通过；没有修改前序服务稳定接口；没有把社区、活动、日历、更新日志、后台聚合、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复或 Cloudreve 管理能力塞进 attendance。
+`attendance` 完成时必须满足以下条件：全部接口按本文档实现；当前用户接口只能访问自己的账户、流水、贡献和排名；后台接口按角色限制；初始化只通过 whitelist handoff 和 profile 正式适配读取快照，不直接读前序模块实现；所有积分变化都有流水；月度扣分按 `cycleKey` 幂等；移除候选只生成建议，不执行真实 whitelist 移除或服务器命令；通知失败按辅助降级记录；当前运行入口为 `admission-core-service:8131`，历史端口只作为 `legacyPort=8111` 返回；默认关闭测试控制头，直连伪造 `X-Beiming-Actor-*` 不能绕过 Bearer，网关注入可信上下文可被识别；`.local-docs/tests-attendance.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 attendance 全部测试通过；auth、profile、notification、content、server-status、resource、admin、onboarding、exam 和 whitelist 前序模块回归测试通过；没有修改前序模块稳定接口；没有把社区、活动、日历、更新日志、后台聚合、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复或 Cloudreve 管理能力塞进 attendance。
 
 生产化硬化验收还必须满足：测试控制头默认关闭，只有本地自动化测试显式启用时才生效；关闭状态下依赖失败模拟头、写入失败模拟头和通知失败模拟头全部被忽略；自检摘要明确返回当前测试控制头开关状态。

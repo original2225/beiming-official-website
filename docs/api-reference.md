@@ -4,13 +4,13 @@
 
 ## 文档定位
 
-本文档是面向前端开发的一体化 API 查阅文档，由 `docs/contracts-common.md`、27 个业务或平台模块独立契约，以及 `business-core`、`admission-core`、`engagement-core`、`ops-core`、`portal-core` 和 `unified-backend` 六个运行入口或候选入口契约合并生成。它用于前端统一查路径、字段、权限、错误码、状态流转、失败降级和验收口径。
+本文档是面向前端开发的一体化 API 查阅文档，由 `docs/contracts-common.md`、27 个业务或平台模块独立契约，以及 `business-core`、`admission-core`、`engagement-core`、`ops-core`、`portal-core` 和 `unified-backend` 六个运行单元契约合并生成。当前后端是模块化单体，唯一 Maven 入口是 `backend/pom.xml`，本地默认入口是 `http://127.0.0.1:8135`。本文档用于前端统一查路径、字段、权限、错误码、状态流转、失败降级和验收口径。
 
 各模块独立契约仍是后端实现和变更的源文档。任一接口发生变化时，必须先更新对应 `docs/contracts-<module>.md`，再同步更新本文档。
 
-当前合并范围包含 27 个业务或平台模块，另包含六个运行入口或候选入口自检契约。第三批四个业务模块在 `engagement-core-service:8132` 中承载 149 个业务路由，第四批六个后台运维控制面模块和第六期跨平台通知控制面在 `ops-core-service:8133` 中承载 219 个业务路由，第五批后三个玩家门户体验模块在 `portal-core-service:8134` 中承载 108 个业务路由。`ops-core` 自身当前提供 5 个运行单元自检、诊断和 HTTP smoke 路由，`portal-core` 自身当前提供 5 个运行单元自检、诊断和 HTTP smoke 路由，`unified-backend` 自身提供 5 个候选入口自检、挂载和 HTTP smoke 路由，并在 readiness 中暴露生产替换预演预检矩阵、生产切换 runbook evidence、生产切流审批包 evidence、生产切流外部参数 manifest evidence、生产切流证据一致性审计 evidence、生产外部值接收演练 evidence、生产运行壳和配置接入演练 evidence、生产审计和观测 smoke 演练 evidence、后端单服务准备 evidence、最终单服务后端侧收束 evidence、入口切换执行 evidence、生产入口切换阻塞 evidence、外部入口切换适配与观测 evidence、外部入口切流配置样板 evidence、外部入口切流本地演练 evidence、外部入口与切流证据接收门禁 evidence、`api-gateway` 退役门禁 evidence、五个 core 退役前置矩阵、生产化硬化前置矩阵、生产集中配置前置矩阵、集中配置 provider 本地 file 演练 evidence、audit sink 本地 JSONL adapter 演练 evidence 和生产审计 sink 接入前置矩阵。第四十一轮生产审计和观测 smoke 演练下，候选入口继续记录从 `http://127.0.0.1:8125` 切到 `http://127.0.0.1:8135` 前的后端侧本地演练证据，业务路径保持原样；本地审计观测 smoke 样板、本地运行壳样板、本地外部值接收样板、本地外部入口样板、本地外部参数 manifest 样板、本地审批包样板、本地 runbook 样板、本地非密钥 file provider 样板和本地非生产 JSONL audit sink adapter 已完成加载、解析、校验、脱敏和证据聚合，但仓库内没有真实前端、反向代理、部署入口配置、真实生产 profile、真实集中配置 provider、真实密钥外置、真实回滚配置、真实 audit sink 配置或真实观测平台可更新，所以 `productionAuditObservabilitySmokeStatus=PASS_PRODUCTION_AUDIT_OBSERVABILITY_SMOKE_REHEARSAL_NOT_PRODUCTION`，`productionRuntimeConfigShellStatus=PASS_PRODUCTION_RUNTIME_CONFIG_SHELL_REHEARSAL_NOT_PRODUCTION`，`productionExternalValueIntakeRehearsalStatus=PASS_EXTERNAL_VALUE_INTAKE_REHEARSAL_NOT_PRODUCTION`，`productionCutoverEvidenceConsistencyAuditStatus=PASS_LOCAL_CUTOVER_EVIDENCE_CONSISTENCY_AUDIT_NOT_PRODUCTION`，`productionCutoverExternalParameterManifestStatus=PASS_REDACTED_EXTERNAL_PARAMETER_MANIFEST_REHEARSAL_NOT_PRODUCTION`，`productionCutoverApprovalPackageStatus=PASS_LOCAL_APPROVAL_PACKAGE_REHEARSAL_NOT_PRODUCTION`，`productionCutoverRunbookStatus=PASS_LOCAL_CUTOVER_RUNBOOK_REHEARSAL_NOT_PRODUCTION`，`productionCentralConfigProviderStatus=PASS_LOCAL_FILE_PROVIDER_REHEARSAL_NOT_PRODUCTION`，`auditSinkAdapterRehearsalStatus=PASS_LOCAL_AUDIT_SINK_REHEARSAL_NOT_PRODUCTION`，`externalEntrypointLocalCutoverRehearsalStatus=PASS_LOCAL_REHEARSAL_NOT_PRODUCTION`，`externalEntrypointCutoverEvidenceIntakeStatus=BLOCKED_BY_EXTERNAL_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED`，`externalEntrypointConfigSamplePrecheckStatus=BLOCKED_BY_CUTOVER_SAMPLE_NOT_APPLIED`，`productionEntrypointCutoverPrecheckStatus=BLOCKED_BY_MISSING_EXTERNAL_ENTRYPOINT_CONFIG`，`externalEntrypointCutoverPrecheckStatus=BLOCKED_BY_EXTERNAL_ENTRYPOINT_CONFIG_NOT_PROVIDED`，`apiGatewayRetirementPrecheckStatus=BLOCKED_BY_TRAFFIC_NOT_SWITCHED`，`coreEntrypointRetirementPrecheckStatus=PASS_LOCAL_CORE_MAVEN_ENTRYPOINTS_RETIRED_UNIFIED_MODULES_PRESERVED`，`productionHardeningPrecheckStatus=BLOCKED_BY_EXTERNAL_PRODUCTION_PREREQUISITES`，`productionCentralConfigPrecheckStatus=BLOCKED_BY_PRODUCTION_CONFIG_PROVIDER_NOT_CONNECTED`，`productionAuditSinkPrecheckStatus=BLOCKED_BY_PERSISTENT_AUDIT_SINK_NOT_CONFIGURED`，不代表前端、外部代理、生产流量、真实集中配置、持久化审计、真实观测平台、`api-gateway` 或五个 core 已经完成真实生产切换；五个 core 只完成本地独立 Maven 入口退役。
+当前合并范围包含 27 个业务或平台模块，另包含六个运行单元自检契约。`unified-backend` 自身提供 5 个统一后端自检、挂载和 HTTP smoke 路由，并在 readiness 中暴露生产替换预演预检矩阵、生产切换 runbook evidence、生产切流审批包 evidence、生产切流外部参数 manifest evidence、生产切流证据一致性审计 evidence、生产外部值接收演练 evidence、生产运行壳和配置接入演练 evidence、生产审计和观测 smoke 演练 evidence、后端单体准备 evidence、入口切换执行 evidence、生产入口切换阻塞 evidence、外部入口切换适配与观测 evidence、外部入口切流配置样板 evidence、外部入口切流本地演练 evidence、外部入口与切流证据接收门禁 evidence、`api-gateway` 退役门禁 evidence、五个 core 退役前置矩阵、生产化硬化前置矩阵、生产集中配置前置矩阵、集中配置 provider 本地 file 演练 evidence、audit sink 本地 JSONL adapter 演练 evidence 和生产审计 sink 接入前置矩阵。仓库内没有真实前端、反向代理、部署入口配置、真实生产 profile、真实集中配置 provider、真实密钥外置、真实回滚配置、真实 audit sink 配置或真实观测平台可更新，所以所有生产切流、生产配置、持久化审计和观测状态仍只代表本地样板或本地演练，不代表前端、外部代理、生产流量、真实集中配置、持久化审计、真实观测平台、`api-gateway` 或五个 core 已经完成真实生产切换。
 
-第四十二轮新增受控生产入口切流收据门禁。`productionControlledCutoverStatus=BLOCKED_BY_REAL_CUTOVER_RECEIPT_NOT_PROVIDED` 时，只表示后端候选入口具备脱敏收据样板、结构校验、ready flags 守卫和旧入口保护证据，不表示真实生产入口已经切换，不表示生产流量已观测在候选入口，不表示真实审计、dashboard、alert、trace 或回滚窗口已经完成，也不允许退役 `api-gateway` 或五个 core。
+第四十二轮新增受控生产入口切流收据门禁。`productionControlledCutoverStatus=BLOCKED_BY_REAL_CUTOVER_RECEIPT_NOT_PROVIDED` 时，只表示统一后端入口具备脱敏收据样板、结构校验、ready flags 守卫和旧入口保护证据，不表示真实生产入口已经切换，不表示生产流量已观测在 `8135`，不表示真实审计、dashboard、alert、trace 或回滚窗口已经完成，也不允许退役 `api-gateway` 或五个 core。
 
 ## 前端接入要点
 
@@ -243,7 +243,7 @@ P0 基础工程完成时，统一响应、统一错误、分页、认证头解�
 
 ### 文档定位
 
-本文档是 `auth` 微服务的正式 API 契约。后续 `profile`、`notification`、`content`、`admin`、`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`ops-control` 等服务只能通过本文档定义的接口或后端入口提供的认证上下文适配 `auth`，不能直接读取 `auth` 数据库，也不能自行实现登录、会话或权限判断。
+本文档是 `auth` 模块的正式 API 契约。后续 `profile`、`notification`、`content`、`admin`、`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`ops-control` 等服务只能通过本文档定义的接口或后端入口提供的认证上下文适配 `auth`，不能直接读取 `auth` 数据库，也不能自行实现登录、会话或权限判断。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、时间格式、基础角色、运维能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `auth` 模块自己的路径、字段、状态、权限、错误码、审计和验收口径。
 
@@ -485,7 +485,7 @@ P0 基础工程完成时，统一响应、统一错误、分页、认证头解�
 }
 ```
 
-业务规则：只要会话不可继续使用，就返回对应错误，不返回 `valid: false` 的成功响应。后端入口和后序服务可用该接口验证认证上下文。
+业务规则：只要会话不可继续使用，就返回对应错误，不返回 `valid: false` 的成功响应。后端入口和后序模块可用该接口验证认证上下文。
 
 #### 当前用户会话列表
 
@@ -792,7 +792,7 @@ P0 基础工程完成时，统一响应、统一错误、分页、认证头解�
 
 ### 文档定位
 
-本文档是 `profile` 微服务的正式 API 契约。后续 `notification`、`content`、`admin`、`onboarding`、`exam`、`whitelist`、`attendance`、`community` 等服务只能通过本文档定义的接口适配成员档案，不能直接读取或修改 `profile` 数据库。
+本文档是 `profile` 模块的正式 API 契约。后续 `notification`、`content`、`admin`、`onboarding`、`exam`、`whitelist`、`attendance`、`community` 等服务只能通过本文档定义的接口适配成员档案，不能直接读取或修改 `profile` 数据库。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、时间格式、基础角色、运维能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `profile` 模块自己的路径、字段、状态、权限、错误码、审计和验收口径。
 
@@ -1349,7 +1349,7 @@ profile 审计返回必须至少包含 `id`、`requestId`、`actorUserId`、`act
 
 ### 文档定位
 
-本文档是 `notification` 微服务的正式 API 契约。后续 `content`、`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、`admin` 和 `ops-control` 只能通过本文档定义的接口投递或读取通知结果，不能在各自模块内自建通知主数据、未读数或模板系统。
+本文档是 `notification` 模块的正式 API 契约。后续 `content`、`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、`admin` 和 `ops-control` 只能通过本文档定义的接口投递或读取通知结果，不能在各自模块内自建通知主数据、未读数或模板系统。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、时间格式、基础角色、能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `notification` 的职责边界、数据归属、路径、字段、状态、权限、错误码、幂等、降级、审计和验收口径。
 
@@ -1524,7 +1524,7 @@ notification 需要消费的网关上下文字段如下。
 
 `actorPermissions` 必须来自已解析认证上下文，不能从浏览器请求体读取。`sourceIp` 来自请求上下文，优先使用网关传入的安全来源摘要，缺失时使用服务端看到的远端地址或 `unknown`。`riskLevel` 必须使用实际操作风险等级，不能在审计响应中固定为 `MEDIUM`。
 
-`paramsSummary`、`beforeState` 和 `afterState` 只能保存安全摘要。创建通知可以记录 `sourceModule`、`sourceId`、`recipientTotal`、`channels`、`riskLevel`、`idempotencyKeyPresent` 和 `templateCode` 等字段；模板修改可以记录模板 ID、编码、版本和状态变化。审计摘要不得包含完整通知正文、完整模板正文、完整模板变量值、完整请求头、Authorization、token、外部渠道凭据、内部 URL、异常堆栈或前序服务私有字段。
+`paramsSummary`、`beforeState` 和 `afterState` 只能保存安全摘要。创建通知可以记录 `sourceModule`、`sourceId`、`recipientTotal`、`channels`、`riskLevel`、`idempotencyKeyPresent` 和 `templateCode` 等字段；模板修改可以记录模板 ID、编码、版本和状态变化。审计摘要不得包含完整通知正文、完整模板正文、完整模板变量值、完整请求头、Authorization、token、外部渠道凭据、内部 URL、异常堆栈或前序模块私有字段。
 
 ### notification 错误码
 
@@ -1965,7 +1965,7 @@ notification 需要消费的网关上下文字段如下。
 
 后台写操作必须记录 `reason`。审计字段继承公共契约，必须记录 actor、actor 权限摘要、来源 IP、目标、动作、风险等级、请求编号、参数安全摘要、操作前安全摘要、操作后安全摘要、结果和失败原因。审计写入失败时，后台写操作和模板写操作不得假装成功，必须返回 `51301` 或 `51300`，并保持业务数据不变。当前用户已读操作不强制写审计，归档操作建议写低风险审计或用户行为日志。
 
-生产化硬化验收还必须满足：审计响应不再返回空的 `actorPermissions`、`sourceIp` 和 `paramsSummary`；风险等级按真实操作写入；幂等记录 24 小时过期并可清理；自检摘要暴露幂等记录数量和审计摘要模式但不泄露响应快照；测试控制、测试桩和边界扫描不得引入真实外部渠道发送、节点运维、文件管理、批量删除或前序服务内部实现依赖。
+生产化硬化验收还必须满足：审计响应不再返回空的 `actorPermissions`、`sourceIp` 和 `paramsSummary`；风险等级按真实操作写入；幂等记录 24 小时过期并可清理；自检摘要暴露幂等记录数量和审计摘要模式但不泄露响应快照；测试控制、测试桩和边界扫描不得引入真实外部渠道发送、节点运维、文件管理、批量删除或前序模块内部实现依赖。
 
 ### 失败降级
 
@@ -1979,7 +1979,7 @@ notification 需要消费的网关上下文字段如下。
 
 `notification` API 文档按 `docs/contracts-notification.md` 独立存在，并由 `.local-docs/tests-notification.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级和审计要求。
 
-`notification` 完成时必须满足以下条件：全部接口按本文档实现；当前用户接口只能访问当前用户自己的通知；未读数准确且失败时不伪造 0；后台接口按角色限制；创建通知和模板写操作全有或全无；模板变量校验、模板预览和渲染失败可测试；自检摘要能暴露当前运行模式、审计摘要模式和幂等记录数量但不泄露敏感数据；auth 适配不直接读取 auth 实现；受保护接口同时支持网关可信认证上下文和旧 Bearer 兼容路径；审计 actor、权限判断、当前用户隔离、未读数、目标收件人快照、actor 权限摘要、来源 IP、安全参数摘要和幂等过期语义均以服务端解析结果为准；`.local-docs/tests-notification.md` 中全部测试用例都有对应自动化验证；未实现时自动化测试必须先失败；实现后 notification 全部测试通过；api-gateway、auth 和 profile 前序服务回归测试通过；没有修改前序服务稳定接口。
+`notification` 完成时必须满足以下条件：全部接口按本文档实现；当前用户接口只能访问当前用户自己的通知；未读数准确且失败时不伪造 0；后台接口按角色限制；创建通知和模板写操作全有或全无；模板变量校验、模板预览和渲染失败可测试；自检摘要能暴露当前运行模式、审计摘要模式和幂等记录数量但不泄露敏感数据；auth 适配不直接读取 auth 实现；受保护接口同时支持网关可信认证上下文和旧 Bearer 兼容路径；审计 actor、权限判断、当前用户隔离、未读数、目标收件人快照、actor 权限摘要、来源 IP、安全参数摘要和幂等过期语义均以服务端解析结果为准；`.local-docs/tests-notification.md` 中全部测试用例都有对应自动化验证；未实现时自动化测试必须先失败；实现后 notification 全部测试通过；api-gateway、auth 和 profile 前序模块回归测试通过；没有修改前序模块稳定接口。
 
 ## 北冥官网 content API 契约
 
@@ -1989,11 +1989,11 @@ notification 需要消费的网关上下文字段如下。
 
 ### 文档定位
 
-本文档是 `content` 微服务的正式 API 契约。后续 `server-status`、`resource`、`admin`、`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar` 和 `changelog` 只能通过本文档定义的接口适配官网内容，不能直接读取或修改 `content` 数据库。
+本文档是 `content` 模块的正式 API 契约。后续 `server-status`、`resource`、`admin`、`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar` 和 `changelog` 只能通过本文档定义的接口适配官网内容，不能直接读取或修改 `content` 数据库。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、时间格式、基础角色、能力点、审计字段、风险等级、通用状态模型和通用错误码均以公共契约为准。本文档只补充 `content` 的职责边界、数据归属、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
 
-`content` 适配 `auth`、`profile` 和 `notification`，不要求前序服务反向适配 `content`。`content` 通过后端入口传入的认证上下文、`/api/v1/auth/me`、`/api/v1/auth/session/verify` 或测试环境 auth stub 读取当前用户、角色和能力点。成员作品只保存来自 `profile` 的公开快照。审核结果需要通知时，只能调用 `notification` 的正式投递接口或受控适配层，不能自建通知主数据、未读数或模板系统。
+`content` 适配 `auth`、`profile` 和 `notification`，不要求前序模块反向适配 `content`。`content` 通过后端入口传入的认证上下文、`/api/v1/auth/me`、`/api/v1/auth/session/verify` 或测试环境 auth stub 读取当前用户、角色和能力点。成员作品只保存来自 `profile` 的公开快照。审核结果需要通知时，只能调用 `notification` 的正式投递接口或受控适配层，不能自建通知主数据、未读数或模板系统。
 
 ### 职责边界
 
@@ -3184,7 +3184,7 @@ auth 认证上下文失败时，后台接口不得使用旧用户上下文继续
 
 `content` API 文档按 `docs/contracts-content.md` 独立存在，并由 `.local-docs/tests-content.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求和模块验收口径。
 
-`content` 完成时必须满足以下条件：全部接口按本文档实现；公开接口不泄露后台字段；后台接口按角色限制；首页配置由后端返回且公开首页支持局部降级；成员作品只保存 profile 快照且不直接读 profile 数据库；审核通知按强制或辅助规则处理；分类、标签、专题、SEO、站点地图、预览令牌、状态流转、幂等、审计和自检摘要都有自动化测试；`.local-docs/tests-content.md` 中全部测试用例都有对应自动化验证；未实现时自动化测试必须先失败；实现后 content 全部测试通过；auth、profile 和 notification 前序服务回归测试通过；没有修改前序服务稳定接口；没有把 `.local-docs/` 提交到仓库。
+`content` 完成时必须满足以下条件：全部接口按本文档实现；公开接口不泄露后台字段；后台接口按角色限制；首页配置由后端返回且公开首页支持局部降级；成员作品只保存 profile 快照且不直接读 profile 数据库；审核通知按强制或辅助规则处理；分类、标签、专题、SEO、站点地图、预览令牌、状态流转、幂等、审计和自检摘要都有自动化测试；`.local-docs/tests-content.md` 中全部测试用例都有对应自动化验证；未实现时自动化测试必须先失败；实现后 content 全部测试通过；auth、profile 和 notification 前序模块回归测试通过；没有修改前序模块稳定接口；没有把 `.local-docs/` 提交到仓库。
 
 ## 北冥官网 server-status API 契约
 
@@ -3194,7 +3194,7 @@ auth 认证上下文失败时，后台接口不得使用旧用户上下文继续
 
 ### 文档定位
 
-本文档是 `server-status` 微服务的正式 API 契约。后续 `resource`、`admin`、`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、前端适配和 `ops-control` 只能通过本文档定义的接口读取玩家可见服务器状态和线路状态，不能直接读取或修改 `server-status` 数据库。
+本文档是 `server-status` 模块的正式 API 契约。后续 `resource`、`admin`、`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、前端适配和 `ops-control` 只能通过本文档定义的接口读取玩家可见服务器状态和线路状态，不能直接读取或修改 `server-status` 数据库。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、时间格式、基础角色、能力点、审计字段、风险等级、通用错误码和请求编号均以公共契约为准。本文档只补充 `server-status` 的职责边界、数据归属、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
 
@@ -3751,7 +3751,7 @@ auth 上下文不可用返回 `46500`，auth 调用超时返回 `46501`，auth �
 
 `server-status` API 文档按 `docs/contracts-server-status.md` 独立存在，并由 `.local-docs/tests-server-status.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求和模块验收口径。
 
-`server-status` 完成时必须满足以下条件：全部接口按本文档实现；公开接口不泄露后台检测目标、内部备注、采集凭据、审计字段和运维入口；后台接口按角色限制；手动刷新遵守采集失败和降级规则；历史峰值和开服时长由服务端计算；状态源、线路、宕机记录、快照、审计、自检摘要、requestId、端口配置和 auth 适配都有自动化测试；`.local-docs/tests-server-status.md` 中全部测试用例都有对应自动化验证；未实现时自动化测试必须先失败；实现后 `server-status` 全部测试通过；`auth`、`profile`、`notification` 和 `content` 前序服务回归测试通过；没有修改前序服务稳定接口；没有把资源下载、Cloudreve 分享、容器启停、文件、日志、终端或节点控制能力塞进 `server-status`。
+`server-status` 完成时必须满足以下条件：全部接口按本文档实现；公开接口不泄露后台检测目标、内部备注、采集凭据、审计字段和运维入口；后台接口按角色限制；手动刷新遵守采集失败和降级规则；历史峰值和开服时长由服务端计算；状态源、线路、宕机记录、快照、审计、自检摘要、requestId、端口配置和 auth 适配都有自动化测试；`.local-docs/tests-server-status.md` 中全部测试用例都有对应自动化验证；未实现时自动化测试必须先失败；实现后 `server-status` 全部测试通过；`auth`、`profile`、`notification` 和 `content` 前序模块回归测试通过；没有修改前序模块稳定接口；没有把资源下载、Cloudreve 分享、容器启停、文件、日志、终端或节点控制能力塞进 `server-status`。
 
 ## 北冥官网 resource API 契约
 
@@ -3761,11 +3761,11 @@ auth 上下文不可用返回 `46500`，auth 调用超时返回 `46501`，auth �
 
 ### 文档定位
 
-本文档是 `resource` 微服务的正式 API 契约。后续 `admin`、`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、前端适配和 `ops-control` 只能通过本文档定义的接口读取或管理玩家可见资源，不能直接读取或修改 `resource` 数据库。
+本文档是 `resource` 模块的正式 API 契约。后续 `admin`、`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、前端适配和 `ops-control` 只能通过本文档定义的接口读取或管理玩家可见资源，不能直接读取或修改 `resource` 数据库。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、时间格式、基础角色、能力点、审计字段、风险等级、通用状态模型和通用错误码均以公共契约为准。本文档只补充 `resource` 的职责边界、数据归属、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
 
-`resource` 适配 `auth`、`profile` 和 `notification`，不要求前序服务反向适配 `resource`。它通过后端入口传入的认证上下文、`/api/v1/auth/me`、`/api/v1/auth/session/verify` 或测试环境 auth stub 读取当前用户、角色、能力点和用户状态。它通过 profile 正式接口或受控 profile stub 判断 `MEMBER_ONLY` 资源的成员资格。资源审核、发布、下架、版本更新需要通知时，只能调用 notification 正式投递接口或受控适配层，不能自建通知主数据、未读数或模板系统。
+`resource` 适配 `auth`、`profile` 和 `notification`，不要求前序模块反向适配 `resource`。它通过后端入口传入的认证上下文、`/api/v1/auth/me`、`/api/v1/auth/session/verify` 或测试环境 auth stub 读取当前用户、角色、能力点和用户状态。它通过 profile 正式接口或受控 profile stub 判断 `MEMBER_ONLY` 资源的成员资格。资源审核、发布、下架、版本更新需要通知时，只能调用 notification 正式投递接口或受控适配层，不能自建通知主数据、未读数或模板系统。
 
 ### 参考口径
 
@@ -4479,7 +4479,7 @@ Cloudreve 分享链接不可用时，下载解析可以在旧快照仍合法时�
 
 `resource` API 文档按 `docs/contracts-resource.md` 独立存在，并由 `.local-docs/tests-resource.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求和模块验收口径。
 
-`resource` 完成时必须满足以下条件：全部接口按本文档实现；公开接口不泄露后台字段、Cloudreve 管理字段、分享密码、内部路径、审计字段和运维入口；后台接口按角色限制；受限下载按 `PUBLIC`、`AUTHENTICATED`、`MEMBER_ONLY` 和 `ADMIN_ONLY` 正确校验；Cloudreve 分享链接失败可测试降级；分类、资源、版本、下载入口、状态流转、幂等、审计、自检摘要、requestId、端口配置和前序服务适配都有自动化测试；`.local-docs/tests-resource.md` 中全部测试用例都有对应自动化验证；未实现时自动化测试必须先失败；实现后 `resource` 全部测试通过；`auth`、`profile`、`notification`、`content` 和 `server-status` 前序服务回归测试通过；没有修改前序服务稳定接口；没有把后台文件管理、容器、终端、日志流、节点注册、external-node-executor、真实服务器操作或 ops-control 能力塞进 `resource`。
+`resource` 完成时必须满足以下条件：全部接口按本文档实现；公开接口不泄露后台字段、Cloudreve 管理字段、分享密码、内部路径、审计字段和运维入口；后台接口按角色限制；受限下载按 `PUBLIC`、`AUTHENTICATED`、`MEMBER_ONLY` 和 `ADMIN_ONLY` 正确校验；Cloudreve 分享链接失败可测试降级；分类、资源、版本、下载入口、状态流转、幂等、审计、自检摘要、requestId、端口配置和前序模块适配都有自动化测试；`.local-docs/tests-resource.md` 中全部测试用例都有对应自动化验证；未实现时自动化测试必须先失败；实现后 `resource` 全部测试通过；`auth`、`profile`、`notification`、`content` 和 `server-status` 前序模块回归测试通过；没有修改前序模块稳定接口；没有把后台文件管理、容器、终端、日志流、节点注册、external-node-executor、真实服务器操作或 ops-control 能力塞进 `resource`。
 
 ## 北冥官网 admin API 契约
 
@@ -4489,11 +4489,11 @@ Cloudreve 分享链接不可用时，下载解析可以在旧快照仍合法时�
 
 ### 文档定位
 
-本文档是 `admin` 微服务的正式 API 契约。当前 `admin` 兼容刷新负责让后台入口识别已经闭环的 26 个后端服务，并把 `api-gateway` 作为平台依赖展示。后续前端管理后台只能通过本文档定义的接口读取后台聚合入口、模块能力、待办摘要、指标摘要、审计索引、平台依赖摘要和 admin 自有配置，不能把业务主数据或真实运维控制塞进 `admin`。
+本文档是 `admin` 模块的正式 API 契约。当前 `admin` 兼容刷新负责让后台入口识别已经闭环的 26 个后端服务，并把 `api-gateway` 作为平台依赖展示。后续前端管理后台只能通过本文档定义的接口读取后台聚合入口、模块能力、待办摘要、指标摘要、审计索引、平台依赖摘要和 admin 自有配置，不能把业务主数据或真实运维控制塞进 `admin`。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `admin` 模块自己的职责边界、路径、字段、状态、权限、错误码、幂等、降级、审计和验收口径。
 
-本文档参考了现有前序服务契约和成熟在线平台的后台信息架构。GitLab Admin Area、Audit Events、Todos 和 Health Check 的设计强调后台总览、审计索引、待办队列和健康摘要分离。Grafana HTTP API 和 RBAC 文档强调健康检查与权限模型分离，适合 admin 自检和模块权限裁剪。Discourse 管理和审核队列强调运营待办只做审核入口，不把处理逻辑塞进总览。MCSManager 的面板和 Daemon 分离思路用于确认游戏服控制面边界，真实实例、文件、终端、容器和节点操作仍归 `ops-control` 与 `external-node-executor`。
+本文档参考了现有前序模块契约和成熟在线平台的后台信息架构。GitLab Admin Area、Audit Events、Todos 和 Health Check 的设计强调后台总览、审计索引、待办队列和健康摘要分离。Grafana HTTP API 和 RBAC 文档强调健康检查与权限模型分离，适合 admin 自检和模块权限裁剪。Discourse 管理和审核队列强调运营待办只做审核入口，不把处理逻辑塞进总览。MCSManager 的面板和 Daemon 分离思路用于确认游戏服控制面边界，真实实例、文件、终端、容器和节点操作仍归 `ops-control` 与 `external-node-executor`。
 
 参考资料：
 
@@ -5039,7 +5039,7 @@ Cloudreve 分享链接不可用时，下载解析可以在旧快照仍合法时�
 
 ### 文档定位
 
-本文档是 `onboarding` 微服务的正式 API 契约。后续 `exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、前端适配和 `ops-control` 只能通过本文档定义的接口读取或维护入服引导状态，不能直接读取或修改 `onboarding` 数据库，也不能把考试、白名单、成员激活或考勤积分逻辑塞进 `onboarding`。
+本文档是 `onboarding` 模块的正式 API 契约。后续 `exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、前端适配和 `ops-control` 只能通过本文档定义的接口读取或维护入服引导状态，不能直接读取或修改 `onboarding` 数据库，也不能把考试、白名单、成员激活或考勤积分逻辑塞进 `onboarding`。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `onboarding` 的职责边界、数据归属、路径、字段、状态、权限、错误码、幂等、降级、审计和验收口径。
 
@@ -5088,7 +5088,7 @@ Cloudreve 分享链接不可用时，下载解析可以在旧快照仍合法时�
 
 只有 `X-Gateway-Internal-Request-Id` 存在时，`onboarding` 才进入可信上下文解析；若该头缺失，即使请求带有 `X-Beiming-Actor-*`，也必须忽略这些头并继续走 `Authorization: Bearer <token>` 兼容路径。可信上下文缺少 `X-Beiming-Actor-User-Id`、角色枚举不兼容或字段无法解析时返回 HTTP `502` 和 `46802`。
 
-### 前序服务兼容契约
+### 前序模块兼容契约
 
 `onboarding` 适配 `auth`。当前请求认证上下文至少包含 `userId`、`displayName`、`roles`、`permissions`、`status` 和 `minecraftBinding`。`minecraftBinding` 结构必须兼容 `docs/contracts-auth.md`。用户状态为 `PENDING_PROFILE` 或 `ACTIVE` 时允许启动或读取流程；`DISABLED`、`BANNED`、`DELETED` 不允许启动、确认或推进流程。auth 不可用返回 `46800`，auth 超时返回 `46801`，auth 字段或枚举不兼容返回 `46802`。
 
@@ -5560,7 +5560,7 @@ exam、whitelist 和 attendance 未实现时，onboarding 只返回下一步占�
 
 `onboarding` API 文档按 `docs/contracts-onboarding.md` 独立存在，并由 `.local-docs/tests-onboarding.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求和模块验收口径。
 
-`onboarding` 完成时必须满足以下条件：全部接口按本文档实现；当前用户接口只能访问当前用户自己的流程；后台接口按角色限制；服务端决定状态和下一步，不信任浏览器传入的可信字段；auth、profile、content 和 notification 适配不直接读取前序服务数据库或内部类；规则确认、资料确认、方向选择、推进、阻塞、重置、幂等、审计、自检摘要、requestId 和端口配置都有自动化测试；`.local-docs/tests-onboarding.md` 中全部测试用例都有对应自动化验证；未实现时自动化测试必须先失败；实现后 onboarding 全部测试通过；auth、profile、notification、content、server-status、resource 和 admin 前序服务回归测试通过；没有修改前序服务稳定接口；没有把考试判分、白名单审核、成员激活、考勤积分、社区、资源下载、服务器状态采集、后台聚合、真实运维、节点、容器、终端、文件管理、备份恢复或 Cloudreve 管理能力塞进 onboarding。
+`onboarding` 完成时必须满足以下条件：全部接口按本文档实现；当前用户接口只能访问当前用户自己的流程；后台接口按角色限制；服务端决定状态和下一步，不信任浏览器传入的可信字段；auth、profile、content 和 notification 适配不直接读取前序模块数据库或内部类；规则确认、资料确认、方向选择、推进、阻塞、重置、幂等、审计、自检摘要、requestId 和端口配置都有自动化测试；`.local-docs/tests-onboarding.md` 中全部测试用例都有对应自动化验证；未实现时自动化测试必须先失败；实现后 onboarding 全部测试通过；auth、profile、notification、content、server-status、resource 和 admin 前序模块回归测试通过；没有修改前序模块稳定接口；没有把考试判分、白名单审核、成员激活、考勤积分、社区、资源下载、服务器状态采集、后台聚合、真实运维、节点、容器、终端、文件管理、备份恢复或 Cloudreve 管理能力塞进 onboarding。
 
 ## 北冥官网 exam API 契约
 
@@ -5570,7 +5570,7 @@ exam、whitelist 和 attendance 未实现时，onboarding 只返回下一步占�
 
 ### 文档定位
 
-本文档是 `exam` 微服务的正式 API 契约。后续 `whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、前端适配和 `admin` 聚合只能通过本文档定义的接口读取考试结果、考试待办和考试审计摘要，不能直接读取或修改 `exam` 数据库，也不能把白名单审核、成员激活、考勤积分或社区工单逻辑塞进 `exam`。
+本文档是 `exam` 模块的正式 API 契约。后续 `whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、前端适配和 `admin` 聚合只能通过本文档定义的接口读取考试结果、考试待办和考试审计摘要，不能直接读取或修改 `exam` 数据库，也不能把白名单审核、成员激活、考勤积分或社区工单逻辑塞进 `exam`。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `exam` 的职责边界、数据归属、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
 
@@ -5592,7 +5592,7 @@ exam、whitelist 和 attendance 未实现时，onboarding 只返回下一步占�
 
 `exam` 不负责注册、登录、邀请码、会话、账号角色能力点、Minecraft 绑定主数据、入服前置流程主数据、成员档案主数据、站内通知主数据、官网内容主数据、白名单申请、白名单审核、成员激活、考勤积分初始化、社区工单、服务器状态展示、资源下载、Cloudreve 分享、后台聚合入口或任何真实服务器运维操作。
 
-`exam` 只能适配前序服务。它通过 `auth` 认证上下文读取当前用户和后台操作者，通过 `onboarding` 的考试交接快照创建考试，通过 `profile` 摘要判断已有成员与二次考核，通过 `content` 摘要读取考试说明版本，通过 `notification` 投递考试状态通知。它不能要求前序服务反向写入 exam 状态，不能导入前序服务的内存存储、实体、Repository、测试种子或内部类。
+`exam` 只能适配前序模块。它通过 `auth` 认证上下文读取当前用户和后台操作者，通过 `onboarding` 的考试交接快照创建考试，通过 `profile` 摘要判断已有成员与二次考核，通过 `content` 摘要读取考试说明版本，通过 `notification` 投递考试状态通知。它不能要求前序模块反向写入 exam 状态，不能导入前序模块的内存存储、实体、Repository、测试种子或内部类。
 
 ### 数据归属
 
@@ -5616,7 +5616,7 @@ exam、whitelist 和 attendance 未实现时，onboarding 只返回下一步占�
 
 后台接口使用 `/api/v1/exams/admin` 前缀，全部要求登录。后台读取考试、题库、模板、审计和自检摘要要求 `HELPER`、`ADMIN` 或 `OWNER`。题库维护、模板维护、人工阅卷、要求补充、取消考试、结果修正和策略更新要求 `ADMIN` 或 `OWNER`。`HELPER` 可读取待阅卷和考试详情，但不能写题库、模板或最终结果。
 
-### 前序服务兼容契约
+### 前序模块兼容契约
 
 `auth` 是强依赖。当前请求认证上下文至少包含 `userId`、`displayName`、`roles`、`permissions`、`status` 和 `minecraftBinding`。用户状态为 `PENDING_PROFILE` 或 `ACTIVE` 时可参加入服考试；`DISABLED`、`BANNED`、`DELETED` 不允许创建、答题或提交。auth 不可用返回 `46900`，auth 超时返回 `46901`，字段或枚举不兼容返回 `46902`。
 
@@ -6136,7 +6136,7 @@ exam、whitelist 和 attendance 未实现时，onboarding 只返回下一步占�
 
 成功响应 HTTP `200`，分页 `items` 为 `ExamQuestion[]` 的后台视图，包含每个历史版本的题干、选项、正确答案、参考答案、分值、标签、状态和时间字段。题目不存在返回 `43902`。
 
-业务规则：修改题干、选项、答案、参考答案、分值、方向、难度或题型时必须保留旧版本，并让版本历史可查询。历史版本只能读取，不能通过版本历史接口修改或删除。已生成试卷仍使用创建时冻结的题目版本；题目版本历史用于后台复核争议、审计题库变化和解释历史试卷来源。`HELPER` 可读版本历史但不能修改题库。读取版本历史不强制写审计，响应不得包含前序服务内部字段、token、请求头或异常堆栈。
+业务规则：修改题干、选项、答案、参考答案、分值、方向、难度或题型时必须保留旧版本，并让版本历史可查询。历史版本只能读取，不能通过版本历史接口修改或删除。已生成试卷仍使用创建时冻结的题目版本；题目版本历史用于后台复核争议、审计题库变化和解释历史试卷来源。`HELPER` 可读版本历史但不能修改题库。读取版本历史不强制写审计，响应不得包含前序模块内部字段、token、请求头或异常堆栈。
 
 #### 创建题目
 
@@ -6261,7 +6261,7 @@ exam、whitelist 和 attendance 未实现时，onboarding 只返回下一步占�
 }
 ```
 
-业务规则：发布预检只读，不改变模板状态，不写发布审计，不占用幂等键。它必须复用正式发布的题库足量、题型、标签、分值、content 版本可用性和归档题过滤规则。题库不足时仍返回 HTTP `200`，但 `readyToPublish=false`，对应规则 `enough=false`，`warnings` 包含稳定原因；模板不存在返回 `43903`，已归档模板返回 `43922`。`contentRuleVersion` 不为空且 content 不可用时，预检返回 `readyToPublish=false` 和 `contentRuleStatus=UNAVAILABLE`，不得把错误吞成可发布。`samplePaper.questions` 使用后台可见题目摘要，供管理员确认题型和分值分布；不得包含前序服务内部字段、通知正文、token、请求头或异常堆栈。
+业务规则：发布预检只读，不改变模板状态，不写发布审计，不占用幂等键。它必须复用正式发布的题库足量、题型、标签、分值、content 版本可用性和归档题过滤规则。题库不足时仍返回 HTTP `200`，但 `readyToPublish=false`，对应规则 `enough=false`，`warnings` 包含稳定原因；模板不存在返回 `43903`，已归档模板返回 `43922`。`contentRuleVersion` 不为空且 content 不可用时，预检返回 `readyToPublish=false` 和 `contentRuleStatus=UNAVAILABLE`，不得把错误吞成可发布。`samplePaper.questions` 使用后台可见题目摘要，供管理员确认题型和分值分布；不得包含前序模块内部字段、通知正文、token、请求头或异常堆栈。
 
 #### 发布模板
 
@@ -6372,7 +6372,7 @@ exam、whitelist 和 attendance 未实现时，onboarding 只返回下一步占�
 
 必须审计的动作包括创建考试、过期推进、保存草稿失败、提交考试、自动判分通过、自动判分失败、进入人工阅卷、人工阅卷通过、人工阅卷失败、结果修正、要求补充、补充提交、后台取消、题目创建、题目修改、题目归档、模板创建、模板修改、模板发布、模板归档、依赖降级导致操作不可继续、通知失败和审计写入失败。
 
-后台写操作必须记录 `reason`、操作者、目标对象、操作前状态、操作后状态、请求编号、参数摘要和结果。审计字段继承公共契约。审计不得泄露 token、完整请求头、正确答案给考生、参考答案给考生、内部备注给 `HELPER` 或考生、完整通知正文、content 正文、异常堆栈或前序服务内部路径。
+后台写操作必须记录 `reason`、操作者、目标对象、操作前状态、操作后状态、请求编号、参数摘要和结果。审计字段继承公共契约。审计不得泄露 token、完整请求头、正确答案给考生、参考答案给考生、内部备注给 `HELPER` 或考生、完整通知正文、content 正文、异常堆栈或前序模块内部路径。
 
 审计写入失败时，创建考试、提交考试、人工阅卷、要求补充、取消、题库维护和模板维护不得假装成功，必须返回 `51901` 或 `51900`，并保持业务数据不变。
 
@@ -6394,7 +6394,7 @@ notification 默认是辅助依赖。通知失败不得回滚考试主状态，�
 
 `exam` API 文档按 `docs/contracts-exam.md` 独立存在，并由 `.local-docs/tests-exam.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求和模块验收口径。
 
-`exam` 完成时必须满足以下条件：全部接口按本文档实现；当前用户接口只能访问自己的考试；后台接口按角色限制；考生视图不泄露正确答案、参考答案和内部备注；题库、模板、题目版本、试卷实例和答案快照可追溯；自动判分规则可测试；简答题人工阅卷和补充闭环可测试；创建考试只通过 onboarding handoff 和前序适配读取快照，不直接读前序服务实现；通过结果只暴露 whitelist 只读交接快照，不创建白名单申请；通知失败按辅助降级记录；当前运行入口为 `admission-core-service:8131`，历史端口只作为 `legacyPort=8109` 返回；`.local-docs/tests-exam.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 exam 全部测试通过；auth、profile、notification、content、server-status、resource、admin 和 onboarding 前序服务回归测试通过；没有修改前序服务稳定接口；没有把白名单审核、成员激活、考勤积分、社区工单、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复或 Cloudreve 管理能力塞进 exam。
+`exam` 完成时必须满足以下条件：全部接口按本文档实现；当前用户接口只能访问自己的考试；后台接口按角色限制；考生视图不泄露正确答案、参考答案和内部备注；题库、模板、题目版本、试卷实例和答案快照可追溯；自动判分规则可测试；简答题人工阅卷和补充闭环可测试；创建考试只通过 onboarding handoff 和前序适配读取快照，不直接读前序模块实现；通过结果只暴露 whitelist 只读交接快照，不创建白名单申请；通知失败按辅助降级记录；当前运行入口为 `admission-core-service:8131`，历史端口只作为 `legacyPort=8109` 返回；`.local-docs/tests-exam.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 exam 全部测试通过；auth、profile、notification、content、server-status、resource、admin 和 onboarding 前序模块回归测试通过；没有修改前序模块稳定接口；没有把白名单审核、成员激活、考勤积分、社区工单、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复或 Cloudreve 管理能力塞进 exam。
 
 ## 北冥官网 whitelist API 契约
 
@@ -6404,7 +6404,7 @@ notification 默认是辅助依赖。通知失败不得回滚考试主状态，�
 
 ### 文档定位
 
-本文档是 `whitelist` 微服务的正式 API 契约。后续 `attendance`、`community`、`activity`、`calendar`、`changelog`、前端适配、`admin` 聚合、`ops-control` 和 `external-node-executor` 只能通过本文档定义的接口读取白名单申请、审核结果、移除记录、审计和考勤初始化交接摘要，不能直接读取或修改 `whitelist` 数据库，也不能把白名单审核逻辑塞进其他服务。
+本文档是 `whitelist` 模块的正式 API 契约。后续 `attendance`、`community`、`activity`、`calendar`、`changelog`、前端适配、`admin` 聚合、`ops-control` 和 `external-node-executor` 只能通过本文档定义的接口读取白名单申请、审核结果、移除记录、审计和考勤初始化交接摘要，不能直接读取或修改 `whitelist` 数据库，也不能把白名单审核逻辑塞进其他服务。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `whitelist` 的职责边界、数据归属、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
 
@@ -6428,7 +6428,7 @@ notification 默认是辅助依赖。通知失败不得回滚考试主状态，�
 
 `whitelist` 不负责注册、登录、邀请码、会话、账号角色能力点、Minecraft 绑定主数据、入服前置流程、题库、试卷、判分、人工阅卷、成员档案主数据、站内通知主数据、考勤积分主数据、社区工单、服务器状态展示、资源下载、后台聚合入口、真实 Minecraft 服务器白名单文件写入、控制台命令、节点守护进程、容器、终端、文件管理、备份恢复或 Cloudreve 管理。
 
-`whitelist` 只能适配前序服务。它通过 `auth` 认证上下文读取当前用户和后台操作者，通过 `exam` 的 whitelist 交接快照创建申请，通过 `profile` 正式接口创建或激活成员档案、移除后更新成员状态，通过 `notification` 投递站内通知，通过保存的只读快照和后续接口给 `attendance` 提供初始化材料。它不能要求前序服务反向写入 whitelist 状态，不能导入前序服务内存存储、实体、Repository、测试种子或内部类。
+`whitelist` 只能适配前序模块。它通过 `auth` 认证上下文读取当前用户和后台操作者，通过 `exam` 的 whitelist 交接快照创建申请，通过 `profile` 正式接口创建或激活成员档案、移除后更新成员状态，通过 `notification` 投递站内通知，通过保存的只读快照和后续接口给 `attendance` 提供初始化材料。它不能要求前序模块反向写入 whitelist 状态，不能导入前序模块内存存储、实体、Repository、测试种子或内部类。
 
 ### 数据归属
 
@@ -6452,7 +6452,7 @@ notification 默认是辅助依赖。通知失败不得回滚考试主状态，�
 
 后台接口使用 `/api/v1/whitelist/admin` 前缀，全部要求登录。后台读取申请列表和详情要求 `HELPER`、`ADMIN` 或 `OWNER`。审核通过、审核拒绝、要求补充、移除、重开、attendance handoff 读取、审计读取和自检摘要要求 `ADMIN` 或 `OWNER`。`HELPER` 可以查看审核队列和详情，可以领取或分配给自己做初审记录，但不能执行最终通过、拒绝、移除或重开。
 
-### 前序服务兼容契约
+### 前序模块兼容契约
 
 `auth` 是强依赖。当前请求认证上下文至少包含 `userId`、`displayName`、`roles`、`permissions`、`status` 和 `minecraftBinding`。用户状态为 `PENDING_PROFILE` 或 `ACTIVE` 时可创建、补充、撤回和读取自己的申请；`DISABLED`、`BANNED`、`DELETED` 不允许写入。auth 不可用返回 `47000`，auth 超时返回 `47001`，字段或枚举不兼容返回 `47002`。
 
@@ -7034,7 +7034,7 @@ profile 移除状态接口不可用、超时或响应字段不兼容时，移除
 
 必须审计的动作包括创建申请、修改材料、提交审核、提交补充、撤回、分配审核人、要求补充、审核通过、审核拒绝、profile 激活成功、profile 激活失败、notification 投递失败、移除白名单、允许重新申请、attendance handoff 读取、依赖降级导致操作不可继续、审计写入失败和状态写入失败。
 
-后台写操作必须记录 `reason`、操作者、目标对象、操作前状态、操作后状态、请求编号、参数摘要和结果。审计字段继承公共契约。审计不得泄露 token、完整请求头、Minecraft 验证凭据、考试正确答案、profile 后台备注全文、通知正文全文、真实服务器命令、节点凭据、内部异常堆栈或前序服务内部路径。
+后台写操作必须记录 `reason`、操作者、目标对象、操作前状态、操作后状态、请求编号、参数摘要和结果。审计字段继承公共契约。审计不得泄露 token、完整请求头、Minecraft 验证凭据、考试正确答案、profile 后台备注全文、通知正文全文、真实服务器命令、节点凭据、内部异常堆栈或前序模块内部路径。
 
 审计写入失败时，创建申请、材料修改、提交补充、撤回、审核、移除和重开不得假装成功，必须返回 `52001` 或 `52000`，并保持业务数据不变。
 
@@ -7058,7 +7058,7 @@ attendance 未实现时，审核通过仍可完成 whitelist 和 profile 激活�
 
 `whitelist` API 文档按 `docs/contracts-whitelist.md` 独立存在，并由 `.local-docs/tests-whitelist.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求和模块验收口径。
 
-`whitelist` 完成时必须满足以下条件：全部接口按本文档实现；当前用户接口只能访问自己的申请；后台接口按角色限制；创建申请只通过 exam handoff 和前序适配读取快照，不直接读前序服务实现；审核通过必须通过 profile 正式接口激活成员档案；profile 激活失败不进入通过终态；通知失败按辅助降级记录；attendance 未实现时只生成交接摘要；移除白名单不执行真实服务器命令；当前运行入口为 `admission-core-service:8131`，历史端口只作为 `legacyPort=8110` 返回；`.local-docs/tests-whitelist.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 whitelist 全部测试通过；auth、profile、notification、content、server-status、resource、admin、onboarding 和 exam 前序服务回归测试通过；没有修改前序服务稳定接口；没有把考勤积分、社区工单、活动、日历、更新日志、后台聚合、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复或 Cloudreve 管理能力塞进 whitelist。
+`whitelist` 完成时必须满足以下条件：全部接口按本文档实现；当前用户接口只能访问自己的申请；后台接口按角色限制；创建申请只通过 exam handoff 和前序适配读取快照，不直接读前序模块实现；审核通过必须通过 profile 正式接口激活成员档案；profile 激活失败不进入通过终态；通知失败按辅助降级记录；attendance 未实现时只生成交接摘要；移除白名单不执行真实服务器命令；当前运行入口为 `admission-core-service:8131`，历史端口只作为 `legacyPort=8110` 返回；`.local-docs/tests-whitelist.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 whitelist 全部测试通过；auth、profile、notification、content、server-status、resource、admin、onboarding 和 exam 前序模块回归测试通过；没有修改前序模块稳定接口；没有把考勤积分、社区工单、活动、日历、更新日志、后台聚合、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复或 Cloudreve 管理能力塞进 whitelist。
 
 ## 北冥官网 attendance API 契约
 
@@ -7068,7 +7068,7 @@ attendance 未实现时，审核通过仍可完成 whitelist 和 profile 激活�
 
 ### 文档定位
 
-本文档是 `attendance` 微服务的正式 API 契约。后续 `community`、`activity`、`calendar`、`changelog`、前端适配、`admin` 聚合、`ops-control` 和 `external-node-executor` 只能通过本文档定义的接口读取考勤账户、积分流水、贡献记录、月度扣分、榜单、白名单移除候选、审计和自检摘要，不能直接读取或修改 `attendance` 数据库，也不能把考勤积分逻辑塞进其他服务。
+本文档是 `attendance` 模块的正式 API 契约。后续 `community`、`activity`、`calendar`、`changelog`、前端适配、`admin` 聚合、`ops-control` 和 `external-node-executor` 只能通过本文档定义的接口读取考勤账户、积分流水、贡献记录、月度扣分、榜单、白名单移除候选、审计和自检摘要，不能直接读取或修改 `attendance` 数据库，也不能把考勤积分逻辑塞进其他服务。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `attendance` 的职责边界、数据归属、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
 
@@ -7091,7 +7091,7 @@ attendance 未实现时，审核通过仍可完成 whitelist 和 profile 激活�
 
 `attendance` 不负责注册、登录、邀请码、会话、账号角色能力点、Minecraft 绑定主数据、成员档案主数据、考试判分、白名单申请审核、真实服务器在线采集、真实 Minecraft 白名单移除命令、社区帖子、活动报名、内容审核、资源下载、后台聚合入口、服务器运维控制、节点守护进程、容器、终端、文件管理、备份恢复或 Cloudreve 管理。
 
-`attendance` 只能适配前序服务。它通过 `auth` 认证上下文读取当前用户和后台操作者，通过 `whitelist` 的 attendance handoff 初始化考勤账户，通过 `profile` 正式接口或未来服务间适配器校验成员状态并保存展示快照，通过 `notification` 投递积分变化、扣分预警和候选提醒。它不能要求前序服务反向写入 attendance 状态，不能导入前序服务内存存储、实体、Repository、测试种子或内部类。
+`attendance` 只能适配前序模块。它通过 `auth` 认证上下文读取当前用户和后台操作者，通过 `whitelist` 的 attendance handoff 初始化考勤账户，通过 `profile` 正式接口或未来服务间适配器校验成员状态并保存展示快照，通过 `notification` 投递积分变化、扣分预警和候选提醒。它不能要求前序模块反向写入 attendance 状态，不能导入前序模块内存存储、实体、Repository、测试种子或内部类。
 
 ### 数据归属
 
@@ -7119,7 +7119,7 @@ attendance 允许在本地自动化测试中使用 `X-Test-Whitelist-Mode`、`X-
 
 只有 `X-Gateway-Internal-Request-Id` 存在时，`attendance` 才进入可信上下文解析；若该头缺失，即使请求带有 `X-Beiming-Actor-*`，也必须忽略这些头并继续走 `Authorization: Bearer <token>` 兼容路径。可信上下文缺少 `X-Beiming-Actor-User-Id`、角色枚举不兼容或字段无法解析时返回 HTTP `502` 和 `48002`。
 
-### 前序服务兼容契约
+### 前序模块兼容契约
 
 `auth` 是强依赖。当前请求认证上下文至少包含 `userId`、`displayName`、`roles`、`permissions` 和 `status`。用户状态为 `ACTIVE` 时可读取自己的考勤数据；`DISABLED`、`BANNED`、`DELETED` 不允许读取或写入。auth 不可用返回 `48000`，auth 超时返回 `48001`，字段或枚举不兼容返回 `48002`。
 
@@ -7767,7 +7767,7 @@ P0 的正向贡献可以由后台受控写入。未来接入 `activity`、`commu
 
 必须审计的动作包括初始化考勤账户、初始化 handoff 重放、初始化失败、管理员积分调整、流水撤销、贡献记录创建、贡献记录修正、月度扣分预检、月度扣分执行、扣分任务部分失败、候选生成、候选确认、候选驳回、榜单重算、通知失败、依赖降级、自检读取、审计写入失败和状态写入失败。
 
-后台写操作必须记录 `reason`、操作者、目标对象、操作前状态、操作后状态、请求编号、参数摘要和结果。审计字段继承公共契约。审计不得泄露 token、完整请求头、Minecraft 验证凭据、profile 后台备注全文、通知正文全文、真实服务器命令、节点凭据、内部异常堆栈或前序服务内部路径。
+后台写操作必须记录 `reason`、操作者、目标对象、操作前状态、操作后状态、请求编号、参数摘要和结果。审计字段继承公共契约。审计不得泄露 token、完整请求头、Minecraft 验证凭据、profile 后台备注全文、通知正文全文、真实服务器命令、节点凭据、内部异常堆栈或前序模块内部路径。
 
 审计写入失败时，初始化、积分调整、流水撤销、贡献创建、贡献修正、月度扣分、候选确认、候选驳回和榜单重算不得假装成功，必须返回 `53001` 或 `53000`，并保持业务数据不变。
 
@@ -7787,7 +7787,7 @@ notification 是辅助依赖。通知失败不得回滚初始化、积分调整�
 
 `attendance` API 文档按 `docs/contracts-attendance.md` 独立存在，并由 `.local-docs/tests-attendance.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求和模块验收口径。
 
-`attendance` 完成时必须满足以下条件：全部接口按本文档实现；当前用户接口只能访问自己的账户、流水、贡献和排名；后台接口按角色限制；初始化只通过 whitelist handoff 和 profile 正式适配读取快照，不直接读前序服务实现；所有积分变化都有流水；月度扣分按 `cycleKey` 幂等；移除候选只生成建议，不执行真实 whitelist 移除或服务器命令；通知失败按辅助降级记录；当前运行入口为 `admission-core-service:8131`，历史端口只作为 `legacyPort=8111` 返回；`.local-docs/tests-attendance.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 attendance 全部测试通过；auth、profile、notification、content、server-status、resource、admin、onboarding、exam 和 whitelist 前序服务回归测试通过；没有修改前序服务稳定接口；没有把社区、活动、日历、更新日志、后台聚合、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复或 Cloudreve 管理能力塞进 attendance。
+`attendance` 完成时必须满足以下条件：全部接口按本文档实现；当前用户接口只能访问自己的账户、流水、贡献和排名；后台接口按角色限制；初始化只通过 whitelist handoff 和 profile 正式适配读取快照，不直接读前序模块实现；所有积分变化都有流水；月度扣分按 `cycleKey` 幂等；移除候选只生成建议，不执行真实 whitelist 移除或服务器命令；通知失败按辅助降级记录；当前运行入口为 `admission-core-service:8131`，历史端口只作为 `legacyPort=8111` 返回；`.local-docs/tests-attendance.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 attendance 全部测试通过；auth、profile、notification、content、server-status、resource、admin、onboarding、exam 和 whitelist 前序模块回归测试通过；没有修改前序模块稳定接口；没有把社区、活动、日历、更新日志、后台聚合、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复或 Cloudreve 管理能力塞进 attendance。
 
 生产化硬化验收还必须满足：测试控制头默认关闭，只有本地自动化测试显式启用时才生效；关闭状态下依赖失败模拟头、写入失败模拟头和通知失败模拟头全部被忽略；自检摘要明确返回当前测试控制头开关状态。
 
@@ -7803,7 +7803,7 @@ notification 是辅助依赖。通知失败不得回滚初始化、积分调整�
 
 ### 文档定位
 
-本文档是 `community` 微服务的正式 API 契约。后续 `activity`、`calendar`、`changelog`、前端适配、`admin` 聚合、`ops-control` 和 `external-node-executor` 只能通过本文档定义的接口读取论坛、帖子、评论、互动、投票、举报、工单、处罚、审计和自检摘要，不能直接读取或修改 `community` 数据库，也不能把社区治理逻辑塞进其他服务。
+本文档是 `community` 模块的正式 API 契约。后续 `activity`、`calendar`、`changelog`、前端适配、`admin` 聚合、`ops-control` 和 `external-node-executor` 只能通过本文档定义的接口读取论坛、帖子、评论、互动、投票、举报、工单、处罚、审计和自检摘要，不能直接读取或修改 `community` 数据库，也不能把社区治理逻辑塞进其他服务。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `community` 的职责边界、数据归属、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
 
@@ -7826,7 +7826,7 @@ notification 是辅助依赖。通知失败不得回滚初始化、积分调整�
 
 `community` 不负责注册、登录、邀请码、会话、账号角色能力点、Minecraft 绑定主数据、成员档案主数据、站内通知主数据、官网公告主发布、资源下载主数据、考勤积分主数据、白名单审核主流程、考试判分、服务器状态采集、后台聚合入口、真实服务器运维控制、节点守护进程、容器、终端、文件管理、备份恢复或 Cloudreve 管理。
 
-`community` 只能后序适配前序服务。它通过 `auth` 认证上下文读取当前用户、角色、能力点和用户状态；通过 `profile` 的正式接口或未来服务间适配器读取成员展示快照；通过 `notification` 投递帖子审核、举报处理、工单回复和处罚通知；通过 `content` 与 `resource` 的公开快照关联公告、专题或资源讨论；通过 `attendance` 未来正式贡献入口或兼容变更产生社区贡献候选。`community` 不能导入前序服务内存存储、实体、Repository、测试种子或内部类，不能要求前序服务为了社区反向改稳定接口。
+`community` 只能后序适配前序模块。它通过 `auth` 认证上下文读取当前用户、角色、能力点和用户状态；通过 `profile` 的正式接口或未来服务间适配器读取成员展示快照；通过 `notification` 投递帖子审核、举报处理、工单回复和处罚通知；通过 `content` 与 `resource` 的公开快照关联公告、专题或资源讨论；通过 `attendance` 未来正式贡献入口或兼容变更产生社区贡献候选。`community` 不能导入前序模块内存存储、实体、Repository、测试种子或内部类，不能要求前序模块为了社区反向改稳定接口。
 
 ### 数据归属
 
@@ -7850,7 +7850,7 @@ notification 是辅助依赖。通知失败不得回滚初始化、积分调整�
 
 生产和默认运行环境必须关闭测试控制头。关闭后这些请求头必须被忽略，不能触发依赖失败、审计失败、状态失败、互动失败、通知失败或快照 stale。自检摘要必须返回 `testControlsEnabled`，并在测试控制关闭时把 `TEST_CONTROLS_DISABLED_OUTSIDE_TEST` 视为已满足的生产化硬化项。
 
-### 前序服务兼容契约
+### 前序模块兼容契约
 
 `auth` 是所有登录接口强依赖。当前请求认证上下文至少包含 `userId`、`displayName`、`roles`、`permissions`、`status` 和可选 `minecraftBinding`。用户状态为 `ACTIVE` 时可参与社区；`PENDING_PROFILE` 可以创建工单和查看自己的举报进度，但不能发布公开帖子；`DISABLED`、`BANNED`、`DELETED` 不允许写入。auth 不可用返回 `49200`，auth 超时返回 `49201`，字段或枚举不兼容返回 `49202`。
 
@@ -8039,7 +8039,7 @@ notification 是辅助依赖。通知失败不得回滚初始化、积分调整�
 | `priority` | string | 是 | `LOW`、`NORMAL`、`HIGH` 或 `URGENT`。 |
 | `creator` | CommunityAuthorSnapshot | 是 | 创建人快照。 |
 | `assigneeUserId` | string 或 null | 后台可见 | 处理人。 |
-| `relatedObject` | object 或 null | 是 | 关联帖子、举报、资源、白名单申请或账号问题摘要。P1 只保存摘要字段，禁止保存 token、完整请求头、内部 URL、服务器命令和前序服务内部路径。 |
+| `relatedObject` | object 或 null | 是 | 关联帖子、举报、资源、白名单申请或账号问题摘要。P1 只保存摘要字段，禁止保存 token、完整请求头、内部 URL、服务器命令和前序模块内部路径。 |
 | `messages` | CommunityTicketMessage[] | 详情可见 | 工单消息。列表只返回最近摘要。 |
 | `lastReplyAt` | string 或 null | 是 | 最近回复时间。 |
 | `resolvedAt` | string 或 null | 是 | 解决时间。 |
@@ -8367,7 +8367,7 @@ notification 是辅助依赖。通知失败不得回滚初始化、积分调整�
 
 ### 后台接口
 
-后台列表接口默认支持 `page`、`pageSize`、`keyword`、状态筛选和稳定排序，`pageSize` 最大 `100`。后台详情可返回内部备注、依赖摘要、通知失败摘要和审计关联，但仍不得返回 token、完整请求头、异常堆栈、通知正文、前序服务内部路径、真实服务器命令、节点凭据或 Cloudreve token。
+后台列表接口默认支持 `page`、`pageSize`、`keyword`、状态筛选和稳定排序，`pageSize` 最大 `100`。后台详情可返回内部备注、依赖摘要、通知失败摘要和审计关联，但仍不得返回 token、完整请求头、异常堆栈、通知正文、前序模块内部路径、真实服务器命令、节点凭据或 Cloudreve token。
 
 #### 板块管理
 
@@ -8500,7 +8500,7 @@ notification 是辅助依赖。通知失败不得回滚初始化、积分调整�
 
 必须审计的动作包括板块创建、板块修改、板块归档、帖子创建、帖子修改、帖子提交审核、帖子撤回、帖子审核通过、帖子审核拒绝、帖子要求修改、帖子下架、帖子归档、帖子软删除、评论创建、评论修改、评论审核、评论下架、点赞、取消点赞、收藏、取消收藏、投票、举报创建、举报分配、举报处理、举报驳回、工单创建、工单补充、工单分配、工单回复、工单状态推进、工单关闭、处罚创建、处罚修正、处罚解除、投票创建、投票开放、投票关闭、通知失败、依赖降级、自检读取、审计写入失败和状态写入失败。
 
-后台写操作必须记录 `reason`、操作者、目标对象、操作前状态、操作后状态、请求编号、参数摘要和结果。审计字段继承公共契约。审计不得泄露 token、完整请求头、Minecraft 验证凭据、profile 后台备注全文、通知正文全文、举报人不该公开的信息、处罚证据原文、真实服务器命令、节点凭据、内部异常堆栈或前序服务内部路径。
+后台写操作必须记录 `reason`、操作者、目标对象、操作前状态、操作后状态、请求编号、参数摘要和结果。审计字段继承公共契约。审计不得泄露 token、完整请求头、Minecraft 验证凭据、profile 后台备注全文、通知正文全文、举报人不该公开的信息、处罚证据原文、真实服务器命令、节点凭据、内部异常堆栈或前序模块内部路径。
 
 审计写入失败时，板块写入、帖子审核、评论审核、举报处理、工单回复、处罚创建、处罚修正、处罚解除、投票管理和高风险软删除不得假装成功，必须返回 `54001` 或 `54000`，并保持业务数据不变。通知失败不回滚主状态，但必须记录失败摘要和审计。
 
@@ -8522,7 +8522,7 @@ attendance 在 P1 不作为社区主流程依赖。社区贡献候选可以记�
 
 `community` API 文档按 `docs/contracts-community.md` 独立存在，并由 `.local-docs/tests-community.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求和模块验收口径。
 
-`community` 完成时必须满足以下条件：全部接口按本文档实现；公开接口只返回公开可见数据；当前用户接口只能访问自己的帖子草稿、评论、互动、收藏、投票、举报和工单；后台接口按角色限制；帖子、评论、举报、工单、处罚和投票有服务端状态机；举报和工单不是前端假状态；处罚只影响 community 写权限，不执行白名单移除、服务器命令或 attendance 积分修改；所有后台写操作和高风险操作有审计；通知失败按辅助降级记录；当前运行端口固定为 `8132`，自检摘要返回 `port=8132` 和 `legacyPort=8112`；`.local-docs/tests-community.md` 与 `.local-docs/tests-engagement-core.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 community 在 `engagement-core-service` 中全部测试通过；auth、profile、notification、content、server-status、resource、admin、onboarding、exam、whitelist 和 attendance 前序服务回归测试通过；不恢复 `backend/community-service` 旧入口；没有修改前序服务稳定接口；没有把活动、日历、更新日志、后台聚合、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复或 Cloudreve 管理能力塞进 community。
+`community` 完成时必须满足以下条件：全部接口按本文档实现；公开接口只返回公开可见数据；当前用户接口只能访问自己的帖子草稿、评论、互动、收藏、投票、举报和工单；后台接口按角色限制；帖子、评论、举报、工单、处罚和投票有服务端状态机；举报和工单不是前端假状态；处罚只影响 community 写权限，不执行白名单移除、服务器命令或 attendance 积分修改；所有后台写操作和高风险操作有审计；通知失败按辅助降级记录；当前运行端口固定为 `8132`，自检摘要返回 `port=8132` 和 `legacyPort=8112`；`.local-docs/tests-community.md` 与 `.local-docs/tests-engagement-core.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 community 在 `engagement-core-service` 中全部测试通过；auth、profile、notification、content、server-status、resource、admin、onboarding、exam、whitelist 和 attendance 前序模块回归测试通过；不恢复 `backend/community-service` 旧入口；没有修改前序模块稳定接口；没有把活动、日历、更新日志、后台聚合、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复或 Cloudreve 管理能力塞进 community。
 
 生产化硬化验收还必须满足：测试控制头默认关闭，只有本地自动化测试显式启用时才生效；关闭状态下依赖失败模拟头、写入失败模拟头和通知失败模拟头全部被忽略；自检摘要明确返回当前测试控制头开关状态。
 
@@ -8534,7 +8534,7 @@ attendance 在 P1 不作为社区主流程依赖。社区贡献候选可以记�
 
 ### 文档定位
 
-本文档是 `activity` 微服务的正式 API 契约。后续 `calendar`、`changelog`、前端适配、`admin` 聚合、`ops-control` 和 `external-node-executor` 只能通过本文档定义的接口读取活动、报名、参与确认、结果、奖励、贡献候选、审计和自检摘要，不能直接读取或修改 `activity` 数据库，也不能把活动报名、活动结果或活动奖励逻辑塞进其他服务。
+本文档是 `activity` 模块的正式 API 契约。后续 `calendar`、`changelog`、前端适配、`admin` 聚合、`ops-control` 和 `external-node-executor` 只能通过本文档定义的接口读取活动、报名、参与确认、结果、奖励、贡献候选、审计和自检摘要，不能直接读取或修改 `activity` 数据库，也不能把活动报名、活动结果或活动奖励逻辑塞进其他服务。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `activity` 的职责边界、数据归属、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
 
@@ -8556,7 +8556,7 @@ attendance 在 P1 不作为社区主流程依赖。社区贡献候选可以记�
 
 `activity` 不负责注册、登录、邀请码、会话、账号角色能力点、Minecraft 绑定主数据、成员档案主数据、站内通知主数据、官网公告主发布、资源下载主数据、考勤积分主数据、社区帖子评论、工单举报处罚、日历主数据、更新日志主数据、后台聚合入口、真实服务器运维控制、节点守护进程、容器、终端、文件管理、备份恢复、Cloudreve 管理或外部支付。
 
-`activity` 只能后序适配前序服务。它通过 `auth` 认证上下文读取当前用户、角色、能力点和用户状态；通过 `profile` 的正式接口或未来服务间适配器读取成员展示快照和成员状态；通过 `notification` 投递报名、候补、取消、签到、结果和奖励通知；通过 `attendance` 未来正式贡献入口接收贡献结果；通过 `community`、`content` 和 `resource` 的公开快照关联讨论、说明页和活动资源。`activity` 不能导入前序服务内存存储、实体、Repository、测试种子或内部类，不能要求前序服务为了 activity 反向修改稳定接口。
+`activity` 只能后序适配前序模块。它通过 `auth` 认证上下文读取当前用户、角色、能力点和用户状态；通过 `profile` 的正式接口或未来服务间适配器读取成员展示快照和成员状态；通过 `notification` 投递报名、候补、取消、签到、结果和奖励通知；通过 `attendance` 未来正式贡献入口接收贡献结果；通过 `community`、`content` 和 `resource` 的公开快照关联讨论、说明页和活动资源。`activity` 不能导入前序模块内存存储、实体、Repository、测试种子或内部类，不能要求前序模块为了 activity 反向修改稳定接口。
 
 ### 数据归属
 
@@ -8580,7 +8580,7 @@ attendance 在 P1 不作为社区主流程依赖。社区贡献候选可以记�
 
 生产和默认运行环境必须关闭测试控制头。关闭后这些请求头必须被忽略，不能触发依赖失败、审计失败、状态失败、通知失败、报名失败或快照 stale。自检摘要必须返回 `testControlsEnabled`，并在测试控制关闭时把 `TEST_CONTROLS_DISABLED_OUTSIDE_TEST` 视为已满足的生产化硬化项。
 
-### 前序服务兼容契约
+### 前序模块兼容契约
 
 `auth` 是所有登录接口强依赖。当前请求认证上下文至少包含 `userId`、`displayName`、`roles`、`permissions`、`status` 和可选 `minecraftBinding`。用户状态为 `ACTIVE` 时可报名和签到；`PENDING_PROFILE` 可以查看公开活动但不能报名成员限定活动；`DISABLED`、`BANNED`、`DELETED` 不允许写入活动状态。auth 不可用返回 `49400`，auth 超时返回 `49401`，字段或枚举不兼容返回 `49402`。
 
@@ -8925,7 +8925,7 @@ attendance 在 P1 不作为社区主流程依赖。社区贡献候选可以记�
 
 `GET /api/v1/activity/admin/events` 返回后台活动分页，支持 `page`、`pageSize`、`keyword`、`type`、`visibility`、`status`、`from`、`to`、`createdBy` 和 `sort`。
 
-`GET /api/v1/activity/admin/events/{activityId}` 返回后台活动详情，包含活动、报名统计、结果、奖励摘要、贡献候选摘要、依赖摘要和最近审计。响应不得返回 token、完整请求头、通知正文、前序服务内部路径、异常堆栈、真实服务器命令、节点凭据或 Cloudreve token。
+`GET /api/v1/activity/admin/events/{activityId}` 返回后台活动详情，包含活动、报名统计、结果、奖励摘要、贡献统一后端摘要、依赖摘要和最近审计。响应不得返回 token、完整请求头、通知正文、前序模块内部路径、异常堆栈、真实服务器命令、节点凭据或 Cloudreve token。
 
 `POST /api/v1/activity/admin/events` 创建草稿。请求字段为 `slug`、`title`、`summary`、`description`、`type`、`visibility`、`registrationPolicy`、`startAt`、`endAt`、`registrationOpenAt`、`registrationCloseAt`、`capacity`、`waitlistCapacity`、`locationText`、`coverImageUrl`、`tags`、`linkedCommunityId`、`linkedContentId`、`linkedResourceIds`、`internalNote`、`reason` 和 `idempotencyKey`。成功响应 HTTP `201`，状态为 `DRAFT`。slug 冲突返回 `49619`。
 
@@ -9057,7 +9057,7 @@ P1 内存实现必须用本服务内的串行临界区保护名额、候补、�
 
 必须审计的动作包括活动创建、活动修改、提交审核、审核通过、审核拒绝、要求修改、发布、开放报名、关闭报名、开始、完成、下架、归档、软删除、报名创建、报名取消、报名确认、报名拒绝、候补转正、签到、缺席、结果创建或修改、结果发布、奖励创建、奖励发放、奖励撤销、贡献候选生成、通知失败、依赖降级、自检读取、审计写入失败和状态写入失败。
 
-后台写操作必须记录 `reason`、操作者、目标对象、操作前状态、操作后状态、请求编号、参数摘要和结果。审计字段继承公共契约。审计不得泄露 token、完整请求头、Minecraft 验证凭据、profile 后台备注全文、通知正文全文、真实服务器命令、节点凭据、Cloudreve token、内部异常堆栈或前序服务内部路径。
+后台写操作必须记录 `reason`、操作者、目标对象、操作前状态、操作后状态、请求编号、参数摘要和结果。审计字段继承公共契约。审计不得泄露 token、完整请求头、Minecraft 验证凭据、profile 后台备注全文、通知正文全文、真实服务器命令、节点凭据、Cloudreve token、内部异常堆栈或前序模块内部路径。
 
 审计写入失败时，活动审核、发布、下架、归档、软删除、报名确认、报名拒绝、候补转正、签到、缺席、结果发布、奖励创建、奖励发放、奖励撤销和贡献候选生成不得假装成功，必须返回 `54601` 或 `54600`，并保持业务数据不变。通知失败不回滚主状态，但必须记录失败摘要和审计。
 
@@ -9081,7 +9081,7 @@ community、content 和 resource 是关联快照辅助依赖。创建或修改�
 
 `activity` API 文档按 `docs/contracts-activity.md` 独立存在，并由 `.local-docs/tests-activity.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求和模块验收口径。
 
-`activity` 完成时必须满足以下条件：全部接口按本文档实现；公开接口只返回公开可见活动、结果和摘要；当前用户接口只能访问自己的报名、签到和奖励；后台接口按角色限制；活动、报名、签到、结果和奖励有服务端状态机；名额、候补和签到由服务端计数和幂等保证；所有后台写操作和高风险操作有审计；通知失败按辅助降级记录；贡献奖励只生成 activity 贡献候选，不直接写 attendance 积分；当前运行端口固定为 `8132`，自检摘要返回 `port=8132` 和 `legacyPort=8113`；`.local-docs/tests-activity.md` 与 `.local-docs/tests-engagement-core.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 activity 在 `engagement-core-service` 中全部测试通过；auth、profile、notification、content、server-status、resource、admin、onboarding、exam、whitelist、attendance 和 community 前序服务回归测试通过；不恢复 `backend/activity-service` 旧入口；没有修改前序服务稳定接口；没有把日历、更新日志、后台聚合、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复或 Cloudreve 管理能力塞进 activity。
+`activity` 完成时必须满足以下条件：全部接口按本文档实现；公开接口只返回公开可见活动、结果和摘要；当前用户接口只能访问自己的报名、签到和奖励；后台接口按角色限制；活动、报名、签到、结果和奖励有服务端状态机；名额、候补和签到由服务端计数和幂等保证；所有后台写操作和高风险操作有审计；通知失败按辅助降级记录；贡献奖励只生成 activity 贡献候选，不直接写 attendance 积分；当前运行端口固定为 `8132`，自检摘要返回 `port=8132` 和 `legacyPort=8113`；`.local-docs/tests-activity.md` 与 `.local-docs/tests-engagement-core.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 activity 在 `engagement-core-service` 中全部测试通过；auth、profile、notification、content、server-status、resource、admin、onboarding、exam、whitelist、attendance 和 community 前序模块回归测试通过；不恢复 `backend/activity-service` 旧入口；没有修改前序模块稳定接口；没有把日历、更新日志、后台聚合、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复或 Cloudreve 管理能力塞进 activity。
 
 生产化硬化验收还必须满足：测试控制头默认关闭，只有本地自动化测试显式启用时才生效；关闭状态下依赖失败模拟头、写入失败模拟头、时间模拟头和通知失败模拟头全部被忽略；自检摘要明确返回当前测试控制头开关状态。
 
@@ -9093,7 +9093,7 @@ community、content 和 resource 是关联快照辅助依赖。创建或修改�
 
 ### 文档定位
 
-本文档是 `calendar` 微服务的正式 API 契约。后续 `changelog`、前端适配、`admin` 聚合、`ops-control` 和 `external-node-executor` 只能通过本文档定义的接口读取或管理日程事件、关注、提醒摘要、来源同步、审计和自检摘要，不能直接读取或修改 `calendar` 数据库，也不能把活动报名、社区投票、更新日志主数据或真实服务器运维能力塞进 `calendar`。
+本文档是 `calendar` 模块的正式 API 契约。后续 `changelog`、前端适配、`admin` 聚合、`ops-control` 和 `external-node-executor` 只能通过本文档定义的接口读取或管理日程事件、关注、提醒摘要、来源同步、审计和自检摘要，不能直接读取或修改 `calendar` 数据库，也不能把活动报名、社区投票、更新日志主数据或真实服务器运维能力塞进 `calendar`。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `calendar` 的职责边界、数据归属、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
 
@@ -9148,7 +9148,7 @@ P1 契约补强要求：当前用户关注列表、后台事件列表和审计�
 
 生产和默认运行环境必须关闭测试控制头。关闭后这些请求头必须被忽略，不能触发依赖失败、审计失败、状态失败、关注失败、通知失败、时间模拟或快照 stale。自检摘要必须返回 `testControlsEnabled`，并在测试控制关闭时把 `TEST_CONTROLS_DISABLED_OUTSIDE_TEST` 视为已满足的生产化硬化项。
 
-### 前序服务兼容契约
+### 前序模块兼容契约
 
 `auth` 是所有登录接口强依赖。当前请求认证上下文至少包含 `userId`、`displayName`、`roles`、`permissions`、`status` 和可选 `minecraftBinding`。用户状态为 `ACTIVE` 时可关注和后台写入；`PENDING_PROFILE` 可以关注公开事件但不能创建后台事件；`DISABLED`、`BANNED`、`DELETED` 不允许写入。auth 不可用返回 `49800`，auth 超时返回 `49801`，字段或枚举不兼容返回 `49802`。
 
@@ -9391,7 +9391,7 @@ P1 契约补强要求：当前用户关注列表、后台事件列表和审计�
 
 #### 后台事件列表和详情
 
-`GET /api/v1/calendar/admin/events` 支持 `page`、`pageSize`、`keyword`、`type`、`status`、`visibility`、`sourceType`、`createdBy`、`from`、`to` 和 `sort`。后台可查看全部非物理删除事件，默认按 `updatedAt_desc`。`GET /api/v1/calendar/admin/events/{eventId}` 返回事件、关注统计、来源同步摘要、提醒摘要、最近审计和依赖摘要。响应不得返回 token、完整请求头、通知正文、前序服务内部路径、异常堆栈、真实服务器命令、节点凭据或 Cloudreve token。
+`GET /api/v1/calendar/admin/events` 支持 `page`、`pageSize`、`keyword`、`type`、`status`、`visibility`、`sourceType`、`createdBy`、`from`、`to` 和 `sort`。后台可查看全部非物理删除事件，默认按 `updatedAt_desc`。`GET /api/v1/calendar/admin/events/{eventId}` 返回事件、关注统计、来源同步摘要、提醒摘要、最近审计和依赖摘要。响应不得返回 token、完整请求头、通知正文、前序模块内部路径、异常堆栈、真实服务器命令、节点凭据或 Cloudreve token。
 
 后台事件列表过滤规则：`keyword` 匹配标题或摘要；`type`、`status`、`visibility`、`sourceType` 和 `createdBy` 精确匹配；`from` 和 `to` 使用事件时间范围重叠规则；非法枚举返回 `40001`；非法时间返回 `40001`；非法范围返回 `49911`。分页和排序继续遵守公共契约。
 
@@ -9524,7 +9524,7 @@ P1 内存实现必须用本服务内的串行临界区保护事件状态、关�
 
 必须审计的动作包括事件创建、事件修改、提交审核、审核通过、审核拒绝、发布、下架、归档、软删除、关注事件、取消关注、activity 同步、同步失败、提醒失败、依赖降级、自检读取、审计写入失败和状态写入失败。
 
-后台写操作必须记录 `reason`、操作者、目标对象、操作前状态、操作后状态、请求编号、参数摘要和结果。审计字段继承公共契约。审计不得泄露 token、完整请求头、通知正文、前序服务内部路径、真实服务器命令、节点凭据、Cloudreve token、内部异常堆栈或 activity 内部实现。
+后台写操作必须记录 `reason`、操作者、目标对象、操作前状态、操作后状态、请求编号、参数摘要和结果。审计字段继承公共契约。审计不得泄露 token、完整请求头、通知正文、前序模块内部路径、真实服务器命令、节点凭据、Cloudreve token、内部异常堆栈或 activity 内部实现。
 
 审计写入失败时，事件创建、修改、审核、发布、下架、归档、软删除、activity 同步和后台状态写入不得假装成功，必须返回 `54801` 或 `54800`，并保持业务数据不变。普通用户关注和取消关注在 P1 也必须保证审计和关注计数一致，失败返回 `54803` 或 `54801`，不得产生半关注状态。
 
@@ -9544,7 +9544,7 @@ changelog 当前未连接。手工版本更新事件不依赖 changelog；未来
 
 `calendar` API 文档按 `docs/contracts-calendar.md` 独立存在，并由 `.local-docs/tests-calendar.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求和模块验收口径。
 
-`calendar` 完成时必须满足以下条件：全部接口按本文档实现；公开接口只返回公开可见事件；当前用户只能维护自己的关注；后台接口按角色限制；事件状态机不可非法回退；跨月、时间范围重叠和全天事件查询正确；activity 同步只读且有失败降级；changelog 只保留占位；维护窗口不触发真实运维；所有写操作有审计；当前运行端口固定为 `8132`，自检摘要返回 `port=8132` 和 `legacyPort=8114`；`.local-docs/tests-calendar.md` 与 `.local-docs/tests-engagement-core.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 calendar 在 `engagement-core-service` 中全部测试通过；auth、profile、notification、content、server-status、resource、admin、onboarding、exam、whitelist、attendance、community 和 activity 前序服务回归测试通过；不恢复 `backend/calendar-service` 旧入口；没有修改前序服务稳定接口；没有把更新日志主数据、活动报名、社区投票、后台聚合、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复或 Cloudreve 管理能力塞进 calendar。
+`calendar` 完成时必须满足以下条件：全部接口按本文档实现；公开接口只返回公开可见事件；当前用户只能维护自己的关注；后台接口按角色限制；事件状态机不可非法回退；跨月、时间范围重叠和全天事件查询正确；activity 同步只读且有失败降级；changelog 只保留占位；维护窗口不触发真实运维；所有写操作有审计；当前运行端口固定为 `8132`，自检摘要返回 `port=8132` 和 `legacyPort=8114`；`.local-docs/tests-calendar.md` 与 `.local-docs/tests-engagement-core.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 calendar 在 `engagement-core-service` 中全部测试通过；auth、profile、notification、content、server-status、resource、admin、onboarding、exam、whitelist、attendance、community 和 activity 前序模块回归测试通过；不恢复 `backend/calendar-service` 旧入口；没有修改前序模块稳定接口；没有把更新日志主数据、活动报名、社区投票、后台聚合、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复或 Cloudreve 管理能力塞进 calendar。
 
 生产化硬化验收还必须满足：测试控制头默认关闭，只有本地自动化测试显式启用时才生效；关闭状态下依赖失败模拟头、写入失败模拟头、时间模拟头和通知失败模拟头全部被忽略；自检摘要明确返回当前测试控制头开关状态。
 
@@ -9556,7 +9556,7 @@ changelog 当前未连接。手工版本更新事件不依赖 changelog；未来
 
 ### 文档定位
 
-本文档是 `changelog` 微服务的正式 API 契约。后续前端适配、`admin` 聚合、`ops-control`、`external-node-executor` 和其他业务模块只能通过本文档定义的接口读取或管理更新日志，不能直接读取或修改 `changelog` 数据库，也不能把公告、资源下载、服务器运维、日历主数据或活动报名逻辑塞进 `changelog`。
+本文档是 `changelog` 模块的正式 API 契约。后续前端适配、`admin` 聚合、`ops-control`、`external-node-executor` 和其他业务模块只能通过本文档定义的接口读取或管理更新日志，不能直接读取或修改 `changelog` 数据库，也不能把公告、资源下载、服务器运维、日历主数据或活动报名逻辑塞进 `changelog`。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `changelog` 的职责边界、数据归属、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
 
@@ -9577,7 +9577,7 @@ changelog 当前未连接。手工版本更新事件不依赖 changelog；未来
 
 `changelog` 不负责官网公告主发布、内容专题主数据、资源文件下载、资源版本创建、Cloudreve 分享链接生成、玩家可见服务器状态采集、真实服务器维护、容器、终端、文件管理、节点守护、日历事件主数据、活动报名结果、社区帖子、考勤积分、白名单或运维审批。
 
-`changelog` 只能后序适配前序服务。它通过 `auth` 认证上下文读取当前用户、角色、能力点和用户状态；通过 `resource` 公开或后台正式接口保存资源和版本快照；通过 `server-status` 正式接口保存实例名称、Minecraft 版本和线路摘要；通过 `content` 正式接口保存公开说明页快照；通过 `calendar` 兼容接口或本服务内同步摘要保存版本发布日期程引用；通过 `notification` 投递发布、下架、安全修复和规则调整通知摘要。`changelog` 不导入前序服务内部类、Repository、内存存储、测试种子或数据库表。
+`changelog` 只能后序适配前序模块。它通过 `auth` 认证上下文读取当前用户、角色、能力点和用户状态；通过 `resource` 公开或后台正式接口保存资源和版本快照；通过 `server-status` 正式接口保存实例名称、Minecraft 版本和线路摘要；通过 `content` 正式接口保存公开说明页快照；通过 `calendar` 兼容接口或本服务内同步摘要保存版本发布日期程引用；通过 `notification` 投递发布、下架、安全修复和规则调整通知摘要。`changelog` 不导入前序模块内部类、Repository、内存存储、测试种子或数据库表。
 
 ### 数据归属
 
@@ -9603,7 +9603,7 @@ P1 内存实现必须完整兑现本文档已经承诺的 HTTP 行为，包括�
 
 生产和默认运行环境必须关闭测试控制头。关闭后这些请求头必须被忽略，不能触发依赖失败、审计失败、状态失败、收藏失败、通知失败、时间模拟或快照 stale。自检摘要必须返回 `testControlsEnabled`，并在测试控制关闭时把 `TEST_CONTROLS_DISABLED_OUTSIDE_TEST` 视为已满足的生产化硬化项。
 
-### 前序服务兼容契约
+### 前序模块兼容契约
 
 `auth` 是所有登录接口强依赖。当前请求认证上下文至少包含 `userId`、`displayName`、`roles`、`permissions` 和 `status`。用户状态为 `ACTIVE` 时可收藏和后台写入；`PENDING_PROFILE` 可以收藏公开版本但不能后台写入；`DISABLED`、`BANNED`、`DELETED` 不允许写入。auth 不可用返回 `49100`，auth 超时返回 `49101`，字段或枚举不兼容返回 `49102`。
 
@@ -9882,7 +9882,7 @@ P1 内存实现必须完整兑现本文档已经承诺的 HTTP 行为，包括�
 
 #### 后台发布列表和详情
 
-`GET /api/v1/changelog/admin/releases` 支持 `page`、`pageSize`、`keyword`、`type`、`status`、`visibility`、`impactLevel`、`createdBy`、`minecraftVersion`、`from`、`to` 和 `sort`。后台可查看全部非物理删除记录，默认按 `updatedAt_desc`。`from` 和 `to` 按 `createdAt` 查询。`GET /api/v1/changelog/admin/releases/{releaseId}` 返回发布记录、收藏统计、关联快照、通知摘要、日历同步摘要、依赖摘要和最近审计。响应不得返回 token、完整请求头、通知正文、前序服务内部路径、异常堆栈、真实服务器命令、节点凭据或 Cloudreve token。
+`GET /api/v1/changelog/admin/releases` 支持 `page`、`pageSize`、`keyword`、`type`、`status`、`visibility`、`impactLevel`、`createdBy`、`minecraftVersion`、`from`、`to` 和 `sort`。后台可查看全部非物理删除记录，默认按 `updatedAt_desc`。`from` 和 `to` 按 `createdAt` 查询。`GET /api/v1/changelog/admin/releases/{releaseId}` 返回发布记录、收藏统计、关联快照、通知摘要、日历同步摘要、依赖摘要和最近审计。响应不得返回 token、完整请求头、通知正文、前序模块内部路径、异常堆栈、真实服务器命令、节点凭据或 Cloudreve token。
 
 #### 创建发布草稿
 
@@ -9977,7 +9977,7 @@ P1 内存实现必须用本服务内的串行临界区保护发布记录状态�
 
 必须审计的动作包括发布记录创建、修改、提交审核、审核通过、审核拒绝、要求修改、发布、下架、归档、软删除、收藏、取消收藏、日历同步、通知失败、依赖降级、自检读取、审计写入失败和状态写入失败。
 
-后台写操作必须记录 `reason`、操作者、目标对象、操作前状态、操作后状态、请求编号、参数摘要和结果。审计字段继承公共契约。审计不得泄露 token、完整请求头、通知正文、前序服务内部路径、真实服务器命令、节点凭据、Cloudreve token、内部异常堆栈、安全 exploit 细节或未脱敏运维参数。
+后台写操作必须记录 `reason`、操作者、目标对象、操作前状态、操作后状态、请求编号、参数摘要和结果。审计字段继承公共契约。审计不得泄露 token、完整请求头、通知正文、前序模块内部路径、真实服务器命令、节点凭据、Cloudreve token、内部异常堆栈、安全 exploit 细节或未脱敏运维参数。
 
 审计写入失败时，发布记录创建、修改、审核、发布、下架、归档、软删除和日历同步不得假装成功，必须返回 `54901` 或 `54900`，并保持业务数据不变。普通用户收藏和取消收藏在 P1 也必须保证审计和收藏计数一致，失败返回 `54903` 或 `54901`，不得产生半收藏状态。通知失败不回滚主状态，但必须记录失败摘要和审计。
 
@@ -9997,7 +9997,7 @@ notification 是辅助依赖。发布、下架和安全修复通知失败不得�
 
 `changelog` API 文档按 `docs/contracts-changelog.md` 独立存在，并由 `.local-docs/tests-changelog.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求和模块验收口径。
 
-`changelog` 完成时必须满足以下条件：全部接口按本文档实现；公开接口只返回公开可见发布记录和脱敏变更项；当前用户只能维护自己的收藏；后台接口按角色限制；发布状态机不可非法回退；安全修复公开摘要不泄露敏感信息；资源、server-status、content、calendar 和 notification 都只走正式契约或受控适配层；calendar 同步失败不影响 changelog 主状态；notification 失败记录脱敏摘要；所有写操作有审计；当前运行端口固定为 `8132`，自检摘要返回 `port=8132` 和 `legacyPort=8115`；`.local-docs/tests-changelog.md` 与 `.local-docs/tests-engagement-core.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 changelog 在 `engagement-core-service` 中全部测试通过；auth、profile、notification、content、server-status、resource、admin、onboarding、exam、whitelist、attendance、community、activity 和 calendar 前序服务回归测试通过；不恢复 `backend/changelog-service` 旧入口；没有修改前序服务稳定接口；没有把官网公告、资源下载、日历主数据、活动报名、后台聚合、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复或 Cloudreve 管理能力塞进 changelog。
+`changelog` 完成时必须满足以下条件：全部接口按本文档实现；公开接口只返回公开可见发布记录和脱敏变更项；当前用户只能维护自己的收藏；后台接口按角色限制；发布状态机不可非法回退；安全修复公开摘要不泄露敏感信息；资源、server-status、content、calendar 和 notification 都只走正式契约或受控适配层；calendar 同步失败不影响 changelog 主状态；notification 失败记录脱敏摘要；所有写操作有审计；当前运行端口固定为 `8132`，自检摘要返回 `port=8132` 和 `legacyPort=8115`；`.local-docs/tests-changelog.md` 与 `.local-docs/tests-engagement-core.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 changelog 在 `engagement-core-service` 中全部测试通过；auth、profile、notification、content、server-status、resource、admin、onboarding、exam、whitelist、attendance、community、activity 和 calendar 前序模块回归测试通过；不恢复 `backend/changelog-service` 旧入口；没有修改前序模块稳定接口；没有把官网公告、资源下载、日历主数据、活动报名、后台聚合、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复或 Cloudreve 管理能力塞进 changelog。
 
 生产化硬化验收还必须满足：测试控制头默认关闭，只有本地自动化测试显式启用时才生效；关闭状态下依赖失败模拟头、写入失败模拟头、时间模拟头和通知失败模拟头全部被忽略；自检摘要明确返回当前测试控制头开关状态。
 
@@ -10015,7 +10015,7 @@ notification 是辅助依赖。发布、下架和安全修复通知失败不得�
 
 当前运行入口为 `engagement-core-service:8132`。历史端口 `8112` 到 `8115` 只作为 `legacyPort` 追溯字段，不再作为独立服务入口、网关上游或回归测试命令。
 
-第九轮允许 `unified-backend-service:8135` 以 in-process 方式挂载 `engagement-core`。该候选挂载不改变 `engagement-core-service:8132` 的独立入口，不改变 `/api/v1/engagement-core/**`、`/api/v1/community/**`、`/api/v1/activity/**`、`/api/v1/calendar/**` 或 `/api/v1/changelog/**` 的路径、认证、响应格式、错误码、业务行为和测试口径。
+第九轮允许 `backend:8135` 以 in-process 方式挂载 `engagement-core`。该统一后端挂载不改变 `engagement-core-service:8132` 的独立入口，不改变 `/api/v1/engagement-core/**`、`/api/v1/community/**`、`/api/v1/activity/**`、`/api/v1/calendar/**` 或 `/api/v1/changelog/**` 的路径、认证、响应格式、错误码、业务行为和测试口径。
 
 ### 自有接口
 
@@ -10073,7 +10073,7 @@ notification 是辅助依赖。发布、下架和安全修复通知失败不得�
 
 ### 文档定位
 
-本文档是 `ops-control` 微服务的正式 API 契约。后续前端运维控制台、`admin` 聚合、`external-node-executor` 和其他业务模块只能通过本文档定义的接口读取或管理服务器运维控制面，不能直接读取或修改 `ops-control` 数据，也不能把真实服务器命令、文件系统、Docker、虚拟机、Minecraft 实例或终端执行能力塞进其他服务。
+本文档是 `ops-control` 模块的正式 API 契约。后续前端运维控制台、`admin` 聚合、`external-node-executor` 和其他业务模块只能通过本文档定义的接口读取或管理服务器运维控制面，不能直接读取或修改 `ops-control` 数据，也不能把真实服务器命令、文件系统、Docker、虚拟机、Minecraft 实例或终端执行能力塞进其他服务。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、运维能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `ops-control` 的职责边界、数据归属、路径、字段、状态、权限、错误码、幂等、任务流转、审批流转、节点降级、审计和验收口径。
 
@@ -10102,7 +10102,7 @@ notification 是辅助依赖。发布、下架和安全修复通知失败不得�
 
 `ops-control` 拥有以下主数据：节点、节点认证摘要、节点能力、节点心跳、资产、资产分组、指标快照、容器快照、虚拟机快照、Minecraft 实例快照、授权目录快照、文件读取请求、日志查询请求、受控操作任务、高风险审批、节点回写摘要、幂等记录、运维审计和自检统计。
 
-`ops-control` 可以保存来自 `auth` 的操作者用户 ID、展示名、角色、能力点和用户状态快照；可以保存来自 `admin` 的入口引用和聚合摘要；可以保存来自 `server-status` 的玩家可见实例 ID 和公开名称快照；可以保存来自 `resource` 的 Cloudreve 服务资产引用和公开资源关联快照；可以保存来自 `calendar`、`changelog` 的维护窗口或版本发布引用快照。所有跨服务字段只能是快照或正式接口结果，不得直接读取前序服务数据库、内存 store、测试种子或私有类。
+`ops-control` 可以保存来自 `auth` 的操作者用户 ID、展示名、角色、能力点和用户状态快照；可以保存来自 `admin` 的入口引用和聚合摘要；可以保存来自 `server-status` 的玩家可见实例 ID 和公开名称快照；可以保存来自 `resource` 的 Cloudreve 服务资产引用和公开资源关联快照；可以保存来自 `calendar`、`changelog` 的维护窗口或版本发布引用快照。所有跨服务字段只能是快照或正式接口结果，不得直接读取前序模块数据库、内存 store、测试种子或私有类。
 
 ### 基础路径与认证
 
@@ -10118,7 +10118,7 @@ notification 是辅助依赖。发布、下架和安全修复通知失败不得�
 
 生产和默认运行环境必须关闭测试控制头。关闭后这些请求头必须被忽略，不能触发依赖失败、审计失败、节点失败、状态失败或时间模拟。自检摘要必须返回 `testControlsEnabled`，并在测试控制关闭时把 `TEST_CONTROLS_DISABLED_OUTSIDE_TEST` 视为已满足的生产化硬化项。
 
-### 前序服务兼容契约
+### 前序模块兼容契约
 
 `auth` 是强依赖。当前请求认证上下文至少包含 `userId`、`displayName`、`roles`、`permissions` 和 `status`。用户状态为 `DISABLED`、`BANNED` 或 `DELETED` 时不得访问任何接口。auth 不可用返回 `49200`，auth 超时返回 `49201`，字段或枚举不兼容返回 `49202`。
 
@@ -10468,7 +10468,7 @@ notification 是辅助依赖。发布、下架和安全修复通知失败不得�
 
 `ops-control` API 文档按 `docs/contracts-ops-control.md` 独立存在，并由 `.local-docs/tests-ops-core.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、能力点不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求和模块验收口径。
 
-`ops-control` 完成时必须满足以下条件：全部接口按本文档实现；当前运行入口为 `ops-core-service:8133`，历史端口 `8116` 只作为 `legacyPort` 返回；所有接口要求登录；读取接口校验 `NODE_READ` 或对应能力；操作接口按任务类型校验能力点；高风险操作要求二次确认；严重风险操作要求审批或 `OWNER` 授权；节点 token、内部路径、命令参数、异常堆栈和凭据脱敏；节点离线时不假装成功；路径穿越被拦截；任务幂等和并发边界可复现；审计失败能回滚状态；自检摘要暴露存储模式、节点适配模式、测试控制状态和生产化缺口；`.local-docs/tests-ops-core.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 `ops-control` 在 `ops-core-service` 中全部测试通过；当前后端运行入口回归测试通过；没有修改前序服务稳定接口；没有把真实服务器操作、Docker、Proxmox、MCSManager、文件删除、终端命令、备份恢复、Cloudreve 管理 token 或 `external-node-executor` 执行能力塞进控制面。
+`ops-control` 完成时必须满足以下条件：全部接口按本文档实现；当前运行入口为 `ops-core-service:8133`，历史端口 `8116` 只作为 `legacyPort` 返回；所有接口要求登录；读取接口校验 `NODE_READ` 或对应能力；操作接口按任务类型校验能力点；高风险操作要求二次确认；严重风险操作要求审批或 `OWNER` 授权；节点 token、内部路径、命令参数、异常堆栈和凭据脱敏；节点离线时不假装成功；路径穿越被拦截；任务幂等和并发边界可复现；审计失败能回滚状态；自检摘要暴露存储模式、节点适配模式、测试控制状态和生产化缺口；`.local-docs/tests-ops-core.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 `ops-control` 在 `ops-core-service` 中全部测试通过；当前后端运行入口回归测试通过；没有修改前序模块稳定接口；没有把真实服务器操作、Docker、Proxmox、MCSManager、文件删除、终端命令、备份恢复、Cloudreve 管理 token 或 `external-node-executor` 执行能力塞进控制面。
 
 ## 北冥官网 cloudreve-sync API 契约
 
@@ -10478,7 +10478,7 @@ notification 是辅助依赖。发布、下架和安全修复通知失败不得�
 
 ### 文档定位
 
-本文档是 `cloudreve-sync` 微服务的正式 API 契约。`cloudreve-sync` 负责 Cloudreve API 深度接入、provider 配置摘要、目录同步任务、文件元数据快照、分享链接解析、分享状态探测、失效降级、幂等记录和同步审计。
+本文档是 `cloudreve-sync` 模块的正式 API 契约。`cloudreve-sync` 负责 Cloudreve API 深度接入、provider 配置摘要、目录同步任务、文件元数据快照、分享链接解析、分享状态探测、失效降级、幂等记录和同步审计。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `cloudreve-sync` 的职责边界、数据归属、路径、字段、状态、权限、错误码、幂等、同步任务流转、失败降级、审计和验收口径。
 
@@ -10509,13 +10509,13 @@ notification 是辅助依赖。发布、下架和安全修复通知失败不得�
 
 `cloudreve-sync` 不负责注册、登录、会话、角色能力点主数据、玩家资源主数据、资源审核发布、下载权限判定、真实文件内容代理、浏览器直连 Cloudreve 管理凭据、后台服务器文件操作、宿主机文件系统、节点守护进程、运维审批、通知主数据、Cloudreve 管理 token 展示或真实 Cloudreve 删除操作。
 
-第一版固定为内存存储和受控 fake Cloudreve adapter。它只建立可测试的 API 边界、安全快照、降级规则和同步任务模型。后续若要让 `resource` 消费本服务快照，必须按前序服务兼容变更流程更新 `docs/contracts-resource.md`、`.local-docs/tests-resource.md` 和自动化测试，确认红灯后再改 `resource`。
+第一版固定为内存存储和受控 fake Cloudreve adapter。它只建立可测试的 API 边界、安全快照、降级规则和同步任务模型。后续若要让 `resource` 消费本服务快照，必须按前序模块兼容变更流程更新 `docs/contracts-resource.md`、`.local-docs/tests-resource.md` 和自动化测试，确认红灯后再改 `resource`。
 
 ### 数据归属
 
 `cloudreve-sync` 拥有以下主数据：CloudreveProvider、CloudreveFileSnapshot、CloudreveShareSnapshot、CloudreveSyncJob、CloudreveSyncJobStep、CloudreveResolveResult、CloudreveAuditLog、CloudreveOpsSummary 和幂等记录。
 
-`cloudreve-sync` 可以保存来自 `auth` 的操作者用户 ID、展示名、角色、能力点和状态快照；可以保存来自 `resource` 的资源兼容引用快照；可以保存来自 `ops-control` 的 Cloudreve 服务资产引用摘要。所有跨服务字段只能来自正式接口、后端入口可信上下文或契约允许的本地测试 stub，不能直接读取前序服务数据库、内存 store、测试种子或私有类。
+`cloudreve-sync` 可以保存来自 `auth` 的操作者用户 ID、展示名、角色、能力点和状态快照；可以保存来自 `resource` 的资源兼容引用快照；可以保存来自 `ops-control` 的 Cloudreve 服务资产引用摘要。所有跨服务字段只能来自正式接口、后端入口可信上下文或契约允许的本地测试 stub，不能直接读取前序模块数据库、内存 store、测试种子或私有类。
 
 Cloudreve 真实凭据只能通过环境变量、启动参数或受控配置注入。仓库内只能保存配置键名和测试假值，不得提交真实 token、cookie、刷新 token、管理密码、分享密码明文、私有直链、内部绝对路径或完整上游响应。
 
@@ -10537,7 +10537,7 @@ Cloudreve 真实凭据只能通过环境变量、启动参数或受控配置注�
 
 生产和默认运行环境必须关闭测试控制头。关闭后这些请求头必须被忽略，不能触发认证失败、Cloudreve 失败、resource 失败、审计失败、存储失败或时间模拟。自检摘要必须返回 `testControlsEnabled`，并在测试控制关闭时把 `TEST_CONTROLS_DISABLED_OUTSIDE_TEST` 纳入生产化硬化项。
 
-### 前序服务兼容契约
+### 前序模块兼容契约
 
 `auth` 是强依赖。当前请求认证上下文至少包含 `userId`、`displayName`、`roles`、`permissions` 和 `status`。用户状态为 `DISABLED`、`BANNED` 或 `DELETED` 时不得访问后台接口。auth 不可用返回 `46710`，auth 超时返回 `46711`，auth 字段或枚举不兼容返回 `46712`。
 
@@ -10807,7 +10807,7 @@ Cloudreve 不可用时，读取类接口可以返回旧快照并标记 `degraded
 
 `cloudreve-sync` API 文档必须按 `docs/contracts-cloudreve-sync.md` 独立存在，并由 `.local-docs/tests-ops-core.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、能力点不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求、敏感字段脱敏、测试控制头默认关闭和模块验收口径。
 
-`cloudreve-sync` 完成时必须满足以下条件：当前运行入口为 `ops-core-service:8133`，历史端口 `8118` 只作为 `legacyPort` 返回；健康检查不泄露敏感信息；除健康检查外全部接口要求后台认证；provider、文件快照、分享快照、同步任务、幂等、状态流转、上游失败降级、旧快照降级、配额成本摘要、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；不修改前序服务稳定接口；不把玩家资源主数据、后台文件管理、节点守护进程或真实宿主机操作塞进本模块；自动化测试必须先红灯；实现后 `cloudreve-sync` 在 `ops-core-service` 中全部测试通过；当前后端运行入口回归测试通过；边界扫描无违规命中；测试过程记录完整。
+`cloudreve-sync` 完成时必须满足以下条件：当前运行入口为 `ops-core-service:8133`，历史端口 `8118` 只作为 `legacyPort` 返回；健康检查不泄露敏感信息；除健康检查外全部接口要求后台认证；provider、文件快照、分享快照、同步任务、幂等、状态流转、上游失败降级、旧快照降级、配额成本摘要、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；不修改前序模块稳定接口；不把玩家资源主数据、后台文件管理、节点守护进程或真实宿主机操作塞进本模块；自动化测试必须先红灯；实现后 `cloudreve-sync` 在 `ops-core-service` 中全部测试通过；当前后端运行入口回归测试通过；边界扫描无违规命中；测试过程记录完整。
 
 ## 北冥官网 backup-recovery API 契约
 
@@ -10817,7 +10817,7 @@ Cloudreve 不可用时，读取类接口可以返回旧快照并标记 `degraded
 
 ### 文档定位
 
-本文档是 `backup-recovery` 微服务的正式 API 契约。`backup-recovery` 负责备份域、备份策略、备份任务、备份点索引、备份校验、恢复演练、恢复申请、审批摘要、保留策略、加密摘要、依赖健康摘要、风险审计和自检摘要。
+本文档是 `backup-recovery` 模块的正式 API 契约。`backup-recovery` 负责备份域、备份策略、备份任务、备份点索引、备份校验、恢复演练、恢复申请、审批摘要、保留策略、加密摘要、依赖健康摘要、风险审计和自检摘要。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `backup-recovery` 的职责边界、数据归属、路径、字段、状态、权限、错误码、幂等、任务流转、恢复流转、失败降级、审计和验收口径。
 
@@ -10848,7 +10848,7 @@ Cloudreve 不可用时，读取类接口可以返回旧快照并标记 `degraded
 
 `backup-recovery` 拥有以下主数据：BackupDomain、BackupPolicy、BackupJob、BackupPoint、BackupVerification、RestoreDrill、RestoreRequest、BackupRecoveryAuditLog、BackupRecoveryOpsSummary 和幂等记录。
 
-`backup-recovery` 可以保存来自 `auth` 的操作者用户 ID、展示名、角色、能力点和状态快照；可以保存来自 `ops-control` 的节点、资产、备份盘和受控任务引用摘要；可以保存来自 `admin` 的模块健康聚合引用；可以保存来自 `notification` 的投递降级摘要。所有跨服务字段只能来自正式接口、后端入口可信上下文或契约允许的本地测试 stub，不能直接读取前序服务数据库、内存 store、测试种子或私有类。
+`backup-recovery` 可以保存来自 `auth` 的操作者用户 ID、展示名、角色、能力点和状态快照；可以保存来自 `ops-control` 的节点、资产、备份盘和受控任务引用摘要；可以保存来自 `admin` 的模块健康聚合引用；可以保存来自 `notification` 的投递降级摘要。所有跨服务字段只能来自正式接口、后端入口可信上下文或契约允许的本地测试 stub，不能直接读取前序模块数据库、内存 store、测试种子或私有类。
 
 备份点中的 `storageRef` 只能返回安全摘要，例如存储别名、区域摘要、保留分层和加密模式。不得返回真实绝对路径、数据库连接串、对象存储密钥、加密密钥、节点 token、Cloudreve 管理凭据或完整上游响应。
 
@@ -10868,7 +10868,7 @@ Cloudreve 不可用时，读取类接口可以返回旧快照并标记 `degraded
 
 生产和默认运行环境必须关闭测试控制头。关闭后这些请求头必须被忽略，不能触发认证失败、ops-control 失败、notification 失败、备份任务失败、审计失败、存储失败或时间模拟。自检摘要必须返回 `testControlsEnabled`，并在测试控制关闭时把 `TEST_CONTROLS_DISABLED_OUTSIDE_TEST` 纳入生产化硬化项。
 
-### 前序服务兼容契约
+### 前序模块兼容契约
 
 `auth` 是强依赖。当前请求认证上下文至少包含 `userId`、`displayName`、`roles`、`permissions` 和 `status`。用户状态为 `DISABLED`、`BANNED` 或 `DELETED` 时不得访问后台接口。auth 不可用返回 `46810`，auth 超时返回 `46811`，auth 字段或枚举不兼容返回 `46812`。
 
@@ -11158,7 +11158,7 @@ Cloudreve 不可用时，读取类接口可以返回旧快照并标记 `degraded
 
 `backup-recovery` API 文档必须按 `docs/contracts-backup-recovery.md` 独立存在，并由 `.local-docs/tests-ops-core.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、能力点不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求、敏感字段脱敏、测试控制头默认关闭和模块验收口径。
 
-`backup-recovery` 完成时必须满足以下条件：当前运行入口为 `ops-core-service:8133`，历史端口 `8119` 只作为 `legacyPort` 返回；健康检查不泄露敏感信息；除健康检查外全部接口要求后台认证；备份域、策略、任务、备份点、校验、恢复演练、恢复申请、审批、审计、幂等、状态流转、依赖失败降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；不修改前序服务稳定接口；不直接调用 `external-node-executor`；不执行真实恢复；不把备份恢复能力塞回 `ops-control`、`admin`、`resource` 或 `cloudreve-sync`；自动化测试必须先红灯；实现后 `backup-recovery` 在 `ops-core-service` 中全部测试通过；当前后端运行入口回归测试通过；边界扫描无违规命中；测试过程记录完整。
+`backup-recovery` 完成时必须满足以下条件：当前运行入口为 `ops-core-service:8133`，历史端口 `8119` 只作为 `legacyPort` 返回；健康检查不泄露敏感信息；除健康检查外全部接口要求后台认证；备份域、策略、任务、备份点、校验、恢复演练、恢复申请、审批、审计、幂等、状态流转、依赖失败降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；不修改前序模块稳定接口；不直接调用 `external-node-executor`；不执行真实恢复；不把备份恢复能力塞回 `ops-control`、`admin`、`resource` 或 `cloudreve-sync`；自动化测试必须先红灯；实现后 `backup-recovery` 在 `ops-core-service` 中全部测试通过；当前后端运行入口回归测试通过；边界扫描无违规命中；测试过程记录完整。
 
 ## 北冥官网 alerting API 契约
 
@@ -11168,9 +11168,9 @@ Cloudreve 不可用时，读取类接口可以返回旧快照并标记 `degraded
 
 ### 文档定位
 
-本文档是 `alerting` 微服务的正式 API 契约。`alerting` 负责告警源摘要、告警规则、规则评估、告警实例、去重分组、静默、通知路由、投递摘要、确认关闭、审计列表和自检摘要。
+本文档是 `alerting` 模块的正式 API 契约。`alerting` 负责告警源摘要、告警规则、规则评估、告警实例、去重分组、静默、通知路由、投递摘要、确认关闭、审计列表和自检摘要。
 
-本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `alerting` 的职责边界、数据归属、前序服务兼容、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
+本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `alerting` 的职责边界、数据归属、前序模块兼容、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
 
 本文档参考 Prometheus Alertmanager、Grafana Alerting、PagerDuty、Opsgenie、Amazon CloudWatch 和 Datadog Monitor 的公开设计。Alertmanager 的 grouping、deduplication、routing、silencing 和 inhibition 适合告警风暴控制；Grafana 的 contact point、notification policy、silence 和 mute timing 适合把告警规则与通知渠道拆开；PagerDuty 的事件编排、`dedup_key` 和通用事件字段适合把来源事件整理成可处理事件；Opsgenie 的 `alias` 去重和 acknowledge、close、snooze 生命周期适合告警处理闭环；CloudWatch 的复合告警和抑制等待窗口适合维护窗口和上游故障抑制；Datadog 的 monitor、renotify 和 escalation message 适合重复提醒和升级摘要。本文档只吸收规则、事件、抑制、路由、去重键和闭环模型，不接入这些平台的主数据，也不在第一版发送真实外部通知。
 
@@ -11191,7 +11191,7 @@ Cloudreve 不可用时，读取类接口可以返回旧快照并标记 `degraded
 
 `alerting` 不负责用户登录、角色能力点主数据、站内通知主数据、真实短信、真实邮件、真实 Webhook、真实指标采集、真实节点操作、真实备份恢复、真实 Cloudreve 调用、真实容器或虚拟机控制、玩家资源下载、社区工单主数据或后台聚合主数据。
 
-第一版固定为内存存储和受控测试适配器。它可以使用前序服务健康、指标、任务失败和风险摘要的快照，不能直接导入前序服务 Java 类、内存 store、测试种子或私有数据结构。跨服务字段只能来自正式 API、后端入口可信认证上下文或契约允许的本地测试 stub。
+第一版固定为内存存储和受控测试适配器。它可以使用前序模块健康、指标、任务失败和风险摘要的快照，不能直接导入前序模块 Java 类、内存 store、测试种子或私有数据结构。跨服务字段只能来自正式 API、后端入口可信认证上下文或契约允许的本地测试 stub。
 
 ### 数据归属
 
@@ -11215,7 +11215,7 @@ Cloudreve 不可用时，读取类接口可以返回旧快照并标记 `degraded
 
 生产和默认运行环境必须关闭测试控制头。关闭后这些请求头必须被忽略，不能触发认证失败、来源失败、通知失败、审计失败、存储失败或时间模拟。自检摘要必须返回 `testControlsEnabled`，并在测试控制关闭时把 `TEST_CONTROLS_DISABLED_OUTSIDE_TEST` 纳入生产化硬化项。
 
-### 前序服务兼容契约
+### 前序模块兼容契约
 
 `auth` 是强依赖。当前请求认证上下文至少包含 `userId`、`displayName`、`roles`、`permissions` 和 `status`。用户状态为 `DISABLED`、`BANNED` 或 `DELETED` 时不得访问后台接口。auth 不可用返回 `46920`，auth 超时返回 `46921`，auth 字段或枚举不兼容返回 `46922`。
 
@@ -11513,7 +11513,7 @@ Cloudreve 不可用时，读取类接口可以返回旧快照并标记 `degraded
 
 `alerting` API 文档必须按 `docs/contracts-alerting.md` 独立存在，并由 `.local-docs/tests-ops-core.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、能力点不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求、敏感字段脱敏、测试控制头默认关闭和模块验收口径。
 
-`alerting` 完成时必须满足以下条件：当前运行入口为 `ops-core-service:8133`，历史端口 `8120` 只作为 `legacyPort` 返回；健康检查不泄露敏感信息；除健康检查外全部接口要求后台认证；告警源、规则、评估、实例、确认关闭、静默、通知路由、投递摘要、审计、幂等、状态流转、去重分组、通知失败降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；不修改前序服务稳定接口；不直接调用 `external-node-executor`；不执行真实外部通知发送；不把告警规则塞进 `notification`、`admin`、`ops-control`、`server-status`、`cloudreve-sync` 或 `backup-recovery`；自动化测试必须先红灯；实现后 `alerting` 在 `ops-core-service` 中全部测试通过；当前后端运行入口回归测试通过；边界扫描无违规命中；测试过程记录完整。
+`alerting` 完成时必须满足以下条件：当前运行入口为 `ops-core-service:8133`，历史端口 `8120` 只作为 `legacyPort` 返回；健康检查不泄露敏感信息；除健康检查外全部接口要求后台认证；告警源、规则、评估、实例、确认关闭、静默、通知路由、投递摘要、审计、幂等、状态流转、去重分组、通知失败降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；不修改前序模块稳定接口；不直接调用 `external-node-executor`；不执行真实外部通知发送；不把告警规则塞进 `notification`、`admin`、`ops-control`、`server-status`、`cloudreve-sync` 或 `backup-recovery`；自动化测试必须先红灯；实现后 `alerting` 在 `ops-core-service` 中全部测试通过；当前后端运行入口回归测试通过；边界扫描无违规命中；测试过程记录完整。
 
 ## 北冥官网 online-map API 契约
 
@@ -11523,9 +11523,9 @@ Cloudreve 不可用时，读取类接口可以返回旧快照并标记 `degraded
 
 ### 文档定位
 
-本文档是 `online-map` 微服务的正式 API 契约。后续前端在线地图页面、管理后台、`admin` 聚合、`alerting`、`ops-control` 和其他业务模块只能通过本文档定义的接口读取或管理在线地图公开入口、世界、图层、marker、区域、嵌入配置、健康快照和审计摘要，不能直接读取或修改 `online-map` 数据。
+本文档是 `online-map` 模块的正式 API 契约。后续前端在线地图页面、管理后台、`admin` 聚合、`alerting`、`ops-control` 和其他业务模块只能通过本文档定义的接口读取或管理在线地图公开入口、世界、图层、marker、区域、嵌入配置、健康快照和审计摘要，不能直接读取或修改 `online-map` 数据。
 
-本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、运维能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `online-map` 的职责边界、数据归属、前序服务兼容、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
+本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、运维能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `online-map` 的职责边界、数据归属、前序模块兼容、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
 
 本文档参考 BlueMap、Dynmap、squaremap 和 Minecraft Overviewer 的公开设计。BlueMap 的 marker set、POI、HTML、line、shape 和 extrusion marker 适合抽象 marker 图层；Dynmap 的世界、地图视图、marker、area 和 line 适合作为二维地图 provider 兼容参考；squaremap 的轻量地图、marker、shape 和 icon API 适合第一版 provider 摘要；Minecraft Overviewer 的静态地图生成和浏览器查看模型说明官网不应接管渲染任务。本文档只吸收 provider、world、layer、marker、region、embed 和健康摘要的设计思路，不直接依赖这些项目的 Java API、配置文件、插件命令或内部数据结构。
 
@@ -11552,7 +11552,7 @@ Cloudreve 不可用时，读取类接口可以返回旧快照并标记 `degraded
 
 `online-map` 可以保存来自 `auth` 的操作者用户 ID、展示名、角色、能力点和用户状态快照；可以保存来自 `server-status` 的公开实例状态摘要；可以保存来自 `ops-control` 的只读节点或 Minecraft 实例健康摘要；可以保存来自 `content` 的公开页面引用摘要；可以保存来自 `changelog` 的地图版本摘要；可以保存供 `alerting` 读取的健康摘要；可以保存来自 `notification` 的投递结果摘要。所有快照只用于展示、过滤、降级和审计，不能成为来源模块主数据，也不能反写来源模块。
 
-`online-map` 不能直接读取其他服务数据库，不能导入前序服务 Java package，不能复用前序服务内存 store，不能调用 `external-node-executor` 执行真实命令，不能代理真实瓦片目录，不能读取 Minecraft 世界文件，不能保存 Cloudreve token，不能把玩家资源下载塞进地图服务。
+`online-map` 不能直接读取其他服务数据库，不能导入前序模块 Java package，不能复用前序模块内存 store，不能调用 `external-node-executor` 执行真实命令，不能代理真实瓦片目录，不能读取 Minecraft 世界文件，不能保存 Cloudreve token，不能把玩家资源下载塞进地图服务。
 
 ### 基础路径、端口和认证
 
@@ -11572,7 +11572,7 @@ Cloudreve 不可用时，读取类接口可以返回旧快照并标记 `degraded
 
 生产和默认运行环境必须关闭测试控制头。关闭后这些请求头必须被忽略，不能触发认证失败、provider 失败、依赖失败、通知失败、审计失败、存储失败或时间模拟。自检摘要必须返回 `testControlsEnabled`，并在测试控制关闭时把 `TEST_CONTROLS_DISABLED_OUTSIDE_TEST` 纳入生产化硬化项。
 
-### 前序服务兼容契约
+### 前序模块兼容契约
 
 `auth` 是后台接口强依赖。当前请求认证上下文至少包含 `userId`、`displayName`、`roles`、`permissions` 和 `status`。用户状态为 `DISABLED`、`BANNED` 或 `DELETED` 时不得访问后台接口。auth 不可用返回 `46820`，auth 超时返回 `46821`，auth 字段或枚举不兼容返回 `46822`。
 
@@ -12004,7 +12004,7 @@ provider 探测失败时不清空旧公开入口。公开接口可以返回最�
 
 `online-map` API 文档必须按 `docs/contracts-online-map.md` 独立存在，并由 `.local-docs/tests-online-map.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、能力点不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求、敏感字段脱敏、测试控制头默认关闭和模块验收口径。
 
-`online-map` 完成时必须满足以下条件：当前运行入口由 `unified-backend-service:8135` 挂载，历史 `online-map-service:8121` Maven 入口已退役且不得恢复；健康检查公开且不泄露敏感信息；公开接口只返回公开可见、已启用、未归档且脱敏的数据；后台接口按角色和能力点限制；provider、world、layer、marker、region、embed、健康快照、审计、幂等、状态流转、URL 安全、坐标边界、依赖降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；自动化测试必须先红灯；实现后 `mvn -q -f backend/pom.xml test` 通过并覆盖 `online-map` 全部 34 个 API；当前后端运行入口回归通过；边界扫描无违规命中；不修改前序服务稳定接口；不直接调用 `external-node-executor`；不读取真实世界目录；不代理真实瓦片；不执行真实地图插件命令；不把地图渲染、资源下载、节点文件管理、终端、备份恢复或告警规则塞进 `online-map`。
+`online-map` 完成时必须满足以下条件：当前运行入口由 `backend:8135` 挂载，历史 `online-map-service:8121` Maven 入口已退役且不得恢复；健康检查公开且不泄露敏感信息；公开接口只返回公开可见、已启用、未归档且脱敏的数据；后台接口按角色和能力点限制；provider、world、layer、marker、region、embed、健康快照、审计、幂等、状态流转、URL 安全、坐标边界、依赖降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；自动化测试必须先红灯；实现后 `mvn -q -f backend/pom.xml test` 通过并覆盖 `online-map` 全部 34 个 API；当前后端运行入口回归通过；边界扫描无违规命中；不修改前序模块稳定接口；不直接调用 `external-node-executor`；不读取真实世界目录；不代理真实瓦片；不执行真实地图插件命令；不把地图渲染、资源下载、节点文件管理、终端、备份恢复或告警规则塞进 `online-map`。
 
 ## 北冥官网 plugin-integration API 契约
 
@@ -12014,9 +12014,9 @@ provider 探测失败时不清空旧公开入口。公开接口可以返回最�
 
 ### 文档定位
 
-本文档是 `plugin-integration` 微服务的正式 API 契约。后续前端插件联动页面、管理后台、`online-map`、`alerting`、`changelog`、`ops-control`、`external-node-executor` 和其他业务模块只能通过本文档定义的接口读取或管理插件 provider、插件实例快照、事件 schema、事件、路由规则、同步任务、健康快照、对象映射和审计摘要，不能直接读取或修改 `plugin-integration` 数据，也不能把真实 Minecraft 插件运行、节点命令、地图主数据、告警规则、通知渠道或服务器文件操作塞进本服务。
+本文档是 `plugin-integration` 模块的正式 API 契约。后续前端插件联动页面、管理后台、`online-map`、`alerting`、`changelog`、`ops-control`、`external-node-executor` 和其他业务模块只能通过本文档定义的接口读取或管理插件 provider、插件实例快照、事件 schema、事件、路由规则、同步任务、健康快照、对象映射和审计摘要，不能直接读取或修改 `plugin-integration` 数据，也不能把真实 Minecraft 插件运行、节点命令、地图主数据、告警规则、通知渠道或服务器文件操作塞进本服务。
 
-本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、运维能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `plugin-integration` 的职责边界、数据归属、前序服务兼容、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
+本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、运维能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `plugin-integration` 的职责边界、数据归属、前序模块兼容、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
 
 本文档参考 Paper、Bukkit/Spigot、Velocity、BlueMap、Dynmap、LuckPerms、PlaceholderAPI、DiscordSRV、Prometheus exporter、Modrinth、CurseForge 和 Hangar 的公开设计。Paper、Bukkit 和 Velocity 的事件监听模型说明事件必须有来源、类型、版本和受控 payload；BlueMap 和 Dynmap 的 marker 模型说明插件对象只能同步为地图对象建议或快照，不能直接接管地图服务主数据；LuckPerms 说明外部权限插件只能作为权限来源摘要，不能替代官网 `auth`；PlaceholderAPI 说明跨插件变量要有命名空间和白名单；DiscordSRV 说明跨平台通知必须走受控渠道，不能泄露外部 token；Prometheus exporter 说明插件指标应作为指标快照，不应混入业务主数据；Modrinth、CurseForge 和 Hangar 的项目、版本、文件、依赖和平台拆分说明插件来源、插件版本和分发元数据要结构化。本文档只吸收这些生态的设计思路，不导入它们的 Java API、插件 jar、平台 SDK、私有 token、Webhook secret、配置文件或命令能力。
 
@@ -12050,7 +12050,7 @@ provider 探测失败时不清空旧公开入口。公开接口可以返回最�
 
 `plugin-integration` 可以保存来自 `auth` 的操作者用户 ID、展示名、角色、能力点和用户状态快照；可以保存来自 `ops-control` 的节点和 Minecraft 实例只读摘要；可以保存来自 `external-node-executor` 的安全回写摘要；可以保存来自 `server-status` 的公开实例状态摘要；可以保存来自 `online-map` 的 provider、world、layer、marker 和 region 引用摘要；可以保存来自 `changelog` 的插件版本变更摘要；可以保存来自 `notification` 的投递结果摘要；可以保存供 `alerting` 消费的插件健康和事件异常摘要。所有快照只用于展示、过滤、降级、审计和后续同步建议，不能成为来源模块主数据，也不能反写来源模块。
 
-`plugin-integration` 不能直接读取其他服务数据库，不能导入前序服务 Java package，不能复用前序服务内存 store，不能调用 `external-node-executor` 执行真实命令，不能读取插件目录、世界目录、服务端配置、RCON 密码或节点文件，不能保存 Cloudreve token、Webhook secret、Discord token、插件后台密码、完整请求头、内部 URL 或绝对路径。
+`plugin-integration` 不能直接读取其他服务数据库，不能导入前序模块 Java package，不能复用前序模块内存 store，不能调用 `external-node-executor` 执行真实命令，不能读取插件目录、世界目录、服务端配置、RCON 密码或节点文件，不能保存 Cloudreve token、Webhook secret、Discord token、插件后台密码、完整请求头、内部 URL 或绝对路径。
 
 ### 基础路径、端口和认证
 
@@ -12068,7 +12068,7 @@ provider 探测失败时不清空旧公开入口。公开接口可以返回最�
 
 生产和默认运行环境必须关闭测试控制头。关闭后这些请求头必须被忽略，不能触发认证失败、依赖失败、通知失败、审计失败、存储失败或时间模拟。自检摘要必须返回 `testControlsEnabled`，并在测试控制关闭时把 `TEST_CONTROLS_DISABLED_OUTSIDE_TEST` 纳入生产化硬化项。
 
-### 前序服务兼容契约
+### 前序模块兼容契约
 
 `auth` 是后台接口强依赖。当前请求认证上下文至少包含 `userId`、`displayName`、`roles`、`permissions` 和 `status`。用户状态为 `DISABLED`、`BANNED` 或 `DELETED` 时不得访问后台接口。auth 不可用返回 `47050`，auth 超时返回 `47051`，字段或枚举不兼容返回 `47052`。
 
@@ -12282,7 +12282,7 @@ provider 探测失败时不清空旧公开入口。公开接口可以返回最�
 
 #### PluginAuditLog
 
-审计字段继承公共契约，允许补充 `providerId`、`eventId`、`schemaId`、`ruleId`、`taskId`、`mappingId`、`dependencyStatus`、`notificationStatus`、`idempotencyKey` 和 `failureReason`。审计列表不得提供删除、修改或恢复接口。审计响应不得返回 token、密钥、webhook secret、完整请求头、完整 payload、内部 URL、内部路径、真实世界目录、节点地址、完整异常栈或前序服务私有数据。
+审计字段继承公共契约，允许补充 `providerId`、`eventId`、`schemaId`、`ruleId`、`taskId`、`mappingId`、`dependencyStatus`、`notificationStatus`、`idempotencyKey` 和 `failureReason`。审计列表不得提供删除、修改或恢复接口。审计响应不得返回 token、密钥、webhook secret、完整请求头、完整 payload、内部 URL、内部路径、真实世界目录、节点地址、完整异常栈或前序模块私有数据。
 
 #### PluginIntegrationOpsSummary
 
@@ -12492,7 +12492,7 @@ schema 状态流转为 `DRAFT` 可到 `ENABLED`、`DISABLED` 或 `ARCHIVED`；`E
 
 ### 安全、降级和脱敏
 
-任何请求体和响应都不得包含访问 token、插件 token、插件 secret、webhook secret、Discord token、SMTP 密码、短信 token、完整 Authorization 请求头、完整请求 headers、完整 raw payload、内部 URL、内部路径、真实世界目录、节点地址、服务器密码、RCON 密码、完整异常栈、数据库连接串、`.env`、`authorized_keys`、`id_rsa`、shell 命令或前序服务私有数据。检查必须递归覆盖嵌套对象和数组。
+任何请求体和响应都不得包含访问 token、插件 token、插件 secret、webhook secret、Discord token、SMTP 密码、短信 token、完整 Authorization 请求头、完整请求 headers、完整 raw payload、内部 URL、内部路径、真实世界目录、节点地址、服务器密码、RCON 密码、完整异常栈、数据库连接串、`.env`、`authorized_keys`、`id_rsa`、shell 命令或前序模块私有数据。检查必须递归覆盖嵌套对象和数组。
 
 外部 endpoint 和 allowed origins 必须拒绝 `file:`、`data:`、`javascript:`、带用户名密码 URL、localhost、回环 IP、内网 IP、链路本地地址、未解析 host、通配符 `*`、空 host、控制字符和非法 URI。`eventEndpointSummary` 只能是公开安全摘要或站内受控路径，不得是内网完整地址。站内受控路径必须以 `/` 开头，不能以 `//` 开头，不能包含反斜杠或控制字符。
 
@@ -12506,7 +12506,7 @@ schema 状态流转为 `DRAFT` 可到 `ENABLED`、`DISABLED` 或 `ARCHIVED`；`E
 
 `plugin-integration` API 文档必须按 `docs/contracts-plugin-integration.md` 独立存在，并由 `.local-docs/tests-ops-core.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、能力点不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求、敏感字段脱敏、测试控制头默认关闭和模块验收口径。
 
-`plugin-integration` 完成时必须满足以下条件：当前运行入口为 `ops-core-service:8133`，历史端口 `8122` 只作为 `legacyPort` 返回；健康检查公开且不泄露敏感信息；后台接口按角色和能力点限制；provider、实例、能力、schema、事件、路由规则、同步任务、健康快照、对象映射、审计、幂等、状态流转、来源 allowlist、payload 脱敏、依赖降级、通知失败摘要、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；自动化测试必须先红灯；实现后 `plugin-integration` 在 `ops-core-service` 中全部测试通过；当前后端运行入口回归测试通过；边界扫描无违规命中；不修改前序服务稳定接口；不直接读取前序服务数据库；不导入前序服务 Java package；不调用真实 `external-node-executor`；不执行真实插件命令；不写真实插件配置；不保存真实插件 token、webhook secret 或外部平台密钥；不把地图主数据、告警规则、通知渠道、资源下载、节点文件管理、终端、备份恢复或跨平台通知主数据塞进 `plugin-integration`。
+`plugin-integration` 完成时必须满足以下条件：当前运行入口为 `ops-core-service:8133`，历史端口 `8122` 只作为 `legacyPort` 返回；健康检查公开且不泄露敏感信息；后台接口按角色和能力点限制；provider、实例、能力、schema、事件、路由规则、同步任务、健康快照、对象映射、审计、幂等、状态流转、来源 allowlist、payload 脱敏、依赖降级、通知失败摘要、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；自动化测试必须先红灯；实现后 `plugin-integration` 在 `ops-core-service` 中全部测试通过；当前后端运行入口回归测试通过；边界扫描无违规命中；不修改前序模块稳定接口；不直接读取前序模块数据库；不导入前序模块 Java package；不调用真实 `external-node-executor`；不执行真实插件命令；不写真实插件配置；不保存真实插件 token、webhook secret 或外部平台密钥；不把地图主数据、告警规则、通知渠道、资源下载、节点文件管理、终端、备份恢复或跨平台通知主数据塞进 `plugin-integration`。
 
 ## 北冥官网 cross-platform-notification API 契约
 
@@ -12516,9 +12516,9 @@ schema 状态流转为 `DRAFT` 可到 `ENABLED`、`DISABLED` 或 `ARCHIVED`；`E
 
 ### 文档定位
 
-本文档是 `cross-platform-notification` 微服务的正式 API 契约。`cross-platform-notification` 负责跨平台外部通知控制面，包括外部渠道 provider 摘要、渠道能力、模板映射、路由策略、投递请求、投递尝试、receiver 摘要、重试摘要、失败降级、幂等记录、审计日志和自检摘要。
+本文档是 `cross-platform-notification` 模块的正式 API 契约。`cross-platform-notification` 负责跨平台外部通知控制面，包括外部渠道 provider 摘要、渠道能力、模板映射、路由策略、投递请求、投递尝试、receiver 摘要、重试摘要、失败降级、幂等记录、审计日志和自检摘要。
 
-本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、运维能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `cross-platform-notification` 的职责边界、数据归属、前序服务兼容、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
+本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、运维能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `cross-platform-notification` 的职责边界、数据归属、前序模块兼容、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
 
 本文档参考 Slack Incoming Webhooks、Discord Webhooks、Telegram Bot API、Twilio Messaging、Firebase Cloud Messaging、OneSignal、Novu 和 Grafana Alerting 的公开设计。Slack Incoming Webhooks 明确 webhook URL 本身包含 secret，适合约束本服务不回显完整 webhook。Discord Webhooks 说明 webhook token、内容长度、allowed mentions 和服务端确认差异，适合本服务建立渠道能力和内容降级模型。Telegram Bot API 说明 bot token、HTTPS 请求、webhook secret token 和更新重试，适合本服务区分发送 token、回调签名和失败摘要。Twilio Messaging 的状态回调说明外部投递会经历 queued、sent、delivered、failed 等状态，适合本服务保留投递尝试和后续回调适配位置。FCM 的跨平台消息、topic、device token 和平台差异化配置，适合本服务抽象 `PUSH` 渠道能力和 receiver 摘要。OneSignal 的 Push、In-App、Email、SMS 和 Live Activities 多渠道模型，适合本服务拆分渠道、订阅和模板。Novu 的 workflow、channel steps、delay、digest 和 subscriber preference 说明通知编排应独立于业务主数据。Grafana Alerting 的 contact point、notification policy、grouping、silence 和 template 说明路由策略、分组抑制和接收方配置要和告警规则分离。
 
@@ -12551,7 +12551,7 @@ schema 状态流转为 `DRAFT` 可到 `ENABLED`、`DISABLED` 或 `ARCHIVED`；`E
 
 `cross-platform-notification` 可以保存来自 `auth` 的操作者用户 ID、展示名、角色、能力点和状态快照；可以保存来自 `notification` 的站内通知引用、模板引用和投递偏好安全摘要；可以保存来自 `alerting` 的告警投递请求摘要；可以保存来自 `plugin-integration` 的插件事件和插件健康异常摘要；可以保存来自 `ops-control` 的高风险审批、节点异常和任务失败摘要；可以保存来自 `community`、`activity`、`calendar`、`changelog`、`whitelist`、`attendance`、`resource` 和 `server-status` 的业务来源摘要。
 
-所有跨模块字段只能是安全快照，不得成为来源模块主数据，不得用于绕过来源模块权限，不得反向修改来源模块状态。`cross-platform-notification` 不能直接读取其他服务数据库，不能导入前序服务 Java package，不能复用前序服务内存 store，不能修改 `notification` 未读数，不能关闭 `alerting` 告警，不能重放 `plugin-integration` 事件，不能创建 `ops-control` 任务。
+所有跨模块字段只能是安全快照，不得成为来源模块主数据，不得用于绕过来源模块权限，不得反向修改来源模块状态。`cross-platform-notification` 不能直接读取其他服务数据库，不能导入前序模块 Java package，不能复用前序模块内存 store，不能修改 `notification` 未读数，不能关闭 `alerting` 告警，不能重放 `plugin-integration` 事件，不能创建 `ops-control` 任务。
 
 ### 基础路径、端口和认证
 
@@ -12571,7 +12571,7 @@ schema 状态流转为 `DRAFT` 可到 `ENABLED`、`DISABLED` 或 `ARCHIVED`；`E
 
 生产和默认运行环境必须关闭测试控制头。关闭后这些请求头必须被忽略，不能触发认证失败、依赖失败、provider 失败、审计失败、存储失败、投递失败或时间模拟。自检摘要必须返回 `testControlsEnabled`，并在测试控制关闭时把 `TEST_CONTROLS_DISABLED_OUTSIDE_TEST` 纳入生产化硬化项。
 
-### 前序服务兼容契约
+### 前序模块兼容契约
 
 `auth` 是后台接口强依赖。当前请求认证上下文至少包含 `userId`、`displayName`、`roles`、`permissions` 和 `status`。用户状态为 `DISABLED`、`BANNED` 或 `DELETED` 时不得访问后台接口。auth 不可用返回 `47150`，auth 超时返回 `47151`，auth 字段或枚举不兼容返回 `47152`。
 
@@ -12753,7 +12753,7 @@ schema 状态流转为 `DRAFT` 可到 `ENABLED`、`DISABLED` 或 `ARCHIVED`；`E
 
 #### ExternalNotificationAuditLog
 
-审计字段继承公共契约，允许补充 `providerId`、`capabilityId`、`mappingId`、`routeId`、`deliveryId`、`attemptId`、`receiverId`、`sourceModule`、`dependencyStatus`、`stateFrom`、`stateTo`、`idempotencyKey`、`confirmTextMatched` 和 `failureReason`。审计列表只读，不提供删除接口。审计响应不得返回 token、secret、完整 webhook、完整请求头、完整通知正文、内部 URL、内部路径、完整异常栈、数据库连接串或前序服务私有数据。
+审计字段继承公共契约，允许补充 `providerId`、`capabilityId`、`mappingId`、`routeId`、`deliveryId`、`attemptId`、`receiverId`、`sourceModule`、`dependencyStatus`、`stateFrom`、`stateTo`、`idempotencyKey`、`confirmTextMatched` 和 `failureReason`。审计列表只读，不提供删除接口。审计响应不得返回 token、secret、完整 webhook、完整请求头、完整通知正文、内部 URL、内部路径、完整异常栈、数据库连接串或前序模块私有数据。
 
 #### CrossPlatformNotificationOpsSummary
 
@@ -12952,7 +12952,7 @@ provider 状态流转为 `DRAFT` 可到 `ENABLED`、`DISABLED` 或 `ARCHIVED`；
 
 ### 安全、降级和脱敏
 
-任何请求体和响应都不得包含外部平台 token、webhook secret、完整 webhook URL、Discord token、Slack webhook URL、Telegram bot token、QQ token、Oopz token、企业微信 key、SMTP 密码、短信 token、推送 server key、设备 token、RCON 密码、完整 Authorization 请求头、完整请求 headers、完整通知正文、完整 raw payload、内部 URL、内部路径、节点地址、服务器密码、shell 命令、异常栈、数据库连接串、`.env`、`authorized_keys`、`id_rsa` 或前序服务私有数据。检查必须递归覆盖嵌套对象和数组。
+任何请求体和响应都不得包含外部平台 token、webhook secret、完整 webhook URL、Discord token、Slack webhook URL、Telegram bot token、QQ token、Oopz token、企业微信 key、SMTP 密码、短信 token、推送 server key、设备 token、RCON 密码、完整 Authorization 请求头、完整请求 headers、完整通知正文、完整 raw payload、内部 URL、内部路径、节点地址、服务器密码、shell 命令、异常栈、数据库连接串、`.env`、`authorized_keys`、`id_rsa` 或前序模块私有数据。检查必须递归覆盖嵌套对象和数组。
 
 endpoint 和 receiver URL 必须拒绝 `file:`、`data:`、`javascript:`、带用户名密码 URL、localhost、回环 IP、内网 IP、链路本地地址、未解析 host、通配符 `*`、空 host、控制字符和非法 URI。站内受控路径必须以 `/` 开头，不能以 `//` 开头，不能包含反斜杠或控制字符。
 
@@ -12966,7 +12966,7 @@ receiver 摘要必须按类型脱敏。邮箱最多显示域名和首尾字符�
 
 `cross-platform-notification` API 文档必须按 `docs/contracts-cross-platform-notification.md` 独立存在，并由 `.local-docs/tests-cross-platform-notification.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、能力点不足、高风险确认缺失、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求、敏感字段脱敏、测试控制头默认关闭和模块验收口径。
 
-`cross-platform-notification` 完成时必须满足以下条件：当前运行入口为 `ops-core-service:8133`，历史端口 `8123` 只作为 `legacyPort` 返回；健康检查公开且不泄露敏感信息；后台接口按角色和能力点限制；provider、渠道能力、模板映射、路由策略、投递请求、投递尝试、receiver 摘要、审计、幂等、状态流转、依赖降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；自动化测试必须先红灯；实现后在 `ops-core-service` 中全量测试通过；当前后端运行入口回归通过；边界扫描无违规命中；不修改前序服务稳定接口；不直接读取前序服务数据库；不导入前序服务 Java package；不调用真实 `external-node-executor`；不执行真实外部通知发送；不保存真实外部 token、完整 webhook、SMTP 密码、短信 token、机器人 token、设备 token、RCON 密码或完整请求头；不把站内通知主数据、告警规则、插件事件、社区工单、活动、日历、白名单、考勤、资源下载、运维任务、节点文件管理或终端能力塞进本服务；不得恢复 `backend/cross-platform-notification-service` 独立 Maven 入口。
+`cross-platform-notification` 完成时必须满足以下条件：当前运行入口为 `ops-core-service:8133`，历史端口 `8123` 只作为 `legacyPort` 返回；健康检查公开且不泄露敏感信息；后台接口按角色和能力点限制；provider、渠道能力、模板映射、路由策略、投递请求、投递尝试、receiver 摘要、审计、幂等、状态流转、依赖降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；自动化测试必须先红灯；实现后在 `ops-core-service` 中全量测试通过；当前后端运行入口回归通过；边界扫描无违规命中；不修改前序模块稳定接口；不直接读取前序模块数据库；不导入前序模块 Java package；不调用真实 `external-node-executor`；不执行真实外部通知发送；不保存真实外部 token、完整 webhook、SMTP 密码、短信 token、机器人 token、设备 token、RCON 密码或完整请求头；不把站内通知主数据、告警规则、插件事件、社区工单、活动、日历、白名单、考勤、资源下载、运维任务、节点文件管理或终端能力塞进本服务；不得恢复 `backend/cross-platform-notification-service` 独立 Maven 入口。
 
 ## 北冥官网 ops-image-market API 契约
 
@@ -12976,9 +12976,9 @@ receiver 摘要必须按类型脱敏。邮箱最多显示域名和首尾字符�
 
 ### 文档定位
 
-本文档是 `ops-image-market` 微服务的正式 API 契约。`ops-image-market` 负责运维镜像市场控制面，包括 registry provider 摘要、镜像目录、镜像版本、兼容性配置、部署模板摘要、风险扫描摘要、拉取计划、节点镜像缓存快照、依赖健康摘要、幂等记录、审计日志和自检摘要。
+本文档是 `ops-image-market` 模块的正式 API 契约。`ops-image-market` 负责运维镜像市场控制面，包括 registry provider 摘要、镜像目录、镜像版本、兼容性配置、部署模板摘要、风险扫描摘要、拉取计划、节点镜像缓存快照、依赖健康摘要、幂等记录、审计日志和自检摘要。
 
-本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、运维能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `ops-image-market` 的职责边界、数据归属、前序服务兼容、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
+本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、运维能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `ops-image-market` 的职责边界、数据归属、前序模块兼容、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
 
 本文档参考 Docker Hub、OCI Image Specification、Harbor、GitHub Container Registry、Portainer App Templates、Kubernetes ImagePolicyWebhook、Trivy 和 Renovate 的公开设计。Docker Hub 和 GitHub Container Registry 的 repository、tag、package 权限和访问控制适合本服务拆分 provider、repository 和可见范围。OCI Image Specification 的 manifest、image index、platform 和 digest 适合本服务保存脱敏镜像版本摘要。Harbor 的项目、机器人账号、扫描、复制策略和信任模型适合本服务建立 provider、凭据引用、扫描摘要和高风险启用规则。Portainer App Templates 的 image、env、ports、volumes 和 stack 模板思路适合本服务建立部署模板摘要。Kubernetes ImagePolicyWebhook 的准入判断适合本服务在拉取计划前做风险和兼容性阻断。Trivy 的漏洞严重级别、修复状态和扫描时间适合本服务定义风险扫描摘要。Renovate 的 Docker 版本更新和 digest pinning 思路适合本服务记录版本建议、digest 摘要和漂移风险。
 
@@ -13011,7 +13011,7 @@ receiver 摘要必须按类型脱敏。邮箱最多显示域名和首尾字符�
 
 `ops-image-market` 可以保存来自 `auth` 的操作者用户 ID、展示名、角色、能力点和状态快照；可以保存来自 `ops-control` 的节点、资产、容器运行时和 Minecraft 实例只读摘要；可以保存来自 `external-node-executor` 经过 `ops-control` 或测试适配器回写的节点镜像缓存摘要；可以保存来自 `alerting` 可消费的风险事件摘要；可以保存来自 `cross-platform-notification` 的通知意图或投递结果摘要；可以保存来自 `plugin-integration` 的插件运行环境需求摘要。所有跨服务字段只能是安全快照，不得成为来源模块主数据，不得用于绕过来源模块权限，不得反向修改来源模块状态。
 
-`ops-image-market` 不能直接读取其他服务数据库，不能导入前序服务 Java package，不能复用前序服务内存 store，不能修改 `ops-control` 节点、资产、任务或审批，不能直连 `external-node-executor`，不能创建 `alerting` 告警实例，不能发送 `cross-platform-notification` 外部消息，不能安装插件或写入 Minecraft 配置。
+`ops-image-market` 不能直接读取其他服务数据库，不能导入前序模块 Java package，不能复用前序模块内存 store，不能修改 `ops-control` 节点、资产、任务或审批，不能直连 `external-node-executor`，不能创建 `alerting` 告警实例，不能发送 `cross-platform-notification` 外部消息，不能安装插件或写入 Minecraft 配置。
 
 ### 基础路径、端口和认证
 
@@ -13029,7 +13029,7 @@ receiver 摘要必须按类型脱敏。邮箱最多显示域名和首尾字符�
 
 生产和默认运行环境必须关闭测试控制头。关闭后这些请求头必须被忽略，不能触发认证失败、依赖失败、registry 失败、scanner 失败、审计失败、存储失败、计划失败或时间模拟。自检摘要必须返回 `testControlsEnabled`，并在测试控制关闭时把 `TEST_CONTROLS_DISABLED_OUTSIDE_TEST` 纳入生产化硬化项。
 
-### 前序服务兼容契约
+### 前序模块兼容契约
 
 `auth` 是后台接口强依赖。当前请求认证上下文至少包含 `userId`、`displayName`、`roles`、`permissions` 和 `status`。用户状态为 `DISABLED`、`BANNED` 或 `DELETED` 时不得访问后台接口。auth 不可用返回 `47200`，auth 超时返回 `47201`，字段或枚举不兼容返回 `47202`。
 
@@ -13241,7 +13241,7 @@ receiver 摘要必须按类型脱敏。邮箱最多显示域名和首尾字符�
 
 #### ImageMarketAuditLog
 
-审计字段继承公共契约，允许补充 `providerId`、`imageId`、`imageVersionId`、`profileId`、`templateId`、`scanId`、`planId`、`snapshotId`、`stateFrom`、`stateTo`、`dependencyStatus` 和 `idempotencyKey`。审计列表不得提供删除、修改或恢复接口。审计响应不得返回 registry token、完整 endpoint、完整 digest 清单、完整 manifest、layer URL、宿主路径、节点凭据、请求头、异常栈或前序服务私有数据。
+审计字段继承公共契约，允许补充 `providerId`、`imageId`、`imageVersionId`、`profileId`、`templateId`、`scanId`、`planId`、`snapshotId`、`stateFrom`、`stateTo`、`dependencyStatus` 和 `idempotencyKey`。审计列表不得提供删除、修改或恢复接口。审计响应不得返回 registry token、完整 endpoint、完整 digest 清单、完整 manifest、layer URL、宿主路径、节点凭据、请求头、异常栈或前序模块私有数据。
 
 #### OpsImageMarketSummary
 
@@ -13484,7 +13484,7 @@ provider 状态流转为 `DRAFT` 可到 `ENABLED`、`DISABLED` 或 `ARCHIVED`；
 
 endpoint、repository、tag、namespace 和 URL 摘要必须拒绝 `file:`、`data:`、`javascript:`、带用户名密码 URL、localhost、回环 IP、内网 IP、链路本地地址、未解析 host、通配符 `*`、空 host、控制字符、反斜杠、路径穿越和非法 URI。repository 必须是 registry 内 namespace/repository 摘要，不允许浏览器提交完整 registry 登录串。
 
-任何请求体和响应都不得包含 registry token、registry password、Docker password、image secret、pull secret、完整 Authorization 请求头、完整请求 headers、完整 manifest、完整 layer URL、内部 registry 地址、内部 URL、内部路径、节点本地镜像层路径、宿主绝对路径、真实 shell 命令、异常栈、数据库连接串、`.env`、`authorized_keys`、`id_rsa` 或前序服务私有数据。检查必须递归覆盖嵌套对象和数组。
+任何请求体和响应都不得包含 registry token、registry password、Docker password、image secret、pull secret、完整 Authorization 请求头、完整请求 headers、完整 manifest、完整 layer URL、内部 registry 地址、内部 URL、内部路径、节点本地镜像层路径、宿主绝对路径、真实 shell 命令、异常栈、数据库连接串、`.env`、`authorized_keys`、`id_rsa` 或前序模块私有数据。检查必须递归覆盖嵌套对象和数组。
 
 扫描失败、扫描过期、签名不满足、provider 降级、registry 限流、节点摘要不可用或兼容性失败时，读取类接口可以返回已有快照并标记 `degraded=true`、`stale=true` 和 `degradeReasons`。写入类接口不得假装成功。高风险或严重风险计划必须按权限、确认文本、状态和审计规则阻断或进入 `RISK_REVIEW_REQUIRED`，不能靠前端展示来兜底。
 
@@ -13494,7 +13494,7 @@ endpoint、repository、tag、namespace 和 URL 摘要必须拒绝 `file:`、`da
 
 `ops-image-market` API 文档必须按 `docs/contracts-ops-image-market.md` 独立存在，并由 `.local-docs/tests-ops-core.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、能力点不足、高风险确认缺失、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求、敏感字段脱敏、测试控制头默认关闭和模块验收口径。
 
-`ops-image-market` 完成时必须满足以下条件：当前运行入口为 `ops-core-service:8133`，历史端口 `8124` 只作为 `legacyPort` 返回；健康检查公开且不泄露敏感信息；后台接口按角色、能力点、风险等级和确认文本限制；provider、镜像目录、镜像版本、兼容配置、模板、风险扫描、拉取计划、节点缓存快照、审计、幂等、状态流转、依赖降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；自动化测试必须先红灯；实现后本模块在 `ops-core-service` 中全量测试通过；当前后端运行入口回归测试通过；边界扫描无违规命中；不修改前序服务稳定接口；不直接读取前序服务数据库；不导入前序服务 Java package；不调用真实 `external-node-executor`；不执行真实 Docker、containerd、registry、scanner、镜像拉取、镜像删除或容器创建；不保存真实 registry token、完整 manifest、layer URL、内部地址、宿主路径、节点凭据、完整请求头或前序服务私有数据；不把玩家资源下载、Cloudreve 文件同步、运维任务执行、节点文件管理、终端能力、告警规则、外部通知发送或插件安装塞进本服务。
+`ops-image-market` 完成时必须满足以下条件：当前运行入口为 `ops-core-service:8133`，历史端口 `8124` 只作为 `legacyPort` 返回；健康检查公开且不泄露敏感信息；后台接口按角色、能力点、风险等级和确认文本限制；provider、镜像目录、镜像版本、兼容配置、模板、风险扫描、拉取计划、节点缓存快照、审计、幂等、状态流转、依赖降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；自动化测试必须先红灯；实现后本模块在 `ops-core-service` 中全量测试通过；当前后端运行入口回归测试通过；边界扫描无违规命中；不修改前序模块稳定接口；不直接读取前序模块数据库；不导入前序模块 Java package；不调用真实 `external-node-executor`；不执行真实 Docker、containerd、registry、scanner、镜像拉取、镜像删除或容器创建；不保存真实 registry token、完整 manifest、layer URL、内部地址、宿主路径、节点凭据、完整请求头或前序模块私有数据；不把玩家资源下载、Cloudreve 文件同步、运维任务执行、节点文件管理、终端能力、告警规则、外部通知发送或插件安装塞进本服务。
 
 ## 北冥官网 ops-core API 契约
 
@@ -13512,7 +13512,7 @@ endpoint、repository、tag、namespace 和 URL 摘要必须拒绝 `file:`、`da
 
 `ops-core` 承载 `ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`ops-image-market` 和 `cross-platform-notification` 七个后台运维与通知控制面模块。合并后这些模块继续使用原路径前缀，分别是 `/api/v1/ops-control`、`/api/v1/cloudreve-sync`、`/api/v1/backup-recovery`、`/api/v1/alerting`、`/api/v1/plugin-integration`、`/api/v1/ops-image-market` 和 `/api/v1/cross-platform-notification`。
 
-`ops-core` 不新增七个业务模块的业务语义，不把七套 store、状态机、错误码、审计对象或主数据揉成一个大模块，不直接读取前序服务数据库，不绕过正式 API 适配前序服务，也不执行真实宿主机、容器、节点、Cloudreve、registry、scanner、插件命令或真实外部消息发送。
+`ops-core` 不新增七个业务模块的业务语义，不把七套 store、状态机、错误码、审计对象或主数据揉成一个大模块，不直接读取前序模块数据库，不绕过正式 API 适配前序模块，也不执行真实宿主机、容器、节点、Cloudreve、registry、scanner、插件命令或真实外部消息发送。
 
 ### 基础路径、端口和认证
 
@@ -13524,17 +13524,17 @@ endpoint、repository、tag、namespace 和 URL 摘要必须拒绝 `file:`、`da
 
 ### 模块装配表
 
-七个继承模块合计 219 个业务 API 路由。`ops-core` 自有接口为 5 个。`ops-core-service` 当前进程应注册 224 个 `/api/v1/**` 方法路由。
+七个继承模块合计 219 个业务 API 路由。`ops-core` 自有接口为 5 个。当前统一后端 `backend:8135` 应注册 224 个 `/api/v1/**` 方法路由。
 
-| 模块 | 当前服务目录 | 当前端口 | API 数 | 正式契约 |
+| 模块 | 当前模块源码归属 | 当前后端入口 | API 数 | 正式契约 |
 | --- | --- | ---: | ---: | --- |
-| `ops-control` | `backend/ops-core-service` | 8133 | 31 | `docs/contracts-ops-control.md` |
-| `cloudreve-sync` | `backend/ops-core-service` | 8133 | 16 | `docs/contracts-cloudreve-sync.md` |
-| `backup-recovery` | `backend/ops-core-service` | 8133 | 25 | `docs/contracts-backup-recovery.md` |
-| `alerting` | `backend/ops-core-service` | 8133 | 24 | `docs/contracts-alerting.md` |
-| `plugin-integration` | `backend/ops-core-service` | 8133 | 38 | `docs/contracts-plugin-integration.md` |
-| `ops-image-market` | `backend/ops-core-service` | 8133 | 49 | `docs/contracts-ops-image-market.md` |
-| `cross-platform-notification` | `backend/ops-core-service` | 8133 | 36 | `docs/contracts-cross-platform-notification.md` |
+| `ops-control` | `backend/src/main/java` | `backend:8135` | 31 | `docs/contracts-ops-control.md` |
+| `cloudreve-sync` | `backend/src/main/java` | `backend:8135` | 16 | `docs/contracts-cloudreve-sync.md` |
+| `backup-recovery` | `backend/src/main/java` | `backend:8135` | 25 | `docs/contracts-backup-recovery.md` |
+| `alerting` | `backend/src/main/java` | `backend:8135` | 24 | `docs/contracts-alerting.md` |
+| `plugin-integration` | `backend/src/main/java` | `backend:8135` | 38 | `docs/contracts-plugin-integration.md` |
+| `ops-image-market` | `backend/src/main/java` | `backend:8135` | 49 | `docs/contracts-ops-image-market.md` |
+| `cross-platform-notification` | `backend/src/main/java` | `backend:8135` | 36 | `docs/contracts-cross-platform-notification.md` |
 
 ### 生产就绪能力状态
 
@@ -13590,7 +13590,7 @@ endpoint、repository、tag、namespace 和 URL 摘要必须拒绝 `file:`、`da
 
 ### 文档定位
 
-本文档是 `api-gateway` 微服务的正式 API 契约。`api-gateway` 是北冥官网后端统一入口，只负责统一路由、请求编号、认证头透传、认证上下文注入、基础 CORS、上游超时、请求边界保护、响应头白名单透传、错误降级、路由表、自检摘要、运行拓扑、上游健康摘要和网关级请求日志摘要。
+本文档是 `api-gateway` 模块的正式 API 契约。`api-gateway` 是北冥官网后端统一入口，只负责统一路由、请求编号、认证头透传、认证上下文注入、基础 CORS、上游超时、请求边界保护、响应头白名单透传、错误降级、路由表、自检摘要、运行拓扑、上游健康摘要和网关级请求日志摘要。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、时间格式、基础角色、运维能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `api-gateway` 的路径、路由表、字段、错误码、降级、审计和验收口径。
 
@@ -13604,7 +13604,7 @@ endpoint、repository、tag、namespace 和 URL 摘要必须拒绝 `file:`、`da
 
 | 能力 | 说明 |
 | --- | --- |
-| 路由匹配 | 根据固定路径前缀把请求转发到已有微服务端口。 |
+| 路由匹配 | 根据固定路径前缀把请求转发到已有模块端口。 |
 | 请求编号 | 接收或生成 `X-Request-Id`，向上游和下游保持一致。 |
 | 认证透传与上下文注入 | 原样透传 `Authorization: Bearer <token>`；携带可验证会话时，通过 `auth` 会话校验生成可信身份头、内部时间戳和内部签名。 |
 | 请求透传 | 保持 HTTP 方法、路径、查询参数、JSON 请求体和必要请求头。 |
@@ -13617,9 +13617,9 @@ endpoint、repository、tag、namespace 和 URL 摘要必须拒绝 `file:`、`da
 | 上游健康摘要 | 维护手动刷新后的上游健康快照。 |
 | 请求日志摘要 | 记录脱敏后的网关访问摘要，用于本地排障和后台观测。 |
 
-`api-gateway` 不负责注册、登录、角色能力点主数据、成员档案、站内通知、内容发布、资源下载、社区工单、活动报名、日历、更新日志、服务器运维、节点执行、备份恢复、告警规则、插件事件、外部通知或镜像市场业务。它不能直接读取任何服务数据库，不能导入任何前序服务 Java package，不能复制业务状态机，不能把多个业务服务聚合成新的业务结果。
+`api-gateway` 不负责注册、登录、角色能力点主数据、成员档案、站内通知、内容发布、资源下载、社区工单、活动报名、日历、更新日志、服务器运维、节点执行、备份恢复、告警规则、插件事件、外部通知或镜像市场业务。它不能直接读取任何服务数据库，不能导入任何前序模块 Java package，不能复制业务状态机，不能把多个业务服务聚合成新的业务结果。
 
-上游服务的业务认证、权限、字段校验、状态流转、幂等、审计和失败降级仍由对应微服务负责。网关发现上游返回 4xx 或 5xx 时默认透传，不把业务失败改成网关成功，也不替上游重写业务错误码。
+上游服务的业务认证、权限、字段校验、状态流转、幂等、审计和失败降级仍由对应模块负责。网关发现上游返回 4xx 或 5xx 时默认透传，不把业务失败改成网关成功，也不替上游重写业务错误码。
 
 ### 基础路径、端口和认证
 
@@ -13684,7 +13684,7 @@ endpoint、repository、tag、namespace 和 URL 摘要必须拒绝 `file:`、`da
 
 路径匹配规则为最长前缀优先。`/api/v1/resources` 和 `/api/v1/resources/**` 都必须命中 `resource`。未知路径返回网关错误，不转发到任何上游。
 
-第八轮单服务合并准备层只允许在网关公开只读运行拓扑。第四十七轮后，当前官网后端本地入口是 `unified-backend-service:8135`、`business-core-service:8130`、`admission-core-service:8131`、`engagement-core-service:8132`、`ops-core-service:8133` 和 `portal-core-service:8134`。历史 `api-gateway-service:8125` Maven 入口已退役，网关能力由 `unified-backend-service:8135` 自承载。外部节点执行器已出仓且未接入，当前网关不得再公开外部节点执行器业务路由。该准备层不得新增业务路由，不得改写 25 条业务路径，不得动态挂载业务模块，不得恢复已退役旧 Maven 入口，不得把外部节点执行器并入统一后端。当前网关保持 `LOCAL_API_GATEWAY_ENTRYPOINT_RETIRED`，运行拓扑必须识别 `unified-backend` 已自承载网关能力。候选挂载对象为 `api-gateway`、`business-core`、`admission-core`、`engagement-core`、`ops-core` 和 `portal-core`，候选挂载路由为 `auth`、`profile`、`notification`、`content`、`server-status`、`resource`、`admin`、`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、`ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`cross-platform-notification`、`ops-image-market`、`guide`、`material` 和 `online-map`。
+第八轮单服务合并准备层只允许在网关公开只读运行拓扑。第四十七轮后，当前官网后端本地入口是 `backend:8135`、`business-core-service:8130`、`admission-core-service:8131`、`engagement-core-service:8132`、`ops-core-service:8133` 和 `portal-core-service:8134`。历史 `api-gateway-service:8125` Maven 入口已退役，网关能力由 `backend:8135` 自承载。外部节点执行器已出仓且未接入，当前网关不得再公开外部节点执行器业务路由。该准备层不得新增业务路由，不得改写 25 条业务路径，不得动态挂载业务模块，不得恢复已退役旧 Maven 入口，不得把外部节点执行器并入统一后端。当前网关保持 `LOCAL_API_GATEWAY_ENTRYPOINT_RETIRED`，运行拓扑必须识别 `unified-backend` 已自承载网关能力。统一后端挂载对象为 `api-gateway`、`business-core`、`admission-core`、`engagement-core`、`ops-core` 和 `portal-core`，统一后端挂载路由为 `auth`、`profile`、`notification`、`content`、`server-status`、`resource`、`admin`、`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、`ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`cross-platform-notification`、`ops-image-market`、`guide`、`material` 和 `online-map`。
 
 ### 网关自有对象
 
@@ -13750,7 +13750,7 @@ endpoint、repository、tag、namespace 和 URL 摘要必须拒绝 `file:`、`da
 | `deploymentMode` | string | 是 | 第四十七轮后固定为 `LOCAL_API_GATEWAY_ENTRYPOINT_RETIRED`。 |
 | `singleServiceMergeReadiness` | string | 是 | 固定为 `PREPARING`。 |
 | `currentEntrypointsTotal` | integer | 是 | 当前官网后端回滚入口数量，固定为 `6`。 |
-| `futureMergeCandidateEntrypointsTotal` | integer | 是 | 未来统一后端候选入口数量，固定为 `6`，不包含外部节点执行器。 |
+| `futureMergeCandidateEntrypointsTotal` | integer | 是 | 未来统一后端入口数量，固定为 `6`，不包含外部节点执行器。 |
 | `businessRoutesTotal` | integer | 是 | 当前业务转发路由数量，固定为 `25`。 |
 | `gatewayApiTotal` | integer | 是 | 当前网关自有 API 数量，固定为 `8`。 |
 | `currentEntrypoints` | object[] | 是 | 当前运行入口清单。 |
@@ -14000,7 +14000,7 @@ P0 `api-gateway` 是本地契约实现，必须在自检摘要中明确以下生
 
 `api-gateway` API 文档按 `docs/contracts-api-gateway.md` 独立存在，并由 `.local-docs/tests-api-gateway.md` 记录本地测试闭环。
 
-本文档列出的每个网关自有接口都有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、分页排序、状态刷新、失败降级、日志脱敏和验收口径。运行拓扑测试必须确认当前唯一后端 Maven 入口是 `backend/pom.xml`、当前本地后端服务端口是 `8135`、本地联调默认入口统一为 `http://127.0.0.1:8135`、业务路径保持 `/api/v1/**` 原样、五个 core 模块源码已经物理位于 `backend/src/main/java` 且不再通过 build-helper 装配旧 core 源码目录、历史 `api-gateway-service:8125` 不再作为当前本地 Maven 入口、外部节点执行器出仓且未接入、25 条业务转发路由、8 个网关自有 API、5 个 core 运行单元归属、已退役旧入口未恢复、静态服务发现仍未接入，并确认 `unified-backend-service:8135` 已自承载网关自有 API 与五个 core 挂载。业务转发测试必须覆盖 25 个已接入路径前缀，确认路由表端口准确、`api-gateway.upstreams.ops-core-base-url` 只覆盖七个 ops-core 承载路由、请求编号透传、请求编号非法拒绝、认证头透传、可信身份头剥离、客户端伪造签名头剥离、`auth` 会话校验成功后的可信身份和内部签名注入、`auth` 校验失败后的不注入降级、查询参数透传、JSON body 透传、请求体大小限制、响应头白名单、上游 2xx 透传、上游 4xx 透传、上游 5xx 透传、未知路径、非法方法、CORS 预检、上游不可用、上游超时和敏感字段不落日志。
+本文档列出的每个网关自有接口都有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、分页排序、状态刷新、失败降级、日志脱敏和验收口径。运行拓扑测试必须确认当前唯一后端 Maven 入口是 `backend/pom.xml`、当前本地后端服务端口是 `8135`、本地联调默认入口统一为 `http://127.0.0.1:8135`、业务路径保持 `/api/v1/**` 原样、五个 core 模块源码已经物理位于 `backend/src/main/java` 且不再通过 build-helper 装配旧 core 源码目录、历史 `api-gateway-service:8125` 不再作为当前本地 Maven 入口、外部节点执行器出仓且未接入、25 条业务转发路由、8 个网关自有 API、5 个 core 运行单元归属、已退役旧入口未恢复、静态服务发现仍未接入，并确认 `backend:8135` 已自承载网关自有 API 与五个 core 挂载。业务转发测试必须覆盖 25 个已接入路径前缀，确认路由表端口准确、`api-gateway.upstreams.ops-core-base-url` 只覆盖七个 ops-core 承载路由、请求编号透传、请求编号非法拒绝、认证头透传、可信身份头剥离、客户端伪造签名头剥离、`auth` 会话校验成功后的可信身份和内部签名注入、`auth` 校验失败后的不注入降级、查询参数透传、JSON body 透传、请求体大小限制、响应头白名单、上游 2xx 透传、上游 4xx 透传、上游 5xx 透传、未知路径、非法方法、CORS 预检、上游不可用、上游超时和敏感字段不落日志。
 
 开发完成后必须执行 `mvn -q -f backend/pom.xml test`。第一批到第五批旧服务清理后，不得为了网关回归恢复对应旧服务目录、旧 Maven 入口、旧启动类或旧测试命令。第四批和第五批业务路径必须继续由统一后端装配的 `ops-core` 和 `portal-core` 模块覆盖测试。旧 `backend/online-map-service` 已退役且不得恢复。测试过程必须写入 `.local-docs/tests-api-gateway.md`。
 
@@ -14010,39 +14010,39 @@ P0 `api-gateway` 是本地契约实现，必须在自检摘要中明确以下生
 
 版本：0.4
 
-`unified-backend-service` 是统一后端本地目标入口，端口固定为 `8135`。它用于本地验证并自承载 `api-gateway`、`business-core`、`admission-core`、`engagement-core`、`ops-core` 与 `portal-core` 在同一 Spring Boot 进程内装配。第四十七轮后，`api-gateway-service:8125` 独立 Maven 入口已退役；本轮后五个 core 独立 Maven 入口也已退役，模块源码继续由统一后端装配。
+`backend` 是统一后端本地目标入口，端口固定为 `8135`。它用于本地验证并自承载 `api-gateway`、`business-core`、`admission-core`、`engagement-core`、`ops-core` 与 `portal-core` 在同一 Spring Boot 进程内装配。第四十七轮后，`api-gateway-service:8125` 独立 Maven 入口已退役；本轮后五个 core 独立 Maven 入口也已退役，模块源码继续由统一后端装配。
 
-候选入口必须在同一进程内挂载 `/api/v1/gateway/**`、`/api/v1/business-core/**`、`/api/v1/admission-core/**`、`/api/v1/engagement-core/**`、`/api/v1/ops-core/**`、`/api/v1/portal-core/**`、`/api/v1/auth/**`、`/api/v1/profile/**`、`/api/v1/notifications/**`、`/api/v1/content/**`、`/api/v1/server-status/**`、`/api/v1/resources/**`、`/api/v1/admin/**`、`/api/v1/onboarding/**`、`/api/v1/exams/**`、`/api/v1/whitelist/**`、`/api/v1/attendance/**`、`/api/v1/community/**`、`/api/v1/activity/**`、`/api/v1/calendar/**`、`/api/v1/changelog/**`、`/api/v1/ops-control/**`、`/api/v1/cloudreve-sync/**`、`/api/v1/backup-recovery/**`、`/api/v1/alerting/**`、`/api/v1/plugin-integration/**`、`/api/v1/cross-platform-notification/**`、`/api/v1/ops-image-market/**`、`/api/v1/guides/**`、`/api/v1/materials/**` 和 `/api/v1/online-map/**`。25 条业务路由必须标记为 `IN_PROCESS`，外部节点执行器不得作为挂载项返回。原路径、认证、响应格式、错误码和测试口径不得改变。
+统一后端入口必须在同一进程内挂载 `/api/v1/gateway/**`、`/api/v1/business-core/**`、`/api/v1/admission-core/**`、`/api/v1/engagement-core/**`、`/api/v1/ops-core/**`、`/api/v1/portal-core/**`、`/api/v1/auth/**`、`/api/v1/profile/**`、`/api/v1/notifications/**`、`/api/v1/content/**`、`/api/v1/server-status/**`、`/api/v1/resources/**`、`/api/v1/admin/**`、`/api/v1/onboarding/**`、`/api/v1/exams/**`、`/api/v1/whitelist/**`、`/api/v1/attendance/**`、`/api/v1/community/**`、`/api/v1/activity/**`、`/api/v1/calendar/**`、`/api/v1/changelog/**`、`/api/v1/ops-control/**`、`/api/v1/cloudreve-sync/**`、`/api/v1/backup-recovery/**`、`/api/v1/alerting/**`、`/api/v1/plugin-integration/**`、`/api/v1/cross-platform-notification/**`、`/api/v1/ops-image-market/**`、`/api/v1/guides/**`、`/api/v1/materials/**` 和 `/api/v1/online-map/**`。25 条业务路由必须标记为 `IN_PROCESS`，外部节点执行器不得作为挂载项返回。原路径、认证、响应格式、错误码和测试口径不得改变。
 
 | 接口 | 方法 | 路径 | 认证 | 权限 | 风险 |
 | --- | --- | --- | --- | --- | --- |
-| 候选健康检查 | GET | `/api/v1/unified-backend/health` | 否 | 无 | LOW |
-| 候选摘要 | GET | `/api/v1/unified-backend/admin/ops/summary` | 是 | `HELPER`、`ADMIN` 或 `OWNER` | LOW |
-| 候选挂载清单 | GET | `/api/v1/unified-backend/admin/mounts` | 是 | `HELPER`、`ADMIN` 或 `OWNER` | LOW |
-| 候选 readiness | GET | `/api/v1/unified-backend/admin/readiness` | 是 | `HELPER`、`ADMIN` 或 `OWNER` | LOW |
-| 候选 HTTP smoke | POST | `/api/v1/unified-backend/admin/http-smoke/run` | 是 | `ADMIN` 或 `OWNER` | LOW |
+| 统一后端健康检查 | GET | `/api/v1/unified-backend/health` | 否 | 无 | LOW |
+| 统一后端摘要 | GET | `/api/v1/unified-backend/admin/ops/summary` | 是 | `HELPER`、`ADMIN` 或 `OWNER` | LOW |
+| 统一后端挂载清单 | GET | `/api/v1/unified-backend/admin/mounts` | 是 | `HELPER`、`ADMIN` 或 `OWNER` | LOW |
+| 统一后端 readiness | GET | `/api/v1/unified-backend/admin/readiness` | 是 | `HELPER`、`ADMIN` 或 `OWNER` | LOW |
+| 统一后端 HTTP smoke | POST | `/api/v1/unified-backend/admin/http-smoke/run` | 是 | `ADMIN` 或 `OWNER` | LOW |
 
-`GET /api/v1/unified-backend/health` 返回 `service=unified-backend`、`status=UP`、`port=8135`、`deploymentMode=CANDIDATE_PARALLEL_ENTRYPOINT`、`mountedEntrypoints`、`mountedRouteIds` 和 `generatedAt`。该接口只表示候选进程存活，不表示可替换当前网关。
+`GET /api/v1/unified-backend/health` 返回 `service=unified-backend`、`status=UP`、`port=8135`、`deploymentMode=CANDIDATE_PARALLEL_ENTRYPOINT`、`mountedEntrypoints`、`mountedRouteIds` 和 `generatedAt`。该接口只表示统一后端进程存活，不表示可替换当前网关。
 
 后台摘要、挂载清单和 readiness 必须固定暴露 `currentProductionEntrypointsTotal=1`、`candidateEntrypointsTotal=1`、`mountedEntrypoints=["api-gateway","business-core","admission-core","engagement-core","ops-core","portal-core"]`、`mountedRouteIds=["auth","profile","notification","content","server-status","resource","admin","onboarding","exam","whitelist","attendance","community","activity","calendar","changelog","ops-control","cloudreve-sync","backup-recovery","alerting","plugin-integration","cross-platform-notification","ops-image-market","guide","material","online-map"]`、`inProcessRoutesTotal=25`、`httpFallbackRoutesTotal=0`、`externalRoutesTotal=0`、`externalNodeExecutorOutOfRepository=true`、`externalNodeExecutorConnected=false`、`readyToReplaceGateway=false`、`readyToRetireBusinessCore=false`、`readyToRetireAdmissionCore=false`、`readyToRetireEngagementCore=false`、`readyToRetireOpsCore=false` 和 `readyToRetirePortalCore=false`。`currentProductionEntrypointsTotal=1` 表示仓库内 Maven 启动入口已收束为 unified，不表示真实生产流量已切换。
 
-readiness 必须额外暴露 `productionSwitchReadinessStatus=BLOCKED`、`productionSwitchChecks`、`centralConfigPrecheckStatus=BLOCKED`、`centralConfigPrecheckChecks`、`centralConfigGovernancePrecheckStatus=BLOCKED`、`centralConfigGovernancePrecheckChecks`、`centralConfigGovernanceEvidence`、`productionCentralConfigPrecheckStatus=BLOCKED_BY_PRODUCTION_CONFIG_PROVIDER_NOT_CONNECTED`、`productionCentralConfigPrecheckChecks`、`productionCentralConfigEvidence`、`productionCentralConfigProviderStatus=PASS_LOCAL_FILE_PROVIDER_REHEARSAL_NOT_PRODUCTION`、`productionCentralConfigProviderChecks`、`productionCentralConfigProviderEvidence`、`externalEntrypointCutoverPrecheckStatus=BLOCKED_BY_EXTERNAL_ENTRYPOINT_CONFIG_NOT_PROVIDED`、`externalEntrypointCutoverPrecheckChecks`、`externalEntrypointCutoverEvidence`、`externalEntrypointConfigSamplePrecheckStatus=BLOCKED_BY_CUTOVER_SAMPLE_NOT_APPLIED`、`externalEntrypointConfigSamplePrecheckChecks`、`externalEntrypointConfigSampleEvidence`、`externalEntrypointLocalCutoverRehearsalStatus=PASS_LOCAL_REHEARSAL_NOT_PRODUCTION`、`externalEntrypointLocalCutoverRehearsalChecks`、`externalEntrypointLocalCutoverRehearsalEvidence`、`externalEntrypointCutoverEvidenceIntakeStatus=BLOCKED_BY_EXTERNAL_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED`、`externalEntrypointCutoverEvidenceIntakeChecks`、`externalEntrypointCutoverEvidenceIntakeEvidence`、`productionCutoverEvidenceConsistencyAuditStatus=PASS_LOCAL_CUTOVER_EVIDENCE_CONSISTENCY_AUDIT_NOT_PRODUCTION`、`productionCutoverEvidenceConsistencyAuditChecks`、`productionCutoverEvidenceConsistencyAuditEvidence`、`productionExternalValueIntakeRehearsalStatus=PASS_EXTERNAL_VALUE_INTAKE_REHEARSAL_NOT_PRODUCTION`、`productionExternalValueIntakeRehearsalChecks`、`productionExternalValueIntakeRehearsalEvidence`、`persistentAuditPrecheckStatus=BLOCKED`、`persistentAuditPrecheckChecks`、`persistentAuditGovernancePrecheckStatus=BLOCKED`、`persistentAuditGovernancePrecheckChecks`、`persistentAuditGovernanceEvidence`、`realHttpRehearsalPrecheckStatus=BLOCKED`、`realHttpRehearsalPrecheckChecks`、`routeDriftPrecheckStatus=PASS`、`routeDriftPrecheckChecks`、`rollbackWindowPrecheckStatus=BLOCKED`、`rollbackWindowPrecheckChecks`、`entrypointSwitchPrecheckStatus=BLOCKED`、`entrypointSwitchPrecheckChecks`、`backendSingleServicePrecheckStatus=PASS`、`backendSingleServicePrecheckChecks`、`backendSingleServiceEvidence`、`finalBackendSingleServicePrecheckStatus`、`finalBackendSingleServicePrecheckChecks`、`finalBackendSingleServiceEvidence`、`singleServiceCutoverPrecheckStatus=PASS_READY_FOR_EXTERNAL_CUTOVER`、`singleServiceCutoverPrecheckChecks`、`singleServiceCutoverEvidence`、`entrypointCutoverExecutionPrecheckStatus=BLOCKED`、`entrypointCutoverExecutionPrecheckChecks`、`entrypointCutoverExecutionEvidence`、`productionEntrypointCutoverPrecheckStatus=BLOCKED_BY_MISSING_EXTERNAL_ENTRYPOINT_CONFIG`、`productionEntrypointCutoverPrecheckChecks`、`productionEntrypointCutoverEvidence`、`apiGatewayRetirementPrecheckStatus=BLOCKED_BY_TRAFFIC_NOT_SWITCHED`、`apiGatewayRetirementPrecheckChecks`、`apiGatewayRetirementEvidence`、`coreEntrypointRetirementPrecheckStatus=PASS_LOCAL_CORE_MAVEN_ENTRYPOINTS_RETIRED_UNIFIED_MODULES_PRESERVED`、`coreEntrypointRetirementPrecheckChecks`、`coreEntrypointRetirementEvidence`、`productionHardeningPrecheckStatus=BLOCKED_BY_EXTERNAL_PRODUCTION_PREREQUISITES`、`productionHardeningPrecheckChecks`、`productionHardeningEvidence` 和 `replacementDecision`。当前只允许把全业务 in-process 覆盖、后端应用入口覆盖、五个 core 自有 API 挂载、25 条业务路由 in-process、当前入口保留、路径响应保持、外部节点执行器出仓边界、旧入口未恢复、候选端口固定、当前入口端口已记录、in-process 路由注册固定、危险测试控制关闭、配置归属已记录、候选配置面已记录、配置域清单、配置漂移扫描、配置回滚来源、配置脱敏守卫、本地外部值接收演练、本地 file provider 样板加载、样板 JSON 解析、入口配置映射、回滚配置保留、业务路径策略保持、provider snapshot 复用、审计归属已记录、审计请求编号保留、审计事件结构固定、审计保留窗口已记录、审计备份导出路径已记录、审计回放范围已记录、审计配置回滚源、审计脱敏守卫、真实 HTTP 目标清单已记录、认证失败路径已纳入、smoke 结果脱敏规则已固定、真实 Web 环境候选进程已启动、全量真实 HTTP 目标已通过、演练结果已记录、当前网关路由和候选挂载清单已记录、路径前缀保持、真实路由差异扫描、认证行为差异扫描、错误码扫描、敏感字段扫描、旧入口仍保留、回滚目标已记录、旧入口回归、生产源码边界扫描、候选 base URL 已记录、前端本轮未修改、业务路径保持不变、网关回滚目标已定义、外部入口切换适配和观测 evidence 已记录、外部入口切流配置样板已记录、样板 JSON 可解析、样板默认不应用生产流量、样板不携带敏感值、外部入口切流本地演练已执行、外部入口与切流证据接收样板已记录、切流证据一致性审计已记录、网关退役门禁已记录、五个 core 本地独立 Maven 入口退役矩阵已记录、五个 core 删除清单本地确认、生产化硬化 runbook 口径和 smoke 证据格式已记录标为 `PASS`；真实集中配置提供方、生产 profile、敏感配置源外置、真实持久化审计落点、审计写入路径、审计回放路径、审计保留任务、演练 runbook、回滚复检、前端入口切换、外部代理切换、外部入口配置存在、生产流量灰度、生产流量入口、流量归零证明、回滚窗口完成、样板真实应用、外部入口证据真实提供、`api-gateway` 真实退役、真实生产流量切换和回滚窗口完成必须继续标为 `BLOCKED`。
+readiness 必须额外暴露 `productionSwitchReadinessStatus=BLOCKED`、`productionSwitchChecks`、`centralConfigPrecheckStatus=BLOCKED`、`centralConfigPrecheckChecks`、`centralConfigGovernancePrecheckStatus=BLOCKED`、`centralConfigGovernancePrecheckChecks`、`centralConfigGovernanceEvidence`、`productionCentralConfigPrecheckStatus=BLOCKED_BY_PRODUCTION_CONFIG_PROVIDER_NOT_CONNECTED`、`productionCentralConfigPrecheckChecks`、`productionCentralConfigEvidence`、`productionCentralConfigProviderStatus=PASS_LOCAL_FILE_PROVIDER_REHEARSAL_NOT_PRODUCTION`、`productionCentralConfigProviderChecks`、`productionCentralConfigProviderEvidence`、`externalEntrypointCutoverPrecheckStatus=BLOCKED_BY_EXTERNAL_ENTRYPOINT_CONFIG_NOT_PROVIDED`、`externalEntrypointCutoverPrecheckChecks`、`externalEntrypointCutoverEvidence`、`externalEntrypointConfigSamplePrecheckStatus=BLOCKED_BY_CUTOVER_SAMPLE_NOT_APPLIED`、`externalEntrypointConfigSamplePrecheckChecks`、`externalEntrypointConfigSampleEvidence`、`externalEntrypointLocalCutoverRehearsalStatus=PASS_LOCAL_REHEARSAL_NOT_PRODUCTION`、`externalEntrypointLocalCutoverRehearsalChecks`、`externalEntrypointLocalCutoverRehearsalEvidence`、`externalEntrypointCutoverEvidenceIntakeStatus=BLOCKED_BY_EXTERNAL_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED`、`externalEntrypointCutoverEvidenceIntakeChecks`、`externalEntrypointCutoverEvidenceIntakeEvidence`、`productionCutoverEvidenceConsistencyAuditStatus=PASS_LOCAL_CUTOVER_EVIDENCE_CONSISTENCY_AUDIT_NOT_PRODUCTION`、`productionCutoverEvidenceConsistencyAuditChecks`、`productionCutoverEvidenceConsistencyAuditEvidence`、`productionExternalValueIntakeRehearsalStatus=PASS_EXTERNAL_VALUE_INTAKE_REHEARSAL_NOT_PRODUCTION`、`productionExternalValueIntakeRehearsalChecks`、`productionExternalValueIntakeRehearsalEvidence`、`persistentAuditPrecheckStatus=BLOCKED`、`persistentAuditPrecheckChecks`、`persistentAuditGovernancePrecheckStatus=BLOCKED`、`persistentAuditGovernancePrecheckChecks`、`persistentAuditGovernanceEvidence`、`realHttpRehearsalPrecheckStatus=BLOCKED`、`realHttpRehearsalPrecheckChecks`、`routeDriftPrecheckStatus=PASS`、`routeDriftPrecheckChecks`、`rollbackWindowPrecheckStatus=BLOCKED`、`rollbackWindowPrecheckChecks`、`entrypointSwitchPrecheckStatus=BLOCKED`、`entrypointSwitchPrecheckChecks`、`backendSingleServicePrecheckStatus=PASS`、`backendSingleServicePrecheckChecks`、`backendSingleServiceEvidence`、`finalBackendSingleServicePrecheckStatus`、`finalBackendSingleServicePrecheckChecks`、`finalBackendSingleServiceEvidence`、`singleServiceCutoverPrecheckStatus=PASS_READY_FOR_EXTERNAL_CUTOVER`、`singleServiceCutoverPrecheckChecks`、`singleServiceCutoverEvidence`、`entrypointCutoverExecutionPrecheckStatus=BLOCKED`、`entrypointCutoverExecutionPrecheckChecks`、`entrypointCutoverExecutionEvidence`、`productionEntrypointCutoverPrecheckStatus=BLOCKED_BY_MISSING_EXTERNAL_ENTRYPOINT_CONFIG`、`productionEntrypointCutoverPrecheckChecks`、`productionEntrypointCutoverEvidence`、`apiGatewayRetirementPrecheckStatus=BLOCKED_BY_TRAFFIC_NOT_SWITCHED`、`apiGatewayRetirementPrecheckChecks`、`apiGatewayRetirementEvidence`、`coreEntrypointRetirementPrecheckStatus=PASS_LOCAL_CORE_MAVEN_ENTRYPOINTS_RETIRED_UNIFIED_MODULES_PRESERVED`、`coreEntrypointRetirementPrecheckChecks`、`coreEntrypointRetirementEvidence`、`productionHardeningPrecheckStatus=BLOCKED_BY_EXTERNAL_PRODUCTION_PREREQUISITES`、`productionHardeningPrecheckChecks`、`productionHardeningEvidence` 和 `replacementDecision`。当前只允许把全业务 in-process 覆盖、后端应用入口覆盖、五个 core 自有 API 挂载、25 条业务路由 in-process、当前入口保留、路径响应保持、外部节点执行器出仓边界、旧入口未恢复、候选端口固定、当前入口端口已记录、in-process 路由注册固定、危险测试控制关闭、配置归属已记录、候选配置面已记录、配置域清单、配置漂移扫描、配置回滚来源、配置脱敏守卫、本地外部值接收演练、本地 file provider 样板加载、样板 JSON 解析、入口配置映射、回滚配置保留、业务路径策略保持、provider snapshot 复用、审计归属已记录、审计请求编号保留、审计事件结构固定、审计保留窗口已记录、审计备份导出路径已记录、审计回放范围已记录、审计配置回滚源、审计脱敏守卫、真实 HTTP 目标清单已记录、认证失败路径已纳入、smoke 结果脱敏规则已固定、真实 Web 环境统一后端进程已启动、全量真实 HTTP 目标已通过、演练结果已记录、当前网关路由和统一后端挂载清单已记录、路径前缀保持、真实路由差异扫描、认证行为差异扫描、错误码扫描、敏感字段扫描、旧入口仍保留、回滚目标已记录、旧入口回归、生产源码边界扫描、候选 base URL 已记录、前端本轮未修改、业务路径保持不变、网关回滚目标已定义、外部入口切换适配和观测 evidence 已记录、外部入口切流配置样板已记录、样板 JSON 可解析、样板默认不应用生产流量、样板不携带敏感值、外部入口切流本地演练已执行、外部入口与切流证据接收样板已记录、切流证据一致性审计已记录、网关退役门禁已记录、五个 core 本地独立 Maven 入口退役矩阵已记录、五个 core 删除清单本地确认、生产化硬化 runbook 口径和 smoke 证据格式已记录标为 `PASS`；真实集中配置提供方、生产 profile、敏感配置源外置、真实持久化审计落点、审计写入路径、审计回放路径、审计保留任务、演练 runbook、回滚复检、前端入口切换、外部代理切换、外部入口配置存在、生产流量灰度、生产流量入口、流量归零证明、回滚窗口完成、样板真实应用、外部入口证据真实提供、`api-gateway` 真实退役、真实生产流量切换和回滚窗口完成必须继续标为 `BLOCKED`。
 
 readiness 还必须暴露 `productionControlledCutoverStatus`、`productionControlledCutoverChecks` 和 `productionControlledCutoverEvidence`。没有真实外部切流收据时，状态固定为 `BLOCKED_BY_REAL_CUTOVER_RECEIPT_NOT_PROVIDED`，evidence 必须证明 `receiptApplied=false`、`productionTrafficAllowed=false`、`productionTrafficObservedOnUnified=false`、`apiGatewayTrafficZeroProven=false`、`rollbackWindowCompleted=false`、`readyForProduction=false`、`readyToReplaceGateway=false`、`readyToRetireOldEntrypoints=false`、旧入口保留且 `backend/node-daemon-service` 不回仓。
 
 HTTP smoke 至少覆盖 `UNIFIED_HEALTH`、`GATEWAY_HEALTH`、`BUSINESS_CORE_HEALTH`、`ADMISSION_CORE_HEALTH`、`ENGAGEMENT_CORE_HEALTH`、`OPS_CORE_HEALTH`、`PORTAL_CORE_HEALTH`、`AUTH_SESSION_VERIFY`、`PROFILE_MEMBERS`、`NOTIFICATION_UNREAD_COUNT`、`CONTENT_HOME`、`SERVER_STATUS_OVERVIEW`、`RESOURCE_LIST`、`ADMIN_OVERVIEW`、`ONBOARDING_PROGRESS`、`EXAM_SESSIONS`、`WHITELIST_CURRENT_APPLICATION`、`ATTENDANCE_LEADERBOARD`、`COMMUNITY_BOARDS`、`ACTIVITY_EVENTS`、`CALENDAR_UPCOMING`、`CHANGELOG_LATEST_VERSION`、`OPS_CONTROL_OVERVIEW`、`CLOUDREVE_SYNC_HEALTH`、`BACKUP_RECOVERY_HEALTH`、`ALERTING_HEALTH`、`PLUGIN_INTEGRATION_HEALTH`、`CROSS_PLATFORM_NOTIFICATION_HEALTH`、`OPS_IMAGE_MARKET_HEALTH`、`GUIDE_CATEGORIES`、`MATERIAL_FEATURED` 和 `ONLINE_MAP_HEALTH`。25 条业务路径必须通过本地控制器成功，不能调用 `GatewayHttpClient` 的对应代理路径。smoke 失败时接口自身返回统一成功响应，并在 `data.httpSmokeStatus` 中标记 `DEGRADED`。
 
-第四十三轮 `api-gateway-service` 受控退役预检要求 readiness 额外暴露 `apiGatewayControlledRetirementStatus`、`apiGatewayControlledRetirementChecks` 和 `apiGatewayControlledRetirementEvidence`。默认 `apiGatewayControlledRetirementStatus=BLOCKED_BY_API_GATEWAY_RETIREMENT_RECEIPT_NOT_PROVIDED`，正式样板为 `docs/unified-backend-api-gateway-retirement-receipt-sample.json`。该 evidence 只证明 `unified-backend-service:8135` 具备本地退役收据、删除清单、网关自有 API parity、core 保护守卫和自承载网关源码，不证明真实生产入口已切换。`unified-backend-service` 不再通过 build-helper 编译 `../api-gateway-service/src/main/java`。
+第四十三轮 `api-gateway-service` 受控退役预检要求 readiness 额外暴露 `apiGatewayControlledRetirementStatus`、`apiGatewayControlledRetirementChecks` 和 `apiGatewayControlledRetirementEvidence`。默认 `apiGatewayControlledRetirementStatus=BLOCKED_BY_API_GATEWAY_RETIREMENT_RECEIPT_NOT_PROVIDED`，正式样板为 `docs/unified-backend-api-gateway-retirement-receipt-sample.json`。该 evidence 只证明 `backend:8135` 具备本地退役收据、删除清单、网关自有 API parity、core 保护守卫和自承载网关源码，不证明真实生产入口已切换。`backend` 不再通过 build-helper 编译 `../api-gateway-service/src/main/java`。
 
-第四十四轮 `api-gateway-service` 外部退役证据接收与删除审批门禁要求 readiness 额外暴露 `apiGatewayExternalRetirementEvidenceStatus`、`apiGatewayExternalRetirementEvidenceChecks` 和 `apiGatewayExternalRetirementEvidence`。默认 `apiGatewayExternalRetirementEvidenceStatus=BLOCKED_BY_EXTERNAL_API_GATEWAY_RETIREMENT_EVIDENCE_NOT_PROVIDED`，正式样板为 `docs/unified-backend-api-gateway-external-retirement-evidence-sample.json`。该 evidence 只证明 `unified-backend-service:8135` 具备外部退役证据接收、真实切流引用、真实流量归零引用、真实 audit write smoke 引用、dashboard、alert、trace、回滚窗口和用户删除清单确认的本地门禁，不证明真实生产入口已切换。
+第四十四轮 `api-gateway-service` 外部退役证据接收与删除审批门禁要求 readiness 额外暴露 `apiGatewayExternalRetirementEvidenceStatus`、`apiGatewayExternalRetirementEvidenceChecks` 和 `apiGatewayExternalRetirementEvidence`。默认 `apiGatewayExternalRetirementEvidenceStatus=BLOCKED_BY_EXTERNAL_API_GATEWAY_RETIREMENT_EVIDENCE_NOT_PROVIDED`，正式样板为 `docs/unified-backend-api-gateway-external-retirement-evidence-sample.json`。该 evidence 只证明 `backend:8135` 具备外部退役证据接收、真实切流引用、真实流量归零引用、真实 audit write smoke 引用、dashboard、alert、trace、回滚窗口和用户删除清单确认的本地门禁，不证明真实生产入口已切换。
 
-第四十六轮真实生产入口切流证据闭环门禁要求 readiness 额外暴露 `realProductionEntrypointCutoverStatus`、`realProductionEntrypointCutoverChecks` 和 `realProductionEntrypointCutoverEvidence`。默认 `realProductionEntrypointCutoverStatus=BLOCKED_BY_REAL_PRODUCTION_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED`，正式样板为 `docs/unified-backend-real-production-entrypoint-cutover-evidence-sample.json`。该 evidence 只证明 `unified-backend-service:8135` 具备真实生产入口切流证据接收、切流窗口引用、生产流量观测引用、旧网关新流量归零引用、audit write smoke 引用、dashboard、alert、trace、回滚和审批引用的本地门禁，不证明真实生产入口已切换。本字段只证明真实生产入口切流证据是否完整，即使真实生产切流证据字段被置为已应用，`oldApiGatewayRetirementAllowed` 仍必须保持 `false`。
+第四十六轮真实生产入口切流证据闭环门禁要求 readiness 额外暴露 `realProductionEntrypointCutoverStatus`、`realProductionEntrypointCutoverChecks` 和 `realProductionEntrypointCutoverEvidence`。默认 `realProductionEntrypointCutoverStatus=BLOCKED_BY_REAL_PRODUCTION_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED`，正式样板为 `docs/unified-backend-real-production-entrypoint-cutover-evidence-sample.json`。该 evidence 只证明 `backend:8135` 具备真实生产入口切流证据接收、切流窗口引用、生产流量观测引用、旧网关新流量归零引用、audit write smoke 引用、dashboard、alert、trace、回滚和审批引用的本地门禁，不证明真实生产入口已切换。本字段只证明真实生产入口切流证据是否完整，即使真实生产切流证据字段被置为已应用，`oldApiGatewayRetirementAllowed` 仍必须保持 `false`。
 
-第五十一轮外部入口与切流证据接收门禁要求 readiness 额外暴露 `externalEntrypointCutoverEvidenceIntakeStatus`、`externalEntrypointCutoverEvidenceIntakeChecks` 和 `externalEntrypointCutoverEvidenceIntakeEvidence`。默认 `externalEntrypointCutoverEvidenceIntakeStatus=BLOCKED_BY_EXTERNAL_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED`，正式样板为 `docs/unified-backend-external-entrypoint-cutover-evidence-intake-sample.json`。该 evidence 只证明 `unified-backend-service:8135` 具备前端入口、反向代理 upstream、部署入口、回滚入口、灰度权重、观测引用和审批引用的脱敏证据接收格式，不证明真实外部入口已配置，不执行真实生产切流。`externalEntrypointCutoverEvidenceIntakeEvidence` 必须包含 `frontendEntrypointRef`、`reverseProxyUpstreamRef`、`deploymentEntrypointRef`、`rollbackEntrypointRef`、`canaryWeightRef`、`observabilityRef`、`approvalRef`、`readyForProduction=false`、`readyToReplaceGateway=false` 和 `oldApiGatewayRetirementAllowed=false`。本字段不得返回真实域名、token、连接串、dashboard 地址、部署平台地址、环境变量、`.env` 内容或任何生产凭据。
+第五十一轮外部入口与切流证据接收门禁要求 readiness 额外暴露 `externalEntrypointCutoverEvidenceIntakeStatus`、`externalEntrypointCutoverEvidenceIntakeChecks` 和 `externalEntrypointCutoverEvidenceIntakeEvidence`。默认 `externalEntrypointCutoverEvidenceIntakeStatus=BLOCKED_BY_EXTERNAL_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED`，正式样板为 `docs/unified-backend-external-entrypoint-cutover-evidence-intake-sample.json`。该 evidence 只证明 `backend:8135` 具备前端入口、反向代理 upstream、部署入口、回滚入口、灰度权重、观测引用和审批引用的脱敏证据接收格式，不证明真实外部入口已配置，不执行真实生产切流。`externalEntrypointCutoverEvidenceIntakeEvidence` 必须包含 `frontendEntrypointRef`、`reverseProxyUpstreamRef`、`deploymentEntrypointRef`、`rollbackEntrypointRef`、`canaryWeightRef`、`observabilityRef`、`approvalRef`、`readyForProduction=false`、`readyToReplaceGateway=false` 和 `oldApiGatewayRetirementAllowed=false`。本字段不得返回真实域名、token、连接串、dashboard 地址、部署平台地址、环境变量、`.env` 内容或任何生产凭据。
 
-验收时必须确认 `backend` 可独立测试，当前唯一后端 Maven 入口是 `backend/pom.xml`，当前本地后端服务端口是 `8135`，本地联调默认入口统一为 `http://127.0.0.1:8135`，业务路径保持 `/api/v1/**` 原样，真实 HTTP 演练、路由漂移扫描、后端单服务准备 evidence、最终单服务后端侧收束 evidence、入口切换执行 evidence、生产入口切换阻塞 evidence、外部入口切换适配与观测 evidence、外部入口切流配置样板 evidence、外部入口切流本地演练 evidence、生产切换 runbook evidence、集中配置 provider 本地 file 演练 evidence、audit sink 本地 JSONL adapter 演练 evidence、`api-gateway` 退役门禁 evidence、五个 core 退役前置矩阵、生产化硬化前置矩阵、生产集中配置前置矩阵和生产审计 sink 接入前置矩阵有自动化覆盖，五个 core 模块源码已经物理位于 `backend/src/main/java` 且不再通过 build-helper 装配旧 core 源码目录，外部节点执行器不进入候选入口源码扫描和 component scan，已退役旧服务入口没有恢复，生产源码危险删除命令、真实节点执行、终端、RCON、Docker 执行和备份恢复写入扫描无命中。第三十五轮生产切换 runbook 本地演练完成后只能说明候选入口具备真实外部入口切换前的配置样板、回滚口径、32 个 smoke 目标、统一后端 Maven 回归入口、灰度计划、观测字段、回滚命令、退役顺序、删除禁令、脱敏演练证据、可替换 provider 骨架和可替换 audit sink adapter 骨架；由于仓库内没有真实前端、反向代理或部署入口配置，真实集中配置 provider、生产 profile、敏感配置外置和持久化审计也未接入，不能说明已经完成生产流量切换、前端或外部代理切换、真实集中配置接入、真实审计接入、`api-gateway` 真实退役、五个 core 生产退役或外部节点执行器合并。
+验收时必须确认 `backend` 可独立测试，当前唯一后端 Maven 入口是 `backend/pom.xml`，当前本地后端服务端口是 `8135`，本地联调默认入口统一为 `http://127.0.0.1:8135`，业务路径保持 `/api/v1/**` 原样，真实 HTTP 演练、路由漂移扫描、后端单服务准备 evidence、最终单服务后端侧收束 evidence、入口切换执行 evidence、生产入口切换阻塞 evidence、外部入口切换适配与观测 evidence、外部入口切流配置样板 evidence、外部入口切流本地演练 evidence、生产切换 runbook evidence、集中配置 provider 本地 file 演练 evidence、audit sink 本地 JSONL adapter 演练 evidence、`api-gateway` 退役门禁 evidence、五个 core 退役前置矩阵、生产化硬化前置矩阵、生产集中配置前置矩阵和生产审计 sink 接入前置矩阵有自动化覆盖，五个 core 模块源码已经物理位于 `backend/src/main/java` 且不再通过 build-helper 装配旧 core 源码目录，外部节点执行器不进入统一后端入口源码扫描和 component scan，已退役旧服务入口没有恢复，生产源码危险删除命令、真实节点执行、终端、RCON、Docker 执行和备份恢复写入扫描无命中。第三十五轮生产切换 runbook 本地演练完成后只能说明统一后端入口具备真实外部入口切换前的配置样板、回滚口径、32 个 smoke 目标、统一后端 Maven 回归入口、灰度计划、观测字段、回滚命令、退役顺序、删除禁令、脱敏演练证据、可替换 provider 骨架和可替换 audit sink adapter 骨架；由于仓库内没有真实前端、反向代理或部署入口配置，真实集中配置 provider、生产 profile、敏感配置外置和持久化审计也未接入，不能说明已经完成生产流量切换、前端或外部代理切换、真实集中配置接入、真实审计接入、`api-gateway` 真实退役、五个 core 生产退役或外部节点执行器合并。
 
-本阶段允许 `unified-backend-service:8135` 以 in-process 方式挂载 `business-core`、`admission-core`、`engagement-core` 和 `ops-core`。该候选挂载不改变 `business-core-service:8130`、`admission-core-service:8131`、`engagement-core-service:8132` 或 `ops-core-service:8133` 的独立入口，不改变 `/api/v1/business-core/**`、`/api/v1/admission-core/**`、`/api/v1/engagement-core/**`、`/api/v1/ops-core/**`、`/api/v1/auth/**`、`/api/v1/profile/**`、`/api/v1/notifications/**`、`/api/v1/content/**`、`/api/v1/server-status/**`、`/api/v1/resources/**`、`/api/v1/admin/**`、`/api/v1/onboarding/**`、`/api/v1/exams/**`、`/api/v1/whitelist/**`、`/api/v1/attendance/**`、`/api/v1/community/**`、`/api/v1/activity/**`、`/api/v1/calendar/**`、`/api/v1/changelog/**`、`/api/v1/ops-control/**`、`/api/v1/cloudreve-sync/**`、`/api/v1/backup-recovery/**`、`/api/v1/alerting/**`、`/api/v1/plugin-integration/**`、`/api/v1/cross-platform-notification/**` 或 `/api/v1/ops-image-market/**` 的路径、认证、响应格式和错误码。
+本阶段允许 `backend:8135` 以 in-process 方式挂载 `business-core`、`admission-core`、`engagement-core` 和 `ops-core`。该统一后端挂载不改变 `business-core-service:8130`、`admission-core-service:8131`、`engagement-core-service:8132` 或 `ops-core-service:8133` 的独立入口，不改变 `/api/v1/business-core/**`、`/api/v1/admission-core/**`、`/api/v1/engagement-core/**`、`/api/v1/ops-core/**`、`/api/v1/auth/**`、`/api/v1/profile/**`、`/api/v1/notifications/**`、`/api/v1/content/**`、`/api/v1/server-status/**`、`/api/v1/resources/**`、`/api/v1/admin/**`、`/api/v1/onboarding/**`、`/api/v1/exams/**`、`/api/v1/whitelist/**`、`/api/v1/attendance/**`、`/api/v1/community/**`、`/api/v1/activity/**`、`/api/v1/calendar/**`、`/api/v1/changelog/**`、`/api/v1/ops-control/**`、`/api/v1/cloudreve-sync/**`、`/api/v1/backup-recovery/**`、`/api/v1/alerting/**`、`/api/v1/plugin-integration/**`、`/api/v1/cross-platform-notification/**` 或 `/api/v1/ops-image-market/**` 的路径、认证、响应格式和错误码。
 
 ## 北冥官网 portal-core API 契约
 
@@ -14054,7 +14054,7 @@ HTTP smoke 至少覆盖 `UNIFIED_HEALTH`、`GATEWAY_HEALTH`、`BUSINESS_CORE_HEA
 
 `portal-core` 自有接口只用于运行单元健康检查、运行摘要、模块装配摘要、生产就绪诊断和显式 HTTP smoke。被承载业务模块的业务接口仍分别以 `docs/contracts-guide.md`、`docs/contracts-material.md` 和 `docs/contracts-online-map.md` 为准。
 
-第九轮允许 `unified-backend-service:8135` 以 in-process 方式挂载 `portal-core`。该候选挂载不改变 `portal-core-service:8134` 的独立入口，不改变 `/api/v1/portal-core/**`、`/api/v1/guides/**`、`/api/v1/materials/**` 或 `/api/v1/online-map/**` 的路径、认证、响应格式和错误码。
+第九轮允许 `backend:8135` 以 in-process 方式挂载 `portal-core`。该统一后端挂载不改变 `portal-core-service:8134` 的独立入口，不改变 `/api/v1/portal-core/**`、`/api/v1/guides/**`、`/api/v1/materials/**` 或 `/api/v1/online-map/**` 的路径、认证、响应格式和错误码。
 
 | 接口 | 方法 | 路径 | 认证 | 权限 | 风险 |
 | --- | --- | --- | --- | --- | --- |
@@ -14076,11 +14076,11 @@ HTTP smoke 至少覆盖 `UNIFIED_HEALTH`、`GATEWAY_HEALTH`、`BUSINESS_CORE_HEA
 
 ### 文档定位
 
-本文档是 `material` 微服务的正式 API 契约。后续 `content`、`community`、`resource`、`admin`、前端适配和精彩瞬间展示只能通过本文档定义的接口读取或管理玩家投稿素材，不能直接读取或修改 `material` 数据库。
+本文档是 `material` 模块的正式 API 契约。后续 `content`、`community`、`resource`、`admin`、前端适配和精彩瞬间展示只能通过本文档定义的接口读取或管理玩家投稿素材，不能直接读取或修改 `material` 数据库。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、时间格式、基础角色、能力点、审计字段、风险等级、通用状态模型和通用错误码均以公共契约为准。本文档只补充 `material` 的职责边界、上传模型、授权声明、文件安全状态、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
 
-`material` 适配 `auth`、`profile` 和 `notification`，不要求前序服务反向适配 `material`。它通过后端入口传入的认证上下文、`/api/v1/auth/me`、`/api/v1/auth/session/verify` 或测试环境 auth stub 读取当前用户、角色和能力点；通过 profile 正式接口或受控 stub 读取投稿作者公开快照和成员状态；通过 notification 正式接口或受控适配层投递审核结果通知。`material` 不能导入前序服务的实体、Repository、内存存储、测试种子或内部实现。
+`material` 适配 `auth`、`profile` 和 `notification`，不要求前序模块反向适配 `material`。它通过后端入口传入的认证上下文、`/api/v1/auth/me`、`/api/v1/auth/session/verify` 或测试环境 auth stub 读取当前用户、角色和能力点；通过 profile 正式接口或受控 stub 读取投稿作者公开快照和成员状态；通过 notification 正式接口或受控适配层投递审核结果通知。`material` 不能导入前序模块的实体、Repository、内存存储、测试种子或内部实现。
 
 ### 参考生态
 
@@ -14512,7 +14512,7 @@ auth 认证上下文失败时，当前用户和后台接口不得使用旧用户
 
 `material` API 文档按 `docs/contracts-material.md` 独立存在，并由 `.local-docs/tests-material.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求和模块验收口径。
 
-`material` 完成时必须满足以下条件：全部接口按本文档实现；公开接口不泄露后台字段、上传票据、内部路径、对象存储密钥、通知结果和审计字段；当前用户只能管理自己的投稿；后台接口按角色限制；上传会话、文件安全摘要、授权声明、profile 作者快照、审核通知、精选展示、状态流转、幂等、审计、自检摘要、端口配置和前序服务适配都有自动化测试；`.local-docs/tests-material.md` 中全部测试用例都有对应自动化验证；未实现时自动化测试必须先失败；实现后 material 在 `portal-core-service:8134` 中全部测试通过；api-gateway `/api/v1/materials` 路由指向 `8134` 并测试通过；旧 `material-service:8126` Maven 入口已退役且不得恢复；没有修改前序服务稳定接口；没有把 `.local-docs/` 提交到仓库；没有把玩家资源下载、Cloudreve 管理、服务器文件管理、容器、终端、节点执行、真实文件删除或真实对象存储密钥塞进 `material`。
+`material` 完成时必须满足以下条件：全部接口按本文档实现；公开接口不泄露后台字段、上传票据、内部路径、对象存储密钥、通知结果和审计字段；当前用户只能管理自己的投稿；后台接口按角色限制；上传会话、文件安全摘要、授权声明、profile 作者快照、审核通知、精选展示、状态流转、幂等、审计、自检摘要、端口配置和前序模块适配都有自动化测试；`.local-docs/tests-material.md` 中全部测试用例都有对应自动化验证；未实现时自动化测试必须先失败；实现后 material 在 `portal-core-service:8134` 中全部测试通过；api-gateway `/api/v1/materials` 路由指向 `8134` 并测试通过；旧 `material-service:8126` Maven 入口已退役且不得恢复；没有修改前序模块稳定接口；没有把 `.local-docs/` 提交到仓库；没有把玩家资源下载、Cloudreve 管理、服务器文件管理、容器、终端、节点执行、真实文件删除或真实对象存储密钥塞进 `material`。
 
 ## 北冥官网 guide API 契约
 
@@ -14522,7 +14522,7 @@ auth 认证上下文失败时，当前用户和后台接口不得使用旧用户
 
 ### 文档定位
 
-本文档是 `guide` 微服务的正式 API 契约。后续 `content`、`onboarding`、`exam`、`whitelist`、`resource`、`server-status`、`community`、`admin` 和前端指南中心只能通过本文档定义的接口读取或维护指南与知识库主数据，不能直接读取或修改 `guide` 数据库。
+本文档是 `guide` 模块的正式 API 契约。后续 `content`、`onboarding`、`exam`、`whitelist`、`resource`、`server-status`、`community`、`admin` 和前端指南中心只能通过本文档定义的接口读取或维护指南与知识库主数据，不能直接读取或修改 `guide` 数据库。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、时间格式、基础角色、能力点、审计字段、风险等级、通用状态模型和通用错误码均以公共契约为准。本文档只补充 `guide` 的职责边界、数据归属、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
 
@@ -14558,7 +14558,7 @@ auth 认证上下文失败时，当前用户和后台接口不得使用旧用户
 
 `guide` 当前由 `portal-core-service:8134` 承载。历史原服务端口 `8127` 只作为对照记录，不再作为当前网关默认上游。`api-gateway` 必须以兼容方式保留 `/api/v1/guides` 路由，不能改变已有服务路径、认证方式、响应格式或测试。
 
-### 前序服务兼容契约
+### 前序模块兼容契约
 
 `guide` 适配 `auth`。当前请求认证上下文至少包含 `userId`、`displayName`、`roles`、`permissions`、`status` 和可选 Minecraft 绑定。用户状态为 `DISABLED`、`BANNED` 或 `DELETED` 时不得提交反馈或访问后台接口。auth 不可用返回 `46940`，auth 超时返回 `46941`，auth 字段或枚举不兼容返回 `46942`。
 
@@ -15049,8 +15049,8 @@ resource 和 server-status 引用失败时不得影响指南正文公开读取�
 
 `guide` API 文档按 `docs/contracts-guide.md` 独立存在，并由 `.local-docs/tests-guide.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求和模块验收口径。
 
-`guide` 完成时必须满足以下条件：全部接口按本文档实现；公开接口不泄露后台字段、审计字段、通知结果、资源下载密钥、服务器检测目标和外部渠道管理凭据；当前用户反馈只能写入自己的反馈；后台接口按角色限制；指南分类、文章、版本、规则版本、指令索引、外部入口、反馈、搜索摘要、状态流转、幂等、审计、自检摘要、端口配置和前序服务适配都有自动化测试；`.local-docs/tests-guide.md` 中全部测试用例都有对应自动化验证；未实现时自动化测试必须先失败；实现后 guide 在 `portal-core-service:8134` 中全部测试通过；api-gateway `/api/v1/guides` 路由指向 `8134` 并测试通过；旧 `guide-service:8127` Maven 入口已退役且不得恢复；auth、profile、notification、content、server-status、resource、admin 和 material 回归测试通过；没有修改前序服务稳定接口；没有把 `.local-docs/` 提交到仓库；没有把首页配置、公告文章、真实资源下载、素材投稿、社区讨论、考试判分、白名单审核、实时状态采集、服务器文件管理、容器、终端、节点执行、备份恢复或外部聊天同步塞进 `guide`。
+`guide` 完成时必须满足以下条件：全部接口按本文档实现；公开接口不泄露后台字段、审计字段、通知结果、资源下载密钥、服务器检测目标和外部渠道管理凭据；当前用户反馈只能写入自己的反馈；后台接口按角色限制；指南分类、文章、版本、规则版本、指令索引、外部入口、反馈、搜索摘要、状态流转、幂等、审计、自检摘要、端口配置和前序模块适配都有自动化测试；`.local-docs/tests-guide.md` 中全部测试用例都有对应自动化验证；未实现时自动化测试必须先失败；实现后 guide 在 `portal-core-service:8134` 中全部测试通过；api-gateway `/api/v1/guides` 路由指向 `8134` 并测试通过；旧 `guide-service:8127` Maven 入口已退役且不得恢复；auth、profile、notification、content、server-status、resource、admin 和 material 回归测试通过；没有修改前序模块稳定接口；没有把 `.local-docs/` 提交到仓库；没有把首页配置、公告文章、真实资源下载、素材投稿、社区讨论、考试判分、白名单审核、实时状态采集、服务器文件管理、容器、终端、节点执行、备份恢复或外部聊天同步塞进 `guide`。
 
-第四十七轮本地开发态 `api-gateway-service` 入口退役要求 `unified-backend-service:8135` readiness 额外暴露 `localApiGatewayEntrypointRetirementStatus`、`localApiGatewayEntrypointRetirementChecks` 和 `localApiGatewayEntrypointRetirementEvidence`。当前 `localApiGatewayEntrypointRetirementStatus=PASS_LOCAL_API_GATEWAY_ENTRYPOINT_RETIRED_UNIFIED_GATEWAY_APIS_PRESERVED`，表示旧网关 Maven 入口已逐文件退役，统一后端已自承载网关能力。该门禁不要求 Nginx、Cloudflare、真实域名或生产流量证据。
+第四十七轮本地开发态 `api-gateway-service` 入口退役要求 `backend:8135` readiness 额外暴露 `localApiGatewayEntrypointRetirementStatus`、`localApiGatewayEntrypointRetirementChecks` 和 `localApiGatewayEntrypointRetirementEvidence`。当前 `localApiGatewayEntrypointRetirementStatus=PASS_LOCAL_API_GATEWAY_ENTRYPOINT_RETIRED_UNIFIED_GATEWAY_APIS_PRESERVED`，表示旧网关 Maven 入口已逐文件退役，统一后端已自承载网关能力。该门禁不要求 Nginx、Cloudflare、真实域名或生产流量证据。
 
 本轮五个 core 独立 Maven 入口完成本地退役。`backend/pom.xml` 是唯一后端 Maven 启动入口；五个 core 模块源码已经物理位于 `backend/src/main/java`，由 `backend/pom.xml` 统一编译和测试，不再通过 build-helper 装配旧 core 源码目录。不得恢复 `backend/business-core-service/pom.xml`、`backend/admission-core-service/pom.xml`、`backend/engagement-core-service/pom.xml`、`backend/ops-core-service/pom.xml`、`backend/portal-core-service/pom.xml` 以及对应独立启动类和 `application.yml`，不得删除模块源码或改变原业务 API。

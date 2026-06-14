@@ -8,7 +8,7 @@
 
 ## 文档定位
 
-本文档是 `community` 微服务的正式 API 契约。后续 `activity`、`calendar`、`changelog`、前端适配、`admin` 聚合、`ops-control` 和 `external-node-executor` 只能通过本文档定义的接口读取论坛、帖子、评论、互动、投票、举报、工单、处罚、审计和自检摘要，不能直接读取或修改 `community` 数据库，也不能把社区治理逻辑塞进其他服务。
+本文档是 `community` 模块的正式 API 契约。后续 `activity`、`calendar`、`changelog`、前端适配、`admin` 聚合、`ops-control` 和 `external-node-executor` 只能通过本文档定义的接口读取论坛、帖子、评论、互动、投票、举报、工单、处罚、审计和自检摘要，不能直接读取或修改 `community` 数据库，也不能把社区治理逻辑塞进其他服务。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `community` 的职责边界、数据归属、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
 
@@ -31,7 +31,7 @@
 
 `community` 不负责注册、登录、邀请码、会话、账号角色能力点、Minecraft 绑定主数据、成员档案主数据、站内通知主数据、官网公告主发布、资源下载主数据、考勤积分主数据、白名单审核主流程、考试判分、服务器状态采集、后台聚合入口、真实服务器运维控制、节点守护进程、容器、终端、文件管理、备份恢复或 Cloudreve 管理。
 
-`community` 只能后序适配前序服务。它通过 `auth` 认证上下文读取当前用户、角色、能力点和用户状态；通过 `profile` 的正式接口或未来服务间适配器读取成员展示快照；通过 `notification` 投递帖子审核、举报处理、工单回复和处罚通知；通过 `content` 与 `resource` 的公开快照关联公告、专题或资源讨论；通过 `attendance` 未来正式贡献入口或兼容变更产生社区贡献候选。`community` 不能导入前序服务内存存储、实体、Repository、测试种子或内部类，不能要求前序服务为了社区反向改稳定接口。
+`community` 只能后序适配前序模块。它通过 `auth` 认证上下文读取当前用户、角色、能力点和用户状态；通过 `profile` 的正式接口或未来服务间适配器读取成员展示快照；通过 `notification` 投递帖子审核、举报处理、工单回复和处罚通知；通过 `content` 与 `resource` 的公开快照关联公告、专题或资源讨论；通过 `attendance` 未来正式贡献入口或兼容变更产生社区贡献候选。`community` 不能导入前序模块内存存储、实体、Repository、测试种子或内部类，不能要求前序模块为了社区反向改稳定接口。
 
 ## 数据归属
 
@@ -55,7 +55,7 @@
 
 生产和默认运行环境必须关闭测试控制头。关闭后这些请求头必须被忽略，不能触发依赖失败、审计失败、状态失败、互动失败、通知失败或快照 stale。自检摘要必须返回 `testControlsEnabled`，并在测试控制关闭时把 `TEST_CONTROLS_DISABLED_OUTSIDE_TEST` 视为已满足的生产化硬化项。
 
-## 前序服务兼容契约
+## 前序模块兼容契约
 
 `auth` 是所有登录接口强依赖。当前请求认证上下文至少包含 `userId`、`displayName`、`roles`、`permissions`、`status` 和可选 `minecraftBinding`。用户状态为 `ACTIVE` 时可参与社区；`PENDING_PROFILE` 可以创建工单和查看自己的举报进度，但不能发布公开帖子；`DISABLED`、`BANNED`、`DELETED` 不允许写入。auth 不可用返回 `49200`，auth 超时返回 `49201`，字段或枚举不兼容返回 `49202`。
 
@@ -244,7 +244,7 @@
 | `priority` | string | 是 | `LOW`、`NORMAL`、`HIGH` 或 `URGENT`。 |
 | `creator` | CommunityAuthorSnapshot | 是 | 创建人快照。 |
 | `assigneeUserId` | string 或 null | 后台可见 | 处理人。 |
-| `relatedObject` | object 或 null | 是 | 关联帖子、举报、资源、白名单申请或账号问题摘要。P1 只保存摘要字段，禁止保存 token、完整请求头、内部 URL、服务器命令和前序服务内部路径。 |
+| `relatedObject` | object 或 null | 是 | 关联帖子、举报、资源、白名单申请或账号问题摘要。P1 只保存摘要字段，禁止保存 token、完整请求头、内部 URL、服务器命令和前序模块内部路径。 |
 | `messages` | CommunityTicketMessage[] | 详情可见 | 工单消息。列表只返回最近摘要。 |
 | `lastReplyAt` | string 或 null | 是 | 最近回复时间。 |
 | `resolvedAt` | string 或 null | 是 | 解决时间。 |
@@ -572,7 +572,7 @@
 
 ## 后台接口
 
-后台列表接口默认支持 `page`、`pageSize`、`keyword`、状态筛选和稳定排序，`pageSize` 最大 `100`。后台详情可返回内部备注、依赖摘要、通知失败摘要和审计关联，但仍不得返回 token、完整请求头、异常堆栈、通知正文、前序服务内部路径、真实服务器命令、节点凭据或 Cloudreve token。
+后台列表接口默认支持 `page`、`pageSize`、`keyword`、状态筛选和稳定排序，`pageSize` 最大 `100`。后台详情可返回内部备注、依赖摘要、通知失败摘要和审计关联，但仍不得返回 token、完整请求头、异常堆栈、通知正文、前序模块内部路径、真实服务器命令、节点凭据或 Cloudreve token。
 
 ### 板块管理
 
@@ -705,7 +705,7 @@
 
 必须审计的动作包括板块创建、板块修改、板块归档、帖子创建、帖子修改、帖子提交审核、帖子撤回、帖子审核通过、帖子审核拒绝、帖子要求修改、帖子下架、帖子归档、帖子软删除、评论创建、评论修改、评论审核、评论下架、点赞、取消点赞、收藏、取消收藏、投票、举报创建、举报分配、举报处理、举报驳回、工单创建、工单补充、工单分配、工单回复、工单状态推进、工单关闭、处罚创建、处罚修正、处罚解除、投票创建、投票开放、投票关闭、通知失败、依赖降级、自检读取、审计写入失败和状态写入失败。
 
-后台写操作必须记录 `reason`、操作者、目标对象、操作前状态、操作后状态、请求编号、参数摘要和结果。审计字段继承公共契约。审计不得泄露 token、完整请求头、Minecraft 验证凭据、profile 后台备注全文、通知正文全文、举报人不该公开的信息、处罚证据原文、真实服务器命令、节点凭据、内部异常堆栈或前序服务内部路径。
+后台写操作必须记录 `reason`、操作者、目标对象、操作前状态、操作后状态、请求编号、参数摘要和结果。审计字段继承公共契约。审计不得泄露 token、完整请求头、Minecraft 验证凭据、profile 后台备注全文、通知正文全文、举报人不该公开的信息、处罚证据原文、真实服务器命令、节点凭据、内部异常堆栈或前序模块内部路径。
 
 审计写入失败时，板块写入、帖子审核、评论审核、举报处理、工单回复、处罚创建、处罚修正、处罚解除、投票管理和高风险软删除不得假装成功，必须返回 `54001` 或 `54000`，并保持业务数据不变。通知失败不回滚主状态，但必须记录失败摘要和审计。
 
@@ -727,6 +727,6 @@ attendance 在 P1 不作为社区主流程依赖。社区贡献候选可以记�
 
 `community` API 文档按 `docs/contracts-community.md` 独立存在，并由 `.local-docs/tests-community.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求和模块验收口径。
 
-`community` 完成时必须满足以下条件：全部接口按本文档实现；公开接口只返回公开可见数据；当前用户接口只能访问自己的帖子草稿、评论、互动、收藏、投票、举报和工单；后台接口按角色限制；帖子、评论、举报、工单、处罚和投票有服务端状态机；举报和工单不是前端假状态；处罚只影响 community 写权限，不执行白名单移除、服务器命令或 attendance 积分修改；所有后台写操作和高风险操作有审计；通知失败按辅助降级记录；当前运行端口固定为 `8132`，自检摘要返回 `port=8132` 和 `legacyPort=8112`；`.local-docs/tests-community.md` 与 `.local-docs/tests-engagement-core.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 community 在 `engagement-core-service` 中全部测试通过；auth、profile、notification、content、server-status、resource、admin、onboarding、exam、whitelist 和 attendance 前序服务回归测试通过；不恢复 `backend/community-service` 旧入口；没有修改前序服务稳定接口；没有把活动、日历、更新日志、后台聚合、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复或 Cloudreve 管理能力塞进 community。
+`community` 完成时必须满足以下条件：全部接口按本文档实现；公开接口只返回公开可见数据；当前用户接口只能访问自己的帖子草稿、评论、互动、收藏、投票、举报和工单；后台接口按角色限制；帖子、评论、举报、工单、处罚和投票有服务端状态机；举报和工单不是前端假状态；处罚只影响 community 写权限，不执行白名单移除、服务器命令或 attendance 积分修改；所有后台写操作和高风险操作有审计；通知失败按辅助降级记录；当前运行端口固定为 `8132`，自检摘要返回 `port=8132` 和 `legacyPort=8112`；`.local-docs/tests-community.md` 与 `.local-docs/tests-engagement-core.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 community 在 `engagement-core-service` 中全部测试通过；auth、profile、notification、content、server-status、resource、admin、onboarding、exam、whitelist 和 attendance 前序模块回归测试通过；不恢复 `backend/community-service` 旧入口；没有修改前序模块稳定接口；没有把活动、日历、更新日志、后台聚合、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复或 Cloudreve 管理能力塞进 community。
 
 生产化硬化验收还必须满足：测试控制头默认关闭，只有本地自动化测试显式启用时才生效；关闭状态下依赖失败模拟头、写入失败模拟头和通知失败模拟头全部被忽略；自检摘要明确返回当前测试控制头开关状态。

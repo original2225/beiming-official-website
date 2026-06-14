@@ -4,11 +4,11 @@
 
 ## 文档定位
 
-本文档是 `api-gateway` 微服务的正式 API 契约，也是第四十七轮本地开发态退役后的历史网关行为契约。当前阶段 `api-gateway` 是北冥官网后端受保护回滚入口和路由对照入口，只负责统一路由、请求编号、认证头透传、认证上下文注入、基础 CORS、上游超时、请求边界保护、响应头白名单透传、错误降级、路由表、自检摘要、上游健康摘要、运行拓扑和网关级请求日志摘要。未来正式生产入口目标是 `unified-backend-service:8135`，本地开发态的网关能力由 `unified-backend-service:8135` 自承载对照实现承接，但真实外部代理、前端入口和生产流量尚未在本仓库切换。
+本文档是 `api-gateway` 模块的正式 API 契约，也是第四十七轮本地开发态退役后的历史网关行为契约。当前阶段 `api-gateway` 是北冥官网后端受保护回滚入口和路由对照入口，只负责统一路由、请求编号、认证头透传、认证上下文注入、基础 CORS、上游超时、请求边界保护、响应头白名单透传、错误降级、路由表、自检摘要、上游健康摘要、运行拓扑和网关级请求日志摘要。未来正式生产入口目标是 `backend:8135`，本地开发态的网关能力由 `backend:8135` 自承载对照实现承接，但真实外部代理、前端入口和生产流量尚未在本仓库切换。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、时间格式、基础角色、运维能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `api-gateway` 的路径、路由表、字段、错误码、降级、审计和验收口径。
 
-第二十七轮统一后端生产化硬化门禁不改变 `api-gateway` 路由表、代理行为、认证注入、端口或退役审批状态。第四十七轮后，本地开发态 `api-gateway-service:8125` Maven 入口已退役，本文档转为历史网关行为和 `unified-backend-service:8135` 自承载对照契约；五个 core 继续作为受保护 core 回滚入口，直到后续逐入口退役闭环完成。
+第二十七轮统一后端生产化硬化门禁不改变 `api-gateway` 路由表、代理行为、认证注入、端口或退役审批状态。第四十七轮后，本地开发态 `api-gateway-service:8125` Maven 入口已退役，本文档转为历史网关行为和 `backend:8135` 自承载对照契约；五个 core 继续作为受保护 core 回滚入口，直到后续逐入口退役闭环完成。
 
 第一版设计参考了成熟网关生态中的稳定做法。Spring Cloud Gateway 使用请求属性谓词匹配路由，并通过过滤器处理跨路由逻辑；Kong Gateway 把相关能力拆成可组合插件，例如 Correlation ID 和 Rate Limiting；Nginx 反向代理强调 `proxy_pass`、请求头和请求体透传；Envoy 将上游服务作为 cluster 处理，并把健康检查结果纳入路由判断。第二版继续参考 AWS API Gateway 对请求体大小上限的明确约束、Cloudflare Rules 对边界策略前置的做法，以及 Nginx 对响应头和上游头的显式控制。`api-gateway` 本轮只吸收这些边界思路，不引入动态服务发现、插件市场、真实 WAF、分布式限流、OAuth/OIDC 或 WebSocket 长连接代理。
 
@@ -20,7 +20,7 @@
 
 | 能力 | 说明 |
 | --- | --- |
-| 路由匹配 | 根据固定路径前缀把请求转发到已有微服务端口。 |
+| 路由匹配 | 根据固定路径前缀把请求转发到已有模块端口。 |
 | 请求编号 | 接收或生成 `X-Request-Id`，向上游和下游保持一致。 |
 | 认证透传与上下文注入 | 原样透传 `Authorization: Bearer <token>`；携带可验证会话时，通过 `auth` 会话校验生成可信身份头、内部时间戳和内部签名。 |
 | 请求透传 | 保持 HTTP 方法、路径、查询参数、JSON 请求体和必要请求头。 |
@@ -33,13 +33,13 @@
 | 上游健康摘要 | 维护手动刷新后的上游健康快照。 |
 | 请求日志摘要 | 记录脱敏后的网关访问摘要，用于本地排障和后台观测。 |
 
-`api-gateway` 不负责注册、登录、角色能力点主数据、成员档案、站内通知、内容发布、资源下载、社区工单、活动报名、日历、更新日志、服务器运维、节点执行、备份恢复、告警规则、插件事件、外部通知或镜像市场业务。它不能直接读取任何服务数据库，不能导入任何前序服务 Java package，不能复制业务状态机，不能把多个业务服务聚合成新的业务结果。
+`api-gateway` 不负责注册、登录、角色能力点主数据、成员档案、站内通知、内容发布、资源下载、社区工单、活动报名、日历、更新日志、服务器运维、节点执行、备份恢复、告警规则、插件事件、外部通知或镜像市场业务。它不能直接读取任何服务数据库，不能导入任何前序模块 Java package，不能复制业务状态机，不能把多个业务服务聚合成新的业务结果。
 
-上游服务的业务认证、权限、字段校验、状态流转、幂等、审计和失败降级仍由对应微服务负责。网关发现上游返回 4xx 或 5xx 时默认透传，不把业务失败改成网关成功，也不替上游重写业务错误码。
+上游服务的业务认证、权限、字段校验、状态流转、幂等、审计和失败降级仍由对应模块负责。网关发现上游返回 4xx 或 5xx 时默认透传，不把业务失败改成网关成功，也不替上游重写业务错误码。
 
 ## 基础路径、端口和认证
 
-历史 `api-gateway-service` 本地端口为 `8125`。第四十七轮后该独立 Maven 入口已退役，当前本地网关自有 API 由 `unified-backend-service:8135` 自承载。
+历史 `api-gateway-service` 本地端口为 `8125`。第四十七轮后该独立 Maven 入口已退役，当前本地网关自有 API 由 `backend:8135` 自承载。
 
 网关自有接口使用 `/api/v1/gateway` 前缀。业务转发接口保持上游原路径，例如 `/api/v1/auth/login` 经网关访问时仍是 `/api/v1/auth/login`，不会改写为 `/api/v1/gateway/auth/login`。
 
@@ -112,9 +112,9 @@
 
 这两个覆盖能力只用于本地真实 HTTP smoke 和显式环境配置，不代表已接入动态服务发现或集中配置中心。
 
-第八轮单服务合并准备层只允许在网关公开只读运行拓扑。第四十七轮后，当前本地后端入口是 `unified-backend-service:8135`、`business-core-service:8130`、`admission-core-service:8131`、`engagement-core-service:8132`、`ops-core-service:8133` 和 `portal-core-service:8134`；历史 `api-gateway-service:8125` Maven 入口已退役。外部节点执行器已出仓且未接入，当前网关不得再公开节点执行器业务路由。该准备层不得新增业务路由，不得改写 25 条业务路径，不得动态挂载业务模块，不得恢复已退役旧 Maven 入口，不得把外部节点执行器并入统一后端。
+第八轮单服务合并准备层只允许在网关公开只读运行拓扑。第四十七轮后，当前本地后端入口是 `backend:8135`、`business-core-service:8130`、`admission-core-service:8131`、`engagement-core-service:8132`、`ops-core-service:8133` 和 `portal-core-service:8134`；历史 `api-gateway-service:8125` Maven 入口已退役。外部节点执行器已出仓且未接入，当前网关不得再公开节点执行器业务路由。该准备层不得新增业务路由，不得改写 25 条业务路径，不得动态挂载业务模块，不得恢复已退役旧 Maven 入口，不得把外部节点执行器并入统一后端。
 
-第九轮新增 `unified-backend-service:8135` 作为并行候选入口。第四十七轮后，当前网关运行拓扑保持 `LOCAL_API_GATEWAY_ENTRYPOINT_RETIRED`，运行拓扑必须识别 `unified-backend` 已自承载网关能力和外部节点执行器出仓状态。候选挂载对象为 `api-gateway`、`business-core`、`admission-core`、`engagement-core`、`ops-core` 和 `portal-core`，候选挂载路由为 `auth`、`profile`、`notification`、`content`、`server-status`、`resource`、`admin`、`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、`ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`cross-platform-notification`、`ops-image-market`、`guide`、`material` 和 `online-map`。该字段只用于后续装配验收，不能恢复已退役的 `api-gateway-service:8125`。
+第九轮新增的 `backend:8135` 现已成为当前本地统一后端入口。第四十七轮后，当前网关运行拓扑保持 `LOCAL_API_GATEWAY_ENTRYPOINT_RETIRED`，运行拓扑必须识别 `unified-backend` 已自承载网关能力和外部节点执行器出仓状态。统一后端挂载对象为 `api-gateway`、`business-core`、`admission-core`、`engagement-core`、`ops-core` 和 `portal-core`，统一后端挂载路由为 `auth`、`profile`、`notification`、`content`、`server-status`、`resource`、`admin`、`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、`ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`cross-platform-notification`、`ops-image-market`、`guide`、`material` 和 `online-map`。该字段只用于装配验收，不能恢复已退役的 `api-gateway-service:8125`。
 
 第二十五轮开始，`api-gateway-service:8125` 的角色固定为受保护回滚入口。第四十七轮按用户确认完成本地开发态逐文件退役后，该入口不再是当前 Maven 入口；生产态外部切流、回滚窗口和流量归零证明仍属于后续部署闭环。本轮后不得恢复 `api-gateway-service` Maven 入口，也不得批量退役五个 core。
 
@@ -184,7 +184,7 @@
 | `deploymentMode` | string | 是 | 第四十七轮后固定为 `LOCAL_API_GATEWAY_ENTRYPOINT_RETIRED`。 |
 | `singleServiceMergeReadiness` | string | 是 | 固定为 `PREPARING`。 |
 | `currentEntrypointsTotal` | integer | 是 | 当前官网后端回滚入口数量，固定为 `6`。 |
-| `futureMergeCandidateEntrypointsTotal` | integer | 是 | 未来统一后端候选入口数量，固定为 `6`，不包含外部节点执行器。 |
+| `futureMergeCandidateEntrypointsTotal` | integer | 是 | 未来统一后端入口数量，固定为 `6`，不包含外部节点执行器。 |
 | `businessRoutesTotal` | integer | 是 | 当前业务转发路由数量，固定为 `25`。 |
 | `gatewayApiTotal` | integer | 是 | 当前网关自有 API 数量，固定为 `8`。 |
 | `currentEntrypoints` | object[] | 是 | 当前运行入口清单。 |
@@ -440,6 +440,6 @@ P0 `api-gateway` 是本地契约实现，必须在自检摘要中明确以下生
 
 `api-gateway` API 文档按 `docs/contracts-api-gateway.md` 独立存在，并由 `.local-docs/tests-api-gateway.md` 记录本地测试闭环。
 
-本文档列出的每个网关自有接口都有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、分页排序、状态刷新、失败降级、日志脱敏和验收口径。运行拓扑测试必须确认当前本地后端 Maven 入口已收束到 `unified-backend-service:8135`、五个 core 模块源码继续保留并由统一后端装配、历史 `api-gateway-service:8125` 不再作为当前本地 Maven 入口、外部节点执行器出仓且未接入、25 条业务转发路由、8 个网关自有 API、5 个 core 运行单元归属、已退役旧入口未恢复、静态服务发现仍未接入，并确认 `unified-backend-service:8135` 已自承载网关自有 API 与五个 core 挂载。业务转发测试必须覆盖 25 个已接入路径前缀，确认路由表端口准确、第一批七个路由统一指向 `business-core-service:8130`、第二批四个路由统一指向 `admission-core-service:8131`、第三批四个路由统一指向 `engagement-core-service:8132`、第四批六个路由和第六期 `cross-platform-notification` 统一指向 `ops-core-service:8133`、第五批后三个门户体验路由统一指向 `portal-core-service:8134`、原业务路径不被改写为 core 服务前缀、`api-gateway.upstreams.ops-core-base-url` 只覆盖七个 ops-core 承载路由、请求编号透传、请求编号非法拒绝、认证头透传、可信身份头剥离、客户端伪造签名头剥离、`auth` 会话校验成功后的可信身份和内部签名注入、`auth` 校验失败后的不注入降级、查询参数透传、JSON body 透传、请求体大小限制、响应头白名单、上游 2xx 透传、上游 4xx 透传、上游 5xx 透传、未知路径、非法方法、CORS 预检、上游不可用、上游超时和敏感字段不落日志。
+本文档列出的每个网关自有接口都有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、分页排序、状态刷新、失败降级、日志脱敏和验收口径。运行拓扑测试必须确认当前本地后端 Maven 入口已收束到 `backend:8135`、五个 core 模块源码继续保留并由统一后端装配、历史 `api-gateway-service:8125` 不再作为当前本地 Maven 入口、外部节点执行器出仓且未接入、25 条业务转发路由、8 个网关自有 API、5 个 core 运行单元归属、已退役旧入口未恢复、静态服务发现仍未接入，并确认 `backend:8135` 已自承载网关自有 API 与五个 core 挂载。业务转发测试必须覆盖 25 个已接入路径前缀，确认路由表端口准确、第一批七个路由统一指向 `business-core-service:8130`、第二批四个路由统一指向 `admission-core-service:8131`、第三批四个路由统一指向 `engagement-core-service:8132`、第四批六个路由和第六期 `cross-platform-notification` 统一指向 `ops-core-service:8133`、第五批后三个门户体验路由统一指向 `portal-core-service:8134`、原业务路径不被改写为 core 服务前缀、`api-gateway.upstreams.ops-core-base-url` 只覆盖七个 ops-core 承载路由、请求编号透传、请求编号非法拒绝、认证头透传、可信身份头剥离、客户端伪造签名头剥离、`auth` 会话校验成功后的可信身份和内部签名注入、`auth` 校验失败后的不注入降级、查询参数透传、JSON body 透传、请求体大小限制、响应头白名单、上游 2xx 透传、上游 4xx 透传、上游 5xx 透传、未知路径、非法方法、CORS 预检、上游不可用、上游超时和敏感字段不落日志。
 
 开发完成后必须执行 `mvn -q -f backend/pom.xml test`。涉及 `portal-core` smoke 的生产化增强必须覆盖统一后端装配后的 HTTP 联调，确认第五批后三个原业务路由仍只归属门户体验模块。第一批、第二批和第三批旧服务清理后，不得为了网关回归恢复对应旧服务目录、旧 Maven 入口、旧启动类或旧测试命令。第四批和第五批旧服务目录退役后，不得为了网关回归恢复旧 Maven 入口。旧 `backend/online-map-service` 已退役且不得恢复。外部节点执行器测试不再作为官网仓库网关闭环命令。测试过程必须写入 `.local-docs/tests-api-gateway.md`。

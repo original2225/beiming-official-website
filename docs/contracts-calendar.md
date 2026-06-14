@@ -4,7 +4,7 @@
 
 ## 文档定位
 
-本文档是 `calendar` 微服务的正式 API 契约。后续 `changelog`、前端适配、`admin` 聚合、`ops-control` 和 `external-node-executor` 只能通过本文档定义的接口读取或管理日程事件、关注、提醒摘要、来源同步、审计和自检摘要，不能直接读取或修改 `calendar` 数据库，也不能把活动报名、社区投票、更新日志主数据或真实服务器运维能力塞进 `calendar`。
+本文档是 `calendar` 模块的正式 API 契约。后续 `changelog`、前端适配、`admin` 聚合、`ops-control` 和 `external-node-executor` 只能通过本文档定义的接口读取或管理日程事件、关注、提醒摘要、来源同步、审计和自检摘要，不能直接读取或修改 `calendar` 数据库，也不能把活动报名、社区投票、更新日志主数据或真实服务器运维能力塞进 `calendar`。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `calendar` 的职责边界、数据归属、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
 
@@ -59,7 +59,7 @@ P1 契约补强要求：当前用户关注列表、后台事件列表和审计�
 
 生产和默认运行环境必须关闭测试控制头。关闭后这些请求头必须被忽略，不能触发依赖失败、审计失败、状态失败、关注失败、通知失败、时间模拟或快照 stale。自检摘要必须返回 `testControlsEnabled`，并在测试控制关闭时把 `TEST_CONTROLS_DISABLED_OUTSIDE_TEST` 视为已满足的生产化硬化项。
 
-## 前序服务兼容契约
+## 前序模块兼容契约
 
 `auth` 是所有登录接口强依赖。当前请求认证上下文至少包含 `userId`、`displayName`、`roles`、`permissions`、`status` 和可选 `minecraftBinding`。用户状态为 `ACTIVE` 时可关注和后台写入；`PENDING_PROFILE` 可以关注公开事件但不能创建后台事件；`DISABLED`、`BANNED`、`DELETED` 不允许写入。auth 不可用返回 `49800`，auth 超时返回 `49801`，字段或枚举不兼容返回 `49802`。
 
@@ -302,7 +302,7 @@ P1 契约补强要求：当前用户关注列表、后台事件列表和审计�
 
 ### 后台事件列表和详情
 
-`GET /api/v1/calendar/admin/events` 支持 `page`、`pageSize`、`keyword`、`type`、`status`、`visibility`、`sourceType`、`createdBy`、`from`、`to` 和 `sort`。后台可查看全部非物理删除事件，默认按 `updatedAt_desc`。`GET /api/v1/calendar/admin/events/{eventId}` 返回事件、关注统计、来源同步摘要、提醒摘要、最近审计和依赖摘要。响应不得返回 token、完整请求头、通知正文、前序服务内部路径、异常堆栈、真实服务器命令、节点凭据或 Cloudreve token。
+`GET /api/v1/calendar/admin/events` 支持 `page`、`pageSize`、`keyword`、`type`、`status`、`visibility`、`sourceType`、`createdBy`、`from`、`to` 和 `sort`。后台可查看全部非物理删除事件，默认按 `updatedAt_desc`。`GET /api/v1/calendar/admin/events/{eventId}` 返回事件、关注统计、来源同步摘要、提醒摘要、最近审计和依赖摘要。响应不得返回 token、完整请求头、通知正文、前序模块内部路径、异常堆栈、真实服务器命令、节点凭据或 Cloudreve token。
 
 后台事件列表过滤规则：`keyword` 匹配标题或摘要；`type`、`status`、`visibility`、`sourceType` 和 `createdBy` 精确匹配；`from` 和 `to` 使用事件时间范围重叠规则；非法枚举返回 `40001`；非法时间返回 `40001`；非法范围返回 `49911`。分页和排序继续遵守公共契约。
 
@@ -435,7 +435,7 @@ P1 内存实现必须用本服务内的串行临界区保护事件状态、关�
 
 必须审计的动作包括事件创建、事件修改、提交审核、审核通过、审核拒绝、发布、下架、归档、软删除、关注事件、取消关注、activity 同步、同步失败、提醒失败、依赖降级、自检读取、审计写入失败和状态写入失败。
 
-后台写操作必须记录 `reason`、操作者、目标对象、操作前状态、操作后状态、请求编号、参数摘要和结果。审计字段继承公共契约。审计不得泄露 token、完整请求头、通知正文、前序服务内部路径、真实服务器命令、节点凭据、Cloudreve token、内部异常堆栈或 activity 内部实现。
+后台写操作必须记录 `reason`、操作者、目标对象、操作前状态、操作后状态、请求编号、参数摘要和结果。审计字段继承公共契约。审计不得泄露 token、完整请求头、通知正文、前序模块内部路径、真实服务器命令、节点凭据、Cloudreve token、内部异常堆栈或 activity 内部实现。
 
 审计写入失败时，事件创建、修改、审核、发布、下架、归档、软删除、activity 同步和后台状态写入不得假装成功，必须返回 `54801` 或 `54800`，并保持业务数据不变。普通用户关注和取消关注在 P1 也必须保证审计和关注计数一致，失败返回 `54803` 或 `54801`，不得产生半关注状态。
 
@@ -455,6 +455,6 @@ changelog 当前未连接。手工版本更新事件不依赖 changelog；未来
 
 `calendar` API 文档按 `docs/contracts-calendar.md` 独立存在，并由 `.local-docs/tests-calendar.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求和模块验收口径。
 
-`calendar` 完成时必须满足以下条件：全部接口按本文档实现；公开接口只返回公开可见事件；当前用户只能维护自己的关注；后台接口按角色限制；事件状态机不可非法回退；跨月、时间范围重叠和全天事件查询正确；activity 同步只读且有失败降级；changelog 只保留占位；维护窗口不触发真实运维；所有写操作有审计；当前运行端口固定为 `8132`，自检摘要返回 `port=8132` 和 `legacyPort=8114`；`.local-docs/tests-calendar.md` 与 `.local-docs/tests-engagement-core.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 calendar 在 `engagement-core-service` 中全部测试通过；auth、profile、notification、content、server-status、resource、admin、onboarding、exam、whitelist、attendance、community 和 activity 前序服务回归测试通过；不恢复 `backend/calendar-service` 旧入口；没有修改前序服务稳定接口；没有把更新日志主数据、活动报名、社区投票、后台聚合、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复或 Cloudreve 管理能力塞进 calendar。
+`calendar` 完成时必须满足以下条件：全部接口按本文档实现；公开接口只返回公开可见事件；当前用户只能维护自己的关注；后台接口按角色限制；事件状态机不可非法回退；跨月、时间范围重叠和全天事件查询正确；activity 同步只读且有失败降级；changelog 只保留占位；维护窗口不触发真实运维；所有写操作有审计；当前运行端口固定为 `8132`，自检摘要返回 `port=8132` 和 `legacyPort=8114`；`.local-docs/tests-calendar.md` 与 `.local-docs/tests-engagement-core.md` 中全部测试用例都有对应自动化验证；自动化测试必须先红灯；实现后 calendar 在 `engagement-core-service` 中全部测试通过；auth、profile、notification、content、server-status、resource、admin、onboarding、exam、whitelist、attendance、community 和 activity 前序模块回归测试通过；不恢复 `backend/calendar-service` 旧入口；没有修改前序模块稳定接口；没有把更新日志主数据、活动报名、社区投票、后台聚合、真实服务器操作、文件管理、容器、终端、日志流、节点注册、备份恢复或 Cloudreve 管理能力塞进 calendar。
 
 生产化硬化验收还必须满足：测试控制头默认关闭，只有本地自动化测试显式启用时才生效；关闭状态下依赖失败模拟头、写入失败模拟头、时间模拟头和通知失败模拟头全部被忽略；自检摘要明确返回当前测试控制头开关状态。

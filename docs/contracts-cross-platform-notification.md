@@ -6,7 +6,7 @@
 
 本文档是 `cross-platform-notification` 模块的正式 API 契约。第六期运行合并后，该模块由 `ops-core-service:8133` 承载，但仍保持独立模块契约身份。`cross-platform-notification` 负责跨平台外部通知控制面，包括外部渠道 provider 摘要、渠道能力、模板映射、路由策略、投递请求、投递尝试、receiver 摘要、重试摘要、失败降级、幂等记录、审计日志和自检摘要。
 
-本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、运维能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `cross-platform-notification` 的职责边界、数据归属、前序服务兼容、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
+本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、运维能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `cross-platform-notification` 的职责边界、数据归属、前序模块兼容、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
 
 本文档参考 Slack Incoming Webhooks、Discord Webhooks、Telegram Bot API、Twilio Messaging、Firebase Cloud Messaging、OneSignal、Novu 和 Grafana Alerting 的公开设计。Slack Incoming Webhooks 明确 webhook URL 本身包含 secret，适合约束本服务不回显完整 webhook。Discord Webhooks 说明 webhook token、内容长度、allowed mentions 和服务端确认差异，适合本服务建立渠道能力和内容降级模型。Telegram Bot API 说明 bot token、HTTPS 请求、webhook secret token 和更新重试，适合本服务区分发送 token、回调签名和失败摘要。Twilio Messaging 的状态回调说明外部投递会经历 queued、sent、delivered、failed 等状态，适合本服务保留投递尝试和后续回调适配位置。FCM 的跨平台消息、topic、device token 和平台差异化配置，适合本服务抽象 `PUSH` 渠道能力和 receiver 摘要。OneSignal 的 Push、In-App、Email、SMS 和 Live Activities 多渠道模型，适合本服务拆分渠道、订阅和模板。Novu 的 workflow、channel steps、delay、digest 和 subscriber preference 说明通知编排应独立于业务主数据。Grafana Alerting 的 contact point、notification policy、grouping、silence 和 template 说明路由策略、分组抑制和接收方配置要和告警规则分离。
 
@@ -39,7 +39,7 @@
 
 `cross-platform-notification` 可以保存来自 `auth` 的操作者用户 ID、展示名、角色、能力点和状态快照；可以保存来自 `notification` 的站内通知引用、模板引用和投递偏好安全摘要；可以保存来自 `alerting` 的告警投递请求摘要；可以保存来自 `plugin-integration` 的插件事件和插件健康异常摘要；可以保存来自 `ops-control` 的高风险审批、节点异常和任务失败摘要；可以保存来自 `community`、`activity`、`calendar`、`changelog`、`whitelist`、`attendance`、`resource` 和 `server-status` 的业务来源摘要。
 
-所有跨模块字段只能是安全快照，不得成为来源模块主数据，不得用于绕过来源模块权限，不得反向修改来源模块状态。`cross-platform-notification` 不能直接读取其他服务数据库，不能导入前序服务 Java package，不能复用前序服务内存 store，不能修改 `notification` 未读数，不能关闭 `alerting` 告警，不能重放 `plugin-integration` 事件，不能创建 `ops-control` 任务。
+所有跨模块字段只能是安全快照，不得成为来源模块主数据，不得用于绕过来源模块权限，不得反向修改来源模块状态。`cross-platform-notification` 不能直接读取其他服务数据库，不能导入前序模块 Java package，不能复用前序模块内存 store，不能修改 `notification` 未读数，不能关闭 `alerting` 告警，不能重放 `plugin-integration` 事件，不能创建 `ops-control` 任务。
 
 ## 基础路径、端口和认证
 
@@ -59,7 +59,7 @@
 
 生产和默认运行环境必须关闭测试控制头。关闭后这些请求头必须被忽略，不能触发认证失败、依赖失败、provider 失败、审计失败、存储失败、投递失败或时间模拟。自检摘要必须返回 `testControlsEnabled`，并在测试控制关闭时把 `TEST_CONTROLS_DISABLED_OUTSIDE_TEST` 纳入生产化硬化项。
 
-## 前序服务兼容契约
+## 前序模块兼容契约
 
 `auth` 是后台接口强依赖。当前请求认证上下文至少包含 `userId`、`displayName`、`roles`、`permissions` 和 `status`。用户状态为 `DISABLED`、`BANNED` 或 `DELETED` 时不得访问后台接口。auth 不可用返回 `47150`，auth 超时返回 `47151`，auth 字段或枚举不兼容返回 `47152`。
 
@@ -241,7 +241,7 @@
 
 ### ExternalNotificationAuditLog
 
-审计字段继承公共契约，允许补充 `providerId`、`capabilityId`、`mappingId`、`routeId`、`deliveryId`、`attemptId`、`receiverId`、`sourceModule`、`dependencyStatus`、`stateFrom`、`stateTo`、`idempotencyKey`、`confirmTextMatched` 和 `failureReason`。审计列表只读，不提供删除接口。审计响应不得返回 token、secret、完整 webhook、完整请求头、完整通知正文、内部 URL、内部路径、完整异常栈、数据库连接串或前序服务私有数据。
+审计字段继承公共契约，允许补充 `providerId`、`capabilityId`、`mappingId`、`routeId`、`deliveryId`、`attemptId`、`receiverId`、`sourceModule`、`dependencyStatus`、`stateFrom`、`stateTo`、`idempotencyKey`、`confirmTextMatched` 和 `failureReason`。审计列表只读，不提供删除接口。审计响应不得返回 token、secret、完整 webhook、完整请求头、完整通知正文、内部 URL、内部路径、完整异常栈、数据库连接串或前序模块私有数据。
 
 ### CrossPlatformNotificationOpsSummary
 
@@ -440,7 +440,7 @@ provider 状态流转为 `DRAFT` 可到 `ENABLED`、`DISABLED` 或 `ARCHIVED`；
 
 ## 安全、降级和脱敏
 
-任何请求体和响应都不得包含外部平台 token、webhook secret、完整 webhook URL、Discord token、Slack webhook URL、Telegram bot token、QQ token、Oopz token、企业微信 key、SMTP 密码、短信 token、推送 server key、设备 token、RCON 密码、完整 Authorization 请求头、完整请求 headers、完整通知正文、完整 raw payload、内部 URL、内部路径、节点地址、服务器密码、shell 命令、异常栈、数据库连接串、`.env`、`authorized_keys`、`id_rsa` 或前序服务私有数据。检查必须递归覆盖嵌套对象和数组。
+任何请求体和响应都不得包含外部平台 token、webhook secret、完整 webhook URL、Discord token、Slack webhook URL、Telegram bot token、QQ token、Oopz token、企业微信 key、SMTP 密码、短信 token、推送 server key、设备 token、RCON 密码、完整 Authorization 请求头、完整请求 headers、完整通知正文、完整 raw payload、内部 URL、内部路径、节点地址、服务器密码、shell 命令、异常栈、数据库连接串、`.env`、`authorized_keys`、`id_rsa` 或前序模块私有数据。检查必须递归覆盖嵌套对象和数组。
 
 endpoint 和 receiver URL 必须拒绝 `file:`、`data:`、`javascript:`、带用户名密码 URL、localhost、回环 IP、内网 IP、链路本地地址、未解析 host、通配符 `*`、空 host、控制字符和非法 URI。站内受控路径必须以 `/` 开头，不能以 `//` 开头，不能包含反斜杠或控制字符。
 
@@ -454,4 +454,4 @@ receiver 摘要必须按类型脱敏。邮箱最多显示域名和首尾字符�
 
 `cross-platform-notification` API 文档必须按 `docs/contracts-cross-platform-notification.md` 独立存在，并由 `.local-docs/tests-cross-platform-notification.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、能力点不足、高风险确认缺失、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求、敏感字段脱敏、测试控制头默认关闭和模块验收口径。
 
-`cross-platform-notification` 完成时必须满足以下条件：当前运行入口为 `ops-core-service:8133`，历史端口 `8123` 只作为 `legacyPort` 返回；健康检查公开且不泄露敏感信息；后台接口按角色和能力点限制；provider、渠道能力、模板映射、路由策略、投递请求、投递尝试、receiver 摘要、审计、幂等、状态流转、依赖降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；自动化测试必须先红灯；实现后在 `ops-core-service` 中全量测试通过；当前后端运行入口回归通过；边界扫描无违规命中；不修改前序服务稳定接口；不直接读取前序服务数据库；不导入前序服务 Java package；不调用真实 `external-node-executor`；不执行真实外部通知发送；不保存真实外部 token、完整 webhook、SMTP 密码、短信 token、机器人 token、设备 token、RCON 密码或完整请求头；不把站内通知主数据、告警规则、插件事件、社区工单、活动、日历、白名单、考勤、资源下载、运维任务、节点文件管理或终端能力塞进本服务；不得恢复 `backend/cross-platform-notification-service` 独立 Maven 入口。
+`cross-platform-notification` 完成时必须满足以下条件：当前运行入口为 `ops-core-service:8133`，历史端口 `8123` 只作为 `legacyPort` 返回；健康检查公开且不泄露敏感信息；后台接口按角色和能力点限制；provider、渠道能力、模板映射、路由策略、投递请求、投递尝试、receiver 摘要、审计、幂等、状态流转、依赖降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；自动化测试必须先红灯；实现后在 `ops-core-service` 中全量测试通过；当前后端运行入口回归通过；边界扫描无违规命中；不修改前序模块稳定接口；不直接读取前序模块数据库；不导入前序模块 Java package；不调用真实 `external-node-executor`；不执行真实外部通知发送；不保存真实外部 token、完整 webhook、SMTP 密码、短信 token、机器人 token、设备 token、RCON 密码或完整请求头；不把站内通知主数据、告警规则、插件事件、社区工单、活动、日历、白名单、考勤、资源下载、运维任务、节点文件管理或终端能力塞进本服务；不得恢复 `backend/cross-platform-notification-service` 独立 Maven 入口。

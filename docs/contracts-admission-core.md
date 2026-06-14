@@ -25,15 +25,15 @@
 | 自检摘要 | 暴露 `admission-core` 自身健康检查和后台装配摘要，便于迁移验证。 |
 | 网关切换状态 | 为 `api-gateway` 第二批路径上游切换提供稳定目标和完成状态。 |
 
-`admission-core` 不负责吸收网关能力。第四十七轮后，本地开发态 `api-gateway-service` Maven 入口已退役，网关自有 API 和第二批业务路径统一由 `unified-backend-service:8135` 承接。`admission-core` 不负责第一批基础业务模块，也不负责 `community`、`activity`、`calendar`、`changelog`、`ops-control`、`external-node-executor`、`cloudreve-sync`、`backup-recovery`、`alerting`、`online-map`、插件集成或 P3 扩展。
+`admission-core` 不负责吸收网关能力。第四十七轮后，本地开发态 `api-gateway-service` Maven 入口已退役，网关自有 API 和第二批业务路径统一由 `backend:8135` 承接。`admission-core` 不负责第一批基础业务模块，也不负责 `community`、`activity`、`calendar`、`changelog`、`ops-control`、`external-node-executor`、`cloudreve-sync`、`backup-recovery`、`alerting`、`online-map`、插件集成或 P3 扩展。
 
 `admission-core` 不允许把真实服务器白名单命令、Minecraft 控制台、节点守护进程、容器、终端、文件管理、备份恢复或 Cloudreve 管理塞进入服链路。白名单审核通过只代表官网业务状态和成员档案激活交接，不代表真实服务器命令已执行。
 
-`unified-backend-service:8135` 可以把 `admission-core` 作为 in-process 稳定运行单元挂载，用于验证最终合并成一个后端服务的候选形态。该挂载不得改变 `admission-core-service:8131` 的独立入口，不得改变 `/api/v1/admission-core/**`、`/api/v1/onboarding/**`、`/api/v1/exams/**`、`/api/v1/whitelist/**` 或 `/api/v1/attendance/**` 的认证、响应格式、错误码、请求编号、状态流转、幂等和审计规则，不得把 `admission-core` 路径改写到 `/api/v1/unified-backend/**` 下。
+`backend:8135` 可以把 `admission-core` 作为 in-process 稳定运行单元挂载，用于验证最终合并成一个后端服务的候选形态。该挂载不得改变 `admission-core-service:8131` 的独立入口，不得改变 `/api/v1/admission-core/**`、`/api/v1/onboarding/**`、`/api/v1/exams/**`、`/api/v1/whitelist/**` 或 `/api/v1/attendance/**` 的认证、响应格式、错误码、请求编号、状态流转、幂等和审计规则，不得把 `admission-core` 路径改写到 `/api/v1/unified-backend/**` 下。
 
 ## 运行形态
 
-本地验证运行单元为 `backend/admission-core-service`，本地验证端口为 `8131`。端口 `8108` 到 `8111` 只作为第二批模块历史原服务端口记录，不再作为回归基线。端口 `8130` 继续保留给 `business-core-service`，端口 `8125` 只作为已退役旧 `api-gateway-service` 历史端口记录；当前网关能力由 `unified-backend-service:8135` 自承载。
+本地验证运行单元为 `backend/admission-core-service`，本地验证端口为 `8131`。端口 `8108` 到 `8111` 只作为第二批模块历史原服务端口记录，不再作为回归基线。端口 `8130` 继续保留给 `business-core-service`，端口 `8125` 只作为已退役旧 `api-gateway-service` 历史端口记录；当前网关能力由 `backend:8135` 自承载。
 
 Spring Boot 主应用建议放在 `cn.beiming.admission`，组件扫描范围覆盖 `cn.beiming`。第二批模块应保留原包名 `cn.beiming.onboarding`、`cn.beiming.exam`、`cn.beiming.whitelist` 和 `cn.beiming.attendance`。不得为了合并进行无业务收益的大规模包名迁移。
 
@@ -74,7 +74,7 @@ Spring Boot 主应用建议放在 `cn.beiming.admission`，组件扫描范围覆
 | `moduleName` | string | 是 | 模块展示名。 |
 | `pathPrefix` | string | 是 | 模块路径前缀。 |
 | `contract` | string | 是 | 模块正式契约文件路径。 |
-| `legacyPort` | integer | 是 | 旧微服务端口。 |
+| `legacyPort` | integer | 是 | 旧模块端口。 |
 | `mounted` | boolean | 是 | 模块是否已装配到 `admission-core`。 |
 | `routesTotal` | integer | 是 | 该模块在当前运行单元内登记的路由数量。 |
 | `contractRoutesTotal` | integer | 是 | 该模块契约期望路由数量。 |
@@ -103,7 +103,7 @@ Spring Boot 主应用建议放在 `cn.beiming.admission`，组件扫描范围覆
 | `businessCoreDependency` | object | 是 | 第一批 `business-core` 前序依赖摘要。 |
 | `gatewaySwitchReady` | boolean | 是 | 是否已满足网关切换前置条件。 |
 | `gatewaySwitchStatus` | string | 是 | 网关切换状态，允许 `NOT_READY`、`READY` 或 `COMPLETED`。 |
-| `legacyBaselines` | object[] | 是 | 当前仍保留的外部基线摘要。第二批旧四服务清理后包含 `business-core-service` 和 `unified-backend-service`，不再要求运行已退役的 `api-gateway-service` Maven 入口。 |
+| `legacyBaselines` | object[] | 是 | 当前仍保留的外部基线摘要。第二批旧四服务清理后包含 `business-core-service` 和 `backend`，不再要求运行已退役的 `api-gateway-service` Maven 入口。 |
 | `productionGaps` | string[] | 是 | 生产化差距摘要。 |
 | `generatedAt` | string | 是 | 摘要生成时间。 |
 
@@ -245,7 +245,7 @@ Spring Boot 主应用建议放在 `cn.beiming.admission`，组件扫描范围覆
 }
 ```
 
-业务规则：该接口只读取 `admission-core` 内部装配状态和最近测试摘要，不主动执行四个模块的业务写操作，不调用旧服务进行实时健康探测，不把未完成模块伪装成 `READY`。第二批旧四服务清理后，`gatewaySwitchReady` 的判定只依赖四个模块在 `admission-core` 中的继承契约测试、`business-core-service` 基线和 `unified-backend-service` 基线。只有当统一后端自承载网关契约、测试文档、自动化红灯、实现和相关后端回归均完成后，`gatewaySwitchStatus` 才能为 `COMPLETED`。
+业务规则：该接口只读取 `admission-core` 内部装配状态和最近测试摘要，不主动执行四个模块的业务写操作，不调用旧服务进行实时健康探测，不把未完成模块伪装成 `READY`。第二批旧四服务清理后，`gatewaySwitchReady` 的判定只依赖四个模块在 `admission-core` 中的继承契约测试、`business-core-service` 基线和 `backend` 基线。只有当统一后端自承载网关契约、测试文档、自动化红灯、实现和相关后端回归均完成后，`gatewaySwitchStatus` 才能为 `COMPLETED`。
 
 失败规则：运行单元内部异常返回 `53130`。模块装配信息缺失返回 `53131`。当前登记路由与本文档或四个模块契约期望不一致时返回 `53132` 或在 `status=DEGRADED` 的成功摘要中列入 `gaps`，由实现按是否影响接口可用性决定。认证上下文解析失败返回原模块契约或公共认证错误，可信网关上下文字段缺失或格式不兼容时返回 `53133`。
 
@@ -294,7 +294,7 @@ Spring Boot 主应用建议放在 `cn.beiming.admission`，组件扫描范围覆
 
 同 JVM 内部调用可以从 HTTP client 改为 adapter 或 facade，但 adapter 必须保留失败模拟能力，测试必须能覆盖 auth 不可用、profile 不可用、content 不可用、notification 投递失败、onboarding handoff 不可用、exam handoff 不可用、whitelist handoff 不可用、审计失败、状态写入失败和流水写入失败。
 
-`admission-core` 适配第一批模块时，应优先通过 `business-core` 已稳定的正式 API、认证上下文或清晰 adapter 读取，不得直接导入第一批模块的内存 store、Repository、实体或测试种子绕开边界。确需给第一批模块新增能力时，必须按前序服务兼容变更流程先更新对应正式契约、本地测试文档、自动化测试和实现。
+`admission-core` 适配第一批模块时，应优先通过 `business-core` 已稳定的正式 API、认证上下文或清晰 adapter 读取，不得直接导入第一批模块的内存 store、Repository、实体或测试种子绕开边界。确需给第一批模块新增能力时，必须按前序模块兼容变更流程先更新对应正式契约、本地测试文档、自动化测试和实现。
 
 ## 错误码
 
@@ -314,7 +314,7 @@ Spring Boot 主应用建议放在 `cn.beiming.admission`，组件扫描范围覆
 
 ## 网关策略
 
-当前网关已完成第二批路径切换。第四十七轮后，本地开发态 `api-gateway-service` 独立 Maven 入口已退役；`unified-backend-service:8135` 自承载网关能力，并保持 `onboarding`、`exam`、`whitelist` 和 `attendance` 到 `admission-core-service:8131` 边界的兼容。旧端口 `8108` 到 `8111` 只作为历史原服务端口记录，不再作为网关上游和测试基线。
+当前网关已完成第二批路径切换。第四十七轮后，本地开发态 `api-gateway-service` 独立 Maven 入口已退役；`backend:8135` 自承载网关能力，并保持 `onboarding`、`exam`、`whitelist` 和 `attendance` 到 `admission-core-service:8131` 边界的兼容。旧端口 `8108` 到 `8111` 只作为历史原服务端口记录，不再作为网关上游和测试基线。
 
 | 路由 ID | 路径前缀 | 旧端口 | 目标端口 |
 | --- | --- | --- | --- |
@@ -341,7 +341,7 @@ Spring Boot 主应用建议放在 `cn.beiming.admission`，组件扫描范围覆
 
 `admission-core` 直连合并和第二批网关切换均已完成测试闭环。第二批业务路径经网关访问时仍保持原路径，网关只切换上游端口，不改写业务前缀。
 
-允许 `unified-backend-service:8135` 以不改变路径、认证、响应格式和错误码的方式挂载 `admission-core` 自有 API 以及 `onboarding`、`exam`、`whitelist`、`attendance` 四个业务模块。该候选挂载不能被描述为已退役 `admission-core-service:8131`，也不能绕过四个模块自己的正式契约、测试文档和自动化测试闭环。
+允许 `backend:8135` 以不改变路径、认证、响应格式和错误码的方式挂载 `admission-core` 自有 API 以及 `onboarding`、`exam`、`whitelist`、`attendance` 四个业务模块。该候选挂载不能被描述为已退役 `admission-core-service:8131`，也不能绕过四个模块自己的正式契约、测试文档和自动化测试闭环。
 
 用户确认后，第二批旧服务源码和 Maven 运行入口按明确文件路径逐个清理。旧服务目录不得因本契约自动批量删除；后续如需继续清理残留空目录或其他文件，必须单独确认范围，删除文件只能逐个明确路径处理。
 

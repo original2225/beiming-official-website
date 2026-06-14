@@ -4,7 +4,7 @@
 
 ## 文档定位
 
-本文档是 `server-status` 微服务的正式 API 契约。后续 `resource`、`admin`、`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、前端适配和 `ops-control` 只能通过本文档定义的接口读取玩家可见服务器状态和线路状态，不能直接读取或修改 `server-status` 数据库。
+本文档是 `server-status` 模块的正式 API 契约。后续 `resource`、`admin`、`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、前端适配和 `ops-control` 只能通过本文档定义的接口读取玩家可见服务器状态和线路状态，不能直接读取或修改 `server-status` 数据库。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、时间格式、基础角色、能力点、审计字段、风险等级、通用错误码和请求编号均以公共契约为准。本文档只补充 `server-status` 的职责边界、数据归属、路径、字段、状态、权限、错误码、幂等、状态流转、失败降级、审计和验收口径。
 
@@ -561,4 +561,4 @@ auth 上下文不可用返回 `46500`，auth 调用超时返回 `46501`，auth �
 
 `server-status` API 文档按 `docs/contracts-server-status.md` 独立存在，并由 `.local-docs/tests-server-status.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求和模块验收口径。
 
-`server-status` 完成时必须满足以下条件：全部接口按本文档实现；公开接口不泄露后台检测目标、内部备注、采集凭据、审计字段和运维入口；后台接口按角色限制；手动刷新遵守采集失败和降级规则；历史峰值和开服时长由服务端计算；状态源、线路、宕机记录、快照、审计、自检摘要、requestId、端口配置和 auth 适配都有自动化测试；`.local-docs/tests-server-status.md` 中全部测试用例都有对应自动化验证；未实现时自动化测试必须先失败；实现后 `server-status` 全部测试通过；`auth`、`profile`、`notification` 和 `content` 前序服务回归测试通过；没有修改前序服务稳定接口；没有把资源下载、Cloudreve 分享、容器启停、文件、日志、终端或节点控制能力塞进 `server-status`。
+`server-status` 完成时必须满足以下条件：全部接口按本文档实现；公开接口不泄露后台检测目标、内部备注、采集凭据、审计字段和运维入口；后台接口按角色限制；手动刷新遵守采集失败和降级规则；历史峰值和开服时长由服务端计算；状态源、线路、宕机记录、快照、审计、自检摘要、requestId、端口配置和 auth 适配都有自动化测试；`.local-docs/tests-server-status.md` 中全部测试用例都有对应自动化验证；未实现时自动化测试必须先失败；实现后 `server-status` 全部测试通过；`auth`、`profile`、`notification` 和 `content` 前序模块回归测试通过；没有修改前序模块稳定接口；没有把资源下载、Cloudreve 分享、容器启停、文件、日志、终端或节点控制能力塞进 `server-status`。
