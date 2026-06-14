@@ -21,7 +21,7 @@
 
 第四十七轮完成本地开发态 `api-gateway-service` 入口退役门禁。`unified-backend-service:8135` readiness 暴露 `localApiGatewayEntrypointRetirementStatus`、`localApiGatewayEntrypointRetirementChecks` 和 `localApiGatewayEntrypointRetirementEvidence`，当前 `localApiGatewayEntrypointRetirementStatus=PASS_LOCAL_API_GATEWAY_ENTRYPOINT_RETIRED_UNIFIED_GATEWAY_APIS_PRESERVED`。该门禁只说明旧网关 Maven 入口已退役，网关能力由 `unified-backend-service:8135` 自承载。
 
-本轮按用户确认完成五个 core 独立 Maven 入口本地退役。仓库内后端 Maven 启动入口收束为 `backend/unified-backend-service/pom.xml` 一个；`business-core`、`admission-core`、`engagement-core`、`ops-core` 和 `portal-core` 的业务源码仍保留在各自目录，由 unified 的 build-helper 装配。不得恢复五个 core 的独立 `pom.xml`、`*ServiceApplication.java` 或 `application.yml`，不得删除五个 core 目录和模块业务代码，业务路径、认证、响应格式、错误码和审计口径继续按原契约执行。
+本轮按用户确认完成五个 core 独立 Maven 入口本地退役。仓库内后端 Maven 启动入口收束为 `backend/pom.xml` 一个；`business-core`、`admission-core`、`engagement-core`、`ops-core` 和 `portal-core` 的业务源码仍保留在各自目录，由 unified 的 build-helper 装配。不得恢复五个 core 的独立 `pom.xml`、`*ServiceApplication.java` 或 `application.yml`，不得删除五个 core 目录和模块业务代码，业务路径、认证、响应格式、错误码和审计口径继续按原契约执行。
 
 ## 全局接口规则
 
@@ -35,38 +35,38 @@
 
 | 模块 | 服务目录 | 端口 | API 数 | 正式契约 | 本地测试文档 | 自动化测试入口 |
 | --- | --- | ---: | ---: | --- | --- | --- |
-| `activity` | `backend/engagement-core-service` | 8132 | 41 | `docs/contracts-activity.md` | `.local-docs/tests-activity.md` | `mvn -q -f backend/unified-backend-service/pom.xml test` |
-| `admin` | `backend/business-core-service` | 8130 | 10 | `docs/contracts-admin.md` | `.local-docs/tests-admin.md` | `mvn -q -f backend/unified-backend-service/pom.xml test` |
-| `admission-core` | `backend/admission-core-service` | 8131 | 2 | `docs/contracts-admission-core.md` | `.local-docs/tests-admission-core.md` | `mvn -q -f backend/unified-backend-service/pom.xml test` |
-| `alerting` | `backend/ops-core-service` | 8133 | 24 | `docs/contracts-alerting.md` | `.local-docs/tests-ops-core.md` | `mvn -q -f backend/unified-backend-service/pom.xml test` |
-| `api-gateway` | `backend/unified-backend-service` | 8135 | 8 | `docs/contracts-api-gateway.md` | `.local-docs/tests-unified-backend.md` | `mvn -q -f backend/unified-backend-service/pom.xml test` |
-| `attendance` | `backend/admission-core-service` | 8131 | 21 | `docs/contracts-attendance.md` | `.local-docs/tests-attendance.md` | `mvn -q -f backend/unified-backend-service/pom.xml test` |
-| `auth` | `backend/business-core-service` | 8130 | 20 | `docs/contracts-auth.md` | `.local-docs/tests-auth.md` | `mvn -q -f backend/unified-backend-service/pom.xml test` |
-| `backup-recovery` | `backend/ops-core-service` | 8133 | 25 | `docs/contracts-backup-recovery.md` | `.local-docs/tests-ops-core.md` | `mvn -q -f backend/unified-backend-service/pom.xml test` |
-| `business-core` | `backend/business-core-service` | 8130 | 3 | `docs/contracts-business-core.md` | `.local-docs/tests-business-core.md` | `mvn -q -f backend/unified-backend-service/pom.xml test` |
-| `calendar` | `backend/engagement-core-service` | 8132 | 21 | `docs/contracts-calendar.md` | `.local-docs/tests-calendar.md` | `mvn -q -f backend/unified-backend-service/pom.xml test` |
-| `changelog` | `backend/engagement-core-service` | 8132 | 23 | `docs/contracts-changelog.md` | `.local-docs/tests-changelog.md` | `mvn -q -f backend/unified-backend-service/pom.xml test` |
-| `cloudreve-sync` | `backend/ops-core-service` | 8133 | 16 | `docs/contracts-cloudreve-sync.md` | `.local-docs/tests-ops-core.md` | `mvn -q -f backend/unified-backend-service/pom.xml test` |
-| `community` | `backend/engagement-core-service` | 8132 | 64 | `docs/contracts-community.md` | `.local-docs/tests-community.md` | `mvn -q -f backend/unified-backend-service/pom.xml test` |
-| `content` | `backend/business-core-service` | 8130 | 55 | `docs/contracts-content.md` | `.local-docs/tests-content.md` | `mvn -q -f backend/unified-backend-service/pom.xml test` |
-| `cross-platform-notification` | `backend/ops-core-service` | 8133 | 36 | `docs/contracts-cross-platform-notification.md` | `.local-docs/tests-ops-core.md` | `mvn -q -f backend/unified-backend-service/pom.xml test` |
-| `engagement-core` | `backend/engagement-core-service` | 8132 | 3 | `docs/contracts-engagement-core.md` | `.local-docs/tests-engagement-core.md` | `mvn -q -f backend/unified-backend-service/pom.xml test` |
-| `exam` | `backend/admission-core-service` | 8131 | 28 | `docs/contracts-exam.md` | `.local-docs/tests-exam.md` | `mvn -q -f backend/unified-backend-service/pom.xml test` |
-| `guide` | `backend/portal-core-service` | 8134 | 41 | `docs/contracts-guide.md` | `.local-docs/tests-guide.md` | `mvn -q -f backend/unified-backend-service/pom.xml test` |
-| `material` | `backend/portal-core-service` | 8134 | 33 | `docs/contracts-material.md` | `.local-docs/tests-material.md` | `mvn -q -f backend/unified-backend-service/pom.xml test` |
-| `notification` | `backend/business-core-service` | 8130 | 19 | `docs/contracts-notification.md` | `.local-docs/tests-notification.md` | `mvn -q -f backend/unified-backend-service/pom.xml test` |
-| `onboarding` | `backend/admission-core-service` | 8131 | 15 | `docs/contracts-onboarding.md` | `.local-docs/tests-onboarding.md` | `mvn -q -f backend/unified-backend-service/pom.xml test` |
-| `online-map` | `backend/portal-core-service` | 8134 | 34 | `docs/contracts-online-map.md` | `.local-docs/tests-online-map.md` | `mvn -q -f backend/unified-backend-service/pom.xml test` |
-| `ops-control` | `backend/ops-core-service` | 8133 | 31 | `docs/contracts-ops-control.md` | `.local-docs/tests-ops-core.md` | `mvn -q -f backend/unified-backend-service/pom.xml test` |
-| `ops-core` | `backend/ops-core-service` | 8133 | 5 | `docs/contracts-ops-core.md` | `.local-docs/tests-ops-core.md` | `mvn -q -f backend/unified-backend-service/pom.xml test` |
-| `ops-image-market` | `backend/ops-core-service` | 8133 | 49 | `docs/contracts-ops-image-market.md` | `.local-docs/tests-ops-core.md` | `mvn -q -f backend/unified-backend-service/pom.xml test` |
-| `plugin-integration` | `backend/ops-core-service` | 8133 | 38 | `docs/contracts-plugin-integration.md` | `.local-docs/tests-ops-core.md` | `mvn -q -f backend/unified-backend-service/pom.xml test` |
-| `portal-core` | `backend/portal-core-service` | 8134 | 5 | `docs/contracts-portal-core.md` | `.local-docs/tests-portal-core.md` | `mvn -q -f backend/unified-backend-service/pom.xml test` |
-| `profile` | `backend/business-core-service` | 8130 | 16 | `docs/contracts-profile.md` | `.local-docs/tests-profile.md` | `mvn -q -f backend/unified-backend-service/pom.xml test` |
-| `resource` | `backend/business-core-service` | 8130 | 29 | `docs/contracts-resource.md` | `.local-docs/tests-resource.md` | `mvn -q -f backend/unified-backend-service/pom.xml test` |
-| `server-status` | `backend/business-core-service` | 8130 | 25 | `docs/contracts-server-status.md` | `.local-docs/tests-server-status.md` | `mvn -q -f backend/unified-backend-service/pom.xml test` |
-| `unified-backend` | `backend/unified-backend-service` | 8135 | 5 | `docs/contracts-unified-backend.md` | `.local-docs/tests-unified-backend.md` | `mvn -q -f backend/unified-backend-service/pom.xml test` |
-| `whitelist` | `backend/admission-core-service` | 8131 | 20 | `docs/contracts-whitelist.md` | `.local-docs/tests-whitelist.md` | `mvn -q -f backend/unified-backend-service/pom.xml test` |
+| `activity` | `backend/engagement-core-service` | 8132 | 41 | `docs/contracts-activity.md` | `.local-docs/tests-activity.md` | `mvn -q -f backend/pom.xml test` |
+| `admin` | `backend/business-core-service` | 8130 | 10 | `docs/contracts-admin.md` | `.local-docs/tests-admin.md` | `mvn -q -f backend/pom.xml test` |
+| `admission-core` | `backend/admission-core-service` | 8131 | 2 | `docs/contracts-admission-core.md` | `.local-docs/tests-admission-core.md` | `mvn -q -f backend/pom.xml test` |
+| `alerting` | `backend/ops-core-service` | 8133 | 24 | `docs/contracts-alerting.md` | `.local-docs/tests-ops-core.md` | `mvn -q -f backend/pom.xml test` |
+| `api-gateway` | `backend` | 8135 | 8 | `docs/contracts-api-gateway.md` | `.local-docs/tests-unified-backend.md` | `mvn -q -f backend/pom.xml test` |
+| `attendance` | `backend/admission-core-service` | 8131 | 21 | `docs/contracts-attendance.md` | `.local-docs/tests-attendance.md` | `mvn -q -f backend/pom.xml test` |
+| `auth` | `backend/business-core-service` | 8130 | 20 | `docs/contracts-auth.md` | `.local-docs/tests-auth.md` | `mvn -q -f backend/pom.xml test` |
+| `backup-recovery` | `backend/ops-core-service` | 8133 | 25 | `docs/contracts-backup-recovery.md` | `.local-docs/tests-ops-core.md` | `mvn -q -f backend/pom.xml test` |
+| `business-core` | `backend/business-core-service` | 8130 | 3 | `docs/contracts-business-core.md` | `.local-docs/tests-business-core.md` | `mvn -q -f backend/pom.xml test` |
+| `calendar` | `backend/engagement-core-service` | 8132 | 21 | `docs/contracts-calendar.md` | `.local-docs/tests-calendar.md` | `mvn -q -f backend/pom.xml test` |
+| `changelog` | `backend/engagement-core-service` | 8132 | 23 | `docs/contracts-changelog.md` | `.local-docs/tests-changelog.md` | `mvn -q -f backend/pom.xml test` |
+| `cloudreve-sync` | `backend/ops-core-service` | 8133 | 16 | `docs/contracts-cloudreve-sync.md` | `.local-docs/tests-ops-core.md` | `mvn -q -f backend/pom.xml test` |
+| `community` | `backend/engagement-core-service` | 8132 | 64 | `docs/contracts-community.md` | `.local-docs/tests-community.md` | `mvn -q -f backend/pom.xml test` |
+| `content` | `backend/business-core-service` | 8130 | 55 | `docs/contracts-content.md` | `.local-docs/tests-content.md` | `mvn -q -f backend/pom.xml test` |
+| `cross-platform-notification` | `backend/ops-core-service` | 8133 | 36 | `docs/contracts-cross-platform-notification.md` | `.local-docs/tests-ops-core.md` | `mvn -q -f backend/pom.xml test` |
+| `engagement-core` | `backend/engagement-core-service` | 8132 | 3 | `docs/contracts-engagement-core.md` | `.local-docs/tests-engagement-core.md` | `mvn -q -f backend/pom.xml test` |
+| `exam` | `backend/admission-core-service` | 8131 | 28 | `docs/contracts-exam.md` | `.local-docs/tests-exam.md` | `mvn -q -f backend/pom.xml test` |
+| `guide` | `backend/portal-core-service` | 8134 | 41 | `docs/contracts-guide.md` | `.local-docs/tests-guide.md` | `mvn -q -f backend/pom.xml test` |
+| `material` | `backend/portal-core-service` | 8134 | 33 | `docs/contracts-material.md` | `.local-docs/tests-material.md` | `mvn -q -f backend/pom.xml test` |
+| `notification` | `backend/business-core-service` | 8130 | 19 | `docs/contracts-notification.md` | `.local-docs/tests-notification.md` | `mvn -q -f backend/pom.xml test` |
+| `onboarding` | `backend/admission-core-service` | 8131 | 15 | `docs/contracts-onboarding.md` | `.local-docs/tests-onboarding.md` | `mvn -q -f backend/pom.xml test` |
+| `online-map` | `backend/portal-core-service` | 8134 | 34 | `docs/contracts-online-map.md` | `.local-docs/tests-online-map.md` | `mvn -q -f backend/pom.xml test` |
+| `ops-control` | `backend/ops-core-service` | 8133 | 31 | `docs/contracts-ops-control.md` | `.local-docs/tests-ops-core.md` | `mvn -q -f backend/pom.xml test` |
+| `ops-core` | `backend/ops-core-service` | 8133 | 5 | `docs/contracts-ops-core.md` | `.local-docs/tests-ops-core.md` | `mvn -q -f backend/pom.xml test` |
+| `ops-image-market` | `backend/ops-core-service` | 8133 | 49 | `docs/contracts-ops-image-market.md` | `.local-docs/tests-ops-core.md` | `mvn -q -f backend/pom.xml test` |
+| `plugin-integration` | `backend/ops-core-service` | 8133 | 38 | `docs/contracts-plugin-integration.md` | `.local-docs/tests-ops-core.md` | `mvn -q -f backend/pom.xml test` |
+| `portal-core` | `backend/portal-core-service` | 8134 | 5 | `docs/contracts-portal-core.md` | `.local-docs/tests-portal-core.md` | `mvn -q -f backend/pom.xml test` |
+| `profile` | `backend/business-core-service` | 8130 | 16 | `docs/contracts-profile.md` | `.local-docs/tests-profile.md` | `mvn -q -f backend/pom.xml test` |
+| `resource` | `backend/business-core-service` | 8130 | 29 | `docs/contracts-resource.md` | `.local-docs/tests-resource.md` | `mvn -q -f backend/pom.xml test` |
+| `server-status` | `backend/business-core-service` | 8130 | 25 | `docs/contracts-server-status.md` | `.local-docs/tests-server-status.md` | `mvn -q -f backend/pom.xml test` |
+| `unified-backend` | `backend` | 8135 | 5 | `docs/contracts-unified-backend.md` | `.local-docs/tests-unified-backend.md` | `mvn -q -f backend/pom.xml test` |
+| `whitelist` | `backend/admission-core-service` | 8131 | 20 | `docs/contracts-whitelist.md` | `.local-docs/tests-whitelist.md` | `mvn -q -f backend/pom.xml test` |
 
 ## 合并后运行入口
 
@@ -90,7 +90,7 @@
 | 第四批运维控制面 | `backend/ops-core-service` | 8133 | `ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`ops-image-market` | `8116`、`8118`、`8119`、`8120`、`8122` 和 `8124` 为历史原端口，旧服务目录已退役且不得恢复 |
 | 第五批玩家门户体验 | `backend/portal-core-service` | 8134 | `guide`、`material`、`online-map` | `8127`、`8126` 和 `8121` 为历史原端口；`guide`、`material` 和 `online-map` 旧服务目录已退役且不得恢复 |
 | 第六期跨平台通知控制面 | `backend/ops-core-service` | 8133 | `cross-platform-notification` | `8123` 为历史原端口，旧服务目录退役后不得恢复 |
-| 统一后端候选入口 | `backend/unified-backend-service` | 8135 | 候选挂载 `api-gateway` 自有 API、`business-core` 自有 API、`admission-core` 自有 API、`engagement-core` 自有 API、`ops-core` 自有 API、`portal-core` 自有 API、`auth`、`profile`、`notification`、`content`、`server-status`、`resource`、`admin`、`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、`ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`cross-platform-notification`、`ops-image-market`、`guide`、`material`、`online-map` | 当前唯一后端 Maven 启动入口，外部节点执行器不在仓库内挂载 |
+| 统一后端候选入口 | `backend` | 8135 | 候选挂载 `api-gateway` 自有 API、`business-core` 自有 API、`admission-core` 自有 API、`engagement-core` 自有 API、`ops-core` 自有 API、`portal-core` 自有 API、`auth`、`profile`、`notification`、`content`、`server-status`、`resource`、`admin`、`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、`ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`cross-platform-notification`、`ops-image-market`、`guide`、`material`、`online-map` | 当前唯一后端 Maven 启动入口，外部节点执行器不在仓库内挂载 |
 
 ## 依赖顺序和边界
 

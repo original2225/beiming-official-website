@@ -275,21 +275,21 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
         "service": "business-core-service",
         "port": 8130,
         "contract": "docs/contracts-business-core.md",
-        "testCommand": "mvn -q -f backend/unified-backend-service/pom.xml test",
+        "testCommand": "mvn -q -f backend/pom.xml test",
         "lastVerifiedAt": "2026-06-03T00:00:00+08:00"
       },
       {
         "service": "admission-core-service",
         "port": 8131,
         "contract": "docs/contracts-admission-core.md",
-        "testCommand": "mvn -q -f backend/unified-backend-service/pom.xml test",
+        "testCommand": "mvn -q -f backend/pom.xml test",
         "lastVerifiedAt": "2026-06-03T00:00:00+08:00"
       },
       {
         "service": "unified-backend-service",
         "port": 8135,
         "contract": "docs/contracts-unified-backend.md",
-        "testCommand": "mvn -f backend/unified-backend-service/pom.xml test",
+        "testCommand": "mvn -f backend/pom.xml test",
         "lastVerifiedAt": "2026-06-03T00:00:00+08:00"
       }
     ],
@@ -528,13 +528,13 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
 
 `community` 必须先迁入，因为它是社区互动和治理底座，也是 activity 可选讨论快照来源。`activity` 必须在 community 之后迁入，因为它只能消费 community 公开快照。`calendar` 必须在 activity 之后迁入，因为它只能消费 activity 日历摘要。`changelog` 必须在 calendar 之后迁入，因为它保存 calendar 同步摘要和发布日程引用。
 
-第三批旧四服务清理后，后续补强必须先根据本文档和该模块正式契约生成或补齐 `engagement-core` 自动化测试，确认测试因为行为不满足而失败，再修改当前实现。实现后必须运行 `mvn -q -f backend/unified-backend-service/pom.xml test` 覆盖 `engagement-core` 对应测试和当前前序依赖测试，不得恢复或执行旧四服务测试。
+第三批旧四服务清理后，后续补强必须先根据本文档和该模块正式契约生成或补齐 `engagement-core` 自动化测试，确认测试因为行为不满足而失败，再修改当前实现。实现后必须运行 `mvn -q -f backend/pom.xml test` 覆盖 `engagement-core` 对应测试和当前前序依赖测试，不得恢复或执行旧四服务测试。
 
 ## 验收口径
 
 `engagement-core` 完成的最低标准是，单进程承载第三批四个业务模块的全部既有 API 路径，且响应格式、错误码、认证、权限、请求编号、分页、状态流转、幂等、审计和降级行为与四个模块正式契约一致。
 
-当前统一后端回归命令 `mvn -q -f backend/unified-backend-service/pom.xml test` 必须覆盖本文档三个自有接口和四个模块继承过来的全部契约测试。第三批旧服务清理后，相关回归基线由统一后端装配的 `engagement-core`、`business-core` 和 `admission-core` 模块承担，不得为了测试恢复 `community-service`、`activity-service`、`calendar-service`、`changelog-service` 或已退役的 `api-gateway-service` Maven 入口。
+当前统一后端回归命令 `mvn -q -f backend/pom.xml test` 必须覆盖本文档三个自有接口和四个模块继承过来的全部契约测试。第三批旧服务清理后，相关回归基线由统一后端装配的 `engagement-core`、`business-core` 和 `admission-core` 模块承担，不得为了测试恢复 `community-service`、`activity-service`、`calendar-service`、`changelog-service` 或已退役的 `api-gateway-service` Maven 入口。
 
 当前阶段不得把 `engagement-core` 的自检、代表路由测试或 149 个业务 `METHOD path` 路由签名测试视为第三批业务完成。只有 149 个业务方法路由的行为继承契约测试和 3 个自有接口测试都进入自动化验证，并且统一后端回归全绿，第三批合并后完善闭环才算完成。
 

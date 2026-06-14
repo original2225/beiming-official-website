@@ -347,6 +347,6 @@
     ]
   },
   "verificationCommands": [
-    "mvn -q -f backend/unified-backend-service/pom.xml test"
+    "mvn -q -f backend/pom.xml test"
   ]
 }

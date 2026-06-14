@@ -71,7 +71,7 @@
     ]
   },
   "mavenEntrypoints": [
-    "backend/unified-backend-service/pom.xml"
+    "backend/pom.xml"
   ],
   "redactionPolicy": {
     "forbiddenValueFragments": [
@@ -113,7 +113,7 @@
     "deleteListPermitGenerated": false
   },
   "verificationCommands": [
-    "mvn -q -f backend/unified-backend-service/pom.xml test"
+    "mvn -q -f backend/pom.xml test"
   ],
   "notes": [
     "sample only; do not store real urls, ips, tokens, cookies, commands, dashboards or logs",

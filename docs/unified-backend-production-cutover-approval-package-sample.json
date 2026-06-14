@@ -267,7 +267,7 @@
     "nextEligibleEntrypoint": "NONE_UNTIL_TRAFFIC_SWITCH_AND_ROLLBACK_WINDOW_COMPLETE"
   },
   "verificationCommands": [
-    "mvn -q -f backend/unified-backend-service/pom.xml test"
+    "mvn -q -f backend/pom.xml test"
   ],
   "securityPolicy": {
     "credentialHeadersAllowed": false,

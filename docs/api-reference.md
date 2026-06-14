@@ -10061,7 +10061,7 @@ notification 是辅助依赖。发布、下架和安全修复通知失败不得�
 
 ### 验收口径
 
-`engagement-core` API 文档按 `docs/contracts-engagement-core.md` 独立存在，并由 `.local-docs/tests-engagement-core.md` 记录本地测试闭环。当前统一后端回归命令 `mvn -q -f backend/unified-backend-service/pom.xml test` 必须覆盖三个自有接口、149 个第三批业务 `METHOD path` 路由签名、community、activity、calendar 和 changelog 完整行为契约迁入、旧服务不恢复保护和后续生产化缺口公开。
+`engagement-core` API 文档按 `docs/contracts-engagement-core.md` 独立存在，并由 `.local-docs/tests-engagement-core.md` 记录本地测试闭环。当前统一后端回归命令 `mvn -q -f backend/pom.xml test` 必须覆盖三个自有接口、149 个第三批业务 `METHOD path` 路由签名、community、activity、calendar 和 changelog 完整行为契约迁入、旧服务不恢复保护和后续生产化缺口公开。
 
 第三批旧服务已经清理。后续测试不得恢复、重建或执行 `backend/community-service`、`backend/activity-service`、`backend/calendar-service` 和 `backend/changelog-service` 的 Maven 入口。
 
@@ -12004,7 +12004,7 @@ provider 探测失败时不清空旧公开入口。公开接口可以返回最�
 
 `online-map` API 文档必须按 `docs/contracts-online-map.md` 独立存在，并由 `.local-docs/tests-online-map.md` 记录本地测试闭环。本文档列出的每个接口都必须有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、能力点不足、资源不存在、状态冲突、幂等或并发边界、状态流转、失败降级、审计要求、敏感字段脱敏、测试控制头默认关闭和模块验收口径。
 
-`online-map` 完成时必须满足以下条件：当前运行入口由 `unified-backend-service:8135` 挂载，历史 `online-map-service:8121` Maven 入口已退役且不得恢复；健康检查公开且不泄露敏感信息；公开接口只返回公开可见、已启用、未归档且脱敏的数据；后台接口按角色和能力点限制；provider、world、layer、marker、region、embed、健康快照、审计、幂等、状态流转、URL 安全、坐标边界、依赖降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；自动化测试必须先红灯；实现后 `mvn -q -f backend/unified-backend-service/pom.xml test` 通过并覆盖 `online-map` 全部 34 个 API；当前后端运行入口回归通过；边界扫描无违规命中；不修改前序服务稳定接口；不直接调用 `external-node-executor`；不读取真实世界目录；不代理真实瓦片；不执行真实地图插件命令；不把地图渲染、资源下载、节点文件管理、终端、备份恢复或告警规则塞进 `online-map`。
+`online-map` 完成时必须满足以下条件：当前运行入口由 `unified-backend-service:8135` 挂载，历史 `online-map-service:8121` Maven 入口已退役且不得恢复；健康检查公开且不泄露敏感信息；公开接口只返回公开可见、已启用、未归档且脱敏的数据；后台接口按角色和能力点限制；provider、world、layer、marker、region、embed、健康快照、审计、幂等、状态流转、URL 安全、坐标边界、依赖降级、审计失败回滚、敏感字段脱敏、测试控制头默认关闭和自检摘要都有自动化验证；自动化测试必须先红灯；实现后 `mvn -q -f backend/pom.xml test` 通过并覆盖 `online-map` 全部 34 个 API；当前后端运行入口回归通过；边界扫描无违规命中；不修改前序服务稳定接口；不直接调用 `external-node-executor`；不读取真实世界目录；不代理真实瓦片；不执行真实地图插件命令；不把地图渲染、资源下载、节点文件管理、终端、备份恢复或告警规则塞进 `online-map`。
 
 ## 北冥官网 plugin-integration API 契约
 
@@ -14002,7 +14002,7 @@ P0 `api-gateway` 是本地契约实现，必须在自检摘要中明确以下生
 
 本文档列出的每个网关自有接口都有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、分页排序、状态刷新、失败降级、日志脱敏和验收口径。运行拓扑测试必须确认当前本地后端 Maven 入口已收束到 `unified-backend-service:8135`、五个 core 模块源码继续保留并由统一后端装配、历史 `api-gateway-service:8125` 不再作为当前本地 Maven 入口、外部节点执行器出仓且未接入、25 条业务转发路由、8 个网关自有 API、5 个 core 运行单元归属、已退役旧入口未恢复、静态服务发现仍未接入，并确认 `unified-backend-service:8135` 已自承载网关自有 API 与五个 core 挂载。业务转发测试必须覆盖 25 个已接入路径前缀，确认路由表端口准确、`api-gateway.upstreams.ops-core-base-url` 只覆盖七个 ops-core 承载路由、请求编号透传、请求编号非法拒绝、认证头透传、可信身份头剥离、客户端伪造签名头剥离、`auth` 会话校验成功后的可信身份和内部签名注入、`auth` 校验失败后的不注入降级、查询参数透传、JSON body 透传、请求体大小限制、响应头白名单、上游 2xx 透传、上游 4xx 透传、上游 5xx 透传、未知路径、非法方法、CORS 预检、上游不可用、上游超时和敏感字段不落日志。
 
-开发完成后必须执行 `mvn -q -f backend/unified-backend-service/pom.xml test`。第一批到第五批旧服务清理后，不得为了网关回归恢复对应旧服务目录、旧 Maven 入口、旧启动类或旧测试命令。第四批和第五批业务路径必须继续由统一后端装配的 `ops-core` 和 `portal-core` 模块覆盖测试。旧 `backend/online-map-service` 已退役且不得恢复。测试过程必须写入 `.local-docs/tests-api-gateway.md`。
+开发完成后必须执行 `mvn -q -f backend/pom.xml test`。第一批到第五批旧服务清理后，不得为了网关回归恢复对应旧服务目录、旧 Maven 入口、旧启动类或旧测试命令。第四批和第五批业务路径必须继续由统一后端装配的 `ops-core` 和 `portal-core` 模块覆盖测试。旧 `backend/online-map-service` 已退役且不得恢复。测试过程必须写入 `.local-docs/tests-api-gateway.md`。
 
 ## 北冥官网 unified-backend API 契约
 
@@ -14038,7 +14038,7 @@ HTTP smoke 至少覆盖 `UNIFIED_HEALTH`、`GATEWAY_HEALTH`、`BUSINESS_CORE_HEA
 
 第四十六轮真实生产入口切流证据闭环门禁要求 readiness 额外暴露 `realProductionEntrypointCutoverStatus`、`realProductionEntrypointCutoverChecks` 和 `realProductionEntrypointCutoverEvidence`。默认 `realProductionEntrypointCutoverStatus=BLOCKED_BY_REAL_PRODUCTION_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED`，正式样板为 `docs/unified-backend-real-production-entrypoint-cutover-evidence-sample.json`。该 evidence 只证明 `unified-backend-service:8135` 具备真实生产入口切流证据接收、切流窗口引用、生产流量观测引用、旧网关新流量归零引用、audit write smoke 引用、dashboard、alert、trace、回滚和审批引用的本地门禁，不证明真实生产入口已切换。本字段只证明真实生产入口切流证据是否完整，即使真实生产切流证据字段被置为已应用，`oldApiGatewayRetirementAllowed` 仍必须保持 `false`。
 
-验收时必须确认 `backend/unified-backend-service` 可独立测试，真实 HTTP 演练、路由漂移扫描、后端单服务准备 evidence、最终单服务后端侧收束 evidence、入口切换执行 evidence、生产入口切换阻塞 evidence、外部入口切换适配与观测 evidence、外部入口切流配置样板 evidence、外部入口切流本地演练 evidence、生产切换 runbook evidence、集中配置 provider 本地 file 演练 evidence、audit sink 本地 JSONL adapter 演练 evidence、`api-gateway` 退役门禁 evidence、五个 core 退役前置矩阵、生产化硬化前置矩阵、生产集中配置前置矩阵和生产审计 sink 接入前置矩阵有自动化覆盖，当前本地后端 Maven 入口和候选入口均为 `unified-backend-service:8135`，外部节点执行器不进入候选入口源码扫描和 component scan，已退役旧服务入口没有恢复，生产源码危险删除命令、真实节点执行、终端、RCON、Docker 执行和备份恢复写入扫描无命中。第三十五轮生产切换 runbook 本地演练完成后只能说明候选入口具备真实外部入口切换前的配置样板、回滚口径、32 个 smoke 目标、统一后端 Maven 回归入口、灰度计划、观测字段、回滚命令、退役顺序、删除禁令、脱敏演练证据、可替换 provider 骨架和可替换 audit sink adapter 骨架；由于仓库内没有真实前端、反向代理或部署入口配置，真实集中配置 provider、生产 profile、敏感配置外置和持久化审计也未接入，不能说明已经完成生产流量切换、前端或外部代理切换、真实集中配置接入、真实审计接入、`api-gateway` 真实退役、五个 core 生产退役或外部节点执行器合并。
+验收时必须确认 `backend` 可独立测试，真实 HTTP 演练、路由漂移扫描、后端单服务准备 evidence、最终单服务后端侧收束 evidence、入口切换执行 evidence、生产入口切换阻塞 evidence、外部入口切换适配与观测 evidence、外部入口切流配置样板 evidence、外部入口切流本地演练 evidence、生产切换 runbook evidence、集中配置 provider 本地 file 演练 evidence、audit sink 本地 JSONL adapter 演练 evidence、`api-gateway` 退役门禁 evidence、五个 core 退役前置矩阵、生产化硬化前置矩阵、生产集中配置前置矩阵和生产审计 sink 接入前置矩阵有自动化覆盖，当前本地后端 Maven 入口和候选入口均为 `unified-backend-service:8135`，外部节点执行器不进入候选入口源码扫描和 component scan，已退役旧服务入口没有恢复，生产源码危险删除命令、真实节点执行、终端、RCON、Docker 执行和备份恢复写入扫描无命中。第三十五轮生产切换 runbook 本地演练完成后只能说明候选入口具备真实外部入口切换前的配置样板、回滚口径、32 个 smoke 目标、统一后端 Maven 回归入口、灰度计划、观测字段、回滚命令、退役顺序、删除禁令、脱敏演练证据、可替换 provider 骨架和可替换 audit sink adapter 骨架；由于仓库内没有真实前端、反向代理或部署入口配置，真实集中配置 provider、生产 profile、敏感配置外置和持久化审计也未接入，不能说明已经完成生产流量切换、前端或外部代理切换、真实集中配置接入、真实审计接入、`api-gateway` 真实退役、五个 core 生产退役或外部节点执行器合并。
 
 本阶段允许 `unified-backend-service:8135` 以 in-process 方式挂载 `business-core`、`admission-core`、`engagement-core` 和 `ops-core`。该候选挂载不改变 `business-core-service:8130`、`admission-core-service:8131`、`engagement-core-service:8132` 或 `ops-core-service:8133` 的独立入口，不改变 `/api/v1/business-core/**`、`/api/v1/admission-core/**`、`/api/v1/engagement-core/**`、`/api/v1/ops-core/**`、`/api/v1/auth/**`、`/api/v1/profile/**`、`/api/v1/notifications/**`、`/api/v1/content/**`、`/api/v1/server-status/**`、`/api/v1/resources/**`、`/api/v1/admin/**`、`/api/v1/onboarding/**`、`/api/v1/exams/**`、`/api/v1/whitelist/**`、`/api/v1/attendance/**`、`/api/v1/community/**`、`/api/v1/activity/**`、`/api/v1/calendar/**`、`/api/v1/changelog/**`、`/api/v1/ops-control/**`、`/api/v1/cloudreve-sync/**`、`/api/v1/backup-recovery/**`、`/api/v1/alerting/**`、`/api/v1/plugin-integration/**`、`/api/v1/cross-platform-notification/**` 或 `/api/v1/ops-image-market/**` 的路径、认证、响应格式和错误码。
 
@@ -15051,4 +15051,4 @@ resource 和 server-status 引用失败时不得影响指南正文公开读取�
 
 第四十七轮本地开发态 `api-gateway-service` 入口退役要求 `unified-backend-service:8135` readiness 额外暴露 `localApiGatewayEntrypointRetirementStatus`、`localApiGatewayEntrypointRetirementChecks` 和 `localApiGatewayEntrypointRetirementEvidence`。当前 `localApiGatewayEntrypointRetirementStatus=PASS_LOCAL_API_GATEWAY_ENTRYPOINT_RETIRED_UNIFIED_GATEWAY_APIS_PRESERVED`，表示旧网关 Maven 入口已逐文件退役，统一后端已自承载网关能力。该门禁不要求 Nginx、Cloudflare、真实域名或生产流量证据。
 
-本轮五个 core 独立 Maven 入口完成本地退役。`backend/unified-backend-service/pom.xml` 是唯一后端 Maven 启动入口；五个 core 的模块源码仍由 unified build-helper 装配。不得恢复 `backend/business-core-service/pom.xml`、`backend/admission-core-service/pom.xml`、`backend/engagement-core-service/pom.xml`、`backend/ops-core-service/pom.xml`、`backend/portal-core-service/pom.xml` 以及对应独立启动类和 `application.yml`，不得删除模块源码或改变原业务 API。
+本轮五个 core 独立 Maven 入口完成本地退役。`backend/pom.xml` 是唯一后端 Maven 启动入口；五个 core 的模块源码仍由 unified build-helper 装配。不得恢复 `backend/business-core-service/pom.xml`、`backend/admission-core-service/pom.xml`、`backend/engagement-core-service/pom.xml`、`backend/ops-core-service/pom.xml`、`backend/portal-core-service/pom.xml` 以及对应独立启动类和 `application.yml`，不得删除模块源码或改变原业务 API。

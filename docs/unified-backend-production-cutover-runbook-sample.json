@@ -91,7 +91,7 @@
   "rollbackPlan": {
     "rollbackTarget": "http://127.0.0.1:8125",
     "rollbackCommands": [
-      "mvn -q -f backend/unified-backend-service/pom.xml test"
+      "mvn -q -f backend/pom.xml test"
     ],
     "postRollbackChecks": [
       "git diff --check",
@@ -114,7 +114,7 @@
     ]
   },
   "verificationCommands": [
-    "mvn -q -f backend/unified-backend-service/pom.xml test"
+    "mvn -q -f backend/pom.xml test"
   ],
   "smokeTargets": [
     { "targetKey": "UNIFIED_HEALTH", "method": "GET", "path": "/api/v1/unified-backend/health" },
