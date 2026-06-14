@@ -4504,6 +4504,44 @@ class UnifiedBackendApiContractTest {
     }
 
     @Test
+    void externalEntrypointCutoverEvidenceIntakeGateIsDocumentedAcrossOperationalHandbooks() throws Exception {
+        Map<String, String> docs = Map.of(
+                "contracts-overview", Files.readString(Path.of("../docs/contracts-overview.md")),
+                "api-reference", Files.readString(Path.of("../docs/api-reference.md")),
+                "frontend-api-handbook", Files.readString(Path.of("../docs/frontend-api-handbook.md")),
+                "frontend-development-guide", Files.readString(Path.of("../docs/frontend-development-guide.md")),
+                "system-design", Files.readString(Path.of("../docs/system-design.md")),
+                "development-governance", Files.readString(Path.of("../docs/development-governance.md"))
+        );
+
+        docs.forEach((name, text) -> assertThat(text)
+                .as(name)
+                .contains("externalEntrypointCutoverEvidenceIntakeStatus")
+                .contains("BLOCKED_BY_EXTERNAL_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED")
+                .contains("docs/unified-backend-external-entrypoint-cutover-evidence-intake-sample.json")
+                .contains("readyForProduction=false")
+                .contains("readyToReplaceGateway=false")
+                .contains("oldApiGatewayRetirementAllowed=false")
+                .contains("unified-backend-service:8135"));
+
+        assertThat(docs.get("api-reference"))
+                .contains("frontendEntrypointRef")
+                .contains("reverseProxyUpstreamRef")
+                .contains("deploymentEntrypointRef")
+                .contains("rollbackEntrypointRef")
+                .contains("canaryWeightRef")
+                .contains("observabilityRef")
+                .contains("approvalRef");
+        assertThat(docs.get("frontend-api-handbook"))
+                .contains("VITE_API_BASE_URL")
+                .contains("/api/v1/**")
+                .contains("外部入口与切流证据接收门禁");
+        assertThat(docs.get("frontend-development-guide"))
+                .contains("/api/v1/auth/login")
+                .contains("不得展示成真实生产切流完成");
+    }
+
+    @Test
     void apiGatewayExternalRetirementEvidenceGateIsDocumentedAcrossOperationalHandbooks() throws Exception {
         Map<String, String> docs = Map.of(
                 "contracts-overview", Files.readString(Path.of("../docs/contracts-overview.md")),

@@ -72,6 +72,8 @@ API 文档必须放在 `docs/`，并按 `docs/contracts-<module>.md` 独立命�
 
 第四十六轮真实生产入口切流证据闭环门禁也必须单独闭环。`realProductionEntrypointCutoverStatus=BLOCKED_BY_REAL_PRODUCTION_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED` 时，只能说明 `docs/unified-backend-real-production-entrypoint-cutover-evidence-sample.json`、候选入口引用、旧入口引用、切流窗口引用、生产流量观测引用、旧网关新流量归零引用、真实 audit write smoke 引用、dashboard、alert、trace、回滚和审批结构已经入仓，不代表真实生产入口切流已经发生。没有仓库外真实脱敏切流证据时，不得声明生产入口已经切到 `unified-backend-service:8135`。即使切流证据样板完整，`oldApiGatewayRetirementAllowed` 仍必须保持 `false`，生产态旧网关退役仍需要后续外部证据闭环。
 
+第五十一轮外部入口与切流证据接收门禁也必须单独闭环。`externalEntrypointCutoverEvidenceIntakeStatus=BLOCKED_BY_EXTERNAL_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED` 时，只能说明 `docs/unified-backend-external-entrypoint-cutover-evidence-intake-sample.json`、前端入口引用、反向代理 upstream 引用、部署入口引用、回滚入口引用、灰度权重引用、观测引用和审批引用这些脱敏证据格式已经入仓，不代表真实外部入口已配置，不代表真实生产切流已经发生。仓库内不得写真实域名、token、连接串、dashboard 地址或部署平台地址；没有真实外部证据、集中配置 provider、持久化审计 sink 和真实观测 smoke 前，`readyForProduction=false`、`readyToReplaceGateway=false` 和 `oldApiGatewayRetirementAllowed=false` 必须保持不变。
+
 清理 `.local-docs/` 时也必须遵守删除规则。只能删除一个明确路径的文件，不能删除整个目录，不能使用递归删除命令。需要清理多个文件时，先列出路径并获得用户确认，再逐个删除。
 
 

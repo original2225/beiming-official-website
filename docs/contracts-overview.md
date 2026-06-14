@@ -18,6 +18,8 @@
 
 第四十六轮新增真实生产入口切流证据闭环门禁。`unified-backend-service:8135` readiness 需要暴露 `realProductionEntrypointCutoverStatus`、`realProductionEntrypointCutoverChecks` 和 `realProductionEntrypointCutoverEvidence`，默认 `realProductionEntrypointCutoverStatus=BLOCKED_BY_REAL_PRODUCTION_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED`。正式脱敏样板为 `docs/unified-backend-real-production-entrypoint-cutover-evidence-sample.json`。该状态只表示仓库内已经具备真实生产入口切流证据结构、切流窗口引用槽位、生产流量观测引用槽位、旧网关新流量归零引用槽位、真实 audit write smoke 引用槽位、dashboard、alert、trace、回滚和审批门禁，不表示真实生产入口已经切到 `unified-backend-service:8135`。即使切流证据样板完整，`oldApiGatewayRetirementAllowed` 仍必须保持 `false`。
 
+第五十一轮新增外部入口与切流证据接收门禁。`unified-backend-service:8135` readiness 需要暴露 `externalEntrypointCutoverEvidenceIntakeStatus`、`externalEntrypointCutoverEvidenceIntakeChecks` 和 `externalEntrypointCutoverEvidenceIntakeEvidence`，默认 `externalEntrypointCutoverEvidenceIntakeStatus=BLOCKED_BY_EXTERNAL_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED`。正式脱敏样板为 `docs/unified-backend-external-entrypoint-cutover-evidence-intake-sample.json`。该状态只表示仓库内已经具备前端入口、反向代理 upstream、部署入口、回滚入口、灰度权重、观测引用和审批引用的证据接收格式，不读取真实域名、token、连接串或 dashboard 地址，不执行真实切流。没有仓库外真实证据时，`readyForProduction=false`、`readyToReplaceGateway=false` 和 `oldApiGatewayRetirementAllowed=false` 必须保持不变。
+
 
 第四十七轮完成本地开发态 `api-gateway-service` 入口退役门禁。`unified-backend-service:8135` readiness 暴露 `localApiGatewayEntrypointRetirementStatus`、`localApiGatewayEntrypointRetirementChecks` 和 `localApiGatewayEntrypointRetirementEvidence`，当前 `localApiGatewayEntrypointRetirementStatus=PASS_LOCAL_API_GATEWAY_ENTRYPOINT_RETIRED_UNIFIED_GATEWAY_APIS_PRESERVED`。该门禁只说明旧网关 Maven 入口已退役，网关能力由 `unified-backend-service:8135` 自承载。
 

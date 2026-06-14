@@ -124,6 +124,8 @@ API 网关或后端入口
 
 第四十六轮在候选入口上增加真实生产入口切流证据闭环门禁。该门禁只读取仓库内脱敏样板 `docs/unified-backend-real-production-entrypoint-cutover-evidence-sample.json` 和经过脱敏复核的切流证据结构，默认 `realProductionEntrypointCutoverStatus=BLOCKED_BY_REAL_PRODUCTION_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED`。它只证明系统已经具备接收真实生产入口切流、切流窗口、生产流量观测、旧网关新流量归零、真实 audit write smoke、dashboard、alert、trace、回滚和审批的结构化门禁，不证明这些外部事实已经发生。即使切流证据样板完整，`oldApiGatewayRetirementAllowed` 仍保持 `false`，`api-gateway-service:8125` 仍是受保护回滚入口，五个 core 不进入退役执行。
 
+第五十一轮在候选入口上增加外部入口与切流证据接收门禁。该门禁只读取仓库内脱敏样板 `docs/unified-backend-external-entrypoint-cutover-evidence-intake-sample.json` 和经过脱敏复核的外部入口证据结构，默认 `externalEntrypointCutoverEvidenceIntakeStatus=BLOCKED_BY_EXTERNAL_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED`。它只证明系统已经具备接收前端入口、反向代理 upstream、部署入口、回滚入口、灰度权重、观测引用和审批引用的结构化格式，不证明真实外部入口已配置，不读取真实域名、token、连接串或 dashboard 地址，不执行真实切流。没有真实外部入口证据、集中配置 provider、持久化审计 sink 和真实观测 smoke 时，`readyForProduction=false`、`readyToReplaceGateway=false` 和 `oldApiGatewayRetirementAllowed=false` 必须保持不变，`unified-backend-service:8135` 仍只能作为受控候选入口。
+
 
 第四十七轮在候选入口上完成本地开发态 `api-gateway-service` 入口退役门禁。当前 `localApiGatewayEntrypointRetirementStatus=PASS_LOCAL_API_GATEWAY_ENTRYPOINT_RETIRED_UNIFIED_GATEWAY_APIS_PRESERVED`，只证明 `unified-backend-service:8135` 已自承载网关能力，不证明真实生产切流完成。
 
