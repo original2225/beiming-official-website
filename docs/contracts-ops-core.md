@@ -1,158 +1,53 @@
 # 北冥官网 ops-core API 契约
 
-版本：0.3
+版本：1.0
 
 ## 文档定位
 
-本文档是 `ops-core-service` 运行合并单元的正式 API 契约。`ops-core` 负责承载第四期后台运维控制面和第六期跨平台通知控制面合并后的运行入口、自检摘要、模块装配摘要、生产就绪诊断、继承路由漂移防线、测试控制头总开关和网关切换验收口径。
+本文档是 `ops-core` 模块在当前模块化单体架构下的正式 API 契约。当前仓库唯一后端 Maven 入口是 `backend/pom.xml`，本地后端服务端口是 `8135`，所有接口通过 `http://127.0.0.1:8135` 访问，业务路径保持 `/api/v1/**` 原样。
 
-本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、请求编号、时间格式、基础角色、运维能力点、审计字段、风险等级和通用错误码均以公共契约为准。七个被承载业务模块的业务接口仍分别以 `docs/contracts-ops-control.md`、`docs/contracts-cloudreve-sync.md`、`docs/contracts-backup-recovery.md`、`docs/contracts-alerting.md`、`docs/contracts-plugin-integration.md`、`docs/contracts-ops-image-market.md` 和 `docs/contracts-cross-platform-notification.md` 为准。本文档不得混写七个模块的业务 API 字段、状态机或错误码。
+当前实现来源为 `backend/src/main/java/cn/beiming/opscore/OpsCoreModule.java`。`ops-core` 在运行上由 `unified-backend` 装配进统一后端进程，模块数据归属、路径前缀、错误码、认证方式、审计规则和状态流转仍按本文档独立维护。历史独立服务入口和历史端口只允许作为追溯字段或脱敏证据引用，不作为当前开发、联调、测试或前端调用入口。
 
-## 职责边界
+## 模块边界
 
-`ops-core` 承载 `ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`ops-image-market` 和 `cross-platform-notification` 七个后台运维与通知控制面模块。合并后这些模块继续使用原路径前缀，分别是 `/api/v1/ops-control`、`/api/v1/cloudreve-sync`、`/api/v1/backup-recovery`、`/api/v1/alerting`、`/api/v1/plugin-integration`、`/api/v1/ops-image-market` 和 `/api/v1/cross-platform-notification`。
+`ops-core` 负责统一后端内的运维核心运行面，承载 ops-control、cloudreve-sync、backup-recovery、alerting、plugin-integration、cross-platform-notification 和 ops-image-market 的健康、readiness 与 smoke。它不直接读写其他模块主数据。跨模块协作通过统一后端内的正式接口或认证上下文完成，可以保存高频展示快照，但快照不是主数据。
 
-`ops-core` 不新增七个业务模块的业务语义，不把七套 store、状态机、错误码、审计对象或主数据揉成一个大模块，不直接读取前序模块数据库，不绕过正式 API 适配前序模块，也不执行真实宿主机、容器、节点、Cloudreve、registry、scanner、插件命令或真实外部消息发送。
+## 基础契约
 
-`api-gateway-service` 仍保持独立。外部节点执行器已出仓，不再作为官网仓库内 `ops-core` 合并对象。第六期完成后 `cross-platform-notification` 只保留独立模块契约身份，不再保留独立 Maven 运行入口。`ops-core` 可以展示真实能力未接入的缺口，但不能把模拟、stub、fake 或 blocked 状态伪造成生产完成。
+本模块遵守 `docs/contracts-common.md`。成功响应统一为 `code=0`、`message=success`、`data=<payload>`。分页响应统一放在 `data.items`、`data.page`、`data.pageSize` 和 `data.total`。认证请求统一使用 `Authorization: Bearer <token>`。后台接口必须校验 `OWNER`、`ADMIN`、`HELPER` 或模块能力点。运维类接口还必须校验细粒度能力点、二次确认和高风险审批。
 
-## 基础路径、端口和认证
+## 接口清单
 
-`ops-core-service` 本地端口固定为 `8133`。
+当前代码暴露 5 个 `ops-core` 路由。下表根据当前控制器注解生成。
 
-`ops-core` 自有接口使用 `/api/v1/ops-core` 前缀。健康检查公开可访问。后台自检、模块装配、生产就绪诊断和 HTTP smoke 接口要求 `Authorization: Bearer <token>`，本地契约实现允许 `owner-token` 和 `admin-token` 访问，`helper-token` 与 `user-token` 返回 `42001`，缺失 token 返回 `41000`，格式错误返回 `41003`。
-
-通过网关注入的可信身份头也可访问后台自有接口。可信上下文必须同时包含合法 `X-Gateway-Internal-Request-Id`、`X-Gateway-Internal-Timestamp`、`X-Gateway-Internal-Signature`、`X-Beiming-Actor-User-Id` 和角色头。角色必须为 `ADMIN` 或 `OWNER`。缺少必要字段、请求编号非法、角色枚举非法、能力点枚举非法、签名错误、签名时间戳过期或签名明文不匹配时返回 `53233`。
-
-浏览器直连时传入的可信身份头不得覆盖真实身份。只有存在 `X-Gateway-Internal-Request-Id` 且整组可信字段和内部签名通过校验时，才按可信上下文授权；否则按 `Authorization` 本地 token 授权。直连请求一旦携带 `X-Gateway-Internal-Request-Id`，不得在签名失败后回退到本地 token。
-
-## 测试控制头总开关
-
-`ops-core` 统一持有测试控制头总开关。默认环境和生产环境下，所有 `X-Test-*` 头都必须被忽略。只有显式配置 `ops-core.test-controls.enabled=true` 时，继承模块才允许读取本地自动化测试所需的 `X-Test-*` 头。
-
-自有摘要必须返回 `testControlsEnabled`。默认值为 `false`。生产 readiness 必须明确暴露测试控制头总开关状态和默认关闭口径。
-
-## 模块装配表
-
-| 模块 | 历史来源目录 | 历史端口 | 当前模块源码归属 | 当前后端入口 | API 数 | 正式契约 | 历史测试入口状态 | 当前测试入口 |
-| --- | --- | ---: | --- | ---: | ---: | --- | --- | --- |
-| `ops-control` | `backend/ops-control-service` | 8116 | `backend/src/main/java` | `backend:8135` | 31 | `docs/contracts-ops-control.md` | 已退役，`legacyTestCommand=null` | `mvn -q -f backend/pom.xml test` |
-| `cloudreve-sync` | `backend/cloudreve-sync-service` | 8118 | `backend/src/main/java` | `backend:8135` | 16 | `docs/contracts-cloudreve-sync.md` | 已退役，`legacyTestCommand=null` | `mvn -q -f backend/pom.xml test` |
-| `backup-recovery` | `backend/backup-recovery-service` | 8119 | `backend/src/main/java` | `backend:8135` | 25 | `docs/contracts-backup-recovery.md` | 已退役，`legacyTestCommand=null` | `mvn -q -f backend/pom.xml test` |
-| `alerting` | `backend/alerting-service` | 8120 | `backend/src/main/java` | `backend:8135` | 24 | `docs/contracts-alerting.md` | 已退役，`legacyTestCommand=null` | `mvn -q -f backend/pom.xml test` |
-| `plugin-integration` | `backend/plugin-integration-service` | 8122 | `backend/src/main/java` | `backend:8135` | 38 | `docs/contracts-plugin-integration.md` | 已退役，`legacyTestCommand=null` | `mvn -q -f backend/pom.xml test` |
-| `ops-image-market` | `backend/ops-image-market-service` | 8124 | `backend/src/main/java` | `backend:8135` | 49 | `docs/contracts-ops-image-market.md` | 已退役，`legacyTestCommand=null` | `mvn -q -f backend/pom.xml test` |
-| `cross-platform-notification` | `backend/cross-platform-notification-service` | 8123 | `backend/src/main/java` | `backend:8135` | 36 | `docs/contracts-cross-platform-notification.md` | 已退役，`legacyTestCommand=null` | `mvn -q -f backend/pom.xml test` |
-
-七个继承模块合计 219 个业务 API 路由。`ops-core` 自有接口为 5 个。当前统一后端 `backend:8135` 应注册 224 个 `/api/v1/**` 方法路由。
-
-## 生产就绪能力状态
-
-生产就绪诊断必须逐项暴露以下能力状态。
-
-| 能力 | 第一版状态 | 说明 |
-| --- | --- | --- |
-| 真实数据库持久化 | `BLOCKED` | 七个继承模块仍以本地内存或契约 stub 为主。 |
-| 真实跨服务 HTTP adapter | `BLOCKED` | 前序模块依赖仍以本地安全快照或测试适配器表示。 |
-| 真实审计持久化 | `BLOCKED` | 审计闭环已覆盖回滚和脱敏，但未接持久化审计库。 |
-| 外部节点执行器连接 | `BLOCKED` | 控制面不得直连宿主机命令，真实执行由独立外部项目后续闭环。 |
-| 真实 Cloudreve API | `BLOCKED` | `cloudreve-sync` 只保存 provider、文件、分享和同步摘要，不保存真实 token。 |
-| 真实 registry | `BLOCKED` | `ops-image-market` 不保存 registry 凭据，不执行真实镜像拉取。 |
-| 真实 scanner | `BLOCKED` | 风险扫描只保存安全摘要，不运行真实 scanner。 |
-| 真实插件事件入口 | `BLOCKED` | `plugin-integration` 不开放无鉴权公网 webhook，不保存 raw payload。 |
-| 真实通知投递 | `BLOCKED` | `alerting` 仅保留站内通知或脱敏投递摘要，不执行真实外部发送。 |
-| 真实外部消息发送 | `BLOCKED` | `cross-platform-notification` 只保留模拟投递，不发送真实邮件、短信、聊天消息、Webhook、移动推送或游戏内消息。 |
-| 真实回调签名 | `BLOCKED` | 外部平台回调签名、webhook secret token 和状态回执仍未接入。 |
-| 生产凭据托管 | `BLOCKED` | 外部渠道 token、SMTP 密码、短信 token、机器人 token 和推送凭据只允许脱敏引用。 |
-| 异步队列 | `BLOCKED` | 跨平台投递仍为本地契约 stub，未接入异步队列、死信队列和重试窗口。 |
-| 持久化事务 | `BLOCKED` | provider、模板映射、路由、投递、attempt、receiver、audit 和幂等记录未接入数据库事务。 |
-| 测试控制头默认关闭 | `PASS` | 默认和生产环境必须忽略所有 `X-Test-*` 头。 |
-| HTTP smoke | `NOT_RUN`、`PASS` 或 `DEGRADED` | 通过独立 `api-gateway-service` 访问当前 `ops-core-service` 的关键路径，未执行时为 `NOT_RUN`。 |
-| 可信网关内部签名 | `PASS` 或 `PARTIAL` | `ops-core` 管理接口必须拒绝未签名或签名错误的可信身份头；本地 Bearer 兼容路径仍只用于契约测试。 |
-| 继承路由漂移防线 | `PASS` | 自动比对七个继承模块契约表和当前 Controller 路由。 |
-| 敏感字段扫描 | `PASS` | 自动扫描请求、响应和生产源码中的 token、secret、真实路径、真实命令和禁止删除命令。 |
-| 网关路由切换 | `PASS` | 网关七个原路径前缀仍保持不改写，并统一指向 `8133`。 |
-
-## 接口总览
-
-| 接口 | 方法 | 路径 | 认证 | 权限 | 风险 |
+| 方法 | 路径 | 认证与权限 | 请求字段 | 响应字段 | 风险 |
 | --- | --- | --- | --- | --- | --- |
-| 健康检查 | GET | `/api/v1/ops-core/health` | 否 | 无 | LOW |
-| 运行摘要 | GET | `/api/v1/ops-core/ops/summary` | 是 | `ADMIN` 或 `OWNER` | LOW |
-| 模块装配摘要 | GET | `/api/v1/ops-core/admin/modules` | 是 | `ADMIN` 或 `OWNER` | LOW |
-| 生产就绪诊断 | GET | `/api/v1/ops-core/admin/readiness` | 是 | `ADMIN` 或 `OWNER` | LOW |
-| HTTP smoke | POST | `/api/v1/ops-core/admin/http-smoke/run` | 是 | `ADMIN` 或 `OWNER` | LOW |
+| `GET` | `/api/v1/ops-core/health` | 公开或按接口内部规则；无；按公开可见范围过滤 | 无请求体 | `service`、`status`、`port`、`checkedAt` 等健康摘要字段 | LOW |
+| `GET` | `/api/v1/ops-core/ops/summary` | 公开或登录态按资源可见范围过滤；无；按公开可见范围过滤 | 无请求体 | 模块运行摘要、计数、状态、降级原因和审计摘要 | LOW |
+| `GET` | `/api/v1/ops-core/admin/modules` | HELPER、ADMIN 或 OWNER；OPS_CORE_READ for GET；OPS_CORE_WRITE 或 HIGH_RISK_APPROVE for mutation | 可选查询 `page`、`pageSize`、`keyword`、`status`、`sort`，具体过滤字段以控制器校验为准 | 统一响应中的分页列表或摘要对象 | LOW |
+| `GET` | `/api/v1/ops-core/admin/readiness` | HELPER 只读；ADMIN/OWNER 写操作；高风险按能力点；OPS_CORE_READ for GET；OPS_CORE_WRITE 或 HIGH_RISK_APPROVE for mutation | 可选查询 `page`、`pageSize`、`keyword`、`status`、`sort`，具体过滤字段以控制器校验为准 | readiness 矩阵、阻断项、证据引用和生产替换保护字段 | LOW |
+| `POST` | `/api/v1/ops-core/admin/http-smoke/run` | HELPER 只读；ADMIN/OWNER 写操作；高风险按能力点；OPS_CORE_READ for GET；OPS_CORE_WRITE 或 HIGH_RISK_APPROVE for mutation | JSON 请求体；字段按当前控制器校验，必须包含业务动作需要的主体字段、状态原因、二次确认或幂等键 | 统一响应中的业务对象；写操作返回更新后的资源摘要、状态流转结果或任务摘要 | MEDIUM |
 
-## 健康检查
+## 状态流转
 
-`GET /api/v1/ops-core/health`
+模块内资源默认遵守 `DRAFT`、`PENDING_REVIEW`、`APPROVED`、`REJECTED`、`NEEDS_CHANGES`、`OFFLINE`、`ARCHIVED`、`DELETED` 的通用状态模型。没有状态字段的健康、自检、只读摘要接口不产生业务状态流转。写接口必须由服务端判定允许流转，前端不得只靠本地状态决定审核、发布、删除、恢复、审批或任务完成。
 
-成功响应 HTTP `200`。
+## 幂等与并发
 
-响应 `data` 必须包含 `service=ops-core`、`status=UP`、`version`、`port=8133`、`modulesTotal=7`、`inheritedRoutesTotal=219`、`selfRoutesTotal=5` 和 `routesTotal=224`。该接口不得返回模块内部 provider 数量、节点 endpoint、外部 URL、token、凭据、异常栈、真实宿主路径或依赖错误细节。
+创建、提交、审核、发布、撤回、取消、归档、删除、任务触发、投递、同步、审批和重试类接口必须支持服务端幂等保护。同一资源在同一状态下重复执行同一动作时，应返回已有结果或明确的状态冲突错误，不得重复生成主数据、通知、积分、任务或审计。并发更新以服务端当前状态为准，冲突返回 `43001` 或模块内更具体错误码。
 
-## 运行摘要
+## 错误码
 
-`GET /api/v1/ops-core/ops/summary`
+通用错误码沿用 `docs/contracts-common.md`。本模块字段校验失败返回 `40001`，未登录返回 `41000`，令牌格式错误返回 `41003`，角色或能力点不足返回 `42001` 或 `42002`，高风险操作缺少确认或审批返回 `42003` 或 `42004`，资源不存在返回 `43000`，状态冲突返回 `43001`，幂等冲突返回 `43002`，外部依赖不可用返回 `46000`，跨模块调用超时返回 `46001`。模块内部错误使用 `51xxx` 到 `59xxx`，不得复用其他模块的专用语义。
 
-成功响应 HTTP `200`。
+## 失败降级
 
-响应 `data` 必须包含 `service=ops-core`、`port=8133`、`modulesTotal=7`、`modulesMounted=7`、`inheritedRoutesTotal=219`、`selfRoutesTotal=5`、`routesTotal=224`、`testControlsEnabled`、`storageMode`、`authMode`、`dependencyAdapterMode`、`serviceDiscoveryMode`、`registeredUpstreams`、`httpSmokeStatus`、`lastHttpSmokeAt`、`lastHttpSmokeResults`、`trustedGatewaySignatureStatus`、`routeDriftStatus`、`gatewaySwitchStatus`、`moduleRoutes`、`productionGaps`、`recentAuditSummary` 和 `generatedAt`。
+公开读取接口失败时，前端按模块契约做局部降级，不能整页空白。登录、审核、积分、白名单、通知、运维任务、备份恢复、告警投递和高风险审批不能伪造成成功。外部节点执行器、Cloudreve、外部通知渠道、镜像仓库、观测平台或其他外部依赖未接入时，接口必须返回明确降级状态、失败原因或阻断项。
 
-`storageMode` 第一版固定说明为 `IN_MEMORY_CONTRACT_STUBS`。`dependencyAdapterMode` 第一版固定说明为 `SAFE_SNAPSHOT_AND_TEST_ADAPTERS`。`routeDriftStatus` 必须为 `NO_DRIFT` 才能进入完成验收。`gatewaySwitchStatus` 必须为 `COMPLETED` 才能进入完成验收。
+## 审计要求
 
-## 模块装配摘要
-
-`GET /api/v1/ops-core/admin/modules`
-
-成功响应 HTTP `200`，`data.items` 为模块装配数组。每个元素必须包含 `moduleKey`、`moduleName`、`pathPrefix`、`legacyServiceDirectory`、`legacyPort`、`legacyServiceRetired`、`currentServiceDirectory`、`currentPort`、`contract`、`localTestDocument`、`legacyTestCommand`、`currentTestCommand`、`routesTotal`、`contractRoutesTotal`、`routeDriftStatus`、`enabled`、`mounted`、`businessContractOwnedByModule`、`compatibilityMode` 和 `productionGaps`。
-
-第四批和第六期旧服务 Maven 入口退役后，`legacyServiceRetired` 必须为 `true`，`legacyTestCommand` 必须为 `null`。历史目录字段只用于追溯，不表示当前仓库仍保留或允许恢复旧服务入口。
-
-装配摘要中的七个业务模块路径必须保持原样，不得出现 `/api/v1/ops-core/ops-control`、`/api/v1/ops-core/cloudreve-sync`、`/api/v1/ops-core/backup-recovery`、`/api/v1/ops-core/alerting`、`/api/v1/ops-core/plugin-integration`、`/api/v1/ops-core/ops-image-market` 或 `/api/v1/ops-core/cross-platform-notification`。
-
-## 生产就绪诊断
-
-`GET /api/v1/ops-core/admin/readiness`
-
-成功响应 HTTP `200`。
-
-响应 `data` 必须包含 `service=ops-core`、`port=8133`、`readyForProduction=false`、`readinessStatus=NOT_READY`、`routesTotal=224`、`inheritedRoutesTotal=219`、`selfRoutesTotal=5`、`routeDriftStatus`、`legacyServiceRestoreStatus`、`gatewaySwitchStatus`、`testControlHeadersStatus`、`sensitiveFieldScanStatus`、`serviceDiscoveryMode`、`registeredUpstreams`、`httpSmokeStatus`、`lastHttpSmokeAt`、`lastHttpSmokeResults`、`trustedGatewaySignatureStatus`、`checks`、`moduleReadiness`、`productionBlockers` 和 `generatedAt`。
-
-`checks` 必须至少包含真实持久化、真实跨服务 HTTP、真实审计持久化、真实节点执行、真实 Cloudreve API、真实 registry、真实 scanner、真实插件事件入口、真实通知投递、真实外部消息发送、真实回调签名、生产凭据托管、异步队列、持久化事务、测试控制头默认关闭、HTTP smoke、可信网关内部签名、继承路由漂移防线、敏感字段扫描和网关路由切换。未完成真实生产能力必须以 `BLOCKED` 或 `NOT_CONNECTED` 暴露，不能返回 `PASS`。
-
-## HTTP smoke
-
-`POST /api/v1/ops-core/admin/http-smoke/run`
-
-成功响应 HTTP `200`。该接口只触发本地真实 HTTP smoke，不创建业务数据，不执行真实节点动作，不发送真实外部消息。smoke 通过 `api-gateway-service` 访问当前 `ops-core-service` 承载的关键路径，目标至少包含 `/api/v1/ops-control/overview`、`/api/v1/alerting/health`、`/api/v1/cross-platform-notification/health` 和 `/api/v1/ops-core/health`。
-
-响应 `data` 必须包含 `status`、`targetsTotal`、`passedTargetsTotal`、`failedTargetsTotal`、`targets`、`startedAt`、`finishedAt` 和 `realHttpSmoke=true`。全部目标通过时 `status=PASS`。任一目标失败时 `status=DEGRADED`，失败摘要必须脱敏，不得返回 token、请求头、异常栈、完整内部地址或真实宿主路径。执行后 readiness 的 `httpSmokeStatus`、`lastHttpSmokeAt` 和 `lastHttpSmokeResults` 必须同步更新，但 `readyForProduction` 仍为 `false`。
-
-## 路由漂移、脱敏和禁止能力
-
-`ops-core` 必须有自动化测试比对七个继承模块正式契约表中的 `METHOD path` 与当前 Spring Controller 注册路由。任何新增、缺失、方法漂移或路径前缀改写都必须导致测试失败。
-
-`ops-core` 必须有敏感字段扫描测试，覆盖请求体、响应体和生产源码。以下内容不得出现在浏览器响应、审计摘要或生产源码的可执行能力中：token、secret、credential、Authorization、internalPath、worldDirectory、manifestPayload、rawPayload、registryPassword、nodeToken、Cloudreve token、webhook secret、SMTP 密码、shell 命令、真实宿主路径、`ProcessBuilder`、`Runtime.getRuntime`、真实 Docker client、containerd 直连、kubectl、helm、真实 registry pull、真实 scanner、真实 Cloudreve 删除、真实插件命令、RCON、终端命令、真实文件删除、真实恢复写入、`del /s`、`rd /s`、`rmdir /s`、`Remove-Item -Recurse` 和 `rm -rf`。
-
-测试中为了断言禁止字符串可以出现字符串字面量，但不得形成真实执行能力。生产源码不得出现真实执行类或命令调用。
-
-## 网关切换口径
-
-`api-gateway-service` 必须保留原路由 ID、服务键、路径前缀、请求路径、认证透传、可信身份头剥离与注入、请求编号和响应透传规则。只允许把以下七个路由的上游端口切到 `8133`。
-
-| 路由 ID | 服务键 | 路径前缀 | 当前上游端口 | 历史端口 |
-| --- | --- | --- | ---: | ---: |
-| `ops-control` | `OPS_CONTROL` | `/api/v1/ops-control` | 8133 | 8116 |
-| `cloudreve-sync` | `CLOUDREVE_SYNC` | `/api/v1/cloudreve-sync` | 8133 | 8118 |
-| `backup-recovery` | `BACKUP_RECOVERY` | `/api/v1/backup-recovery` | 8133 | 8119 |
-| `alerting` | `ALERTING` | `/api/v1/alerting` | 8133 | 8120 |
-| `plugin-integration` | `PLUGIN_INTEGRATION` | `/api/v1/plugin-integration` | 8133 | 8122 |
-| `ops-image-market` | `OPS_IMAGE_MARKET` | `/api/v1/ops-image-market` | 8133 | 8124 |
-| `cross-platform-notification` | `CROSS_PLATFORM_NOTIFICATION` | `/api/v1/cross-platform-notification` | 8133 | 8123 |
+所有后台写操作、高风险操作、状态流转、审批、投递、同步、任务触发、资源上下架、删除、归档、恢复、角色权限相关操作都必须写审计。审计至少记录 `requestId`、操作者、角色、目标类型、目标 ID、动作、风险等级、原因、参数摘要、操作前状态、操作后状态、结果、失败原因和时间。只读公开接口不强制写审计。
 
 ## 验收口径
 
-`ops-core` API 文档按 `docs/contracts-ops-core.md` 独立存在，并由 `.local-docs/tests-ops-core.md` 记录本地测试闭环。
-
-完成时必须满足以下条件：`ops-core-service:8133` 单进程承载七个控制面模块的全部既有 API 路径；七个模块原契约仍有效；`ops-core` 自有四个接口全覆盖；`.local-docs/tests-ops-core.md` 中的完备用例都有自动化验证；自动化测试先红灯；实现后 `mvn -q -f backend/pom.xml test` 通过；第四批和第六期旧服务 Maven 入口已退役且不得恢复；`api-gateway-service` 已按契约切换并通过测试；`business-core-service`、`admission-core-service`、`engagement-core-service` 和 `portal-core-service` 回归通过；旧服务目录没有恢复；外部节点执行器不并入 `ops-core` 或 `unified-backend`；生产 readiness 明确暴露剩余生产缺口；测试过程完整写入 `.local-docs/tests-ops-core.md`、`.local-docs/tests-api-gateway.md` 和 `.local-docs/tests-business-core.md`。
+`ops-core` 完成时必须满足本文档全部路由都由 `backend/pom.xml` 统一编译和测试；当前调用入口只使用 `http://127.0.0.1:8135`；接口路径、响应格式、认证方式、错误码、分页、幂等、状态流转、失败降级和审计字段与本文档一致；不得恢复旧独立 Maven 入口；不得把其他模块主数据或真实节点执行逻辑塞进本模块。自动化验证统一运行 `mvn -q -f backend/pom.xml test`。
