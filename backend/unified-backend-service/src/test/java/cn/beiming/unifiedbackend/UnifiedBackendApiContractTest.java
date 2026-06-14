@@ -361,6 +361,33 @@ class UnifiedBackendApiContractTest {
     }
 
     @Test
+    void doesNotKeepPluginIntegrationServiceApplicationAsCurrentEntrypoint() {
+        assertThat(Files.exists(Path.of("../ops-core-service/src/main/java/cn/beiming/pluginintegration/PluginIntegrationServiceApplication.java")))
+                .as("../ops-core-service/src/main/java/cn/beiming/pluginintegration/PluginIntegrationServiceApplication.java")
+                .isFalse();
+    }
+
+    void doesNotKeepOpsImageMarketServiceApplicationAsCurrentEntrypoint() {
+        assertThat(Files.exists(Path.of("../ops-core-service/src/main/java/cn/beiming/opsimagemarket/OpsImageMarketServiceApplication.java")))
+                .as("../ops-core-service/src/main/java/cn/beiming/opsimagemarket/OpsImageMarketServiceApplication.java")
+                .isFalse();
+    }
+
+    @Test
+    void doesNotKeepAlertingServiceApplicationAsCurrentEntrypoint() {
+        assertThat(Files.exists(Path.of("../ops-core-service/src/main/java/cn/beiming/alerting/AlertingServiceApplication.java")))
+                .as("../ops-core-service/src/main/java/cn/beiming/alerting/AlertingServiceApplication.java")
+                .isFalse();
+    }
+
+    @Test
+    void doesNotKeepOpsControlServiceApplicationAsCurrentEntrypoint() {
+        assertThat(Files.exists(Path.of("../ops-core-service/src/main/java/cn/beiming/opscontrol/OpsControlServiceApplication.java")))
+                .as("../ops-core-service/src/main/java/cn/beiming/opscontrol/OpsControlServiceApplication.java")
+                .isFalse();
+    }
+
+    @Test
     void exposesSingleServiceCutoverEvidenceAfterNodeDaemonCleanup() throws Exception {
         JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
                 .header("Authorization", "Bearer owner-token")
