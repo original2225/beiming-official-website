@@ -331,12 +331,12 @@ class OpsCoreSmokeCoordinator {
     private volatile OpsHttpSmokeReport lastReport;
 
     OpsCoreSmokeCoordinator(@Value("${server.port}") int currentPort,
-                            @Value("${ops-core.http-smoke.gateway-base-url:http://127.0.0.1:8125}") String gatewayBaseUrl,
+                            @Value("${ops-core.http-smoke.gateway-base-url:http://127.0.0.1:8135}") String gatewayBaseUrl,
                             @Value("${ops-core.http-smoke.self-base-url:}") String selfBaseUrl,
                             @Value("${ops-core.http-smoke.timeout-ms:1500}") int timeoutMs,
                             ObjectMapper objectMapper) {
         this.currentPort = currentPort;
-        this.gatewayBaseUrl = normalizeBaseUrl(gatewayBaseUrl, "http://127.0.0.1:8125");
+        this.gatewayBaseUrl = normalizeBaseUrl(gatewayBaseUrl, "http://127.0.0.1:8135");
         this.selfBaseUrl = normalizeBaseUrl(selfBaseUrl, "http://127.0.0.1:" + currentPort);
         this.gatewayPort = portOf(this.gatewayBaseUrl);
         this.timeoutMs = timeoutMs;

@@ -122,6 +122,13 @@ API 网关或后端入口
 
 第四十四轮在候选入口上增加 `api-gateway-service:8125` 外部退役证据接收与删除审批门禁。该门禁只读取仓库内脱敏样板 `docs/unified-backend-api-gateway-external-retirement-evidence-sample.json` 和经过脱敏复核的外部证据结构，默认 `apiGatewayExternalRetirementEvidenceStatus=BLOCKED_BY_EXTERNAL_API_GATEWAY_RETIREMENT_EVIDENCE_NOT_PROVIDED`。它只证明系统已经具备接收真实切流、流量归零、真实 audit write smoke、dashboard、alert、trace、回滚窗口、退役审批和用户删除清单确认的结构化门禁，不证明这些外部事实已经发生。没有真实外部证据和用户删除清单确认时，`api-gateway-service:8125` 仍是受保护回滚入口，五个 core 不进入退役执行。
 
+第四十六轮在候选入口上增加真实生产入口切流证据闭环门禁。该门禁只读取仓库内脱敏样板 `docs/unified-backend-real-production-entrypoint-cutover-evidence-sample.json` 和经过脱敏复核的切流证据结构，默认 `realProductionEntrypointCutoverStatus=BLOCKED_BY_REAL_PRODUCTION_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED`。它只证明系统已经具备接收真实生产入口切流、切流窗口、生产流量观测、旧网关新流量归零、真实 audit write smoke、dashboard、alert、trace、回滚和审批的结构化门禁，不证明这些外部事实已经发生。即使切流证据样板完整，`oldApiGatewayRetirementAllowed` 仍保持 `false`，`api-gateway-service:8125` 仍是受保护回滚入口，五个 core 不进入退役执行。
+
+
+第四十七轮在候选入口上完成本地开发态 `api-gateway-service` 入口退役门禁。当前 `localApiGatewayEntrypointRetirementStatus=PASS_LOCAL_API_GATEWAY_ENTRYPOINT_RETIRED_UNIFIED_GATEWAY_APIS_PRESERVED`，只证明 `unified-backend-service:8135` 已自承载网关能力，不证明真实生产切流完成。
+
+本轮在用户确认下完成五个 core 独立 Maven 入口本地退役。`unified-backend-service:8135` 成为仓库内唯一后端 Maven 启动入口，五个 core 的业务源码仍保留在原目录并由 unified build-helper 装配。该调整只退出 `pom.xml`、独立 Spring Boot 启动类和独立 `application.yml`，不改变 `auth`、`profile`、`notification`、`content`、`server-status`、`resource`、`admin`、`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、`ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`cross-platform-notification`、`ops-image-market`、`guide`、`material` 和 `online-map` 的正式路径、权限、响应格式、错误码、审计或降级规则。真实生产入口切流、真实流量观测、集中配置和持久化审计仍未完成。
+
 ## 公共基础契约
 
 所有模块共享统一响应格式、错误码、分页格式、认证方式、审计字段和时间字段。
@@ -245,7 +252,7 @@ Cloudreve 第一阶段可以作为外部分享链接存在。后续接入 API �
 
 ## 部署原则
 
-官网前端、后端业务服务、数据库、缓存、Cloudreve、Minecraft 服务器和外部节点执行器应分开部署。开发阶段可以先用较少进程模拟模块边界，但接口、权限和数据归属不能混乱。当前第四批运维控制面已收敛到 `ops-core-service:8133`，第五批玩家门户体验已收敛到 `portal-core-service:8134`，`api-gateway-service:8125` 已具备统一后端入口准备画像；第九轮新增 `unified-backend-service:8135` 作为并行候选入口，第十轮候选入口逐步挂载 `api-gateway`、`business-core`、`admission-core`、`engagement-core`、`ops-core` 和 `portal-core`，第十六轮候选入口进入后端侧单服务入口准备阶段，仍不替代生产入口；外部节点执行器已出仓且未接入。
+官网前端、后端业务服务、数据库、缓存、Cloudreve、Minecraft 服务器和外部节点执行器应分开部署。开发阶段可以先用较少进程模拟模块边界，但接口、权限和数据归属不能混乱。当前第四批运维控制面已收敛到 `ops-core-service:8133`，第五批玩家门户体验已收敛到 `portal-core-service:8134`，本地开发态 `api-gateway-service:8125` Maven 入口已退役，网关能力由 `unified-backend-service:8135` 自承载；第九轮新增 `unified-backend-service:8135` 作为并行候选入口，第十轮候选入口逐步挂载 `api-gateway`、`business-core`、`admission-core`、`engagement-core`、`ops-core` 和 `portal-core`，第十六轮候选入口进入后端侧单服务入口准备阶段，仍不替代生产入口；外部节点执行器已出仓且未接入。
 
 节点守护进程部署在被管理服务器上。它只开放必要管理端口，优先由控制面主动连接或通过受控通道通信，不暴露无鉴权的系统操作接口。
 

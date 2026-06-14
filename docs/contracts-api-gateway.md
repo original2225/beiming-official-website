@@ -4,11 +4,11 @@
 
 ## 文档定位
 
-本文档是 `api-gateway` 微服务的正式 API 契约。当前阶段 `api-gateway` 是北冥官网后端受保护回滚入口和路由对照入口，只负责统一路由、请求编号、认证头透传、认证上下文注入、基础 CORS、上游超时、请求边界保护、响应头白名单透传、错误降级、路由表、自检摘要、上游健康摘要、运行拓扑和网关级请求日志摘要。未来正式生产入口目标是 `unified-backend-service:8135`，但真实外部代理、前端入口和生产流量尚未在本仓库切换。
+本文档是 `api-gateway` 微服务的正式 API 契约，也是第四十七轮本地开发态退役后的历史网关行为契约。当前阶段 `api-gateway` 是北冥官网后端受保护回滚入口和路由对照入口，只负责统一路由、请求编号、认证头透传、认证上下文注入、基础 CORS、上游超时、请求边界保护、响应头白名单透传、错误降级、路由表、自检摘要、上游健康摘要、运行拓扑和网关级请求日志摘要。未来正式生产入口目标是 `unified-backend-service:8135`，本地开发态的网关能力由 `unified-backend-service:8135` 自承载对照实现承接，但真实外部代理、前端入口和生产流量尚未在本仓库切换。
 
 本文档继承 `docs/contracts-common.md`。统一响应格式、统一错误响应、分页格式、认证头、时间格式、基础角色、运维能力点、审计字段、风险等级和通用错误码均以公共契约为准。本文档只补充 `api-gateway` 的路径、路由表、字段、错误码、降级、审计和验收口径。
 
-第二十七轮统一后端生产化硬化门禁不改变 `api-gateway` 路由表、代理行为、认证注入、端口或退役审批状态。`api-gateway:8125` 继续作为受保护回滚入口，五个 core 继续作为受保护 core 回滚入口，直到真实外部入口切流、回滚窗口、流量归零证明和用户退役审批全部完成。
+第二十七轮统一后端生产化硬化门禁不改变 `api-gateway` 路由表、代理行为、认证注入、端口或退役审批状态。第四十七轮后，本地开发态 `api-gateway-service:8125` Maven 入口已退役，本文档转为历史网关行为和 `unified-backend-service:8135` 自承载对照契约；五个 core 继续作为受保护 core 回滚入口，直到后续逐入口退役闭环完成。
 
 第一版设计参考了成熟网关生态中的稳定做法。Spring Cloud Gateway 使用请求属性谓词匹配路由，并通过过滤器处理跨路由逻辑；Kong Gateway 把相关能力拆成可组合插件，例如 Correlation ID 和 Rate Limiting；Nginx 反向代理强调 `proxy_pass`、请求头和请求体透传；Envoy 将上游服务作为 cluster 处理，并把健康检查结果纳入路由判断。第二版继续参考 AWS API Gateway 对请求体大小上限的明确约束、Cloudflare Rules 对边界策略前置的做法，以及 Nginx 对响应头和上游头的显式控制。`api-gateway` 本轮只吸收这些边界思路，不引入动态服务发现、插件市场、真实 WAF、分布式限流、OAuth/OIDC 或 WebSocket 长连接代理。
 
@@ -39,7 +39,7 @@
 
 ## 基础路径、端口和认证
 
-`api-gateway` 本地端口固定为 `8125`。
+历史 `api-gateway-service` 本地端口为 `8125`。第四十七轮后该独立 Maven 入口已退役，当前本地网关自有 API 由 `unified-backend-service:8135` 自承载。
 
 网关自有接口使用 `/api/v1/gateway` 前缀。业务转发接口保持上游原路径，例如 `/api/v1/auth/login` 经网关访问时仍是 `/api/v1/auth/login`，不会改写为 `/api/v1/gateway/auth/login`。
 
@@ -112,11 +112,11 @@
 
 这两个覆盖能力只用于本地真实 HTTP smoke 和显式环境配置，不代表已接入动态服务发现或集中配置中心。
 
-第八轮单服务合并准备层只允许在网关公开只读运行拓扑。当前官网后端回滚入口是 `api-gateway-service:8125`、`business-core-service:8130`、`admission-core-service:8131`、`engagement-core-service:8132`、`ops-core-service:8133` 和 `portal-core-service:8134`。未来可合并候选只包含 `api-gateway` 与五个 core 运行单元。外部节点执行器已出仓且未接入，当前网关不得再公开节点执行器业务路由。该准备层不得新增业务路由，不得改写 25 条业务路径，不得动态挂载业务模块，不得恢复已退役旧 Maven 入口，不得把外部节点执行器并入统一后端。
+第八轮单服务合并准备层只允许在网关公开只读运行拓扑。第四十七轮后，当前本地后端入口是 `unified-backend-service:8135`、`business-core-service:8130`、`admission-core-service:8131`、`engagement-core-service:8132`、`ops-core-service:8133` 和 `portal-core-service:8134`；历史 `api-gateway-service:8125` Maven 入口已退役。外部节点执行器已出仓且未接入，当前网关不得再公开节点执行器业务路由。该准备层不得新增业务路由，不得改写 25 条业务路径，不得动态挂载业务模块，不得恢复已退役旧 Maven 入口，不得把外部节点执行器并入统一后端。
 
-第九轮新增 `unified-backend-service:8135` 作为并行候选入口。当前网关保持 `CURRENT_SIX_ROLLBACK_ENTRYPOINTS`，运行拓扑必须识别 `unified-backend` 试点候选和外部节点执行器出仓状态。候选入口第一阶段挂载对象为 `api-gateway` 和 `portal-core`，第二阶段挂载对象扩展为 `business-core`，第三阶段挂载对象扩展为 `admission-core`，第四阶段挂载对象扩展为 `engagement-core`，第五阶段挂载对象扩展为 `ops-core`，候选挂载路由为 `auth`、`profile`、`notification`、`content`、`server-status`、`resource`、`admin`、`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、`ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`cross-platform-notification`、`ops-image-market`、`guide`、`material` 和 `online-map`。该字段只用于后续装配验收，不能让当前 `api-gateway-service:8125` 冒充已经完成 in-process。
+第九轮新增 `unified-backend-service:8135` 作为并行候选入口。第四十七轮后，当前网关运行拓扑保持 `LOCAL_API_GATEWAY_ENTRYPOINT_RETIRED`，运行拓扑必须识别 `unified-backend` 已自承载网关能力和外部节点执行器出仓状态。候选挂载对象为 `api-gateway`、`business-core`、`admission-core`、`engagement-core`、`ops-core` 和 `portal-core`，候选挂载路由为 `auth`、`profile`、`notification`、`content`、`server-status`、`resource`、`admin`、`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、`ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`cross-platform-notification`、`ops-image-market`、`guide`、`material` 和 `online-map`。该字段只用于后续装配验收，不能恢复已退役的 `api-gateway-service:8125`。
 
-第二十五轮开始，`api-gateway-service:8125` 的角色固定为受保护回滚入口。只有 `unified-backend-service:8135` 已经承接真实外部入口、回滚窗口完成、网关生产流量归零得到证明、网关自有后台 API 已由 unified 覆盖、用户明确批准退役并确认删除清单后，才允许进入实际退役。缺少任一证据时，运行拓扑必须继续返回退役阻塞状态，不得从契约、代码或测试中提前删除 `api-gateway-service`。
+第二十五轮开始，`api-gateway-service:8125` 的角色固定为受保护回滚入口。第四十七轮按用户确认完成本地开发态逐文件退役后，该入口不再是当前 Maven 入口；生产态外部切流、回滚窗口和流量归零证明仍属于后续部署闭环。本轮后不得恢复 `api-gateway-service` Maven 入口，也不得批量退役五个 core。
 
 路径匹配规则为最长前缀优先。`/api/v1/resources` 和 `/api/v1/resources/**` 都必须命中 `resource`。未知路径返回网关错误，不转发到任何上游。
 
@@ -181,7 +181,7 @@
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `service` | string | 是 | 固定为 `api-gateway`。 |
-| `deploymentMode` | string | 是 | 固定为 `CURRENT_SIX_ROLLBACK_ENTRYPOINTS`。 |
+| `deploymentMode` | string | 是 | 第四十七轮后固定为 `LOCAL_API_GATEWAY_ENTRYPOINT_RETIRED`。 |
 | `singleServiceMergeReadiness` | string | 是 | 固定为 `PREPARING`。 |
 | `currentEntrypointsTotal` | integer | 是 | 当前官网后端回滚入口数量，固定为 `6`。 |
 | `futureMergeCandidateEntrypointsTotal` | integer | 是 | 未来统一后端候选入口数量，固定为 `6`，不包含外部节点执行器。 |
@@ -192,9 +192,9 @@
 | `mergePreparationChecks` | object[] | 是 | 合并准备守卫检查。 |
 | `generatedAt` | string | 是 | 生成时间。 |
 
-`currentEntrypoints` 每项必须包含 `entrypointKey`、`serviceDirectory`、`port`、`role`、`mergeDisposition`、`rollbackEntrypointRole`、`retirementApprovalStatus`、`trafficSwitchRequired`、`trafficSwitchProven`、`nextAction`、`hostedRouteIds`、`hostedPathPrefixes` 和 `routesTotal`。`api-gateway` 的 `mergeDisposition` 为 `ROLLBACK_ENTRYPOINT`，`rollbackEntrypointRole` 为 `PROTECTED_ROLLBACK_ENTRYPOINT`，`retirementApprovalStatus` 为 `BLOCKED`，`trafficSwitchRequired=true`，`trafficSwitchProven=false`，`nextAction=WAIT_FOR_UNIFIED_ENTRYPOINT_TRAFFIC_SWITCH`。五个 core 运行单元的 `mergeDisposition` 为 `IN_PROCESS_CANDIDATE`，`rollbackEntrypointRole` 必须为 `PROTECTED_CORE_ROLLBACK_ENTRYPOINT`，`retirementApprovalStatus` 必须为 `BLOCKED`，`trafficSwitchRequired=true`，`trafficSwitchProven=false`，`nextAction=WAIT_FOR_API_GATEWAY_RETIREMENT_AND_CORE_RETIREMENT_APPROVAL`。五个 core 只能在 `api-gateway` 完成真实退役、外部入口切流和回滚窗口完成后，按顺序逐个进入用户确认清单，不能越过 `api-gateway` 先退役。外部节点执行器不在 `currentEntrypoints` 中返回，只能在拓扑摘要中以 `externalNodeExecutorOutOfRepository=true` 和 `externalNodeExecutorConnected=false` 表达。
+`currentEntrypoints` 每项必须包含 `entrypointKey`、`serviceDirectory`、`port`、`role`、`mergeDisposition`、`rollbackEntrypointRole`、`retirementApprovalStatus`、`trafficSwitchRequired`、`trafficSwitchProven`、`nextAction`、`hostedRouteIds`、`hostedPathPrefixes` 和 `routesTotal`。`unified-backend` 的 `mergeDisposition` 为 `UNIFIED_GATEWAY_ENTRYPOINT`，`rollbackEntrypointRole` 为 `CURRENT_LOCAL_GATEWAY_ENTRYPOINT`，`trafficSwitchRequired=false`，`trafficSwitchProven=false`，`nextAction=KEEP_UNIFIED_AS_LOCAL_GATEWAY_ENTRYPOINT`。五个 core 运行单元的 `mergeDisposition` 为 `IN_PROCESS_CANDIDATE`，`rollbackEntrypointRole` 必须为 `PROTECTED_CORE_ROLLBACK_ENTRYPOINT`，`retirementApprovalStatus` 必须为 `BLOCKED`，`trafficSwitchRequired=true`，`trafficSwitchProven=false`，`nextAction=WAIT_FOR_API_GATEWAY_RETIREMENT_AND_CORE_RETIREMENT_APPROVAL`。五个 core 只能在后续逐入口退役闭环中按顺序进入用户确认清单。外部节点执行器不在 `currentEntrypoints` 中返回，只能在拓扑摘要中以 `externalNodeExecutorOutOfRepository=true` 和 `externalNodeExecutorConnected=false` 表达。
 
-`mergePreparationChecks` 至少包含 `ROUTE_PREFIX_PRESERVED`、`GATEWAY_AS_ROLLBACK_ENTRYPOINT`、`CORE_ROUTES_GROUPED`、`CORE_ENTRYPOINTS_PROTECTED_UNTIL_GATEWAY_RETIRED`、`EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY`、`LEGACY_ENTRYPOINTS_NOT_RESTORED`、`API_GATEWAY_RETIREMENT_BLOCKED_UNTIL_TRAFFIC_SWITCH`、`STATIC_SERVICE_DISCOVERY_ONLY` 和 `IN_PROCESS_MOUNT_NOT_IMPLEMENTED`。前七项为 `PASS`，后两项必须保持 `BLOCKED` 或 `NOT_IMPLEMENTED`，防止把静态路由表误称为动态服务发现或把准备层误称为真正单服务合并。
+`mergePreparationChecks` 至少包含 `ROUTE_PREFIX_PRESERVED`、`LOCAL_API_GATEWAY_ENTRYPOINT_RETIRED`、`CORE_ROUTES_GROUPED`、`CORE_ENTRYPOINTS_PROTECTED_AFTER_GATEWAY_RETIREMENT`、`EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY`、`LEGACY_ENTRYPOINTS_NOT_RESTORED`、`PRODUCTION_API_GATEWAY_RETIREMENT_SEPARATE`、`STATIC_SERVICE_DISCOVERY_ONLY` 和 `UNIFIED_IN_PROCESS_GATEWAY_MOUNTED`。除 `STATIC_SERVICE_DISCOVERY_ONLY` 继续为 `BLOCKED` 外，其余本地开发态检查为 `PASS`。
 
 `futureUnifiedBackend` 必须额外包含 `pilotCandidate`。该对象固定声明 `entrypointKey=unified-backend`、`serviceDirectory=backend/unified-backend-service`、`candidatePort=8135`、`deploymentMode=CANDIDATE_PARALLEL_ENTRYPOINT`、`pilotMountedEntrypoints=["api-gateway","business-core","admission-core","engagement-core","ops-core","portal-core"]`、`pilotMountedRouteIds=["auth","profile","notification","content","server-status","resource","admin","onboarding","exam","whitelist","attendance","community","activity","calendar","changelog","ops-control","cloudreve-sync","backup-recovery","alerting","plugin-integration","cross-platform-notification","ops-image-market","guide","material","online-map"]`、`externalNodeExecutorOutOfRepository=true`、`externalNodeExecutorConnected=false`、`readyToReplaceGateway=false`、`readyToRetireBusinessCore=false`、`readyToRetireAdmissionCore=false`、`readyToRetireEngagementCore=false`、`readyToRetireOpsCore=false` 和 `readyToRetirePortalCore=false`。
 
@@ -442,4 +442,4 @@ P0 `api-gateway` 是本地契约实现，必须在自检摘要中明确以下生
 
 本文档列出的每个网关自有接口都有自动化测试覆盖成功路径、字段校验、认证失败、权限不足、资源不存在、分页排序、状态刷新、失败降级、日志脱敏和验收口径。运行拓扑测试必须确认当前 6 个官网后端回滚入口、未来 6 个统一后端候选、外部节点执行器出仓且未接入、25 条业务转发路由、8 个网关自有 API、5 个 core 运行单元归属、已退役旧入口未恢复、静态服务发现和当前网关自身 in-process 挂载仍未实现，并确认 `unified-backend-service:8135` 候选画像已把 `business-core`、`admission-core`、`engagement-core`、`ops-core` 和 `portal-core` 标为试点挂载对象。业务转发测试必须覆盖 25 个已接入路径前缀，确认路由表端口准确、第一批七个路由统一指向 `business-core-service:8130`、第二批四个路由统一指向 `admission-core-service:8131`、第三批四个路由统一指向 `engagement-core-service:8132`、第四批六个路由和第六期 `cross-platform-notification` 统一指向 `ops-core-service:8133`、第五批后三个门户体验路由统一指向 `portal-core-service:8134`、原业务路径不被改写为 core 服务前缀、`api-gateway.upstreams.ops-core-base-url` 只覆盖七个 ops-core 承载路由、请求编号透传、请求编号非法拒绝、认证头透传、可信身份头剥离、客户端伪造签名头剥离、`auth` 会话校验成功后的可信身份和内部签名注入、`auth` 校验失败后的不注入降级、查询参数透传、JSON body 透传、请求体大小限制、响应头白名单、上游 2xx 透传、上游 4xx 透传、上游 5xx 透传、未知路径、非法方法、CORS 预检、上游不可用、上游超时和敏感字段不落日志。
 
-开发完成后必须执行 `mvn -f backend/api-gateway-service/pom.xml test`、`mvn -f backend/business-core-service/pom.xml test`、`mvn -f backend/admission-core-service/pom.xml test`、`mvn -f backend/engagement-core-service/pom.xml test`、`mvn -f backend/ops-core-service/pom.xml test` 和 `mvn -f backend/portal-core-service/pom.xml test`。涉及 `portal-core` smoke 的生产化增强还必须覆盖真实 `api-gateway-service` 与真实 `portal-core-service` 启动后的 HTTP 联调，确认 `api-gateway.upstreams.portal-core-base-url` 只临时覆盖第五批后三个原业务路由。第一批、第二批和第三批旧服务清理后，不得为了网关回归恢复对应旧服务目录、旧 Maven 入口、旧启动类或旧测试命令。第四批和第五批旧服务目录退役后，不得为了网关回归恢复旧 Maven 入口。旧 `backend/online-map-service` 已退役且不得恢复。外部节点执行器测试不再作为官网仓库网关闭环命令。测试过程必须写入 `.local-docs/tests-api-gateway.md`。
+开发完成后必须执行 `mvn -f backend/unified-backend-service/pom.xml test`、`mvn -f backend/business-core-service/pom.xml test`、`mvn -f backend/admission-core-service/pom.xml test`、`mvn -f backend/engagement-core-service/pom.xml test`、`mvn -f backend/ops-core-service/pom.xml test` 和 `mvn -f backend/portal-core-service/pom.xml test`。涉及 `portal-core` smoke 的生产化增强必须覆盖 `unified-backend-service` 与 `portal-core-service` 的 HTTP 联调，确认第五批后三个原业务路由仍只指向门户体验运行单元。第一批、第二批和第三批旧服务清理后，不得为了网关回归恢复对应旧服务目录、旧 Maven 入口、旧启动类或旧测试命令。第四批和第五批旧服务目录退役后，不得为了网关回归恢复旧 Maven 入口。旧 `backend/online-map-service` 已退役且不得恢复。外部节点执行器测试不再作为官网仓库网关闭环命令。测试过程必须写入 `.local-docs/tests-api-gateway.md`。

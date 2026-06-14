@@ -264,7 +264,7 @@ class EngagementCoreRegistry {
         return List.of(
                 baseline("business-core-service", 8130, "docs/contracts-business-core.md", "mvn -f backend/business-core-service/pom.xml test"),
                 baseline("admission-core-service", 8131, "docs/contracts-admission-core.md", "mvn -f backend/admission-core-service/pom.xml test"),
-                baseline("api-gateway-service", 8125, "docs/contracts-api-gateway.md", "mvn -f backend/api-gateway-service/pom.xml test")
+                baseline("unified-backend-service", 8135, "docs/contracts-unified-backend.md", "mvn -f backend/unified-backend-service/pom.xml test")
         );
     }
 

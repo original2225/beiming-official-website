@@ -67,7 +67,7 @@ class BusinessCoreApiContractTest {
                 .andExpect(jsonPath("$.data.gatewaySwitchReady").value(true))
                 .andExpect(jsonPath("$.data.gatewaySwitchStatus").value("COMPLETED"))
                 .andExpect(jsonPath("$.data.legacyBaselines[?(@.service == 'auth-service')]").doesNotExist())
-                .andExpect(jsonPath("$.data.legacyBaselines[?(@.service == 'api-gateway-service')]").exists())
+                .andExpect(jsonPath("$.data.legacyBaselines[?(@.service == 'unified-backend-service' && @.port == 8135)]").exists())
                 .andExpect(jsonPath("$.data.retiredLegacyServices[?(@ == 'auth-service')]").exists())
                 .andExpect(jsonPath("$.data.retiredLegacyServices[?(@ == 'admin-service')]").exists())
                 .andExpect(jsonPath("$.data.moduleRoutes[0].legacyPort").value(8101))

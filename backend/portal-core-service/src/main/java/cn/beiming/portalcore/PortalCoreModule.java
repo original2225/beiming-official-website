@@ -388,7 +388,7 @@ class PortalCoreSmokeCoordinator {
     private volatile PortalHttpSmokeReport lastReport;
 
     PortalCoreSmokeCoordinator(@Value("${server.port}") int currentPort,
-                               @Value("${portal-core.http-smoke.gateway-base-url:http://127.0.0.1:8125}") String gatewayBaseUrl,
+                               @Value("${portal-core.http-smoke.gateway-base-url:http://127.0.0.1:8135}") String gatewayBaseUrl,
                                @Value("${portal-core.http-smoke.timeout-ms:1500}") int timeoutMs,
                                ObjectMapper objectMapper) {
         this.currentPort = currentPort;
@@ -533,7 +533,7 @@ class PortalCoreSmokeCoordinator {
     }
 
     private String normalizeBaseUrl(String value) {
-        String normalized = value == null || value.isBlank() ? "http://127.0.0.1:8125" : value.trim();
+        String normalized = value == null || value.isBlank() ? "http://127.0.0.1:8135" : value.trim();
         while (normalized.endsWith("/")) {
             normalized = normalized.substring(0, normalized.length() - 1);
         }

@@ -23,7 +23,7 @@
 | 自检摘要 | 暴露 `business-core` 自身健康检查、后台装配摘要和生产就绪摘要，便于迁移验证和生产化排障。 |
 | 网关切换状态 | 为 `api-gateway` 第一批路径上游切换提供稳定目标，并在切换完成后暴露完成状态。 |
 
-`business-core` 不负责吸收 `api-gateway`。第一阶段仍保留 `api-gateway-service` 作为统一入口。`business-core` 不负责后续模块，如 `onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、`ops-control`、`external-node-executor` 和 P3 扩展。
+`business-core` 不负责吸收网关能力。第四十七轮后，本地开发态 `api-gateway-service` Maven 入口已退役，网关自有 API 和第一批业务路径统一由 `unified-backend-service:8135` 承接。`business-core` 不负责后续模块，如 `onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、`ops-control`、`external-node-executor` 和 P3 扩展。
 
 `business-core` 不允许把后续模块逻辑塞进第一批模块，不允许让前端直连新增路径吞掉业务，也不允许为了合并修改旧模块的稳定契约。
 
@@ -31,7 +31,7 @@
 
 ## 运行形态
 
-本地验证运行单元为 `backend/business-core-service`，本地验证端口为 `8130`。端口 `8101` 到 `8107` 只作为第一批模块历史原服务端口登记，当前仓库不再保留旧七个微服务源码和 Maven 运行入口。端口 `8125` 继续保留给 `api-gateway-service`。
+本地验证运行单元为 `backend/business-core-service`，本地验证端口为 `8130`。端口 `8101` 到 `8107` 只作为第一批模块历史原服务端口登记，当前仓库不再保留旧七个微服务源码和 Maven 运行入口。端口 `8125` 只作为已退役旧 `api-gateway-service` 历史端口记录；当前网关能力由 `unified-backend-service:8135` 自承载。
 
 Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `cn.beiming`。第一批模块应保留原包名 `cn.beiming.auth`、`cn.beiming.profile`、`cn.beiming.notification`、`cn.beiming.content`、`cn.beiming.serverstatus`、`cn.beiming.resource` 和 `cn.beiming.admin`。不得为了合并进行无业务收益的大规模包名迁移。
 
@@ -103,7 +103,7 @@ Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `
 | `moduleRoutes` | `BusinessCoreModuleStatus[]` | 是 | 七个模块装配状态。 |
 | `gatewaySwitchReady` | boolean | 是 | 是否已满足网关切换前置条件。网关切换完成后仍为 `true`。 |
 | `gatewaySwitchStatus` | string | 是 | 网关切换状态，允许 `NOT_READY`、`READY` 或 `COMPLETED`。 |
-| `legacyBaselines` | object[] | 是 | 当前仍保留的外部基线摘要。第一批旧七服务清理后只包含 `api-gateway-service`。 |
+| `legacyBaselines` | object[] | 是 | 当前仍保留的外部基线摘要。第四十七轮后指向 `unified-backend-service`，不再要求运行已退役的 `api-gateway-service` Maven 入口。 |
 | `retiredLegacyServices` | string[] | 是 | 已由 `business-core` 替代并清理源码的第一批旧服务。 |
 | `productionGaps` | string[] | 是 | 生产化差距摘要。 |
 | `generatedAt` | string | 是 | 摘要生成时间。 |
@@ -225,10 +225,10 @@ Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `
     "gatewaySwitchStatus": "COMPLETED",
     "legacyBaselines": [
       {
-        "service": "api-gateway-service",
-        "port": 8125,
-        "contract": "docs/contracts-api-gateway.md",
-        "testCommand": "mvn -f backend/api-gateway-service/pom.xml test",
+        "service": "unified-backend-service",
+        "port": 8135,
+        "contract": "docs/contracts-unified-backend.md",
+        "testCommand": "mvn -f backend/unified-backend-service/pom.xml test",
         "lastVerifiedAt": "2026-06-02T15:34:38+08:00"
       }
     ],
@@ -294,7 +294,7 @@ Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `
         "ownerModule": "BUSINESS_CORE",
         "currentMode": "MOCKMVC_AND_MAVEN_CONTRACTS",
         "requiredMode": "REAL_HTTP_GATEWAY_TO_BUSINESS_CORE",
-        "nextAction": "启动 api-gateway-service 与 business-core-service，执行经网关访问第一批路径的真实 HTTP 冒烟测试。",
+        "nextAction": "启动 unified-backend-service 与 business-core-service，执行经统一后端访问第一批路径的真实 HTTP 冒烟测试。",
         "verification": "记录命令、端口、请求路径、响应码、请求编号和失败降级结果到 .local-docs/tests-business-core.md。"
       }
     ],
@@ -417,7 +417,7 @@ Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `
 
 ## 网关策略
 
-第一批网关切换已完成。`api-gateway-service` 已把 `auth`、`profile`、`notification`、`content`、`server-status`、`resource` 和 `admin` 的上游从旧端口调整为 `business-core-service` 约定端口 `8130`。前端仍通过原 API 路径访问，不新增前端直连约定。
+第一批网关切换已完成。第四十七轮后，本地开发态 `api-gateway-service` 独立 Maven 入口已退役；`unified-backend-service:8135` 自承载网关能力，并保持 `auth`、`profile`、`notification`、`content`、`server-status`、`resource` 和 `admin` 业务路径对 `business-core-service` 约定边界的兼容。前端仍通过原 API 路径访问，不新增前端直连约定。
 
 后续若再次调整网关路由，必须先更新 `docs/contracts-api-gateway.md` 和 `.local-docs/tests-api-gateway.md`，确认测试红灯后再修改网关实现。
 

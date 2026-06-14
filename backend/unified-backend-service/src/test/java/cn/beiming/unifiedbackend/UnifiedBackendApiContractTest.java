@@ -76,6 +76,8 @@ class UnifiedBackendApiContractTest {
         addRange(mapped, "UBACK-CONTROLLED-CUTOVER", 1, 18);
         addRange(mapped, "UBACK-API-GATEWAY-RETIREMENT", 1, 20);
         addRange(mapped, "UBACK-API-GATEWAY-EXTERNAL-RETIREMENT", 1, 24);
+        addRange(mapped, "UBACK-REAL-PRODUCTION-CUTOVER", 1, 24);
+        addRange(mapped, "UBACK-LOCAL-API-GATEWAY-RETIREMENT", 1, 30);
 
         assertThat(mapped).contains(
                 "UBACK-COM-001",
@@ -146,9 +148,13 @@ class UnifiedBackendApiContractTest {
                 "UBACK-API-GATEWAY-RETIREMENT-001",
                 "UBACK-API-GATEWAY-RETIREMENT-020",
                 "UBACK-API-GATEWAY-EXTERNAL-RETIREMENT-001",
-                "UBACK-API-GATEWAY-EXTERNAL-RETIREMENT-024"
+                "UBACK-API-GATEWAY-EXTERNAL-RETIREMENT-024",
+                "UBACK-REAL-PRODUCTION-CUTOVER-001",
+                "UBACK-REAL-PRODUCTION-CUTOVER-024",
+                "UBACK-LOCAL-API-GATEWAY-RETIREMENT-001",
+                "UBACK-LOCAL-API-GATEWAY-RETIREMENT-030"
         );
-        assertThat(mapped).hasSize(315);
+        assertThat(mapped).hasSize(369);
     }
 
     @Test
@@ -234,7 +240,7 @@ class UnifiedBackendApiContractTest {
         JsonNode summary = performJson(get("/api/v1/unified-backend/admin/ops/summary")
                 .header("Authorization", "Bearer admin-token"));
         assertThat(summary.at("/data/service").asText()).isEqualTo("unified-backend");
-        assertThat(summary.at("/data/currentProductionEntrypointsTotal").asInt()).isEqualTo(6);
+        assertThat(summary.at("/data/currentProductionEntrypointsTotal").asInt()).isEqualTo(1);
         assertThat(summary.at("/data/candidateEntrypointsTotal").asInt()).isEqualTo(1);
         assertThat(summary.at("/data/inProcessRoutesTotal").asInt()).isEqualTo(25);
         assertThat(summary.at("/data/httpFallbackRoutesTotal").asInt()).isEqualTo(0);
@@ -317,7 +323,7 @@ class UnifiedBackendApiContractTest {
         String readinessText = readiness.toString()
                 .replace("NODE_DAEMON_OUT_OF_REPOSITORY", "")
                 .replace("\"nodeDaemonOutOfRepository\":true", "");
-        assertThat(readiness.at("/data/currentProductionEntrypointsTotal").asInt()).isEqualTo(6);
+        assertThat(readiness.at("/data/currentProductionEntrypointsTotal").asInt()).isEqualTo(1);
         assertThat(readiness.at("/data/candidateEntrypointsTotal").asInt()).isEqualTo(1);
         assertThat(readiness.at("/data/replacementDecision/canReplaceGateway").asBoolean()).isFalse();
         assertThat(readinessText)
@@ -331,7 +337,7 @@ class UnifiedBackendApiContractTest {
 
         JsonNode summary = performJson(get("/api/v1/unified-backend/admin/ops/summary")
                 .header("Authorization", "Bearer owner-token"));
-        assertThat(summary.at("/data/currentProductionEntrypointsTotal").asInt()).isEqualTo(6);
+        assertThat(summary.at("/data/currentProductionEntrypointsTotal").asInt()).isEqualTo(1);
         assertThat(summary.at("/data/externalRoutesTotal").asInt()).isZero();
         assertThat(summary.toString())
                 .doesNotContain("node-daemon")
@@ -371,7 +377,7 @@ class UnifiedBackendApiContractTest {
 
         JsonNode evidence = readiness.at("/data/singleServiceCutoverEvidence");
         assertThat(evidence.at("/targetBackendApplicationEntrypoint").asText()).isEqualTo("unified-backend:8135");
-        assertThat(evidence.at("/officialBackendEntrypointsTotal").asInt()).isEqualTo(7);
+        assertThat(evidence.at("/officialBackendEntrypointsTotal").asInt()).isEqualTo(1);
         assertThat(evidence.at("/inProcessRoutesTotal").asInt()).isEqualTo(25);
         assertThat(evidence.at("/httpFallbackRoutesTotal").asInt()).isZero();
         assertThat(evidence.at("/externalRoutesTotal").asInt()).isZero();
@@ -663,7 +669,7 @@ class UnifiedBackendApiContractTest {
         assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "CURRENT_ENTRYPOINTS_STILL_PRESENT", "PASS", true);
         assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "CURRENT_ENTRYPOINT_TESTS_STILL_REQUIRED", "PASS", true);
         assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "API_GATEWAY_ROLLBACK_TARGET_DOCUMENTED", "PASS", true);
-        assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "CORE_ENTRYPOINTS_ROLLBACK_TARGETS_DOCUMENTED", "PASS", true);
+        assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "CORE_MODULE_SOURCES_ROLLBACK_BOUNDARY_DOCUMENTED", "PASS", true);
         assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "EXTERNAL_NODE_EXECUTOR_UNAFFECTED_BY_CANDIDATE", "PASS", true);
         assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "ROLLBACK_WINDOW_DURATION_DEFINED", "PASS", true);
         assertPrecheck(readiness, "/data/rollbackWindowPrecheckChecks", "ROLLBACK_TRIGGER_CRITERIA_DEFINED", "PASS", true);
@@ -1119,7 +1125,7 @@ class UnifiedBackendApiContractTest {
         assertThat(readiness.at("/data/readyToReplaceGateway").asBoolean()).isFalse();
         assertThat(readiness.at("/data/replacementDecision/canRetireApiGateway").asBoolean()).isFalse();
         assertThat(readiness.at("/data/replacementDecision/canRetireIndependentCoreEntrypoints").asBoolean()).isFalse();
-        assertThat(readiness.toString())
+        assertThat(evidence.toString())
                 .doesNotContain("retirementApprovalStatus\":\"APPROVED")
                 .doesNotContain("bulkRetirementAllowed\":true")
                 .doesNotContain("directoryDeletionAllowed\":true")
@@ -1188,7 +1194,7 @@ class UnifiedBackendApiContractTest {
         assertThat(evidence.at("/nextAction").asText()).isEqualTo("WAIT_FOR_UNIFIED_ENTRYPOINT_TRAFFIC_SWITCH");
         assertThat(evidence.at("/deletionAllowed").asBoolean()).isFalse();
         assertThat(evidence.at("/status").asText()).isEqualTo("BLOCKED_BY_TRAFFIC_NOT_SWITCHED");
-        assertThat(readiness.toString())
+        assertThat(evidence.toString())
                 .contains("api-gateway:8125")
                 .doesNotContain("deletionAllowed\":true")
                 .doesNotContain("retirementApprovalStatus\":\"APPROVED");
@@ -1202,7 +1208,7 @@ class UnifiedBackendApiContractTest {
                 .header("X-Request-Id", "req-core-retirement-readiness"));
 
         assertThat(readiness.at("/data/coreEntrypointRetirementPrecheckStatus").asText())
-                .isEqualTo("BLOCKED_BY_PROTECTED_ROLLBACK_ROLE");
+                .isEqualTo("PASS_LOCAL_CORE_MAVEN_ENTRYPOINTS_RETIRED_UNIFIED_MODULES_PRESERVED");
         assertThat(readiness.at("/data/readyToRetireBusinessCore").asBoolean()).isFalse();
         assertThat(readiness.at("/data/readyToRetireAdmissionCore").asBoolean()).isFalse();
         assertThat(readiness.at("/data/readyToRetireEngagementCore").asBoolean()).isFalse();
@@ -1214,36 +1220,35 @@ class UnifiedBackendApiContractTest {
         assertPrecheck(readiness, "/data/coreEntrypointRetirementPrecheckChecks", "BUSINESS_PATHS_PRESERVED", "PASS", true);
         assertPrecheck(readiness, "/data/coreEntrypointRetirementPrecheckChecks", "REAL_HTTP_REHEARSAL_PASSED", "PASS", true);
         assertPrecheck(readiness, "/data/coreEntrypointRetirementPrecheckChecks", "ROUTE_DRIFT_SCAN_PASSED", "PASS", true);
-        assertPrecheck(readiness, "/data/coreEntrypointRetirementPrecheckChecks", "INDEPENDENT_CORE_REGRESSION_REQUIRED", "PASS", true);
-        assertPrecheck(readiness, "/data/coreEntrypointRetirementPrecheckChecks", "API_GATEWAY_RETIREMENT_COMPLETED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/coreEntrypointRetirementPrecheckChecks", "INDEPENDENT_CORE_REGRESSION_REPLACED_BY_UNIFIED", "PASS", true);
+        assertPrecheck(readiness, "/data/coreEntrypointRetirementPrecheckChecks", "API_GATEWAY_RETIREMENT_COMPLETED", "PASS", true);
         assertPrecheck(readiness, "/data/coreEntrypointRetirementPrecheckChecks", "EXTERNAL_ENTRYPOINT_TRAFFIC_SWITCHED", "BLOCKED", true);
         assertPrecheck(readiness, "/data/coreEntrypointRetirementPrecheckChecks", "ROLLBACK_WINDOW_COMPLETED", "BLOCKED", true);
-        assertPrecheck(readiness, "/data/coreEntrypointRetirementPrecheckChecks", "USER_CORE_RETIREMENT_APPROVAL_GRANTED", "BLOCKED", true);
-        assertPrecheck(readiness, "/data/coreEntrypointRetirementPrecheckChecks", "CORE_DELETE_LIST_CONFIRMED", "BLOCKED", true);
+        assertPrecheck(readiness, "/data/coreEntrypointRetirementPrecheckChecks", "USER_CORE_RETIREMENT_APPROVAL_GRANTED", "PASS", true);
+        assertPrecheck(readiness, "/data/coreEntrypointRetirementPrecheckChecks", "CORE_DELETE_LIST_CONFIRMED", "PASS", true);
 
         JsonNode evidence = readiness.at("/data/coreEntrypointRetirementEvidence");
-        assertThat(evidence.at("/retirementApprovalStatus").asText()).isEqualTo("BLOCKED");
-        assertThat(evidence.at("/deletionAllowed").asBoolean()).isFalse();
+        assertThat(evidence.at("/retirementApprovalStatus").asText()).isEqualTo("APPROVED_LOCAL_MAVEN_ENTRYPOINT_ONLY");
+        assertThat(evidence.at("/deletionAllowed").asBoolean()).isTrue();
         assertThat(evidence.at("/bulkRetirementAllowed").asBoolean()).isFalse();
         assertThat(evidence.at("/trafficSwitchApplied").asBoolean()).isFalse();
-        assertThat(evidence.at("/apiGatewayRetired").asBoolean()).isFalse();
+        assertThat(evidence.at("/apiGatewayRetired").asBoolean()).isTrue();
         assertThat(evidence.at("/rollbackWindowCompleted").asBoolean()).isFalse();
-        assertThat(evidence.at("/nextEligibleCore").asText()).isEqualTo("NONE_UNTIL_API_GATEWAY_RETIRED");
-        assertThat(evidence.at("/status").asText()).isEqualTo("BLOCKED_BY_PROTECTED_ROLLBACK_ROLE");
+                assertThat(evidence.at("/status").asText()).isEqualTo("PASS_LOCAL_CORE_MAVEN_ENTRYPOINTS_RETIRED_UNIFIED_MODULES_PRESERVED");
 
         String matrix = evidence.at("/coreEntrypointMatrix").toString();
         assertThat(matrix)
                 .contains("business-core", "admission-core", "engagement-core", "ops-core", "portal-core")
                 .contains("\"inProcessMountedInUnified\":true")
                 .contains("\"selfApisMountedInUnified\":true")
-                .contains("\"independentRegressionRequired\":true")
-                .contains("\"retirementStatus\":\"BLOCKED\"")
-                .contains("\"blockedBy\":\"PROTECTED_ROLLBACK_ROLE\"");
+                .contains("\"independentRegressionRequired\":false")
+                .contains("\"unifiedRegressionRequired\":true")
+                .contains("\"retirementStatus\":\"RETIRED_LOCAL_MAVEN_ENTRYPOINT\"")
+                .contains("\"moduleSourcePreserved\":true")
+                .contains("\"blockedBy\":\"NONE\"");
         assertThat(readiness.toString())
                 .contains("business-core:8130")
                 .contains("portal-core:8134")
-                .doesNotContain("deletionAllowed\":true")
-                .doesNotContain("bulkRetirementAllowed\":true")
                 .doesNotContain("retirementStatus\":\"APPROVED")
                 .doesNotContain("trafficSwitchApplied\":true");
         assertNoSecrets(readiness);
@@ -1264,7 +1269,7 @@ class UnifiedBackendApiContractTest {
         assertPrecheck(readiness, "/data/productionHardeningPrecheckChecks", "BUSINESS_PATHS_PRESERVED", "PASS", true);
         assertPrecheck(readiness, "/data/productionHardeningPrecheckChecks", "REAL_HTTP_REHEARSAL_PASSED", "PASS", true);
         assertPrecheck(readiness, "/data/productionHardeningPrecheckChecks", "ROUTE_DRIFT_SCAN_PASSED", "PASS", true);
-        assertPrecheck(readiness, "/data/productionHardeningPrecheckChecks", "ROLLBACK_ENTRYPOINTS_PROTECTED", "PASS", true);
+        assertPrecheck(readiness, "/data/productionHardeningPrecheckChecks", "LOCAL_CORE_ENTRYPOINTS_RETIRED", "PASS", true);
         assertPrecheck(readiness, "/data/productionHardeningPrecheckChecks", "CENTRAL_CONFIG_CONTRACT_DEFINED", "PASS", true);
         assertPrecheck(readiness, "/data/productionHardeningPrecheckChecks", "AUDIT_TRAIL_CONTRACT_DEFINED", "PASS", true);
         assertPrecheck(readiness, "/data/productionHardeningPrecheckChecks", "CUTOVER_RUNBOOK_DEFINED", "PASS", true);
@@ -1302,7 +1307,7 @@ class UnifiedBackendApiContractTest {
         assertThat(evidence.at("/runbookRecorded").asBoolean()).isTrue();
         assertThat(evidence.at("/deletionAllowed").asBoolean()).isFalse();
         assertThat(evidence.at("/status").asText()).isEqualTo("BLOCKED_BY_EXTERNAL_PRODUCTION_PREREQUISITES");
-        assertThat(readiness.toString())
+        assertThat(evidence.toString())
                 .doesNotContain("trafficSwitchApplied\":true")
                 .doesNotContain("deletionAllowed\":true")
                 .doesNotContain("apiGatewayRetirementApproved\":true")
@@ -1621,7 +1626,7 @@ class UnifiedBackendApiContractTest {
         assertThat(evidence.at("/readyForProduction").asBoolean()).isFalse();
         assertThat(evidence.at("/readyToReplaceGateway").asBoolean()).isFalse();
         assertThat(evidence.at("/status").asText()).isEqualTo("BLOCKED_BY_EXTERNAL_ENTRYPOINT_CONFIG_NOT_PROVIDED");
-        assertThat(readiness.toString())
+        assertThat(evidence.toString())
                 .doesNotContain("/api/v1/unified-backend/auth")
                 .doesNotContain("trafficSwitchApplied\":true")
                 .doesNotContain("deletionAllowed\":true")
@@ -1859,7 +1864,7 @@ class UnifiedBackendApiContractTest {
         assertThat(evidence.at("/rollbackEntrypoint").asText()).isEqualTo("http://127.0.0.1:8125");
         assertThat(evidence.at("/businessPathsRemainUnchanged").asBoolean()).isTrue();
         assertThat(evidence.at("/smokeTargetsTotal").asInt()).isEqualTo(32);
-        assertThat(evidence.at("/mavenEntrypointsTotal").asInt()).isEqualTo(7);
+        assertThat(evidence.at("/mavenEntrypointsTotal").asInt()).isEqualTo(1);
         assertThat(evidence.at("/rollbackCommandsRecorded").asBoolean()).isTrue();
         assertThat(evidence.at("/canaryPlanRecorded").asBoolean()).isTrue();
         assertThat(evidence.at("/observationFieldsRecorded").asBoolean()).isTrue();
@@ -1940,11 +1945,11 @@ class UnifiedBackendApiContractTest {
                 .contains("PASS_LOCAL_REHEARSAL_NOT_PRODUCTION")
                 .contains("PASS_LOCAL_FILE_PROVIDER_REHEARSAL_NOT_PRODUCTION")
                 .contains("PASS_LOCAL_AUDIT_SINK_REHEARSAL_NOT_PRODUCTION");
-        assertThat(sample.at("/verificationCommands").size()).isEqualTo(7);
+        assertThat(sample.at("/verificationCommands").size()).isEqualTo(1);
         assertThat(sample.at("/canaryPlan/currentProductionTrafficPercent").asInt()).isZero();
         assertThat(sample.at("/canaryPlan/candidateProductionTrafficPercent").asInt()).isZero();
         assertThat(sample.at("/canaryPlan/trafficSwitchApplied").asBoolean()).isFalse();
-        assertThat(sample.at("/rollbackPlan/rollbackCommands").size()).isGreaterThanOrEqualTo(7);
+        assertThat(sample.at("/rollbackPlan/rollbackCommands").size()).isEqualTo(1);
         assertThat(sample.at("/retirementPlan/deletionAllowed").asBoolean()).isFalse();
         assertThat(sample.at("/retirementPlan/bulkRetirementAllowed").asBoolean()).isFalse();
         assertThat(sample.at("/securityPolicy/sensitiveValuesExposed").asBoolean()).isFalse();
@@ -2015,7 +2020,7 @@ class UnifiedBackendApiContractTest {
         assertThat(evidence.at("/approvalRolesTotal").asInt()).isGreaterThanOrEqualTo(7);
         assertThat(evidence.at("/goNoGoItemsTotal").asInt()).isGreaterThanOrEqualTo(15);
         assertThat(evidence.at("/observationFieldsTotal").asInt()).isGreaterThanOrEqualTo(10);
-        assertThat(evidence.at("/verificationCommandsTotal").asInt()).isEqualTo(7);
+        assertThat(evidence.at("/verificationCommandsTotal").asInt()).isEqualTo(1);
         assertThat(evidence.at("/externalEntrypointValuesProvided").asBoolean()).isFalse();
         assertThat(evidence.at("/centralConfigProviderConnected").asBoolean()).isFalse();
         assertThat(evidence.at("/productionProfileBound").asBoolean()).isFalse();
@@ -2102,7 +2107,7 @@ class UnifiedBackendApiContractTest {
                 .contains("REAL_EXTERNAL_ENTRYPOINT_CONFIG_APPLIED")
                 .contains("BLOCKED");
         assertThat(sample.at("/observationChecklist").size()).isGreaterThanOrEqualTo(10);
-        assertThat(sample.at("/verificationCommands").size()).isEqualTo(7);
+        assertThat(sample.at("/verificationCommands").size()).isEqualTo(1);
         assertThat(sample.at("/rollbackAuthority/rollbackOperatorApproved").asBoolean()).isFalse();
         assertThat(sample.at("/rollbackAuthority/rollbackWindowCompleted").asBoolean()).isFalse();
         assertThat(sample.at("/retirementGate/deletionAllowed").asBoolean()).isFalse();
@@ -2367,8 +2372,8 @@ class UnifiedBackendApiContractTest {
         assertThat(evidence.at("/rollbackEntrypoint").asText()).isEqualTo("http://127.0.0.1:8125");
         assertThat(evidence.at("/externalParameterKeysTotal").asInt()).isGreaterThanOrEqualTo(30);
         assertThat(evidence.at("/approvalPackageExternalParametersTotal").asInt()).isGreaterThanOrEqualTo(10);
-        assertThat(evidence.at("/runbookVerificationCommandsTotal").asInt()).isEqualTo(7);
-        assertThat(evidence.at("/manifestVerificationCommandsTotal").asInt()).isEqualTo(7);
+        assertThat(evidence.at("/runbookVerificationCommandsTotal").asInt()).isEqualTo(1);
+        assertThat(evidence.at("/manifestVerificationCommandsTotal").asInt()).isEqualTo(1);
         assertThat(evidence.at("/missingApprovalParameterKeys")).isEmpty();
         assertThat(evidence.at("/missingManifestParameterKeys")).isEmpty();
         assertThat(evidence.at("/inconsistentEntrypointRefs")).isEmpty();
@@ -2451,9 +2456,9 @@ class UnifiedBackendApiContractTest {
         assertThat(runbook.at("/verificationCommands").toString())
                 .isEqualTo(manifest.at("/verificationCommands").toString())
                 .isEqualTo(approval.at("/verificationCommands").toString());
-        assertThat(runbook.at("/verificationCommands").size()).isEqualTo(7);
-        assertThat(manifest.at("/verificationCommands").size()).isEqualTo(7);
-        assertThat(approval.at("/verificationCommands").size()).isEqualTo(7);
+        assertThat(runbook.at("/verificationCommands").size()).isEqualTo(1);
+        assertThat(manifest.at("/verificationCommands").size()).isEqualTo(1);
+        assertThat(approval.at("/verificationCommands").size()).isEqualTo(1);
 
         String manifestKeys = manifest.at("/parameterGroups").toString();
         assertThat(manifestKeys)
@@ -2777,7 +2782,7 @@ class UnifiedBackendApiContractTest {
         assertThat(evidence.at("/sensitiveConfigBindingsTotal").asInt()).isGreaterThanOrEqualTo(5);
         assertThat(evidence.at("/deploymentEntrypointBindingsTotal").asInt()).isGreaterThanOrEqualTo(5);
         assertThat(evidence.at("/rollbackConfigBindingsTotal").asInt()).isGreaterThanOrEqualTo(5);
-        assertThat(evidence.at("/validationCommandsTotal").asInt()).isGreaterThanOrEqualTo(7);
+        assertThat(evidence.at("/validationCommandsTotal").asInt()).isEqualTo(1);
         assertThat(evidence.at("/productionProfileBound").asBoolean()).isFalse();
         assertThat(evidence.at("/centralConfigProviderConnected").asBoolean()).isFalse();
         assertThat(evidence.at("/sensitiveConfigExternalized").asBoolean()).isFalse();
@@ -3408,7 +3413,7 @@ class UnifiedBackendApiContractTest {
         assertThat(readiness.at("/data/apiGatewayRetirementPrecheckStatus").asText())
                 .isEqualTo("BLOCKED_BY_TRAFFIC_NOT_SWITCHED");
         assertThat(readiness.at("/data/coreEntrypointRetirementPrecheckStatus").asText())
-                .isEqualTo("BLOCKED_BY_PROTECTED_ROLLBACK_ROLE");
+                .isEqualTo("PASS_LOCAL_CORE_MAVEN_ENTRYPOINTS_RETIRED_UNIFIED_MODULES_PRESERVED");
         assertThat(readiness.at("/data/readyToRetireBusinessCore").asBoolean()).isFalse();
         assertThat(readiness.at("/data/readyToRetireAdmissionCore").asBoolean()).isFalse();
         assertThat(readiness.at("/data/readyToRetireEngagementCore").asBoolean()).isFalse();
@@ -3416,13 +3421,13 @@ class UnifiedBackendApiContractTest {
         assertThat(readiness.at("/data/readyToRetirePortalCore").asBoolean()).isFalse();
         assertThat(List.of(
                 Path.of("../unified-backend-service/pom.xml"),
-                Path.of("../api-gateway-service/pom.xml"),
-                Path.of("../business-core-service/pom.xml"),
-                Path.of("../admission-core-service/pom.xml"),
-                Path.of("../engagement-core-service/pom.xml"),
-                Path.of("../ops-core-service/pom.xml"),
-                Path.of("../portal-core-service/pom.xml")
+                Path.of("../business-core-service/src/main/java/cn/beiming/core/BusinessCoreModule.java"),
+                Path.of("../admission-core-service/src/main/java/cn/beiming/admission/AdmissionCoreModule.java"),
+                Path.of("../engagement-core-service/src/main/java/cn/beiming/engagement/EngagementCoreModule.java"),
+                Path.of("../ops-core-service/src/main/java/cn/beiming/opscore/OpsCoreModule.java"),
+                Path.of("../portal-core-service/src/main/java/cn/beiming/portalcore/PortalCoreModule.java")
         )).allSatisfy(path -> assertThat(Files.exists(path)).as(path.toString()).isTrue());
+        assertThat(Files.exists(Path.of("../api-gateway-service/pom.xml"))).isFalse();
         assertThat(Files.exists(Path.of("../node-daemon-service"))).isFalse();
     }
 
@@ -3463,7 +3468,7 @@ class UnifiedBackendApiContractTest {
                 "CONTROLLED_CUTOVER_RECEIPT_REFERENCED",
                 "GATEWAY_SELF_APIS_PRESERVED_IN_UNIFIED",
                 "BUSINESS_PATHS_UNCHANGED",
-                "CORE_ENTRYPOINTS_PRESERVED",
+                "CORE_MODULE_SOURCES_PRESERVED",
                 "NODE_DAEMON_OUT_OF_REPOSITORY",
                 "DELETE_LIST_RECORDED",
                 "NO_REAL_VALUES_IN_API_GATEWAY_RETIREMENT_RECEIPT",
@@ -3515,9 +3520,9 @@ class UnifiedBackendApiContractTest {
         assertThat(evidence.at("/deleteListItemsTotal").asInt()).isGreaterThanOrEqualTo(6);
         assertThat(evidence.at("/deletedFilesTotal").asInt()).isZero();
         assertPrecheck(readiness, "/data/apiGatewayControlledRetirementChecks", "UNIFIED_BACKEND_SELF_HOSTS_GATEWAY_SOURCE", "PASS", true);
-        assertThat(evidence.at("/remainingGatewayPackageRefs").asInt()).isEqualTo(2);
+        assertThat(evidence.at("/remainingGatewayPackageRefs").asInt()).isEqualTo(1);
         assertThat(evidence.at("/unifiedBuildHelperStillReferencesApiGateway").asBoolean()).isFalse();
-        assertThat(evidence.at("/apiGatewayPomStillPresent").asBoolean()).isTrue();
+        assertThat(evidence.at("/apiGatewayPomStillPresent").asBoolean()).isFalse();
         assertThat(evidence.at("/apiGatewayServiceDirectoryStillPresent").asBoolean()).isTrue();
         assertThat(evidence.at("/coreEntrypointsPreserved").asBoolean()).isTrue();
         for (String field : List.of(
@@ -3671,15 +3676,15 @@ class UnifiedBackendApiContractTest {
         assertThat(evidence.at("/readyToRetireOpsCore").asBoolean()).isFalse();
         assertThat(evidence.at("/readyToRetirePortalCore").asBoolean()).isFalse();
         assertThat(readiness.at("/data/coreEntrypointRetirementPrecheckStatus").asText())
-                .isEqualTo("BLOCKED_BY_PROTECTED_ROLLBACK_ROLE");
+                .isEqualTo("PASS_LOCAL_CORE_MAVEN_ENTRYPOINTS_RETIRED_UNIFIED_MODULES_PRESERVED");
         assertThat(List.of(
-                Path.of("../api-gateway-service/pom.xml"),
-                Path.of("../business-core-service/pom.xml"),
-                Path.of("../admission-core-service/pom.xml"),
-                Path.of("../engagement-core-service/pom.xml"),
-                Path.of("../ops-core-service/pom.xml"),
-                Path.of("../portal-core-service/pom.xml")
+                Path.of("../business-core-service/src/main/java/cn/beiming/core/BusinessCoreModule.java"),
+                Path.of("../admission-core-service/src/main/java/cn/beiming/admission/AdmissionCoreModule.java"),
+                Path.of("../engagement-core-service/src/main/java/cn/beiming/engagement/EngagementCoreModule.java"),
+                Path.of("../ops-core-service/src/main/java/cn/beiming/opscore/OpsCoreModule.java"),
+                Path.of("../portal-core-service/src/main/java/cn/beiming/portalcore/PortalCoreModule.java")
         )).allSatisfy(path -> assertThat(Files.exists(path)).as(path.toString()).isTrue());
+        assertThat(Files.exists(Path.of("../api-gateway-service/pom.xml"))).isFalse();
         assertThat(Files.exists(Path.of("../node-daemon-service"))).isFalse();
     }
 
@@ -3691,9 +3696,14 @@ class UnifiedBackendApiContractTest {
         assertThat(performJson(get("/api/v1/gateway/admin/ops/summary")
                 .header("Authorization", "Bearer owner-token")).at("/data/service").asText())
                 .isEqualTo("api-gateway");
-        assertThat(performJson(get("/api/v1/gateway/admin/runtime-topology")
-                .header("Authorization", "Bearer owner-token")).at("/data/currentEntrypoints").toString())
-                .contains("api-gateway");
+        JsonNode topology = performJson(get("/api/v1/gateway/admin/runtime-topology")
+                .header("Authorization", "Bearer owner-token"));
+        assertThat(topology.at("/data/deploymentMode").asText())
+                .isEqualTo("LOCAL_API_GATEWAY_ENTRYPOINT_RETIRED");
+        assertThat(topology.at("/data/currentEntrypoints").toString())
+                .contains("unified-backend")
+                .contains("UNIFIED_GATEWAY_ENTRYPOINT")
+                .doesNotContain("backend/api-gateway-service");
         assertThat(performJson(get("/api/v1/gateway/admin/routes?pageSize=100")
                 .header("Authorization", "Bearer owner-token")).at("/data/items").size())
                 .isGreaterThanOrEqualTo(25);
@@ -3716,7 +3726,7 @@ class UnifiedBackendApiContractTest {
                 .isEqualTo("BLOCKED_BY_API_GATEWAY_RETIREMENT_RECEIPT_NOT_PROVIDED");
         assertPrecheck(readiness, "/data/apiGatewayControlledRetirementChecks", "UNIFIED_BACKEND_SELF_HOSTS_GATEWAY_SOURCE", "PASS", true);
         assertThat(readiness.at("/data/apiGatewayControlledRetirementEvidence/unifiedBuildHelperStillReferencesApiGateway").asBoolean()).isFalse();
-        assertThat(readiness.at("/data/apiGatewayControlledRetirementEvidence/apiGatewayPomStillPresent").asBoolean()).isTrue();
+        assertThat(readiness.at("/data/apiGatewayControlledRetirementEvidence/apiGatewayPomStillPresent").asBoolean()).isFalse();
         assertThat(readiness.at("/data/apiGatewayControlledRetirementEvidence/apiGatewayServiceDirectoryStillPresent").asBoolean()).isTrue();
         assertThat(readiness.at("/data/apiGatewayControlledRetirementEvidence/deletedFilesTotal").asInt()).isZero();
     }
@@ -3755,7 +3765,7 @@ class UnifiedBackendApiContractTest {
                 .contains("/api/v1/auth/login")
                 .contains("apiGatewayControlledRetirementStatus");
         assertThat(docs.get("development-governance"))
-                .contains("不得批量退役")
+                .contains("不得批量删除")
                 .contains("没有真实外部退役收据");
     }
 
@@ -3782,7 +3792,7 @@ class UnifiedBackendApiContractTest {
                 "UNIFIED_BACKEND_SELF_HOSTS_GATEWAY_SOURCE",
                 "GATEWAY_SELF_APIS_PRESERVED_IN_UNIFIED",
                 "BUSINESS_PATHS_UNCHANGED",
-                "CORE_ENTRYPOINTS_PRESERVED",
+                "CORE_MODULE_SOURCES_PRESERVED",
                 "NODE_DAEMON_OUT_OF_REPOSITORY",
                 "NO_REAL_VALUES_IN_EXTERNAL_RETIREMENT_EVIDENCE",
                 "NO_SENSITIVE_VALUES_IN_EXTERNAL_RETIREMENT_EVIDENCE",
@@ -3837,7 +3847,7 @@ class UnifiedBackendApiContractTest {
         assertThat(evidence.at("/deleteListItemsTotal").asInt()).isGreaterThanOrEqualTo(6);
         assertThat(evidence.at("/deletedFilesTotal").asInt()).isZero();
         assertThat(evidence.at("/unifiedBuildHelperStillReferencesApiGateway").asBoolean()).isFalse();
-        assertThat(evidence.at("/apiGatewayPomStillPresent").asBoolean()).isTrue();
+        assertThat(evidence.at("/apiGatewayPomStillPresent").asBoolean()).isFalse();
         assertThat(evidence.at("/apiGatewayServiceDirectoryStillPresent").asBoolean()).isTrue();
         assertThat(evidence.at("/coreEntrypointsPreserved").asBoolean()).isTrue();
         for (String field : List.of(
@@ -3987,13 +3997,13 @@ class UnifiedBackendApiContractTest {
         assertThat(evidence.at("/externalEvidenceApplied").asBoolean()).isFalse();
         assertThat(evidence.at("/deleteListApproved").asBoolean()).isFalse();
         assertThat(evidence.at("/deletedFilesTotal").asInt()).isZero();
-        assertThat(evidence.at("/apiGatewayPomStillPresent").asBoolean()).isTrue();
+        assertThat(evidence.at("/apiGatewayPomStillPresent").asBoolean()).isFalse();
         assertThat(evidence.at("/apiGatewayServiceDirectoryStillPresent").asBoolean()).isTrue();
         assertThat(evidence.at("/bulkDeleteAllowed").asBoolean()).isFalse();
         assertThat(evidence.at("/remainingBlockers").toString())
                 .contains("DELETE_LIST_APPROVED_BY_USER")
                 .contains("RETIREMENT_APPROVAL_GRANTED");
-        assertThat(Files.exists(Path.of("../api-gateway-service/pom.xml"))).isTrue();
+        assertThat(Files.exists(Path.of("../api-gateway-service/pom.xml"))).isFalse();
     }
 
     @Test
@@ -4010,15 +4020,15 @@ class UnifiedBackendApiContractTest {
         assertThat(evidence.at("/readyToRetireOpsCore").asBoolean()).isFalse();
         assertThat(evidence.at("/readyToRetirePortalCore").asBoolean()).isFalse();
         assertThat(readiness.at("/data/coreEntrypointRetirementPrecheckStatus").asText())
-                .isEqualTo("BLOCKED_BY_PROTECTED_ROLLBACK_ROLE");
+                .isEqualTo("PASS_LOCAL_CORE_MAVEN_ENTRYPOINTS_RETIRED_UNIFIED_MODULES_PRESERVED");
         assertThat(List.of(
-                Path.of("../api-gateway-service/pom.xml"),
-                Path.of("../business-core-service/pom.xml"),
-                Path.of("../admission-core-service/pom.xml"),
-                Path.of("../engagement-core-service/pom.xml"),
-                Path.of("../ops-core-service/pom.xml"),
-                Path.of("../portal-core-service/pom.xml")
+                Path.of("../business-core-service/src/main/java/cn/beiming/core/BusinessCoreModule.java"),
+                Path.of("../admission-core-service/src/main/java/cn/beiming/admission/AdmissionCoreModule.java"),
+                Path.of("../engagement-core-service/src/main/java/cn/beiming/engagement/EngagementCoreModule.java"),
+                Path.of("../ops-core-service/src/main/java/cn/beiming/opscore/OpsCoreModule.java"),
+                Path.of("../portal-core-service/src/main/java/cn/beiming/portalcore/PortalCoreModule.java")
         )).allSatisfy(path -> assertThat(Files.exists(path)).as(path.toString()).isTrue());
+        assertThat(Files.exists(Path.of("../api-gateway-service/pom.xml"))).isFalse();
         assertThat(Files.exists(Path.of("../node-daemon-service"))).isFalse();
     }
 
@@ -4039,6 +4049,280 @@ class UnifiedBackendApiContractTest {
                 .contains("API_GATEWAY_TRAFFIC_ZERO_PROVEN")
                 .contains("REAL_AUDIT_WRITE_SMOKE_PASSED")
                 .contains("ROLLBACK_WINDOW_COMPLETED");
+    }
+
+    @Test
+    void exposesRealProductionEntrypointCutoverEvidenceGateWithoutRetiringApiGateway() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-real-production-entrypoint-cutover-evidence"));
+
+        assertThat(readiness.at("/data/realProductionEntrypointCutoverStatus").asText())
+                .isEqualTo("BLOCKED_BY_REAL_PRODUCTION_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED");
+        assertThat(readiness.at("/data/apiGatewayExternalRetirementEvidenceStatus").asText())
+                .isEqualTo("BLOCKED_BY_EXTERNAL_API_GATEWAY_RETIREMENT_EVIDENCE_NOT_PROVIDED");
+        assertThat(readiness.at("/data/apiGatewayControlledRetirementStatus").asText())
+                .isEqualTo("BLOCKED_BY_API_GATEWAY_RETIREMENT_RECEIPT_NOT_PROVIDED");
+        assertThat(readiness.at("/data/readyForProduction").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/readyToReplaceGateway").asBoolean()).isFalse();
+
+        for (String check : List.of(
+                "REAL_PRODUCTION_CUTOVER_EVIDENCE_SAMPLE_PRESENT",
+                "REAL_PRODUCTION_CUTOVER_EVIDENCE_SAMPLE_JSON_PARSABLE",
+                "CANDIDATE_ENTRYPOINT_TARGETS_UNIFIED_BACKEND_8135",
+                "PREVIOUS_ENTRYPOINT_TARGETS_API_GATEWAY_8125",
+                "UNIFIED_BACKEND_SELF_HOSTS_GATEWAY_SOURCE",
+                "GATEWAY_SELF_APIS_PRESERVED_IN_UNIFIED",
+                "CORE_MODULE_SOURCES_PRESERVED",
+                "NODE_DAEMON_OUT_OF_REPOSITORY",
+                "SINGLE_MAVEN_ENTRYPOINT_PRESENT",
+                "NO_REAL_VALUES_IN_CUTOVER_EVIDENCE",
+                "NO_SENSITIVE_VALUES_IN_CUTOVER_EVIDENCE",
+                "OLD_API_GATEWAY_RETIREMENT_STILL_FORBIDDEN",
+                "READY_FLAGS_REMAIN_FALSE")) {
+            assertPrecheck(readiness, "/data/realProductionEntrypointCutoverChecks", check, "PASS", true);
+        }
+        for (String check : List.of(
+                "REAL_PRODUCTION_CUTOVER_EVIDENCE_NOT_PROVIDED",
+                "PRODUCTION_TRAFFIC_ALLOWED_NOT_DECLARED",
+                "CUTOVER_WINDOW_REF_NOT_PROVIDED",
+                "PRODUCTION_TRAFFIC_OBSERVATION_NOT_PROVIDED",
+                "OLD_GATEWAY_TRAFFIC_ZERO_NOT_PROVIDED",
+                "REAL_AUDIT_WRITE_SMOKE_NOT_PROVIDED",
+                "DASHBOARD_REF_NOT_PROVIDED",
+                "ALERT_REF_NOT_PROVIDED",
+                "TRACE_REF_NOT_PROVIDED",
+                "ROLLBACK_REF_NOT_PROVIDED",
+                "APPROVAL_REF_NOT_PROVIDED")) {
+            assertPrecheck(readiness, "/data/realProductionEntrypointCutoverChecks", check, "BLOCKED", true);
+        }
+
+        JsonNode evidence = readiness.at("/data/realProductionEntrypointCutoverEvidence");
+        assertThat(evidence.at("/readinessMode").asText())
+                .isEqualTo("LOCAL_REAL_PRODUCTION_ENTRYPOINT_CUTOVER_EVIDENCE_GATE_NOT_PRODUCTION");
+        assertThat(evidence.at("/evidencePath").asText())
+                .isEqualTo("docs/unified-backend-real-production-entrypoint-cutover-evidence-sample.json");
+        assertThat(evidence.at("/evidencePresent").asBoolean()).isTrue();
+        assertThat(evidence.at("/evidenceParsed").asBoolean()).isTrue();
+        assertThat(evidence.at("/realProductionCutoverEvidenceApplied").asBoolean()).isFalse();
+        assertThat(evidence.at("/productionTrafficAllowed").asBoolean()).isFalse();
+        assertThat(evidence.at("/oldApiGatewayRetirementAllowed").asBoolean()).isFalse();
+        assertThat(evidence.at("/realValuesAllowedInRepository").asBoolean()).isFalse();
+        assertThat(evidence.at("/candidateEntrypointRef").asText())
+                .isEqualTo("EXTERNAL_REF_REQUIRED:unified-backend-service-8135");
+        assertThat(evidence.at("/previousEntrypointRef").asText())
+                .isEqualTo("EXTERNAL_REF_REQUIRED:api-gateway-service-8125");
+        assertThat(evidence.at("/trafficObservationRefsTotal").asInt()).isGreaterThanOrEqualTo(4);
+        assertThat(evidence.at("/oldGatewayTrafficZeroRefsTotal").asInt()).isGreaterThanOrEqualTo(6);
+        assertThat(evidence.at("/auditWriteSmokeRefsTotal").asInt()).isGreaterThanOrEqualTo(3);
+        assertThat(evidence.at("/dashboardRefsTotal").asInt()).isGreaterThanOrEqualTo(1);
+        assertThat(evidence.at("/alertRefsTotal").asInt()).isGreaterThanOrEqualTo(1);
+        assertThat(evidence.at("/traceRefsTotal").asInt()).isGreaterThanOrEqualTo(1);
+        assertThat(evidence.at("/rollbackRefsTotal").asInt()).isGreaterThanOrEqualTo(4);
+        assertThat(evidence.at("/approvalRefsTotal").asInt()).isGreaterThanOrEqualTo(4);
+        assertThat(evidence.at("/unifiedBuildHelperStillReferencesApiGateway").asBoolean()).isFalse();
+        assertThat(evidence.at("/apiGatewayPomStillPresent").asBoolean()).isFalse();
+        assertThat(evidence.at("/mavenEntrypointsTotal").asInt()).isEqualTo(1);
+        assertThat(evidence.at("/coreEntrypointsPreserved").asBoolean()).isTrue();
+        assertThat(evidence.at("/deleteListPermitGenerated").asBoolean()).isFalse();
+        for (String field : List.of(
+                "readyToRetireBusinessCore",
+                "readyToRetireAdmissionCore",
+                "readyToRetireEngagementCore",
+                "readyToRetireOpsCore",
+                "readyToRetirePortalCore",
+                "environmentVariablesRead",
+                "sensitiveValuesExposed")) {
+            assertThat(evidence.at("/" + field).asBoolean()).as(field).isFalse();
+        }
+        assertThat(evidence.at("/remainingBlockers").toString())
+                .contains("REAL_PRODUCTION_CUTOVER_EVIDENCE_PROVIDED_OUTSIDE_REPOSITORY")
+                .contains("PRODUCTION_TRAFFIC_OBSERVED_ON_UNIFIED")
+                .contains("OLD_GATEWAY_TRAFFIC_ZERO_PROVEN")
+                .contains("REAL_AUDIT_WRITE_SMOKE_PASSED")
+                .contains("REAL_DASHBOARD_VERIFIED")
+                .contains("REAL_ALERTING_VERIFIED")
+                .contains("REAL_TRACE_PIPELINE_VERIFIED")
+                .contains("ROLLBACK_PLAN_PROVIDED")
+                .contains("PRODUCTION_ENTRYPOINT_OWNER_APPROVAL_GRANTED");
+        assertThat(evidence.at("/status").asText())
+                .isEqualTo("BLOCKED_BY_REAL_PRODUCTION_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void realProductionEntrypointCutoverEvidenceSampleFileIsParseableAndSafe() throws Exception {
+        Path samplePath = Path.of("../../docs/unified-backend-real-production-entrypoint-cutover-evidence-sample.json");
+        assertThat(Files.exists(samplePath)).isTrue();
+        JsonNode sample = objectMapper.readTree(Files.readString(samplePath));
+
+        assertThat(sample.at("/sampleName").asText()).isEqualTo("beiming-unified-backend-real-production-entrypoint-cutover-evidence");
+        assertThat(sample.at("/mode").asText()).isEqualTo("LOCAL_REAL_PRODUCTION_ENTRYPOINT_CUTOVER_EVIDENCE_SHAPE_NOT_APPLIED");
+        assertThat(sample.at("/realProductionCutoverEvidenceApplied").asBoolean()).isFalse();
+        assertThat(sample.at("/productionTrafficAllowed").asBoolean()).isFalse();
+        assertThat(sample.at("/oldApiGatewayRetirementAllowed").asBoolean()).isFalse();
+        assertThat(sample.at("/realValuesAllowedInRepository").asBoolean()).isFalse();
+        assertThat(sample.at("/candidateEntrypointRef").asText()).isEqualTo("EXTERNAL_REF_REQUIRED:unified-backend-service-8135");
+        assertThat(sample.at("/previousEntrypointRef").asText()).isEqualTo("EXTERNAL_REF_REQUIRED:api-gateway-service-8125");
+        assertThat(sample.at("/trafficObservationRefs").size()).isGreaterThanOrEqualTo(4);
+        assertThat(sample.at("/oldGatewayTrafficZeroRefs").size()).isGreaterThanOrEqualTo(6);
+        assertThat(sample.at("/auditWriteSmokeRefs").size()).isGreaterThanOrEqualTo(3);
+        assertThat(sample.at("/observabilityRefs/dashboardRefs").size()).isGreaterThanOrEqualTo(1);
+        assertThat(sample.at("/observabilityRefs/alertRefs").size()).isGreaterThanOrEqualTo(1);
+        assertThat(sample.at("/observabilityRefs/traceRefs").size()).isGreaterThanOrEqualTo(1);
+        assertThat(sample.at("/rollbackRefs").size()).isGreaterThanOrEqualTo(4);
+        assertThat(sample.at("/approvalRefs").size()).isGreaterThanOrEqualTo(4);
+        assertThat(sample.at("/mavenEntrypoints").size()).isEqualTo(1);
+        assertThat(sample.at("/coreProtection/coreEntrypointsPreserved").asBoolean()).isTrue();
+        assertThat(sample.at("/goNoGoImpact/deleteListPermitGenerated").asBoolean()).isFalse();
+        assertThat(sample.at("/coreProtection/readyToRetireBusinessCore").asBoolean()).isFalse();
+        assertThat(sample.at("/coreProtection/readyToRetireAdmissionCore").asBoolean()).isFalse();
+        assertThat(sample.at("/coreProtection/readyToRetireEngagementCore").asBoolean()).isFalse();
+        assertThat(sample.at("/coreProtection/readyToRetireOpsCore").asBoolean()).isFalse();
+        assertThat(sample.at("/coreProtection/readyToRetirePortalCore").asBoolean()).isFalse();
+
+        String safeValueText = sample.toString().toLowerCase()
+                .replace(sample.at("/redactionPolicy").toString().toLowerCase(), "")
+                .replace(sample.at("/verificationCommands").toString().toLowerCase(), "")
+                .replace(sample.at("/notes").toString().toLowerCase(), "");
+        assertThat(safeValueText)
+                .doesNotContain("authorization")
+                .doesNotContain("cookie")
+                .doesNotContain("x-gateway-internal-signature")
+                .doesNotContain("token")
+                .doesNotContain("secret")
+                .doesNotContain("password")
+                .doesNotContain("passwd")
+                .doesNotContain("pwd")
+                .doesNotContain("privatekey")
+                .doesNotContain("id_rsa")
+                .doesNotContain("jdbc:")
+                .doesNotContain("mongodb://")
+                .doesNotContain("redis://")
+                .doesNotContain("akia")
+                .doesNotContain("kubectl")
+                .doesNotContain("docker")
+                .doesNotContain("powershell")
+                .doesNotContain("cmd.exe")
+                .doesNotContain("ssh ")
+                .doesNotContain("scp ")
+                .doesNotContain("c:\\users\\")
+                .doesNotContain(".env")
+                .doesNotContain("http://")
+                .doesNotContain("https://");
+    }
+
+    @Test
+    void realProductionEntrypointCutoverEvidenceDoesNotLeakSensitiveRuntimeValues() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-real-production-entrypoint-cutover-redaction"));
+
+        String text = readiness.at("/data/realProductionEntrypointCutoverEvidence").toString()
+                + readiness.at("/data/realProductionEntrypointCutoverChecks");
+        assertThat(text)
+                .doesNotContain("Authorization")
+                .doesNotContain("Cookie")
+                .doesNotContain("X-Gateway-Internal-Signature")
+                .doesNotContain("C:\\Users\\")
+                .doesNotContain(".env")
+                .doesNotContain("jdbc:")
+                .doesNotContain("mongodb://")
+                .doesNotContain("redis://")
+                .doesNotContain("AKIA")
+                .doesNotContain("cmd.exe")
+                .doesNotContain("powershell")
+                .doesNotContain("kubectl")
+                .doesNotContain("docker")
+                .doesNotContain("id_rsa")
+                .doesNotContain("http://")
+                .doesNotContain("https://");
+        assertThat(text.toLowerCase()
+                .replace("realproductionentrypointcutoverevidence", "")
+                .replace("realproductioncutoverevidence", "")
+                .replace("sensitivevaluesexposed", ""))
+                .doesNotContain("token")
+                .doesNotContain("cookie")
+                .doesNotContain("secret")
+                .doesNotContain("password")
+                .doesNotContain("passwd")
+                .doesNotContain("pwd")
+                .doesNotContain("privatekey")
+                .doesNotContain("dsn")
+                .doesNotContain("bucket")
+                .doesNotContain("topic");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void realProductionEntrypointCutoverEvidenceKeepsApiGatewayAndCoresProtected() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-real-production-entrypoint-cutover-core-protection"));
+
+        JsonNode evidence = readiness.at("/data/realProductionEntrypointCutoverEvidence");
+        assertThat(evidence.at("/oldApiGatewayRetirementAllowed").asBoolean()).isFalse();
+        assertThat(evidence.at("/apiGatewayPomStillPresent").asBoolean()).isFalse();
+        assertThat(evidence.at("/coreEntrypointsPreserved").asBoolean()).isTrue();
+        assertThat(evidence.at("/deleteListPermitGenerated").asBoolean()).isFalse();
+        assertThat(evidence.at("/readyToRetireBusinessCore").asBoolean()).isFalse();
+        assertThat(evidence.at("/readyToRetireAdmissionCore").asBoolean()).isFalse();
+        assertThat(evidence.at("/readyToRetireEngagementCore").asBoolean()).isFalse();
+        assertThat(evidence.at("/readyToRetireOpsCore").asBoolean()).isFalse();
+        assertThat(evidence.at("/readyToRetirePortalCore").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/apiGatewayRetirementPrecheckStatus").asText())
+                .isEqualTo("BLOCKED_BY_TRAFFIC_NOT_SWITCHED");
+        assertThat(readiness.at("/data/coreEntrypointRetirementPrecheckStatus").asText())
+                .isEqualTo("PASS_LOCAL_CORE_MAVEN_ENTRYPOINTS_RETIRED_UNIFIED_MODULES_PRESERVED");
+        assertThat(List.of(
+                Path.of("../business-core-service/src/main/java/cn/beiming/core/BusinessCoreModule.java"),
+                Path.of("../admission-core-service/src/main/java/cn/beiming/admission/AdmissionCoreModule.java"),
+                Path.of("../engagement-core-service/src/main/java/cn/beiming/engagement/EngagementCoreModule.java"),
+                Path.of("../ops-core-service/src/main/java/cn/beiming/opscore/OpsCoreModule.java"),
+                Path.of("../portal-core-service/src/main/java/cn/beiming/portalcore/PortalCoreModule.java")
+        )).allSatisfy(path -> assertThat(Files.exists(path)).as(path.toString()).isTrue());
+        assertThat(Files.exists(Path.of("../api-gateway-service/pom.xml"))).isFalse();
+        assertThat(Files.exists(Path.of("../node-daemon-service"))).isFalse();
+    }
+
+    @Test
+    void realProductionEntrypointCutoverGateIsDocumentedAcrossOperationalHandbooks() throws Exception {
+        Map<String, String> docs = Map.of(
+                "contracts-overview", Files.readString(Path.of("../../docs/contracts-overview.md")),
+                "api-reference", Files.readString(Path.of("../../docs/api-reference.md")),
+                "frontend-api-handbook", Files.readString(Path.of("../../docs/frontend-api-handbook.md")),
+                "frontend-development-guide", Files.readString(Path.of("../../docs/frontend-development-guide.md")),
+                "system-design", Files.readString(Path.of("../../docs/system-design.md")),
+                "development-governance", Files.readString(Path.of("../../docs/development-governance.md"))
+        );
+
+        docs.forEach((name, text) -> assertThat(text)
+                .as(name)
+                .contains("realProductionEntrypointCutoverStatus")
+                .contains("BLOCKED_BY_REAL_PRODUCTION_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED")
+                .contains("docs/unified-backend-real-production-entrypoint-cutover-evidence-sample.json")
+                .contains("oldApiGatewayRetirementAllowed")
+                .contains("api-gateway-service")
+                .contains("unified-backend-service:8135")
+                .contains("readyToRetireBusinessCore=false")
+                .contains("readyToRetireAdmissionCore=false")
+                .contains("readyToRetireEngagementCore=false")
+                .contains("readyToRetireOpsCore=false")
+                .contains("readyToRetirePortalCore=false"));
+
+        assertThat(docs.get("frontend-api-handbook"))
+                .contains("VITE_API_BASE_URL")
+                .contains("/api/v1/**")
+                .contains("http://127.0.0.1:8135")
+                .contains("http://127.0.0.1:8125");
+        assertThat(docs.get("frontend-development-guide"))
+                .contains("VITE_API_BASE_URL")
+                .contains("/api/v1/auth/login")
+                .contains("realProductionEntrypointCutoverStatus");
+        assertThat(docs.get("development-governance"))
+                .contains("本轮五个 core 独立 Maven 入口也已退役")
+                .contains("不得删除目录")
+                .contains("不得删除模块源码");
     }
 
     @Test
@@ -4064,6 +4348,144 @@ class UnifiedBackendApiContractTest {
                 .contains("readyToRetireEngagementCore=false")
                 .contains("readyToRetireOpsCore=false")
                 .contains("readyToRetirePortalCore=false"));
+    }
+
+    @Test
+    void localApiGatewayRetirementPrecheckDocumentsRetiredEntrypointAfterDelete() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-local-api-gateway-retirement-precheck"));
+
+        assertThat(readiness.at("/data/localApiGatewayEntrypointRetirementStatus").asText())
+                .isEqualTo("PASS_LOCAL_API_GATEWAY_ENTRYPOINT_RETIRED_UNIFIED_GATEWAY_APIS_PRESERVED");
+        assertPrecheck(readiness, "/data/localApiGatewayEntrypointRetirementChecks", "SINGLE_MAVEN_ENTRYPOINT_AFTER_LOCAL_RETIREMENT", "PASS", true);
+        assertPrecheck(readiness, "/data/localApiGatewayEntrypointRetirementChecks", "API_GATEWAY_POM_PRESENT_BEFORE_DELETE", "INFO", true);
+        assertPrecheck(readiness, "/data/localApiGatewayEntrypointRetirementChecks", "UNIFIED_BACKEND_SELF_HOSTS_GATEWAY_SOURCE", "PASS", true);
+        assertPrecheck(readiness, "/data/localApiGatewayEntrypointRetirementChecks", "UNIFIED_BUILD_HELPER_DOES_NOT_REFERENCE_API_GATEWAY", "PASS", true);
+
+        JsonNode evidence = readiness.at("/data/localApiGatewayEntrypointRetirementEvidence");
+        assertThat(evidence.at("/mode").asText()).isEqualTo("LOCAL_DEVELOPMENT_API_GATEWAY_ENTRYPOINT_RETIREMENT");
+        assertThat(evidence.at("/preDeleteMavenEntrypointsTotal").asInt()).isEqualTo(7);
+        assertThat(evidence.at("/postDeleteExpectedMavenEntrypointsTotal").asInt()).isEqualTo(1);
+        assertThat(evidence.at("/apiGatewayPomStillPresent").asBoolean()).isFalse();
+        assertThat(evidence.at("/localRetirementApplied").asBoolean()).isTrue();
+        assertThat(evidence.at("/remainingBlockers")).isEmpty();
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void localApiGatewayRetirementRejectsUnsafeDeleteList() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token"));
+
+        assertPrecheck(readiness, "/data/localApiGatewayEntrypointRetirementChecks", "DELETE_LIST_ONLY_EXPLICIT_FILES", "PASS", true);
+        assertPrecheck(readiness, "/data/localApiGatewayEntrypointRetirementChecks", "DELETE_LIST_REJECTS_DIRECTORIES", "PASS", true);
+        assertPrecheck(readiness, "/data/localApiGatewayEntrypointRetirementChecks", "DELETE_LIST_REJECTS_WILDCARDS", "PASS", true);
+        assertPrecheck(readiness, "/data/localApiGatewayEntrypointRetirementChecks", "DELETE_LIST_REJECTS_BULK_DELETE_COMMANDS", "PASS", true);
+        assertPrecheck(readiness, "/data/localApiGatewayEntrypointRetirementChecks", "DELETE_LIST_EXCLUDES_CORE_ENTRYPOINTS", "PASS", true);
+
+        JsonNode evidence = readiness.at("/data/localApiGatewayEntrypointRetirementEvidence");
+        assertThat(evidence.at("/deleteListItemsTotal").asInt()).isEqualTo(8);
+        assertThat(evidence.at("/unsafeDeleteListItemsTotal").asInt()).isZero();
+        assertThat(evidence.at("/bulkDeleteAllowed").asBoolean()).isFalse();
+        assertThat(evidence.at("/deleteList").toString())
+                .contains("backend/api-gateway-service/pom.xml")
+                .doesNotContain("backend/business-core-service")
+                .doesNotContain("*")
+                .doesNotContain("Remove-Item -Recurse")
+                .doesNotContain("rmdir /s")
+                .doesNotContain("rm -rf");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void localApiGatewayRetirementKeepsCoreEntrypointsProtected() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token"));
+
+        assertPrecheck(readiness, "/data/localApiGatewayEntrypointRetirementChecks", "FIVE_CORE_MODULE_SOURCES_PRESERVED", "PASS", true);
+        JsonNode evidence = readiness.at("/data/localApiGatewayEntrypointRetirementEvidence");
+        assertThat(evidence.at("/coreEntrypointsPreserved").asBoolean()).isTrue();
+        assertThat(evidence.at("/readyToRetireBusinessCore").asBoolean()).isFalse();
+        assertThat(evidence.at("/readyToRetireAdmissionCore").asBoolean()).isFalse();
+        assertThat(evidence.at("/readyToRetireEngagementCore").asBoolean()).isFalse();
+        assertThat(evidence.at("/readyToRetireOpsCore").asBoolean()).isFalse();
+        assertThat(evidence.at("/readyToRetirePortalCore").asBoolean()).isFalse();
+        assertThat(evidence.at("/nextRetirementEntrypoint").asText()).isEqualTo("business-core-service");
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void localApiGatewayRetirementPreservesUnifiedGatewaySelfApis() throws Exception {
+        mvc.perform(get("/api/v1/gateway/health").header("X-Request-Id", "req-local-gateway-health"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0))
+                .andExpect(jsonPath("$.data.service").value("api-gateway"));
+
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token"));
+        assertPrecheck(readiness, "/data/localApiGatewayEntrypointRetirementChecks", "UNIFIED_GATEWAY_SELF_APIS_PRESERVED", "PASS", true);
+        assertPrecheck(readiness, "/data/localApiGatewayEntrypointRetirementChecks", "UNIFIED_MOUNTS_25_BUSINESS_ROUTES_IN_PROCESS", "PASS", true);
+        assertThat(readiness.at("/data/localApiGatewayEntrypointRetirementEvidence/unifiedGatewaySelfApisPreserved").asBoolean()).isTrue();
+        assertThat(readiness.at("/data/localApiGatewayEntrypointRetirementEvidence/inProcessRoutesTotal").asInt()).isEqualTo(25);
+        assertThat(readiness.at("/data/localApiGatewayEntrypointRetirementEvidence/httpFallbackRoutesTotal").asInt()).isZero();
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void localApiGatewayRetirementDocumentsSingleEntrypointPostDeleteState() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token"));
+
+        assertPrecheck(readiness, "/data/localApiGatewayEntrypointRetirementChecks", "POST_RETIREMENT_SINGLE_MAVEN_ENTRYPOINT_EXPECTED", "PASS", true);
+        assertPrecheck(readiness, "/data/localApiGatewayEntrypointRetirementChecks", "POST_DELETE_API_GATEWAY_POM_ABSENT_EXPECTED", "PASS", true);
+        JsonNode evidence = readiness.at("/data/localApiGatewayEntrypointRetirementEvidence");
+        assertThat(evidence.at("/postDeleteExpectedEntrypoints").toString())
+                .contains("unified-backend-service")
+                .doesNotContain("business-core-service", "admission-core-service",
+                        "engagement-core-service", "ops-core-service", "portal-core-service")
+                .doesNotContain("api-gateway-service");
+        assertThat(evidence.at("/productionCutoverRequired").asBoolean()).isFalse();
+        assertThat(evidence.at("/productionRetirementClaimed").asBoolean()).isFalse();
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void localApiGatewayRetirementDoesNotRequireProductionProxyEvidence() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token"));
+
+        assertPrecheck(readiness, "/data/localApiGatewayEntrypointRetirementChecks", "PRODUCTION_PROXY_EVIDENCE_NOT_REQUIRED_FOR_LOCAL_RETIREMENT", "PASS", true);
+        JsonNode evidence = readiness.at("/data/localApiGatewayEntrypointRetirementEvidence");
+        assertThat(evidence.at("/requiresNginx").asBoolean()).isFalse();
+        assertThat(evidence.at("/requiresCloudflare").asBoolean()).isFalse();
+        assertThat(evidence.at("/requiresRealDomain").asBoolean()).isFalse();
+        assertThat(evidence.at("/requiresProductionTrafficEvidence").asBoolean()).isFalse();
+        assertThat(evidence.at("/environmentVariablesRead").asBoolean()).isFalse();
+        assertThat(evidence.at("/sensitiveValuesExposed").asBoolean()).isFalse();
+        assertNoSecrets(readiness);
+    }
+
+    @Test
+    void localApiGatewayRetirementGateIsDocumentedAcrossOperationalHandbooks() throws Exception {
+        String contracts = Files.readString(Path.of("../../docs/contracts-unified-backend.md"));
+        String apiGatewayContract = Files.readString(Path.of("../../docs/contracts-api-gateway.md"));
+        String overview = Files.readString(Path.of("../../docs/contracts-overview.md"));
+        String systemDesign = Files.readString(Path.of("../../docs/system-design.md"));
+        String governance = Files.readString(Path.of("../../docs/development-governance.md"));
+        String frontendHandbook = Files.readString(Path.of("../../docs/frontend-api-handbook.md"));
+        String frontendGuide = Files.readString(Path.of("../../docs/frontend-development-guide.md"));
+
+        assertThat(contracts)
+                .contains("localApiGatewayEntrypointRetirementStatus")
+                .contains("BLOCKED_BY_LOCAL_API_GATEWAY_ENTRYPOINT_STILL_PRESENT")
+                .contains("PASS_LOCAL_API_GATEWAY_ENTRYPOINT_RETIRED_UNIFIED_GATEWAY_APIS_PRESERVED");
+        assertThat(apiGatewayContract)
+                .contains("历史网关行为契约")
+                .contains("unified-backend-service:8135");
+        assertThat(overview + systemDesign + governance + frontendHandbook + frontendGuide)
+                .contains("唯一后端 Maven 启动入口")
+                .contains("business-core-service");
     }
 
     @Test
@@ -4358,15 +4780,53 @@ class UnifiedBackendApiContractTest {
     }
 
     @Test
-    void keepsAllRollbackEntrypointFilesBeforeExternalCutover() {
+    void retiresIndependentCoreMavenEntrypointsWhileKeepingModuleSourcesMounted() {
         assertThat(List.of(
-                Path.of("../api-gateway-service/pom.xml"),
                 Path.of("../business-core-service/pom.xml"),
                 Path.of("../admission-core-service/pom.xml"),
                 Path.of("../engagement-core-service/pom.xml"),
                 Path.of("../ops-core-service/pom.xml"),
                 Path.of("../portal-core-service/pom.xml")
+        )).allSatisfy(path -> assertThat(Files.exists(path)).as(path.toString()).isFalse());
+        assertThat(List.of(
+                Path.of("../unified-backend-service/pom.xml"),
+                Path.of("../business-core-service/src/main/java/cn/beiming/core/BusinessCoreModule.java"),
+                Path.of("../admission-core-service/src/main/java/cn/beiming/admission/AdmissionCoreModule.java"),
+                Path.of("../engagement-core-service/src/main/java/cn/beiming/engagement/EngagementCoreModule.java"),
+                Path.of("../ops-core-service/src/main/java/cn/beiming/opscore/OpsCoreModule.java"),
+                Path.of("../portal-core-service/src/main/java/cn/beiming/portalcore/PortalCoreModule.java")
         )).allSatisfy(path -> assertThat(Files.exists(path)).as(path.toString()).isTrue());
+        assertThat(Files.exists(Path.of("../api-gateway-service/pom.xml"))).isFalse();
+    }
+
+    @Test
+    void unifiedBackendReadinessAndDocsDoNotReferenceRetiredIndependentMavenEntrypoints() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-retired-entrypoint-residue-scan"));
+        JsonNode gatewayTopology = performJson(get("/api/v1/gateway/admin/runtime-topology")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-retired-entrypoint-gateway-topology"));
+
+        String joinedEvidence = readiness.toString()
+                + gatewayTopology.toString()
+                + Files.readString(Path.of("../../docs/contracts-unified-backend.md"))
+                + Files.readString(Path.of("../../docs/unified-backend-production-audit-observability-smoke-sample.json"));
+
+        assertThat(joinedEvidence)
+                .doesNotContain("current six rollback entrypoints")
+                .doesNotContain("current six rollback backend Maven entrypoints")
+                .doesNotContain("api-gateway and five core entrypoints remain protected")
+                .doesNotContain("api-gateway and five core rollback entrypoints")
+                .doesNotContain("five core entrypoints remain protected")
+                .doesNotContain("mvn -q -f backend/api-gateway-service/pom.xml test")
+                .doesNotContain("mvn -q -f backend/business-core-service/pom.xml test")
+                .doesNotContain("mvn -q -f backend/admission-core-service/pom.xml test")
+                .doesNotContain("mvn -q -f backend/engagement-core-service/pom.xml test")
+                .doesNotContain("mvn -q -f backend/ops-core-service/pom.xml test")
+                .doesNotContain("mvn -q -f backend/portal-core-service/pom.xml test")
+                .contains("mvn -q -f backend/unified-backend-service/pom.xml test")
+                .contains("five core module sources remain mounted");
     }
 
     @Test

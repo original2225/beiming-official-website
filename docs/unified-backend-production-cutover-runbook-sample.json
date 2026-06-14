@@ -91,17 +91,11 @@
   "rollbackPlan": {
     "rollbackTarget": "http://127.0.0.1:8125",
     "rollbackCommands": [
-      "mvn -q -f backend/unified-backend-service/pom.xml test",
-      "mvn -q -f backend/api-gateway-service/pom.xml test",
-      "mvn -q -f backend/business-core-service/pom.xml test",
-      "mvn -q -f backend/admission-core-service/pom.xml test",
-      "mvn -q -f backend/engagement-core-service/pom.xml test",
-      "mvn -q -f backend/ops-core-service/pom.xml test",
-      "mvn -q -f backend/portal-core-service/pom.xml test"
+      "mvn -q -f backend/unified-backend-service/pom.xml test"
     ],
     "postRollbackChecks": [
       "git diff --check",
-      "maven entrypoint list remains seven",
+      "single Maven entrypoint remains unified-backend-service",
       "dangerous production capability scan",
       "external executor boundary scan"
     ]
@@ -120,13 +114,7 @@
     ]
   },
   "verificationCommands": [
-    "mvn -q -f backend/unified-backend-service/pom.xml test",
-    "mvn -q -f backend/api-gateway-service/pom.xml test",
-    "mvn -q -f backend/business-core-service/pom.xml test",
-    "mvn -q -f backend/admission-core-service/pom.xml test",
-    "mvn -q -f backend/engagement-core-service/pom.xml test",
-    "mvn -q -f backend/ops-core-service/pom.xml test",
-    "mvn -q -f backend/portal-core-service/pom.xml test"
+    "mvn -q -f backend/unified-backend-service/pom.xml test"
   ],
   "smokeTargets": [
     { "targetKey": "UNIFIED_HEALTH", "method": "GET", "path": "/api/v1/unified-backend/health" },

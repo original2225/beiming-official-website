@@ -110,7 +110,7 @@ class AdmissionCoreApiContractTest {
                 .andExpect(jsonPath("$.data.legacyBaselines[?(@.service == 'whitelist-service')]").doesNotExist())
                 .andExpect(jsonPath("$.data.legacyBaselines[?(@.service == 'attendance-service')]").doesNotExist())
                 .andExpect(jsonPath("$.data.legacyBaselines[?(@.service == 'business-core-service' && @.port == 8130)]").exists())
-                .andExpect(jsonPath("$.data.legacyBaselines[?(@.service == 'api-gateway-service' && @.port == 8125)]").exists())
+                .andExpect(jsonPath("$.data.legacyBaselines[?(@.service == 'unified-backend-service' && @.port == 8135)]").exists())
                 .andExpect(jsonPath("$.data.productionGaps[?(@ == 'gateway route switch is not complete')]").doesNotExist())
                 .andExpect(jsonPath("$.data.generatedAt").isNotEmpty());
     }

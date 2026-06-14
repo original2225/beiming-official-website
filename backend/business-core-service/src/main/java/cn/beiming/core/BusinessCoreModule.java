@@ -132,7 +132,7 @@ class BusinessCoreController {
         return List.of(
                 readinessGap("LIVE_GATEWAY_HTTP_SMOKE_NOT_VERIFIED", "INTEGRATION", "HIGH", "BUSINESS_CORE",
                         "MOCKMVC_AND_MAVEN_CONTRACTS", "REAL_HTTP_GATEWAY_TO_BUSINESS_CORE",
-                        "Run api-gateway-service and business-core-service together, then verify first-batch paths through real HTTP.",
+                        "Run unified-backend-service and business-core-service together, then verify first-batch paths through real HTTP.",
                         "Record request paths, status codes, request ids, degraded responses, and commands in .local-docs/tests-business-core.md."),
                 readinessGap("PERSISTENT_DATABASE_NOT_CONNECTED", "PERSISTENCE", "HIGH", "ALL_FIRST_BATCH_MODULES",
                         "IN_MEMORY", "RELATIONAL_DATABASE_WITH_MIGRATIONS",
@@ -189,7 +189,7 @@ class BusinessCoreController {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("mockMvcContractTests", Map.of("status", "PASS", "evidence", "mvn -f backend/business-core-service/pom.xml test"));
         data.put("legacyBaselineTests", Map.of("status", "RETIRED", "evidence", "old first-batch service sources are removed; inherited business-core contract tests cover runtime behavior"));
-        data.put("apiGatewayRouteSwitchTests", Map.of("status", "PASS", "evidence", "api-gateway routes first-batch prefixes to port 8130"));
+        data.put("apiGatewayRouteSwitchTests", Map.of("status", "PASS", "evidence", "unified-backend preserves first-batch prefixes and business-core fallback boundary"));
         data.put("liveHttpSmokeTests", Map.of("status", "NOT_VERIFIED", "evidence", "no live multi-process HTTP smoke record"));
         return data;
     }
@@ -310,10 +310,10 @@ class BusinessCoreRegistry {
     List<Map<String, Object>> legacyBaselines() {
         List<Map<String, Object>> baselines = new java.util.ArrayList<>();
         Map<String, Object> gateway = new LinkedHashMap<>();
-        gateway.put("service", "api-gateway-service");
-        gateway.put("port", 8125);
-        gateway.put("contract", "docs/contracts-api-gateway.md");
-        gateway.put("testCommand", "mvn -f backend/api-gateway-service/pom.xml test");
+        gateway.put("service", "unified-backend-service");
+        gateway.put("port", 8135);
+        gateway.put("contract", "docs/contracts-unified-backend.md");
+        gateway.put("testCommand", "mvn -f backend/unified-backend-service/pom.xml test");
         gateway.put("lastVerifiedAt", FIRST_BATCH_VERIFIED_AT);
         baselines.add(gateway);
         return baselines;

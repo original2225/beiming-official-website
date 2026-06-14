@@ -24,13 +24,13 @@
 | 自检摘要 | 暴露 `engagement-core` 自身健康检查和后台装配摘要，便于迁移验证。 |
 | 网关切换状态 | 为 `api-gateway` 第三批路径上游切换提供稳定目标和完成状态。 |
 
-`engagement-core` 不负责吸收 `api-gateway`。当前阶段仍保留 `api-gateway-service` 作为统一入口。`engagement-core` 不负责第一批基础业务模块、第二批入服准入模块、`ops-control`、`external-node-executor`、`cloudreve-sync`、`backup-recovery`、`alerting`、`online-map`、插件集成、跨平台通知、素材、指南或 P3 扩展。
+`engagement-core` 不负责吸收网关能力。第四十七轮后，本地开发态 `api-gateway-service` Maven 入口已退役，网关自有 API 和第三批业务路径统一由 `unified-backend-service:8135` 承接。`engagement-core` 不负责第一批基础业务模块、第二批入服准入模块、`ops-control`、`external-node-executor`、`cloudreve-sync`、`backup-recovery`、`alerting`、`online-map`、插件集成、跨平台通知、素材、指南或 P3 扩展。
 
 `engagement-core` 不允许把真实服务器维护、白名单命令、积分直写、Minecraft 控制台、节点守护进程、容器、终端、文件管理、备份恢复、Cloudreve 管理或公告主发布塞进社区运营域。活动奖励只能保留贡献候选，社区处罚只影响社区写权限，维护窗口只作为日程元数据，更新日志只保存发布说明和来源快照。
 
 ## 运行形态
 
-本地验证运行单元为 `backend/engagement-core-service`，本地验证端口为 `8132`。端口 `8112` 到 `8115` 只保留为第三批模块历史原服务端口记录，不再作为旧服务回归基线。端口 `8130` 继续保留给已完成第一批合并的 `business-core-service`，端口 `8131` 继续保留给已完成第二批合并的稳定前序运行单元 `admission-core-service`，端口 `8125` 继续保留给 `api-gateway-service`。
+本地验证运行单元为 `backend/engagement-core-service`，本地验证端口为 `8132`。端口 `8112` 到 `8115` 只保留为第三批模块历史原服务端口记录，不再作为旧服务回归基线。端口 `8130` 继续保留给已完成第一批合并的 `business-core-service`，端口 `8131` 继续保留给已完成第二批合并的稳定前序运行单元 `admission-core-service`，端口 `8125` 只作为已退役旧 `api-gateway-service` 历史端口记录；当前网关能力由 `unified-backend-service:8135` 自承载。
 
 Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围覆盖 `cn.beiming`。第三批模块应保留原包名 `cn.beiming.community`、`cn.beiming.activity`、`cn.beiming.calendar` 和 `cn.beiming.changelog`。不得为了合并进行无业务收益的大规模包名迁移。
 
@@ -109,7 +109,7 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
 | `admissionCoreDependency` | object | 是 | 第二批 `admission-core` 稳定前序运行单元摘要。 |
 | `gatewaySwitchReady` | boolean | 是 | 是否已满足网关切换前置条件。 |
 | `gatewaySwitchStatus` | string | 是 | 网关切换状态，允许 `NOT_READY`、`READY` 或 `COMPLETED`。 |
-| `legacyBaselines` | object[] | 是 | 当前仍保留的外部基线摘要。第三批旧四服务清理后只包含 `business-core-service`、`admission-core-service` 和 `api-gateway-service`。 |
+| `legacyBaselines` | object[] | 是 | 当前仍保留的外部基线摘要。第三批旧四服务清理后包含 `business-core-service`、`admission-core-service` 和 `unified-backend-service`，不再要求运行已退役的 `api-gateway-service` Maven 入口。 |
 | `retiredLegacyServices` | object[] | 是 | 已由 `engagement-core` 替代并清理 Maven 入口的第三批旧服务摘要。 |
 | `productionGaps` | string[] | 是 | 生产化差距摘要。 |
 | `generatedAt` | string | 是 | 摘要生成时间。 |
@@ -286,10 +286,10 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
         "lastVerifiedAt": "2026-06-03T00:00:00+08:00"
       },
       {
-        "service": "api-gateway-service",
-        "port": 8125,
-        "contract": "docs/contracts-api-gateway.md",
-        "testCommand": "mvn -f backend/api-gateway-service/pom.xml test",
+        "service": "unified-backend-service",
+        "port": 8135,
+        "contract": "docs/contracts-unified-backend.md",
+        "testCommand": "mvn -f backend/unified-backend-service/pom.xml test",
         "lastVerifiedAt": "2026-06-03T00:00:00+08:00"
       }
     ],
@@ -318,7 +318,7 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
 }
 ```
 
-业务规则：该接口只读取 `engagement-core` 内部装配状态和最近测试摘要，不主动执行四个模块的业务写操作，不调用旧服务进行实时健康探测，不把未完成模块伪装成 `READY`。第三批旧四服务清理后，`gatewaySwitchReady` 的判定只依赖四个模块在 `engagement-core` 中的继承契约测试、`business-core-service` 基线、`admission-core-service` 基线和 `api-gateway-service` 基线。只有当 `api-gateway` 契约、测试文档、自动化红灯、网关实现和全量后端回归均完成后，`gatewaySwitchStatus` 才能为 `COMPLETED`。四个业务模块自己的后台自检摘要必须同步合并后入口，返回 `port=8132` 和历史 `legacyPort`，不得继续把 `8112` 到 `8115` 暴露成当前运行端口。路由签名契约验证证明 149 个业务 `METHOD path` 已在当前运行单元装配；完整行为契约验证证明这些业务路由已覆盖成功、字段校验、认证、权限、资源不存在、状态冲突、幂等并发、降级、审计和生产硬化。该摘要仍必须暴露真实持久化、审计持久化、真实 adapter、真实通知投递和真实 HTTP smoke 缺口。
+业务规则：该接口只读取 `engagement-core` 内部装配状态和最近测试摘要，不主动执行四个模块的业务写操作，不调用旧服务进行实时健康探测，不把未完成模块伪装成 `READY`。第三批旧四服务清理后，`gatewaySwitchReady` 的判定只依赖四个模块在 `engagement-core` 中的继承契约测试、`business-core-service` 基线、`admission-core-service` 基线和 `unified-backend-service` 基线。只有当统一后端自承载网关契约、测试文档、自动化红灯、实现和全量后端回归均完成后，`gatewaySwitchStatus` 才能为 `COMPLETED`。四个业务模块自己的后台自检摘要必须同步合并后入口，返回 `port=8132` 和历史 `legacyPort`，不得继续把 `8112` 到 `8115` 暴露成当前运行端口。路由签名契约验证证明 149 个业务 `METHOD path` 已在当前运行单元装配；完整行为契约验证证明这些业务路由已覆盖成功、字段校验、认证、权限、资源不存在、状态冲突、幂等并发、降级、审计和生产硬化。该摘要仍必须暴露真实持久化、审计持久化、真实 adapter、真实通知投递和真实 HTTP smoke 缺口。
 
 失败规则：运行单元内部异常返回 `53230`。模块装配信息缺失返回 `53231`。当前登记路由与本文档或四个模块契约期望不一致时返回 `53232` 或在 `status=DEGRADED` 的成功摘要中列入 `gaps`，由实现按是否影响接口可用性决定。认证上下文解析失败返回原模块契约或公共认证错误，可信网关上下文字段缺失或格式不兼容时返回 `53233`。内部 adapter 链装配错误返回 `53234`。
 
@@ -498,7 +498,7 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
 
 ## 网关策略
 
-当前网关已完成第三批路径切换。`api-gateway-service` 把 `community`、`activity`、`calendar` 和 `changelog` 路由统一指向 `engagement-core-service` 的 `8132`。旧端口 `8112` 到 `8115` 只作为历史原服务端口记录，不再作为第三批网关业务路由上游或回归测试入口。
+当前网关已完成第三批路径切换。第四十七轮后，本地开发态 `api-gateway-service` 独立 Maven 入口已退役；`unified-backend-service:8135` 自承载网关能力，并保持 `community`、`activity`、`calendar` 和 `changelog` 到 `engagement-core-service:8132` 边界的兼容。旧端口 `8112` 到 `8115` 只作为历史原服务端口记录，不再作为第三批网关业务路由上游或回归测试入口。
 
 第三批路径上游切换如下。
 
@@ -520,7 +520,7 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
 | 1 | 真实认证与可信网关上下文 | 固定 token 只能用于本地测试 profile；生产路径必须消费 `auth` 或网关注入的可信身份上下文。五个后台自检摘要入口已覆盖可信网关上下文，业务方法路由需要替换本地固定 token。 | 覆盖直连伪造 `X-Beiming-Actor-*` 不能绕过权限、网关注入上下文可用、字段缺失失败、字段不兼容失败，以及业务写入 actor、当前用户隔离和审计 actor。 |
 | 2 | 持久化与审计持久化 | 社区、活动、日程、更新日志、互动、报名、收藏、工单、处罚、幂等和审计迁入数据库事务或等效持久层。 | 覆盖重启后数据仍在、审计失败回滚、唯一约束、并发幂等和分页过滤。 |
 | 3 | 真实跨服务 adapter | profile、content、resource、server-status、notification、attendance 和内部 calendar/changelog 适配通过正式接口或受控 adapter。 | 覆盖不可用、超时、字段不兼容、旧快照降级、通知失败不伪造成功。 |
-| 4 | 真实 HTTP 联调 | `api-gateway-service` 到 `engagement-core-service:8132` 做真实进程 smoke，验证路径、认证、请求编号和错误透传。 | 启动当前入口后执行真实 HTTP smoke，记录到 `.local-docs/tests-engagement-core.md` 和 `.local-docs/tests-api-gateway.md`。 |
+| 4 | 真实 HTTP 联调 | `unified-backend-service:8135` 到 `engagement-core-service:8132` 做真实进程 smoke，验证路径、认证、请求编号和错误透传。 | 启动当前入口后执行真实 HTTP smoke，记录到 `.local-docs/tests-engagement-core.md` 和 `.local-docs/tests-unified-backend.md`。 |
 
 ## 迁移顺序
 
@@ -534,7 +534,7 @@ Spring Boot 主应用建议放在 `cn.beiming.engagement`，组件扫描范围�
 
 `engagement-core` 完成的最低标准是，单进程承载第三批四个业务模块的全部既有 API 路径，且响应格式、错误码、认证、权限、请求编号、分页、状态流转、幂等、审计和降级行为与四个模块正式契约一致。
 
-`mvn -f backend/engagement-core-service/pom.xml test` 必须覆盖本文档三个自有接口和四个模块继承过来的全部契约测试。第三批旧服务清理后，相关回归基线为 `engagement-core-service`、`business-core-service`、`admission-core-service` 和 `api-gateway-service`，不得为了测试恢复 `community-service`、`activity-service`、`calendar-service` 或 `changelog-service`。
+`mvn -f backend/engagement-core-service/pom.xml test` 必须覆盖本文档三个自有接口和四个模块继承过来的全部契约测试。第三批旧服务清理后，相关回归基线为 `engagement-core-service`、`business-core-service`、`admission-core-service` 和 `unified-backend-service`，不得为了测试恢复 `community-service`、`activity-service`、`calendar-service`、`changelog-service` 或已退役的 `api-gateway-service` Maven 入口。
 
 当前阶段不得把 `engagement-core-service` 的自检、代表路由测试或 149 个业务 `METHOD path` 路由签名测试视为第三批业务完成。只有 149 个业务方法路由的行为继承契约测试和 3 个自有接口测试都进入自动化验证，并且所有当前回归入口全绿，第三批合并后完善闭环才算完成。
 

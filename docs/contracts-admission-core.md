@@ -25,7 +25,7 @@
 | 自检摘要 | 暴露 `admission-core` 自身健康检查和后台装配摘要，便于迁移验证。 |
 | 网关切换状态 | 为 `api-gateway` 第二批路径上游切换提供稳定目标和完成状态。 |
 
-`admission-core` 不负责吸收 `api-gateway`。当前阶段仍保留 `api-gateway-service` 作为统一入口。`admission-core` 不负责第一批基础业务模块，也不负责 `community`、`activity`、`calendar`、`changelog`、`ops-control`、`external-node-executor`、`cloudreve-sync`、`backup-recovery`、`alerting`、`online-map`、插件集成或 P3 扩展。
+`admission-core` 不负责吸收网关能力。第四十七轮后，本地开发态 `api-gateway-service` Maven 入口已退役，网关自有 API 和第二批业务路径统一由 `unified-backend-service:8135` 承接。`admission-core` 不负责第一批基础业务模块，也不负责 `community`、`activity`、`calendar`、`changelog`、`ops-control`、`external-node-executor`、`cloudreve-sync`、`backup-recovery`、`alerting`、`online-map`、插件集成或 P3 扩展。
 
 `admission-core` 不允许把真实服务器白名单命令、Minecraft 控制台、节点守护进程、容器、终端、文件管理、备份恢复或 Cloudreve 管理塞进入服链路。白名单审核通过只代表官网业务状态和成员档案激活交接，不代表真实服务器命令已执行。
 
@@ -33,7 +33,7 @@
 
 ## 运行形态
 
-本地验证运行单元为 `backend/admission-core-service`，本地验证端口为 `8131`。端口 `8108` 到 `8111` 只作为第二批模块历史原服务端口记录，不再作为回归基线。端口 `8130` 继续保留给 `business-core-service`，端口 `8125` 继续保留给 `api-gateway-service`。
+本地验证运行单元为 `backend/admission-core-service`，本地验证端口为 `8131`。端口 `8108` 到 `8111` 只作为第二批模块历史原服务端口记录，不再作为回归基线。端口 `8130` 继续保留给 `business-core-service`，端口 `8125` 只作为已退役旧 `api-gateway-service` 历史端口记录；当前网关能力由 `unified-backend-service:8135` 自承载。
 
 Spring Boot 主应用建议放在 `cn.beiming.admission`，组件扫描范围覆盖 `cn.beiming`。第二批模块应保留原包名 `cn.beiming.onboarding`、`cn.beiming.exam`、`cn.beiming.whitelist` 和 `cn.beiming.attendance`。不得为了合并进行无业务收益的大规模包名迁移。
 
@@ -103,7 +103,7 @@ Spring Boot 主应用建议放在 `cn.beiming.admission`，组件扫描范围覆
 | `businessCoreDependency` | object | 是 | 第一批 `business-core` 前序依赖摘要。 |
 | `gatewaySwitchReady` | boolean | 是 | 是否已满足网关切换前置条件。 |
 | `gatewaySwitchStatus` | string | 是 | 网关切换状态，允许 `NOT_READY`、`READY` 或 `COMPLETED`。 |
-| `legacyBaselines` | object[] | 是 | 当前仍保留的外部基线摘要。第二批旧四服务清理后只包含 `business-core-service` 和 `api-gateway-service`。 |
+| `legacyBaselines` | object[] | 是 | 当前仍保留的外部基线摘要。第二批旧四服务清理后包含 `business-core-service` 和 `unified-backend-service`，不再要求运行已退役的 `api-gateway-service` Maven 入口。 |
 | `productionGaps` | string[] | 是 | 生产化差距摘要。 |
 | `generatedAt` | string | 是 | 摘要生成时间。 |
 
@@ -245,7 +245,7 @@ Spring Boot 主应用建议放在 `cn.beiming.admission`，组件扫描范围覆
 }
 ```
 
-业务规则：该接口只读取 `admission-core` 内部装配状态和最近测试摘要，不主动执行四个模块的业务写操作，不调用旧服务进行实时健康探测，不把未完成模块伪装成 `READY`。第二批旧四服务清理后，`gatewaySwitchReady` 的判定只依赖四个模块在 `admission-core` 中的继承契约测试、`business-core-service` 基线和 `api-gateway-service` 基线。只有当 `api-gateway` 契约、测试文档、自动化红灯、网关实现和相关后端回归均完成后，`gatewaySwitchStatus` 才能为 `COMPLETED`。
+业务规则：该接口只读取 `admission-core` 内部装配状态和最近测试摘要，不主动执行四个模块的业务写操作，不调用旧服务进行实时健康探测，不把未完成模块伪装成 `READY`。第二批旧四服务清理后，`gatewaySwitchReady` 的判定只依赖四个模块在 `admission-core` 中的继承契约测试、`business-core-service` 基线和 `unified-backend-service` 基线。只有当统一后端自承载网关契约、测试文档、自动化红灯、实现和相关后端回归均完成后，`gatewaySwitchStatus` 才能为 `COMPLETED`。
 
 失败规则：运行单元内部异常返回 `53130`。模块装配信息缺失返回 `53131`。当前登记路由与本文档或四个模块契约期望不一致时返回 `53132` 或在 `status=DEGRADED` 的成功摘要中列入 `gaps`，由实现按是否影响接口可用性决定。认证上下文解析失败返回原模块契约或公共认证错误，可信网关上下文字段缺失或格式不兼容时返回 `53133`。
 
@@ -314,7 +314,7 @@ Spring Boot 主应用建议放在 `cn.beiming.admission`，组件扫描范围覆
 
 ## 网关策略
 
-当前网关已完成第二批路径切换。`api-gateway-service` 把 `onboarding`、`exam`、`whitelist` 和 `attendance` 路由统一指向 `admission-core-service` 的 `8131`。旧端口 `8108` 到 `8111` 只作为历史原服务端口记录，不再作为网关上游和测试基线。
+当前网关已完成第二批路径切换。第四十七轮后，本地开发态 `api-gateway-service` 独立 Maven 入口已退役；`unified-backend-service:8135` 自承载网关能力，并保持 `onboarding`、`exam`、`whitelist` 和 `attendance` 到 `admission-core-service:8131` 边界的兼容。旧端口 `8108` 到 `8111` 只作为历史原服务端口记录，不再作为网关上游和测试基线。
 
 | 路由 ID | 路径前缀 | 旧端口 | 目标端口 |
 | --- | --- | --- | --- |
@@ -337,7 +337,7 @@ Spring Boot 主应用建议放在 `cn.beiming.admission`，组件扫描范围覆
 
 `admission-core` 完成的最低标准是，单进程承载第二批四个业务模块的全部既有 API 路径，且响应格式、错误码、认证、权限、请求编号、分页、状态流转、幂等、审计和降级行为与四个模块正式契约一致。
 
-`mvn -f backend/admission-core-service/pom.xml test` 必须覆盖本文档两个自有接口和四个模块继承过来的全部契约测试。第二批旧服务清理后，相关回归基线为 `admission-core-service`、`business-core-service` 和 `api-gateway-service`，不得为了测试恢复 `onboarding-service`、`exam-service`、`whitelist-service` 或 `attendance-service`。
+`mvn -f backend/admission-core-service/pom.xml test` 必须覆盖本文档两个自有接口和四个模块继承过来的全部契约测试。第二批旧服务清理后，相关回归基线为 `admission-core-service`、`business-core-service` 和 `unified-backend-service`，不得为了测试恢复 `onboarding-service`、`exam-service`、`whitelist-service`、`attendance-service` 或已退役的 `api-gateway-service` Maven 入口。
 
 `admission-core` 直连合并和第二批网关切换均已完成测试闭环。第二批业务路径经网关访问时仍保持原路径，网关只切换上游端口，不改写业务前缀。
 

@@ -1,6 +1,6 @@
 package cn.beiming.opscore;
 
-import cn.beiming.apigateway.ApiGatewayServiceApplication;
+import cn.beiming.unifiedbackend.UnifiedBackendServiceApplication;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -75,11 +75,10 @@ class OpsCoreRealHttpSmokeIntegrationTest {
     }
 
     private ConfigurableApplicationContext startGateway(int gatewayPort, int opsPort) {
-        return new SpringApplicationBuilder(ApiGatewayServiceApplication.class)
+        return new SpringApplicationBuilder(UnifiedBackendServiceApplication.class)
                 .web(WebApplicationType.SERVLET)
                 .run(
-                        "--server.port=" + gatewayPort,
-                        "--api-gateway.upstreams.ops-core-base-url=http://127.0.0.1:" + opsPort
+                        "--server.port=" + gatewayPort
                 );
     }
 

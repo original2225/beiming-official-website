@@ -126,7 +126,7 @@ class EngagementCoreApiContractTest {
                 .andExpect(jsonPath("$.data.legacyBaselines[?(@.service == 'changelog-service')]").doesNotExist())
                 .andExpect(jsonPath("$.data.legacyBaselines[?(@.service == 'business-core-service' && @.port == 8130)]").exists())
                 .andExpect(jsonPath("$.data.legacyBaselines[?(@.service == 'admission-core-service' && @.port == 8131)]").exists())
-                .andExpect(jsonPath("$.data.legacyBaselines[?(@.service == 'api-gateway-service' && @.port == 8125)]").exists())
+                .andExpect(jsonPath("$.data.legacyBaselines[?(@.service == 'unified-backend-service' && @.port == 8135)]").exists())
                 .andExpect(jsonPath("$.data.retiredLegacyServices[?(@.service == 'community-service' && @.directory == 'backend/community-service' && @.testCommand == null)]").exists())
                 .andExpect(jsonPath("$.data.retiredLegacyServices[?(@.service == 'activity-service' && @.directory == 'backend/activity-service' && @.testCommand == null)]").exists())
                 .andExpect(jsonPath("$.data.retiredLegacyServices[?(@.service == 'calendar-service' && @.directory == 'backend/calendar-service' && @.testCommand == null)]").exists())

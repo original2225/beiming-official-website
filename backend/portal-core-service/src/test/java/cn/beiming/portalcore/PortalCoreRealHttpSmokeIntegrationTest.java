@@ -1,6 +1,6 @@
 package cn.beiming.portalcore;
 
-import cn.beiming.apigateway.ApiGatewayServiceApplication;
+import cn.beiming.unifiedbackend.UnifiedBackendServiceApplication;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -80,11 +80,10 @@ class PortalCoreRealHttpSmokeIntegrationTest {
     }
 
     private ConfigurableApplicationContext startGateway(int gatewayPort, int portalPort) {
-        return new SpringApplicationBuilder(ApiGatewayServiceApplication.class)
+        return new SpringApplicationBuilder(UnifiedBackendServiceApplication.class)
                 .web(WebApplicationType.SERVLET)
                 .run(
-                        "--server.port=" + gatewayPort,
-                        "--api-gateway.upstreams.portal-core-base-url=http://127.0.0.1:" + portalPort
+                        "--server.port=" + gatewayPort
                 );
     }
 

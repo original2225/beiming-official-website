@@ -92,11 +92,11 @@
     "readyToRetireOpsCore": false,
     "readyToRetirePortalCore": false,
     "protectedCorePaths": [
-      "backend/business-core-service/pom.xml",
-      "backend/admission-core-service/pom.xml",
-      "backend/engagement-core-service/pom.xml",
-      "backend/ops-core-service/pom.xml",
-      "backend/portal-core-service/pom.xml"
+      "backend/business-core-service/src/main/java/cn/beiming/core/BusinessCoreModule.java",
+      "backend/admission-core-service/src/main/java/cn/beiming/admission/AdmissionCoreModule.java",
+      "backend/engagement-core-service/src/main/java/cn/beiming/engagement/EngagementCoreModule.java",
+      "backend/ops-core-service/src/main/java/cn/beiming/opscore/OpsCoreModule.java",
+      "backend/portal-core-service/src/main/java/cn/beiming/portalcore/PortalCoreModule.java"
     ]
   },
   "redactionPolicy": {
@@ -139,12 +139,6 @@
     "coreRetirementDeferred": true
   },
   "verificationCommands": [
-    "mvn -q -f backend/unified-backend-service/pom.xml test",
-    "mvn -q -f backend/api-gateway-service/pom.xml test",
-    "mvn -q -f backend/business-core-service/pom.xml test",
-    "mvn -q -f backend/admission-core-service/pom.xml test",
-    "mvn -q -f backend/engagement-core-service/pom.xml test",
-    "mvn -q -f backend/ops-core-service/pom.xml test",
-    "mvn -q -f backend/portal-core-service/pom.xml test"
+    "mvn -q -f backend/unified-backend-service/pom.xml test"
   ]
 }

@@ -347,12 +347,6 @@
     ]
   },
   "verificationCommands": [
-    "mvn -q -f backend/unified-backend-service/pom.xml test",
-    "mvn -q -f backend/api-gateway-service/pom.xml test",
-    "mvn -q -f backend/business-core-service/pom.xml test",
-    "mvn -q -f backend/admission-core-service/pom.xml test",
-    "mvn -q -f backend/engagement-core-service/pom.xml test",
-    "mvn -q -f backend/ops-core-service/pom.xml test",
-    "mvn -q -f backend/portal-core-service/pom.xml test"
+    "mvn -q -f backend/unified-backend-service/pom.xml test"
   ]
 }

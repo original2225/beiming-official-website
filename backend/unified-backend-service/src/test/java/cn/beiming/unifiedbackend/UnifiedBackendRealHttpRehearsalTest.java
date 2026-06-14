@@ -167,8 +167,9 @@ class UnifiedBackendRealHttpRehearsalTest {
 
         JsonNode readiness = getAdmin("/api/v1/unified-backend/admin/readiness");
         assertThat(readiness.at("/data/coreEntrypointRetirementPrecheckStatus").asText())
-                .isEqualTo("BLOCKED_BY_PROTECTED_ROLLBACK_ROLE");
-        assertThat(readiness.at("/data/coreEntrypointRetirementEvidence/deletionAllowed").asBoolean()).isFalse();
+                .isEqualTo("PASS_LOCAL_CORE_MAVEN_ENTRYPOINTS_RETIRED_UNIFIED_MODULES_PRESERVED");
+        assertThat(readiness.at("/data/coreEntrypointRetirementEvidence/deletionAllowed").asBoolean()).isTrue();
+        assertThat(readiness.at("/data/coreEntrypointRetirementEvidence/moduleSourcePreserved").asBoolean()).isTrue();
         assertThat(readiness.at("/data/coreEntrypointRetirementEvidence/trafficSwitchApplied").asBoolean()).isFalse();
         assertThat(readiness.at("/data/coreEntrypointRetirementEvidence/coreEntrypointMatrix").toString())
                 .contains("business-core", "admission-core", "engagement-core", "ops-core", "portal-core");

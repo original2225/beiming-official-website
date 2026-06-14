@@ -28,9 +28,11 @@ Zustand 更适合本项目第一版，因为登录态、当前用户、权限、
 
 第四十二轮受控生产入口切流收据门禁只新增后端 readiness 证据。`productionControlledCutoverStatus=BLOCKED_BY_REAL_CUTOVER_RECEIPT_NOT_PROVIDED` 时，前端默认仍使用网关回滚入口，不自动切 `VITE_API_BASE_URL`，也不改任何业务路径。这个状态可以在运维页展示为外部切流收据未提供，不能展示成生产切流完成。
 
-第四十三轮 `api-gateway-service` 受控退役预检同样只新增后端 readiness 证据。`apiGatewayControlledRetirementStatus=BLOCKED_BY_API_GATEWAY_RETIREMENT_RECEIPT_NOT_PROVIDED` 时，运维页只能展示 `docs/unified-backend-api-gateway-retirement-receipt-sample.json` 对应的本地退役门禁、删除清单和回滚引用尚未获得真实生产收据，不得展示成 `api-gateway-service` 已退役。即使本地联调把 `VITE_API_BASE_URL` 指向 `http://127.0.0.1:8135`，也只是在访问 `unified-backend-service:8135` 候选入口，业务路径仍是 `POST /api/v1/auth/login` 这类 `/api/v1/**` 原路径，不改成统一后端专用路径。五个 core 仍保持 `readyToRetireBusinessCore=false`、`readyToRetireAdmissionCore=false`、`readyToRetireEngagementCore=false`、`readyToRetireOpsCore=false` 和 `readyToRetirePortalCore=false`，前端不得提供批量退役或删除提示。
+第四十三轮 `api-gateway-service` 受控退役预检同样只新增后端 readiness 证据。`apiGatewayControlledRetirementStatus=BLOCKED_BY_API_GATEWAY_RETIREMENT_RECEIPT_NOT_PROVIDED` 时，运维页只能展示 `docs/unified-backend-api-gateway-retirement-receipt-sample.json` 对应的本地退役门禁、删除清单和回滚引用尚未获得真实生产收据，不得展示成生产切流完成。即使本地联调把 `VITE_API_BASE_URL` 指向 `http://127.0.0.1:8135`，也只是在访问 `unified-backend-service:8135` 候选入口，业务路径仍是 `POST /api/v1/auth/login` 这类 `/api/v1/**` 原路径，不改成统一后端专用路径。
 
-第四十四轮 `api-gateway-service` 外部退役证据接收与删除审批门禁仍只新增后端 readiness 证据。`apiGatewayExternalRetirementEvidenceStatus=BLOCKED_BY_EXTERNAL_API_GATEWAY_RETIREMENT_EVIDENCE_NOT_PROVIDED` 时，运维页只能展示 `docs/unified-backend-api-gateway-external-retirement-evidence-sample.json` 对应的外部证据接收门禁、真实切流引用、真实流量归零引用、真实 audit write smoke 引用、dashboard、alert、trace、回滚窗口和用户删除清单确认尚未提供，不得展示成 `api-gateway-service` 已退役。即使本地联调把 `VITE_API_BASE_URL` 指向 `http://127.0.0.1:8135`，业务路径仍是 `POST /api/v1/auth/login` 这类 `/api/v1/**` 原路径。五个 core 仍保持 `readyToRetireBusinessCore=false`、`readyToRetireAdmissionCore=false`、`readyToRetireEngagementCore=false`、`readyToRetireOpsCore=false` 和 `readyToRetirePortalCore=false`，前端不得提供批量退役或删除提示。
+第四十四轮 `api-gateway-service` 外部退役证据接收与删除审批门禁仍只新增后端 readiness 证据。`apiGatewayExternalRetirementEvidenceStatus=BLOCKED_BY_EXTERNAL_API_GATEWAY_RETIREMENT_EVIDENCE_NOT_PROVIDED` 时，运维页只能展示 `docs/unified-backend-api-gateway-external-retirement-evidence-sample.json` 对应的外部证据接收门禁、真实切流引用、真实流量归零引用、真实 audit write smoke 引用、dashboard、alert、trace、回滚窗口和用户删除清单确认尚未提供，不得展示成生产切流完成。即使本地联调把 `VITE_API_BASE_URL` 指向 `http://127.0.0.1:8135`，业务路径仍是 `POST /api/v1/auth/login` 这类 `/api/v1/**` 原路径。
+
+第四十六轮真实生产入口切流证据闭环门禁仍只新增后端 readiness 证据。`realProductionEntrypointCutoverStatus=BLOCKED_BY_REAL_PRODUCTION_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED` 时，运维页只能展示 `docs/unified-backend-real-production-entrypoint-cutover-evidence-sample.json` 对应的真实切流证据接收门禁、切流窗口引用、生产流量观测引用、旧网关新流量归零引用、audit write smoke 引用、dashboard、alert、trace、回滚和审批引用尚未提供，不得展示成生产入口已切到 `unified-backend-service:8135`。该门禁即使证据完整也保持 `oldApiGatewayRetirementAllowed=false`。即使本地联调把 `VITE_API_BASE_URL` 指向 `http://127.0.0.1:8135`，业务路径仍是 `POST /api/v1/auth/login` 这类 `/api/v1/**` 原路径。
 
 单服务直连只用于排障，不应写在业务页面里。端口统一放在前端常量文件中，便于联调和排障页读取。
 
@@ -258,3 +260,7 @@ Tailwind 断点按默认体系使用，优先使用 `sm`、`md`、`lg`、`xl`。
 前端工程完成一个阶段时，必须满足 TypeScript 无类型错误、构建通过、核心自动化测试通过、公开页接口失败可局部降级、登录态和权限路由按契约工作、移动端和桌面端布局可用、API base URL 和模块端口集中管理、页面中没有硬编码业务数据和后端单服务端口。
 
 任何接口缺口都应回到对应 `docs/contracts-<module>.md` 补齐契约，再更新本地测试文档和自动化测试。前端不能先吞业务。
+
+第四十七轮本地开发态 `api-gateway-service` 入口退役不要求前端改页面或改路径。`localApiGatewayEntrypointRetirementStatus=PASS_LOCAL_API_GATEWAY_ENTRYPOINT_RETIRED_UNIFIED_GATEWAY_APIS_PRESERVED` 时，只能显示本地旧网关 Maven 入口已退役；联调继续面向 `unified-backend-service:8135` 和 `/api/v1/**` 原路径。
+
+本轮五个 core 独立 Maven 入口退役同样不要求前端改页面或改路径。`coreEntrypointRetirementPrecheckStatus=PASS_LOCAL_CORE_MAVEN_ENTRYPOINTS_RETIRED_UNIFIED_MODULES_PRESERVED` 时，只能显示本地独立启动入口已退役、模块源码仍由统一后端装配；`readyToRetireBusinessCore=false`、`readyToRetireAdmissionCore=false`、`readyToRetireEngagementCore=false`、`readyToRetireOpsCore=false` 和 `readyToRetirePortalCore=false` 仍表示真实生产退役未闭环。不要提示业务模块被删除，不要提供恢复旧 core 入口的操作。

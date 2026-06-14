@@ -776,14 +776,14 @@ class GatewayState {
     Map<String, Object> runtimeTopology(String generatedAt) {
         return map(
                 "service", "api-gateway",
-                "deploymentMode", "CURRENT_SIX_ROLLBACK_ENTRYPOINTS",
-                "singleServiceMergeReadiness", "PREPARING",
+                "deploymentMode", "LOCAL_API_GATEWAY_ENTRYPOINT_RETIRED",
+                "singleServiceMergeReadiness", "UNIFIED_GATEWAY_SELF_HOSTED",
                 "currentEntrypointsTotal", 6,
                 "futureMergeCandidateEntrypointsTotal", UNIFIED_BACKEND_CANDIDATES.size(),
                 "businessRoutesTotal", routes.size(),
                 "gatewayApiTotal", GATEWAY_SELF_APIS.size(),
                 "currentEntrypoints", List.of(
-                        entrypoint("api-gateway", "backend/api-gateway-service", 8125, "gateway rollback", "ROLLBACK_ENTRYPOINT", List.of(), null),
+                        entrypoint("unified-backend", "backend/unified-backend-service", 8135, "unified backend and gateway self APIs", "UNIFIED_GATEWAY_ENTRYPOINT", routes, null),
                         entrypoint("business-core", "backend/business-core-service", 8130, "business core", "IN_PROCESS_CANDIDATE", routesByIds(BUSINESS_CORE_ROUTES), null),
                         entrypoint("admission-core", "backend/admission-core-service", 8131, "admission core", "IN_PROCESS_CANDIDATE", routesByIds(ADMISSION_CORE_ROUTES), null),
                         entrypoint("engagement-core", "backend/engagement-core-service", 8132, "engagement core", "IN_PROCESS_CANDIDATE", routesByIds(ENGAGEMENT_CORE_ROUTES), null),
@@ -805,14 +805,14 @@ class GatewayState {
                 ),
                 "mergePreparationChecks", List.of(
                         check("ROUTE_PREFIX_PRESERVED", "PASS", "business route prefixes remain unchanged"),
-                        check("GATEWAY_AS_ROLLBACK_ENTRYPOINT", "PASS", "api-gateway remains a protected rollback entrypoint"),
-                        check("CORE_ROUTES_GROUPED", "PASS", "business routes stay grouped under five core entrypoints"),
+                        check("LOCAL_API_GATEWAY_ENTRYPOINT_RETIRED", "PASS", "local api-gateway Maven entrypoint is retired and unified-backend self-hosts gateway APIs"),
+                        check("CORE_ROUTES_GROUPED", "PASS", "business routes stay grouped under five mounted core modules"),
                         check("EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY", "PASS", "EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY"),
                         check("LEGACY_ENTRYPOINTS_NOT_RESTORED", "PASS", "retired legacy service entrypoints are not part of the topology"),
-                        check("API_GATEWAY_RETIREMENT_BLOCKED_UNTIL_TRAFFIC_SWITCH", "PASS", "api-gateway retirement remains blocked until unified-backend receives proven production traffic"),
-                        check("CORE_ENTRYPOINTS_PROTECTED_UNTIL_GATEWAY_RETIRED", "PASS", "five core entrypoints remain protected until api-gateway retirement completes"),
+                        check("PRODUCTION_API_GATEWAY_RETIREMENT_SEPARATE", "PASS", "local retirement does not prove production traffic cutover"),
+                        check("CORE_MODULE_SOURCES_PRESERVED_AFTER_GATEWAY_RETIREMENT", "PASS", "five core module sources remain mounted after local api-gateway retirement"),
                         check("STATIC_SERVICE_DISCOVERY_ONLY", "BLOCKED", "current upstreams are still static route registrations"),
-                        check("IN_PROCESS_MOUNT_NOT_IMPLEMENTED", "NOT_IMPLEMENTED", "business modules are not mounted in-process through the gateway")
+                        check("UNIFIED_IN_PROCESS_GATEWAY_MOUNTED", "PASS", "gateway routes and self APIs are mounted in unified-backend")
                 ),
                 "generatedAt", generatedAt
         );
@@ -881,6 +881,9 @@ class GatewayState {
         if ("ROLLBACK_ENTRYPOINT".equals(disposition)) {
             return "PROTECTED_ROLLBACK_ENTRYPOINT";
         }
+        if ("UNIFIED_GATEWAY_ENTRYPOINT".equals(disposition)) {
+            return "CURRENT_LOCAL_GATEWAY_ENTRYPOINT";
+        }
         if ("IN_PROCESS_CANDIDATE".equals(disposition)) {
             return "PROTECTED_CORE_ROLLBACK_ENTRYPOINT";
         }
@@ -890,6 +893,9 @@ class GatewayState {
     private String entrypointNextAction(String disposition) {
         if ("ROLLBACK_ENTRYPOINT".equals(disposition)) {
             return "WAIT_FOR_UNIFIED_ENTRYPOINT_TRAFFIC_SWITCH";
+        }
+        if ("UNIFIED_GATEWAY_ENTRYPOINT".equals(disposition)) {
+            return "KEEP_UNIFIED_AS_LOCAL_GATEWAY_ENTRYPOINT";
         }
         if ("IN_PROCESS_CANDIDATE".equals(disposition)) {
             return "WAIT_FOR_API_GATEWAY_RETIREMENT_AND_CORE_RETIREMENT_APPROVAL";

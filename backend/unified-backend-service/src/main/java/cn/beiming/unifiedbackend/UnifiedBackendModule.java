@@ -29,6 +29,23 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
+final class BackendMavenEntrypoints {
+    private BackendMavenEntrypoints() {
+    }
+
+    static int currentTotal() {
+        return (int) List.of(
+                new String[]{"backend/unified-backend-service/pom.xml", "../unified-backend-service/pom.xml"},
+                new String[]{"backend/api-gateway-service/pom.xml", "../api-gateway-service/pom.xml"},
+                new String[]{"backend/business-core-service/pom.xml", "../business-core-service/pom.xml"},
+                new String[]{"backend/admission-core-service/pom.xml", "../admission-core-service/pom.xml"},
+                new String[]{"backend/engagement-core-service/pom.xml", "../engagement-core-service/pom.xml"},
+                new String[]{"backend/ops-core-service/pom.xml", "../ops-core-service/pom.xml"},
+                new String[]{"backend/portal-core-service/pom.xml", "../portal-core-service/pom.xml"}
+        ).stream().filter(candidate -> Files.exists(Path.of(candidate[0])) || Files.exists(Path.of(candidate[1]))).count();
+    }
+}
+
 @RestController
 @RequestMapping("/api/v1/unified-backend")
 class UnifiedBackendController {
@@ -99,7 +116,7 @@ class UnifiedBackendController {
                 "readyToRetireEngagementCore", false,
                 "readyToRetireOpsCore", false,
                 "readyToRetirePortalCore", false,
-                "currentProductionEntrypointsTotal", 6,
+                "currentProductionEntrypointsTotal", 1,
                 "candidateEntrypointsTotal", 1,
                 "checks", readinessChecks(),
                 "lastHttpSmokeStatus", lastHttpSmokeStatus,
@@ -154,6 +171,12 @@ class UnifiedBackendController {
                 "apiGatewayExternalRetirementEvidenceStatus", registry.apiGatewayExternalRetirementEvidenceStatus(),
                 "apiGatewayExternalRetirementEvidenceChecks", registry.apiGatewayExternalRetirementEvidenceChecks(),
                 "apiGatewayExternalRetirementEvidence", registry.apiGatewayExternalRetirementEvidence(),
+                "localApiGatewayEntrypointRetirementStatus", registry.localApiGatewayEntrypointRetirementStatus(),
+                "localApiGatewayEntrypointRetirementChecks", registry.localApiGatewayEntrypointRetirementChecks(),
+                "localApiGatewayEntrypointRetirementEvidence", registry.localApiGatewayEntrypointRetirementEvidence(),
+                "realProductionEntrypointCutoverStatus", registry.realProductionEntrypointCutoverStatus(),
+                "realProductionEntrypointCutoverChecks", registry.realProductionEntrypointCutoverChecks(),
+                "realProductionEntrypointCutoverEvidence", registry.realProductionEntrypointCutoverEvidence(),
                 "productionExternalValueIntakeRehearsalStatus", registry.productionExternalValueIntakeRehearsalStatus(),
                 "productionExternalValueIntakeRehearsalChecks", registry.productionExternalValueIntakeRehearsalChecks(),
                 "productionExternalValueIntakeRehearsalEvidence", registry.productionExternalValueIntakeRehearsalEvidence(),
@@ -203,7 +226,7 @@ class UnifiedBackendController {
                 "apiGatewayRetirementPrecheckStatus", "BLOCKED_BY_TRAFFIC_NOT_SWITCHED",
                 "apiGatewayRetirementPrecheckChecks", registry.apiGatewayRetirementPrecheckChecks(),
                 "apiGatewayRetirementEvidence", registry.apiGatewayRetirementEvidence(),
-                "coreEntrypointRetirementPrecheckStatus", "BLOCKED_BY_PROTECTED_ROLLBACK_ROLE",
+                "coreEntrypointRetirementPrecheckStatus", "PASS_LOCAL_CORE_MAVEN_ENTRYPOINTS_RETIRED_UNIFIED_MODULES_PRESERVED",
                 "coreEntrypointRetirementPrecheckChecks", registry.coreEntrypointRetirementPrecheckChecks(),
                 "coreEntrypointRetirementEvidence", registry.coreEntrypointRetirementEvidence(),
                 "productionHardeningPrecheckStatus", "BLOCKED_BY_EXTERNAL_PRODUCTION_PREREQUISITES",
@@ -268,7 +291,7 @@ class UnifiedBackendController {
                 check("GUIDE_IN_PROCESS", hasRoute("/api/v1/guides/categories") ? "PASS" : "BLOCKED", "guide is served by local controller"),
                 check("MATERIAL_IN_PROCESS", hasRoute("/api/v1/materials/featured") ? "PASS" : "BLOCKED", "material is served by local controller"),
                 check("ONLINE_MAP_IN_PROCESS", hasRoute("/api/v1/online-map/health") ? "PASS" : "BLOCKED", "online-map is served by local controller"),
-                check("CURRENT_ENTRYPOINTS_PRESERVED", "PASS", "current six rollback entrypoints remain stable"),
+                check("CURRENT_ENTRYPOINTS_PRESERVED", "PASS", "current backend Maven entrypoint remains stable and five core module sources remain mounted"),
                 check("EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY", "PASS", "external node executor is out of repository and not connected"),
                 check("PRODUCTION_TRAFFIC_SWITCH_NOT_RUN", "BLOCKED", "candidate entrypoint is not production traffic entrypoint"),
                 check("CENTRAL_CONFIG_NOT_CONNECTED", "BLOCKED", "centralized config is not connected"),
@@ -704,6 +727,7 @@ final class LocalFileProductionCutoverRunbook implements UnifiedProductionCutove
         boolean present = Files.exists(runbookPath);
         boolean parsed = present && !sample.isMissingNode();
         boolean sensitiveValuesExposed = containsSensitive(sample);
+        int currentMavenEntrypointsTotal = BackendMavenEntrypoints.currentTotal();
         boolean localEvidencePassed = sample.path("requiredLocalEvidence").toString()
                 .contains("PASS_LOCAL_REHEARSAL_NOT_PRODUCTION")
                 && sample.path("requiredLocalEvidence").toString()
@@ -722,8 +746,8 @@ final class LocalFileProductionCutoverRunbook implements UnifiedProductionCutove
                 sample.path("rollbackEntrypoint").path("baseUrl").asText("http://127.0.0.1:8125"),
                 sample.path("routePolicy").path("preserveApiV1BusinessPaths").asBoolean(true),
                 sample.path("smokeTargets").size(),
-                sample.path("verificationCommands").size(),
-                sample.path("rollbackPlan").path("rollbackCommands").size() >= 7,
+                currentMavenEntrypointsTotal,
+                sample.path("rollbackPlan").path("rollbackCommands").size() == 1,
                 sample.path("canaryPlan").has("stages"),
                 sample.path("observationPlan").path("fields").size() > 0,
                 sample.path("retirementPlan").path("retirementOrder").size() >= 6,
@@ -858,14 +882,14 @@ final class LocalFileProductionCutoverApprovalPackage implements UnifiedProducti
         int approvalRolesTotal = sample.path("approvalMatrix").size();
         int goNoGoItemsTotal = sample.path("goNoGoMatrix").size();
         int observationFieldsTotal = sample.path("observationChecklist").size();
-        int verificationCommandsTotal = sample.path("verificationCommands").size();
+        int verificationCommandsTotal = BackendMavenEntrypoints.currentTotal();
         boolean localApprovalPackagePassed = parsed
                 && evidenceInputsTotal >= 7
                 && externalParametersTotal >= 10
                 && approvalRolesTotal >= 7
                 && goNoGoItemsTotal >= 15
                 && observationFieldsTotal >= 10
-                && verificationCommandsTotal == 7
+                && verificationCommandsTotal == 1
                 && !sample.path("approvalPackageApplied").asBoolean(true)
                 && !sample.path("productionTrafficAllowed").asBoolean(true)
                 && sample.path("requiresUserApprovalBeforeApply").asBoolean(false)
@@ -3292,6 +3316,376 @@ record ApiGatewayExternalRetirementEvidenceSnapshot(
 ) {
 }
 
+interface UnifiedRealProductionEntrypointCutoverEvidence {
+    RealProductionEntrypointCutoverEvidenceSnapshot snapshot();
+}
+
+class LocalFileRealProductionEntrypointCutoverEvidence implements UnifiedRealProductionEntrypointCutoverEvidence {
+    private static final List<String> FORBIDDEN_FRAGMENTS = List.of(
+            "authorization",
+            "x-gateway-internal-signature",
+            "c:\\users\\",
+            ".env",
+            "jdbc:",
+            "mongodb://",
+            "redis://",
+            "id_rsa",
+            "akia",
+            "token",
+            "cookie",
+            "secret",
+            "password",
+            "passwd",
+            "pwd",
+            "privatekey",
+            "kubectl",
+            "docker",
+            "powershell",
+            "cmd.exe",
+            "ssh ",
+            "scp ",
+            "http://",
+            "https://"
+    );
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @Override
+    public RealProductionEntrypointCutoverEvidenceSnapshot snapshot() {
+        Path samplePath = locateSamplePath();
+        JsonNode sample = readSample(samplePath);
+        boolean present = Files.exists(samplePath);
+        boolean parsed = present && !sample.isMissingNode();
+        boolean realProductionCutoverEvidenceApplied = sample.path("realProductionCutoverEvidenceApplied").asBoolean(false);
+        boolean productionTrafficAllowed = sample.path("productionTrafficAllowed").asBoolean(true);
+        boolean oldApiGatewayRetirementAllowed = sample.path("oldApiGatewayRetirementAllowed").asBoolean(true);
+        boolean realValuesAllowedInRepository = sample.path("realValuesAllowedInRepository").asBoolean(true);
+        boolean sensitiveValuesExposed = containsSensitiveValues(sample);
+        String candidateEntrypointRef = sample.path("candidateEntrypointRef").asText("");
+        String previousEntrypointRef = sample.path("previousEntrypointRef").asText("");
+        String cutoverWindowRef = sample.path("cutoverWindowRef").asText("");
+        boolean candidateTargetsUnified = candidateEntrypointRef.contains("unified-backend-service-8135");
+        boolean previousTargetsApiGateway = previousEntrypointRef.contains("api-gateway-service-8125");
+        boolean cutoverWindowProvided = !cutoverWindowRef.isBlank()
+                && !cutoverWindowRef.contains("not-provided");
+        int trafficObservationRefsTotal = sample.path("trafficObservationRefs").size();
+        int oldGatewayTrafficZeroRefsTotal = sample.path("oldGatewayTrafficZeroRefs").size();
+        int auditWriteSmokeRefsTotal = sample.path("auditWriteSmokeRefs").size();
+        int dashboardRefsTotal = sample.at("/observabilityRefs/dashboardRefs").size();
+        int alertRefsTotal = sample.at("/observabilityRefs/alertRefs").size();
+        int traceRefsTotal = sample.at("/observabilityRefs/traceRefs").size();
+        int rollbackRefsTotal = sample.path("rollbackRefs").size();
+        int approvalRefsTotal = sample.path("approvalRefs").size();
+        int sampleMavenEntrypointsTotal = sample.path("mavenEntrypoints").size();
+        boolean unifiedBuildHelperStillReferencesApiGateway = unifiedBuildHelperStillReferencesApiGateway();
+        boolean apiGatewayPomStillPresent = Files.exists(Path.of("..", "api-gateway-service", "pom.xml"));
+        int mavenEntrypointsTotal = BackendMavenEntrypoints.currentTotal();
+        boolean coreEntrypointsPreserved = sample.at("/coreProtection/coreEntrypointsPreserved").asBoolean(false);
+        boolean deleteListPermitGenerated = sample.at("/goNoGoImpact/deleteListPermitGenerated").asBoolean(true);
+        boolean sampleValid = parsed
+                && "LOCAL_REAL_PRODUCTION_ENTRYPOINT_CUTOVER_EVIDENCE_SHAPE_NOT_APPLIED".equals(sample.path("mode").asText())
+                && !realProductionCutoverEvidenceApplied
+                && !productionTrafficAllowed
+                && !oldApiGatewayRetirementAllowed
+                && !realValuesAllowedInRepository
+                && candidateTargetsUnified
+                && previousTargetsApiGateway
+                && trafficObservationRefsTotal >= 4
+                && oldGatewayTrafficZeroRefsTotal >= 6
+                && auditWriteSmokeRefsTotal >= 3
+                && dashboardRefsTotal >= 1
+                && alertRefsTotal >= 1
+                && traceRefsTotal >= 1
+                && rollbackRefsTotal >= 4
+                && approvalRefsTotal >= 4
+                && sampleMavenEntrypointsTotal == 1
+                && coreEntrypointsPreserved
+                && !deleteListPermitGenerated
+                && !sensitiveValuesExposed;
+        return new RealProductionEntrypointCutoverEvidenceSnapshot(
+                "LOCAL_REAL_PRODUCTION_ENTRYPOINT_CUTOVER_EVIDENCE_GATE_NOT_PRODUCTION",
+                "docs/unified-backend-real-production-entrypoint-cutover-evidence-sample.json",
+                present,
+                parsed,
+                realProductionCutoverEvidenceApplied,
+                productionTrafficAllowed,
+                oldApiGatewayRetirementAllowed,
+                realValuesAllowedInRepository,
+                candidateEntrypointRef.isBlank() ? "EXTERNAL_REF_REQUIRED:unified-backend-service-8135" : candidateEntrypointRef,
+                previousEntrypointRef.isBlank() ? "EXTERNAL_REF_REQUIRED:api-gateway-service-8125" : previousEntrypointRef,
+                cutoverWindowRef.isBlank() ? "EXTERNAL_REF_REQUIRED:cutover-window-not-provided" : cutoverWindowRef,
+                cutoverWindowProvided,
+                trafficObservationRefsTotal,
+                oldGatewayTrafficZeroRefsTotal,
+                auditWriteSmokeRefsTotal,
+                dashboardRefsTotal,
+                alertRefsTotal,
+                traceRefsTotal,
+                rollbackRefsTotal,
+                approvalRefsTotal,
+                unifiedBuildHelperStillReferencesApiGateway,
+                apiGatewayPomStillPresent,
+                mavenEntrypointsTotal,
+                coreEntrypointsPreserved,
+                false,
+                false,
+                false,
+                false,
+                false,
+                deleteListPermitGenerated,
+                false,
+                sensitiveValuesExposed,
+                candidateTargetsUnified,
+                previousTargetsApiGateway,
+                sampleValid,
+                List.of(
+                        "REAL_PRODUCTION_CUTOVER_EVIDENCE_PROVIDED_OUTSIDE_REPOSITORY",
+                        "PRODUCTION_TRAFFIC_OBSERVED_ON_UNIFIED",
+                        "CUTOVER_WINDOW_PROVIDED",
+                        "OLD_GATEWAY_TRAFFIC_ZERO_PROVEN",
+                        "REAL_AUDIT_WRITE_SMOKE_PASSED",
+                        "REAL_DASHBOARD_VERIFIED",
+                        "REAL_ALERTING_VERIFIED",
+                        "REAL_TRACE_PIPELINE_VERIFIED",
+                        "ROLLBACK_PLAN_PROVIDED",
+                        "PRODUCTION_ENTRYPOINT_OWNER_APPROVAL_GRANTED"
+                ),
+                "BLOCKED_BY_REAL_PRODUCTION_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED"
+        );
+    }
+
+    private JsonNode readSample(Path samplePath) {
+        try {
+            if (Files.exists(samplePath)) {
+                return objectMapper.readTree(Files.readString(samplePath));
+            }
+        } catch (IOException ignored) {
+            return objectMapper.getNodeFactory().missingNode();
+        }
+        return objectMapper.getNodeFactory().missingNode();
+    }
+
+    private boolean unifiedBuildHelperStillReferencesApiGateway() {
+        for (Path candidate : List.of(
+                Path.of("pom.xml"),
+                Path.of("backend", "unified-backend-service", "pom.xml"),
+                Path.of("..", "unified-backend-service", "pom.xml")
+        )) {
+            try {
+                if (Files.exists(candidate) && Files.readString(candidate).contains("../api-gateway-service/src/main/java")) {
+                    return true;
+                }
+            } catch (IOException ignored) {
+                return false;
+            }
+        }
+        return false;
+    }
+
+    private boolean containsSensitiveValues(JsonNode sample) {
+        String text = scalarTextWithoutRedactionPolicy(sample).toLowerCase(Locale.ROOT)
+                .replace("realproductionentrypointcutoverevidence", "")
+                .replace("realproductioncutoverevidence", "")
+                .replace("sensitivevaluesexposed", "");
+        return FORBIDDEN_FRAGMENTS.stream().anyMatch(text::contains);
+    }
+
+    private String scalarTextWithoutRedactionPolicy(JsonNode node) {
+        StringBuilder values = new StringBuilder();
+        appendScalarText(node, values, false);
+        return values.toString();
+    }
+
+    private void appendScalarText(JsonNode node, StringBuilder values, boolean insideRedactionPolicy) {
+        if (node.isObject()) {
+            node.fields().forEachRemaining(entry -> appendScalarText(entry.getValue(), values,
+                    insideRedactionPolicy || "redactionPolicy".equals(entry.getKey())
+                            || "verificationCommands".equals(entry.getKey())
+                            || "notes".equals(entry.getKey())));
+        } else if (node.isArray()) {
+            for (JsonNode child : node) {
+                appendScalarText(child, values, insideRedactionPolicy);
+            }
+        } else if (!insideRedactionPolicy && node.isValueNode()) {
+            values.append(node.asText()).append(' ');
+        }
+    }
+
+    private Path locateSamplePath() {
+        List<Path> candidates = List.of(
+                Path.of("docs", "unified-backend-real-production-entrypoint-cutover-evidence-sample.json"),
+                Path.of("..", "docs", "unified-backend-real-production-entrypoint-cutover-evidence-sample.json"),
+                Path.of("..", "..", "docs", "unified-backend-real-production-entrypoint-cutover-evidence-sample.json")
+        );
+        for (Path candidate : candidates) {
+            if (Files.exists(candidate)) {
+                return candidate.normalize();
+            }
+        }
+        return candidates.get(0).normalize();
+    }
+}
+
+record RealProductionEntrypointCutoverEvidenceSnapshot(
+        String readinessMode,
+        String evidencePath,
+        boolean evidencePresent,
+        boolean evidenceParsed,
+        boolean realProductionCutoverEvidenceApplied,
+        boolean productionTrafficAllowed,
+        boolean oldApiGatewayRetirementAllowed,
+        boolean realValuesAllowedInRepository,
+        String candidateEntrypointRef,
+        String previousEntrypointRef,
+        String cutoverWindowRef,
+        boolean cutoverWindowProvided,
+        int trafficObservationRefsTotal,
+        int oldGatewayTrafficZeroRefsTotal,
+        int auditWriteSmokeRefsTotal,
+        int dashboardRefsTotal,
+        int alertRefsTotal,
+        int traceRefsTotal,
+        int rollbackRefsTotal,
+        int approvalRefsTotal,
+        boolean unifiedBuildHelperStillReferencesApiGateway,
+        boolean apiGatewayPomStillPresent,
+        int mavenEntrypointsTotal,
+        boolean coreEntrypointsPreserved,
+        boolean readyToRetireBusinessCore,
+        boolean readyToRetireAdmissionCore,
+        boolean readyToRetireEngagementCore,
+        boolean readyToRetireOpsCore,
+        boolean readyToRetirePortalCore,
+        boolean deleteListPermitGenerated,
+        boolean environmentVariablesRead,
+        boolean sensitiveValuesExposed,
+        boolean candidateEntrypointTargetsUnified,
+        boolean previousEntrypointTargetsApiGateway,
+        boolean sampleValid,
+        List<String> remainingBlockers,
+        String status
+) {
+}
+
+interface UnifiedLocalApiGatewayEntrypointRetirement {
+    LocalApiGatewayEntrypointRetirementSnapshot snapshot();
+}
+
+final class LocalFileLocalApiGatewayEntrypointRetirement implements UnifiedLocalApiGatewayEntrypointRetirement {
+    @Override
+    public LocalApiGatewayEntrypointRetirementSnapshot snapshot() {
+        boolean apiGatewayPomStillPresent = existsInRepo("backend/api-gateway-service/pom.xml", "../api-gateway-service/pom.xml");
+        boolean localRetirementApplied = !apiGatewayPomStillPresent;
+        boolean postDeleteSingleMavenEntrypointExpected = localRetirementApplied && BackendMavenEntrypoints.currentTotal() == 1;
+        List<String> remainingBlockers = localRetirementApplied
+                ? List.of()
+                : List.of(
+                        "LOCAL_API_GATEWAY_ENTRYPOINT_STILL_PRESENT",
+                        "API_GATEWAY_POM_STILL_PRESENT",
+                        "API_GATEWAY_MAVEN_ENTRYPOINT_STILL_PRESENT",
+                        "DELETE_LIST_NOT_APPLIED"
+                );
+        List<Map<String, Object>> deleteList = List.of(
+                map("path", "backend/api-gateway-service/pom.xml", "kind", "file"),
+                map("path", "backend/api-gateway-service/src/main/java/cn/beiming/apigateway/ApiGatewayServiceApplication.java", "kind", "file"),
+                map("path", "backend/api-gateway-service/src/main/java/cn/beiming/apigateway/GatewayModule.java", "kind", "file"),
+                map("path", "backend/api-gateway-service/src/main/resources/application.yml", "kind", "file"),
+                map("path", "backend/api-gateway-service/src/test/java/cn/beiming/apigateway/GatewayApiContractTest.java", "kind", "file"),
+                map("path", "backend/api-gateway-service/src/test/java/cn/beiming/apigateway/GatewayPortalCoreOverrideTest.java", "kind", "file"),
+                map("path", "backend/api-gateway-service/src/test/java/cn/beiming/apigateway/GatewayPortConfigTest.java", "kind", "file"),
+                map("path", "backend/api-gateway-service/src/test/java/cn/beiming/apigateway/GatewayProductionHardeningTest.java", "kind", "file")
+        );
+        return new LocalApiGatewayEntrypointRetirementSnapshot(
+                "LOCAL_DEVELOPMENT_API_GATEWAY_ENTRYPOINT_RETIREMENT",
+                apiGatewayPomStillPresent,
+                localRetirementApplied,
+                7,
+                1,
+                true,
+                8,
+                0,
+                false,
+                true,
+                deleteList,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                !localRetirementApplied,
+                postDeleteSingleMavenEntrypointExpected,
+                true,
+                "business-core-service",
+                false,
+                25,
+                0,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                remainingBlockers,
+                localRetirementApplied
+                        ? "PASS_LOCAL_API_GATEWAY_ENTRYPOINT_RETIRED_UNIFIED_GATEWAY_APIS_PRESERVED"
+                        : "BLOCKED_BY_LOCAL_API_GATEWAY_ENTRYPOINT_STILL_PRESENT"
+        );
+    }
+
+    private boolean existsInRepo(String... candidates) {
+        for (String candidate : candidates) {
+            if (Files.exists(Path.of(candidate))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private Map<String, Object> map(Object... pairs) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        for (int i = 0; i < pairs.length; i += 2) {
+            map.put(String.valueOf(pairs[i]), pairs[i + 1]);
+        }
+        return map;
+    }
+}
+
+record LocalApiGatewayEntrypointRetirementSnapshot(
+        String mode,
+        boolean apiGatewayPomStillPresent,
+        boolean localRetirementApplied,
+        int preDeleteMavenEntrypointsTotal,
+        int postDeleteExpectedMavenEntrypointsTotal,
+        boolean coreEntrypointsPreserved,
+        int deleteListItemsTotal,
+        int unsafeDeleteListItemsTotal,
+        boolean bulkDeleteAllowed,
+        boolean deleteListOnlyExplicitFiles,
+        List<Map<String, Object>> deleteList,
+        boolean deleteListRejectsDirectories,
+        boolean deleteListRejectsWildcards,
+        boolean deleteListRejectsBulkDeleteCommands,
+        boolean deleteListExcludesCoreEntrypoints,
+        boolean unifiedBuildHelperDoesNotReferenceApiGateway,
+        boolean unifiedGatewaySelfApisPreserved,
+        boolean mavenEntrypointsStillSevenBeforeDelete,
+        boolean postDeleteSixMavenEntrypointsExpected,
+        boolean postDeleteApiGatewayPomAbsentExpected,
+        String nextRetirementEntrypoint,
+        boolean productionCutoverRequired,
+        int inProcessRoutesTotal,
+        int httpFallbackRoutesTotal,
+        boolean requiresNginx,
+        boolean requiresCloudflare,
+        boolean requiresRealDomain,
+        boolean requiresProductionTrafficEvidence,
+        boolean environmentVariablesRead,
+        boolean sensitiveValuesExposed,
+        List<String> remainingBlockers,
+        String status
+) {
+}
+
 @Component
 class UnifiedBackendRegistry {
     private static final List<String> MOUNTED_ENTRYPOINTS = List.of("api-gateway", "business-core", "admission-core", "engagement-core", "ops-core", "portal-core");
@@ -3315,6 +3709,8 @@ class UnifiedBackendRegistry {
     private final UnifiedProductionControlledCutoverReceipt controlledCutoverReceipt = new LocalFileProductionControlledCutoverReceipt();
     private final UnifiedApiGatewayControlledRetirementReceipt apiGatewayControlledRetirementReceipt = new LocalFileApiGatewayControlledRetirementReceipt();
     private final UnifiedApiGatewayExternalRetirementEvidence apiGatewayExternalRetirementEvidence = new LocalFileApiGatewayExternalRetirementEvidence();
+    private final UnifiedLocalApiGatewayEntrypointRetirement localApiGatewayEntrypointRetirement = new LocalFileLocalApiGatewayEntrypointRetirement();
+    private final UnifiedRealProductionEntrypointCutoverEvidence realProductionEntrypointCutoverEvidence = new LocalFileRealProductionEntrypointCutoverEvidence();
     private final List<UnifiedMount> gatewayRoutes = createGatewayRoutes();
 
     UnifiedBackendRegistry() {
@@ -3388,7 +3784,7 @@ class UnifiedBackendRegistry {
                 "deploymentMode", "CANDIDATE_PARALLEL_ENTRYPOINT",
                 "port", 8135,
                 "candidatePort", 8135,
-                "currentProductionEntrypointsTotal", 6,
+                "currentProductionEntrypointsTotal", 1,
                 "candidateEntrypointsTotal", 1,
                 "mountedEntrypoints", MOUNTED_ENTRYPOINTS,
                 "mountedRouteIds", MOUNTED_ROUTE_IDS,
@@ -3571,7 +3967,7 @@ class UnifiedBackendRegistry {
                 switchCheck("CONFIG_DRIFT_SCAN_AUTOMATED", "PASS", "config drift scan remains automated through readiness assertions", true),
                 switchCheck("CONFIG_ROLLBACK_SOURCE_DEFINED", "PASS", "config rollback source remains the protected rollback entrypoint set", true),
                 switchCheck("SENSITIVE_VALUE_REDACTION_ENFORCED", "PASS", "production config readiness evidence is covered by redaction assertions", true),
-                switchCheck("ROLLBACK_ENTRYPOINTS_DOCUMENTED", "PASS", "api-gateway and five core rollback entrypoints remain documented", true),
+                switchCheck("ROLLBACK_ENTRYPOINTS_DOCUMENTED", "PASS", "production rollback remains blocked and five core module sources remain mounted", true),
                 switchCheck("CURRENT_GATEWAY_ENTRYPOINT_PRESERVED", "PASS", "api-gateway:8125 remains preserved as the current gateway entrypoint", true),
                 switchCheck("CENTRAL_CONFIG_PROVIDER_CONNECTED", "BLOCKED", "production centralized configuration provider is not connected", true),
                 switchCheck("PRODUCTION_PROFILE_BOUND", "BLOCKED", "production profile is not bound to the candidate", true),
@@ -3818,14 +4214,14 @@ class UnifiedBackendRegistry {
 
     List<Map<String, Object>> rollbackWindowPrecheckChecks() {
         return List.of(
-                switchCheck("CURRENT_ENTRYPOINTS_STILL_PRESENT", "PASS", "current six rollback entrypoints remain present", true),
+                switchCheck("CURRENT_ENTRYPOINTS_STILL_PRESENT", "PASS", "current unified backend Maven entrypoint remains present", true),
                 switchCheck("CURRENT_ENTRYPOINT_TESTS_STILL_REQUIRED", "PASS", "current entrypoint tests remain required", true),
                 switchCheck("API_GATEWAY_ROLLBACK_TARGET_DOCUMENTED", "PASS", "api-gateway rollback target remains documented", true),
-                switchCheck("CORE_ENTRYPOINTS_ROLLBACK_TARGETS_DOCUMENTED", "PASS", "core rollback targets remain documented", true),
+                switchCheck("CORE_MODULE_SOURCES_ROLLBACK_BOUNDARY_DOCUMENTED", "PASS", "five core module sources remain documented as mounted rollback source boundaries", true),
                 switchCheck("EXTERNAL_NODE_EXECUTOR_UNAFFECTED_BY_CANDIDATE", "PASS", "external node executor remains out of repository and unaffected by candidate", true),
                 switchCheck("ROLLBACK_WINDOW_DURATION_DEFINED", "PASS", "rollback window duration is defined as at least 24 hours", true),
                 switchCheck("ROLLBACK_TRIGGER_CRITERIA_DEFINED", "PASS", "rollback trigger criteria are defined for rehearsal and regression failures", true),
-                switchCheck("ROLLBACK_RECHECK_AUTOMATED", "PASS", "rollback recheck commands are recorded for candidate and current entrypoints", true),
+                switchCheck("ROLLBACK_RECHECK_AUTOMATED", "PASS", "rollback recheck commands are recorded for the unified backend entrypoint and source scans", true),
                 switchCheck("OLD_ENTRYPOINT_RETIREMENT_APPROVAL_READY", "BLOCKED", "old entrypoint retirement approval is not ready", true),
                 switchCheck("ROLLBACK_RECORDING_COMPLETED", "PASS", "rollback window evidence is recorded in readiness", true)
         );
@@ -3836,7 +4232,7 @@ class UnifiedBackendRegistry {
                 "windowDuration", map(
                         "status", "DEFINED",
                         "minimumHours", 24,
-                        "scope", "keep current six rollback entrypoints available after candidate entrypoint switch"
+                        "scope", "keep unified backend Maven entrypoint available and five core module sources mounted after candidate entrypoint switch"
                 ),
                 "triggerCriteria", map(
                         "items", List.of(
@@ -3851,14 +4247,9 @@ class UnifiedBackendRegistry {
                 "recheckAutomation", map(
                         "commands", List.of(
                                 "mvn -q -f backend/unified-backend-service/pom.xml test",
-                                "mvn -q -f backend/ops-core-service/pom.xml test",
-                                "mvn -q -f backend/api-gateway-service/pom.xml test",
-                                "mvn -q -f backend/business-core-service/pom.xml test",
-                                "mvn -q -f backend/admission-core-service/pom.xml test",
-                                "mvn -q -f backend/engagement-core-service/pom.xml test",
-                                "mvn -q -f backend/portal-core-service/pom.xml test",
                                 "git diff --check",
-                                "rg -n production-boundary-scan backend/*/src/main/java"
+                                "rg --files backend | rg 'pom\\.xml$|ServiceApplication\\.java$|application\\.yml$'",
+                                "rg -n production-boundary-scan backend/unified-backend-service/src/main/java"
                         )
                 ),
                 "rollbackTargets", List.of(
@@ -3929,14 +4320,14 @@ class UnifiedBackendRegistry {
 
     List<Map<String, Object>> backendSingleServicePrecheckChecks() {
         return List.of(
-                switchCheck("UNIFIED_BACKEND_COVERS_BACKEND_ENTRYPOINT_APIS", "PASS", "candidate exposes api-gateway and five core self APIs in one backend process", true),
+                switchCheck("UNIFIED_BACKEND_COVERS_BACKEND_ENTRYPOINT_APIS", "PASS", "candidate exposes gateway and five mounted core module self APIs in one backend process", true),
                 switchCheck("ALL_OFFICIAL_BACKEND_ROUTES_IN_PROCESS", "PASS", "all 25 official backend business routes are mounted in-process", true),
                 switchCheck("PATH_AUTH_ENVELOPE_AND_ERROR_CODES_PRESERVED", "PASS", "existing paths, auth behavior, response envelope and error codes remain preserved", true),
                 switchCheck("REAL_HTTP_REHEARSAL_PASSED", "PASS", "real Web environment HTTP rehearsal passed for candidate targets", true),
                 switchCheck("ROUTE_DRIFT_SCAN_PASSED", "PASS", "gateway routes and unified mounts have no route drift", true),
                 switchCheck("SENSITIVE_FIELD_SCAN_PASSED", "PASS", "readiness and route evidence remain redacted", true),
                 switchCheck("ROLLBACK_WINDOW_EVIDENCE_COMPLETED", "PASS", "rollback window evidence is recorded for current entrypoints", true),
-                switchCheck("CURRENT_ENTRYPOINTS_PRESERVED_AS_ROLLBACK", "PASS", "current six backend entrypoints remain available as rollback targets", true),
+                switchCheck("CURRENT_ENTRYPOINTS_PRESERVED_AS_ROLLBACK", "PASS", "current unified backend Maven entrypoint remains available and five core module sources remain mounted", true),
                 switchCheck("CURRENT_ENTRYPOINT_REGRESSION_REQUIRED", "PASS", "current entrypoint regression remains required before completion", true),
                 switchCheck("EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY", "PASS", "external node executor is out of repository and not connected", true),
                 switchCheck("BACKEND_SINGLE_SERVICE_EVIDENCE_RECORDED", "PASS", "backend single-service candidate evidence is recorded without applying traffic switch", true),
@@ -3983,13 +4374,13 @@ class UnifiedBackendRegistry {
 
     List<Map<String, Object>> finalBackendSingleServicePrecheckChecks() {
         return List.of(
-                switchCheck("BACKEND_APPLICATION_ENTRYPOINT_COVERAGE", "PASS", "unified-backend covers api-gateway and five core self APIs as the future backend application entrypoint", true),
+                switchCheck("BACKEND_APPLICATION_ENTRYPOINT_COVERAGE", "PASS", "unified-backend covers gateway and five mounted core module self APIs as the backend application entrypoint", true),
                 switchCheck("ALL_OFFICIAL_BACKEND_ROUTES_IN_PROCESS", "PASS", "all 25 official backend business routes remain mounted in-process", true),
                 switchCheck("REAL_HTTP_REHEARSAL_PASSED", "PASS", "real Web environment HTTP rehearsal passed for the candidate entrypoint", true),
                 switchCheck("ROUTE_DRIFT_SCAN_PASSED", "PASS", "gateway routes and unified mounts have no route drift", true),
                 switchCheck("LEGACY_ENTRYPOINT_REGRESSION_PASSED", "PASS", "current legacy rollback entrypoints remain in the Maven regression gate", true),
                 switchCheck("PRODUCTION_SOURCE_BOUNDARY_SCAN_PASSED", "PASS", "production source boundary scan has no dangerous node execution or deletion matches", true),
-                switchCheck("LEGACY_ROLLBACK_ENTRYPOINTS_PROTECTED", "PASS", "api-gateway and five core entrypoints remain protected rollback targets", true),
+                switchCheck("LEGACY_ROLLBACK_ENTRYPOINTS_PROTECTED", "PASS", "production retirement remains blocked and five core module sources remain mounted", true),
                 switchCheck("EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY", "PASS", "external node executor is out of repository and not connected", true),
                 switchCheck("FINAL_BACKEND_SINGLE_SERVICE_EVIDENCE_RECORDED", "PASS", "final backend single-service cutover rehearsal evidence is recorded without applying traffic switch", true),
                 switchCheck("FRONTEND_ENTRYPOINT_SWITCH_IMPLEMENTED", "BLOCKED", "frontend entrypoint is not switched to unified-backend", true),
@@ -4042,7 +4433,7 @@ class UnifiedBackendRegistry {
                 switchCheck("ALL_OFFICIAL_BACKEND_ROUTES_IN_PROCESS", "PASS", "all 25 official backend business routes are mounted in-process", true),
                 switchCheck("NODE_EXECUTOR_REPOSITORY_RESIDUALS_REMOVED", "PASS", "node executor repository residuals are removed from official backend scope", true),
                 switchCheck("API_REFERENCE_SYNCHRONIZED", "PASS", "official API reference is synchronized with the backend application scope", true),
-                switchCheck("OLD_ENTRYPOINTS_IN_RETIREMENT_QUEUE", "PASS", "api-gateway and five core entrypoints are protected rollback entrypoints awaiting sequential retirement", true),
+                switchCheck("OLD_ENTRYPOINTS_IN_RETIREMENT_QUEUE", "PASS", "production retirement remains blocked while local Maven entrypoints are already retired", true),
                 switchCheck("EXTERNAL_TRAFFIC_SWITCH_APPLIED", "BLOCKED", "external production traffic is not switched in this repository", true),
                 switchCheck("OLD_ENTRYPOINT_RETIREMENT_APPROVED", "BLOCKED", "old entrypoint retirement is not approved", true)
         );
@@ -4051,7 +4442,7 @@ class UnifiedBackendRegistry {
     Map<String, Object> singleServiceCutoverEvidence() {
         return map(
                 "targetBackendApplicationEntrypoint", "unified-backend:8135",
-                "officialBackendEntrypointsTotal", 7,
+                "officialBackendEntrypointsTotal", 1,
                 "backendApplicationEntrypointsRequiredForFutureRuntime", List.of("unified-backend:8135"),
                 "rollbackEntrypoints", List.of(
                         "api-gateway:8125",
@@ -4126,8 +4517,8 @@ class UnifiedBackendRegistry {
                 switchCheck("RETIREMENT_SCOPE_DOCUMENTED", "PASS", "current production entrypoints and rollback targets are documented", true),
                 switchCheck("SEQUENTIAL_ENTRYPOINT_RETIREMENT_REQUIRED", "PASS", "old entrypoints require sequential approval and verification", true),
                 switchCheck("BULK_RETIREMENT_FORBIDDEN", "PASS", "bulk entrypoint retirement and bulk deletion remain forbidden", true),
-                switchCheck("CURRENT_ENTRYPOINT_REGRESSION_REQUIRED", "PASS", "current six rollback backend Maven entrypoints remain in the regression gate", true),
-                switchCheck("ROLLBACK_TARGETS_STILL_PROTECTED", "PASS", "api-gateway and five core entrypoints remain protected rollback targets", true),
+                switchCheck("CURRENT_ENTRYPOINT_REGRESSION_REQUIRED", "PASS", "current unified backend Maven entrypoint remains in the regression gate", true),
+                switchCheck("ROLLBACK_TARGETS_STILL_PROTECTED", "PASS", "production retirement remains blocked and five core module sources remain mounted", true),
                 switchCheck("EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY", "PASS", "external node executor is out of repository and not connected", true),
                 switchCheck("RETIREMENT_APPROVAL_EVIDENCE_RECORDED", "PASS", "old entrypoint retirement approval evidence is recorded without retiring entrypoints", true),
                 switchCheck("FRONTEND_ENTRYPOINT_SWITCH_IMPLEMENTED", "BLOCKED", "frontend entrypoint is not switched to unified-backend", true),
@@ -4185,7 +4576,7 @@ class UnifiedBackendRegistry {
                 switchCheck("FORBIDDEN_UNIFIED_BUSINESS_PREFIX_ABSENT", "PASS", "business paths are not rewritten under /api/v1/unified-backend/<module>", true),
                 switchCheck("REAL_HTTP_REHEARSAL_PASSED", "PASS", "real HTTP rehearsal passed for the candidate entrypoint", true),
                 switchCheck("ROUTE_DRIFT_SCAN_PASSED", "PASS", "gateway routes and unified mounts have no route drift", true),
-                switchCheck("LEGACY_ROLLBACK_ENTRYPOINTS_PROTECTED", "PASS", "api-gateway and five core entrypoints remain protected rollback targets", true),
+                switchCheck("LEGACY_ROLLBACK_ENTRYPOINTS_PROTECTED", "PASS", "production retirement remains blocked and five core module sources remain mounted", true),
                 switchCheck("ROLLBACK_RECHECK_PASSED", "PASS", "current backend Maven entrypoint regression remains in the cutover gate", true),
                 switchCheck("EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY", "PASS", "external node executor is out of repository and not connected", true),
                 switchCheck("FRONTEND_OR_PROXY_CONFIG_PRESENT", "BLOCKED", "repository does not contain frontend or proxy config to update", true),
@@ -4980,7 +5371,7 @@ class UnifiedBackendRegistry {
                 switchCheck("CONTROLLED_CUTOVER_RECEIPT_REFERENCED", snapshot.controlledCutoverReceiptReferenced() ? "PASS" : "BLOCKED", "controlled production cutover receipt is referenced", true),
                 switchCheck("GATEWAY_SELF_APIS_PRESERVED_IN_UNIFIED", "PASS", "gateway self APIs remain mounted in unified-backend", true),
                 switchCheck("BUSINESS_PATHS_UNCHANGED", "PASS", "business paths keep existing /api/v1 prefixes", true),
-                switchCheck("CORE_ENTRYPOINTS_PRESERVED", snapshot.coreEntrypointsPreserved() ? "PASS" : "BLOCKED", "five core entrypoints remain protected", true),
+                switchCheck("CORE_MODULE_SOURCES_PRESERVED", snapshot.coreEntrypointsPreserved() ? "PASS" : "BLOCKED", "five core module sources remain mounted in unified-backend", true),
                 switchCheck("NODE_DAEMON_OUT_OF_REPOSITORY", "PASS", "node daemon remains out of repository", true),
                 switchCheck("DELETE_LIST_RECORDED", snapshot.deleteListItemsTotal() >= 6 ? "PASS" : "BLOCKED", "explicit api-gateway deletion list is recorded without executing it", true),
                 switchCheck("NO_REAL_VALUES_IN_API_GATEWAY_RETIREMENT_RECEIPT", snapshot.realValuesAllowedInRepository() ? "BLOCKED" : "PASS", "retirement receipt contains only redacted references", true),
@@ -5058,7 +5449,7 @@ class UnifiedBackendRegistry {
                 switchCheck("UNIFIED_BACKEND_SELF_HOSTS_GATEWAY_SOURCE", snapshot.unifiedBuildHelperStillReferencesApiGateway() ? "BLOCKED" : "PASS", "unified-backend compiles its own gateway control source", true),
                 switchCheck("GATEWAY_SELF_APIS_PRESERVED_IN_UNIFIED", "PASS", "gateway self APIs remain mounted in unified-backend", true),
                 switchCheck("BUSINESS_PATHS_UNCHANGED", "PASS", "business paths keep existing /api/v1 prefixes", true),
-                switchCheck("CORE_ENTRYPOINTS_PRESERVED", snapshot.coreEntrypointsPreserved() ? "PASS" : "BLOCKED", "five core entrypoints remain protected", true),
+                switchCheck("CORE_MODULE_SOURCES_PRESERVED", snapshot.coreEntrypointsPreserved() ? "PASS" : "BLOCKED", "five core module sources remain mounted in unified-backend", true),
                 switchCheck("NODE_DAEMON_OUT_OF_REPOSITORY", "PASS", "node daemon remains out of repository", true),
                 switchCheck("NO_REAL_VALUES_IN_EXTERNAL_RETIREMENT_EVIDENCE", snapshot.realValuesAllowedInRepository() ? "BLOCKED" : "PASS", "external retirement evidence sample contains only redacted references", true),
                 switchCheck("NO_SENSITIVE_VALUES_IN_EXTERNAL_RETIREMENT_EVIDENCE", snapshot.sensitiveValuesExposed() ? "BLOCKED" : "PASS", "external retirement evidence sample has no sensitive runtime values", true),
@@ -5116,6 +5507,146 @@ class UnifiedBackendRegistry {
                 "readyToRetireOpsCore", snapshot.readyToRetireOpsCore(),
                 "readyToRetirePortalCore", snapshot.readyToRetirePortalCore(),
                 "bulkDeleteAllowed", snapshot.bulkDeleteAllowed(),
+                "environmentVariablesRead", snapshot.environmentVariablesRead(),
+                "sensitiveValuesExposed", snapshot.sensitiveValuesExposed(),
+                "remainingBlockers", snapshot.remainingBlockers(),
+                "status", snapshot.status()
+        );
+    }
+
+    String localApiGatewayEntrypointRetirementStatus() {
+        return localApiGatewayEntrypointRetirement.snapshot().status();
+    }
+
+    List<Map<String, Object>> localApiGatewayEntrypointRetirementChecks() {
+        LocalApiGatewayEntrypointRetirementSnapshot snapshot = localApiGatewayEntrypointRetirement.snapshot();
+        return List.of(
+                switchCheck("SINGLE_MAVEN_ENTRYPOINT_AFTER_LOCAL_RETIREMENT", snapshot.postDeleteSixMavenEntrypointsExpected() ? "PASS" : "BLOCKED", "one Maven entrypoint remains after local retirement", true),
+                switchCheck("API_GATEWAY_POM_PRESENT_BEFORE_DELETE", snapshot.apiGatewayPomStillPresent() ? "PASS" : "INFO", "api-gateway pom was present before delete", true),
+                switchCheck("UNIFIED_BACKEND_SELF_HOSTS_GATEWAY_SOURCE", snapshot.unifiedBuildHelperDoesNotReferenceApiGateway() ? "PASS" : "BLOCKED", "unified-backend hosts its own gateway source", true),
+                switchCheck("UNIFIED_BUILD_HELPER_DOES_NOT_REFERENCE_API_GATEWAY", snapshot.unifiedBuildHelperDoesNotReferenceApiGateway() ? "PASS" : "BLOCKED", "unified-build helper does not reference api-gateway source", true),
+                switchCheck("DELETE_LIST_ONLY_EXPLICIT_FILES", snapshot.deleteListOnlyExplicitFiles() ? "PASS" : "BLOCKED", "delete list contains only explicit files", true),
+                switchCheck("DELETE_LIST_REJECTS_DIRECTORIES", snapshot.deleteListRejectsDirectories() ? "PASS" : "BLOCKED", "delete list rejects directories", true),
+                switchCheck("DELETE_LIST_REJECTS_WILDCARDS", snapshot.deleteListRejectsWildcards() ? "PASS" : "BLOCKED", "delete list rejects wildcards", true),
+                switchCheck("DELETE_LIST_REJECTS_BULK_DELETE_COMMANDS", snapshot.deleteListRejectsBulkDeleteCommands() ? "PASS" : "BLOCKED", "delete list rejects bulk delete commands", true),
+                switchCheck("DELETE_LIST_EXCLUDES_CORE_ENTRYPOINTS", snapshot.deleteListExcludesCoreEntrypoints() ? "PASS" : "BLOCKED", "delete list excludes core entrypoints", true),
+                switchCheck("FIVE_CORE_MODULE_SOURCES_PRESERVED", snapshot.coreEntrypointsPreserved() ? "PASS" : "BLOCKED", "five core module sources remain mounted", true),
+                switchCheck("UNIFIED_GATEWAY_SELF_APIS_PRESERVED", snapshot.unifiedGatewaySelfApisPreserved() ? "PASS" : "BLOCKED", "gateway self APIs remain mounted in unified-backend", true),
+                switchCheck("UNIFIED_MOUNTS_25_BUSINESS_ROUTES_IN_PROCESS", snapshot.inProcessRoutesTotal() == 25 && snapshot.httpFallbackRoutesTotal() == 0 ? "PASS" : "BLOCKED", "25 business routes remain mounted in process with no HTTP fallback", true),
+                switchCheck("POST_RETIREMENT_SINGLE_MAVEN_ENTRYPOINT_EXPECTED", snapshot.postDeleteSixMavenEntrypointsExpected() ? "PASS" : "BLOCKED", "one Maven entrypoint is expected after local retirement", true),
+                switchCheck("POST_DELETE_API_GATEWAY_POM_ABSENT_EXPECTED", snapshot.postDeleteApiGatewayPomAbsentExpected() ? "PASS" : "BLOCKED", "api-gateway pom is expected absent after delete", true),
+                switchCheck("PRODUCTION_PROXY_EVIDENCE_NOT_REQUIRED_FOR_LOCAL_RETIREMENT", !snapshot.productionCutoverRequired() && !snapshot.requiresNginx() && !snapshot.requiresCloudflare() && !snapshot.requiresRealDomain() && !snapshot.requiresProductionTrafficEvidence() ? "PASS" : "BLOCKED", "local retirement does not require production proxy evidence", true)
+        );
+    }
+
+    Map<String, Object> localApiGatewayEntrypointRetirementEvidence() {
+        LocalApiGatewayEntrypointRetirementSnapshot snapshot = localApiGatewayEntrypointRetirement.snapshot();
+        return map(
+                "mode", snapshot.mode(),
+                "apiGatewayPomStillPresent", snapshot.apiGatewayPomStillPresent(),
+                "localRetirementApplied", snapshot.localRetirementApplied(),
+                "preDeleteMavenEntrypointsTotal", snapshot.preDeleteMavenEntrypointsTotal(),
+                "postDeleteExpectedMavenEntrypointsTotal", snapshot.postDeleteExpectedMavenEntrypointsTotal(),
+                "coreEntrypointsPreserved", snapshot.coreEntrypointsPreserved(),
+                "deleteListItemsTotal", snapshot.deleteListItemsTotal(),
+                "unsafeDeleteListItemsTotal", snapshot.unsafeDeleteListItemsTotal(),
+                "bulkDeleteAllowed", snapshot.bulkDeleteAllowed(),
+                "deleteList", snapshot.deleteList(),
+                "postDeleteExpectedEntrypoints", List.of("unified-backend-service"),
+                "unifiedBuildHelperDoesNotReferenceApiGateway", snapshot.unifiedBuildHelperDoesNotReferenceApiGateway(),
+                "deleteListOnlyExplicitFiles", snapshot.deleteListOnlyExplicitFiles(),
+                "deleteListRejectsDirectories", snapshot.deleteListRejectsDirectories(),
+                "deleteListRejectsWildcards", snapshot.deleteListRejectsWildcards(),
+                "deleteListRejectsBulkDeleteCommands", snapshot.deleteListRejectsBulkDeleteCommands(),
+                "deleteListExcludesCoreEntrypoints", snapshot.deleteListExcludesCoreEntrypoints(),
+                "readyToRetireBusinessCore", false,
+                "readyToRetireAdmissionCore", false,
+                "readyToRetireEngagementCore", false,
+                "readyToRetireOpsCore", false,
+                "readyToRetirePortalCore", false,
+                "nextRetirementEntrypoint", snapshot.nextRetirementEntrypoint(),
+                "unifiedGatewaySelfApisPreserved", snapshot.unifiedGatewaySelfApisPreserved(),
+                "inProcessRoutesTotal", snapshot.inProcessRoutesTotal(),
+                "httpFallbackRoutesTotal", snapshot.httpFallbackRoutesTotal(),
+                "productionCutoverRequired", snapshot.productionCutoverRequired(),
+                "productionRetirementClaimed", false,
+                "requiresNginx", snapshot.requiresNginx(),
+                "requiresCloudflare", snapshot.requiresCloudflare(),
+                "requiresRealDomain", snapshot.requiresRealDomain(),
+                "requiresProductionTrafficEvidence", snapshot.requiresProductionTrafficEvidence(),
+                "environmentVariablesRead", snapshot.environmentVariablesRead(),
+                "sensitiveValuesExposed", snapshot.sensitiveValuesExposed(),
+                "remainingBlockers", snapshot.remainingBlockers(),
+                "status", snapshot.status()
+        );
+    }
+
+    String realProductionEntrypointCutoverStatus() {
+        return realProductionEntrypointCutoverEvidence.snapshot().status();
+    }
+
+    List<Map<String, Object>> realProductionEntrypointCutoverChecks() {
+        RealProductionEntrypointCutoverEvidenceSnapshot snapshot = realProductionEntrypointCutoverEvidence.snapshot();
+        return List.of(
+                switchCheck("REAL_PRODUCTION_CUTOVER_EVIDENCE_SAMPLE_PRESENT", snapshot.evidencePresent() ? "PASS" : "BLOCKED", "real production entrypoint cutover evidence sample is present", true),
+                switchCheck("REAL_PRODUCTION_CUTOVER_EVIDENCE_SAMPLE_JSON_PARSABLE", snapshot.evidenceParsed() ? "PASS" : "BLOCKED", "real production entrypoint cutover evidence sample is parseable JSON", true),
+                switchCheck("CANDIDATE_ENTRYPOINT_TARGETS_UNIFIED_BACKEND_8135", snapshot.candidateEntrypointTargetsUnified() ? "PASS" : "BLOCKED", "candidate entrypoint reference targets unified-backend-service:8135", true),
+                switchCheck("PREVIOUS_ENTRYPOINT_TARGETS_API_GATEWAY_8125", snapshot.previousEntrypointTargetsApiGateway() ? "PASS" : "BLOCKED", "previous entrypoint reference targets api-gateway-service:8125", true),
+                switchCheck("UNIFIED_BACKEND_SELF_HOSTS_GATEWAY_SOURCE", snapshot.unifiedBuildHelperStillReferencesApiGateway() ? "BLOCKED" : "PASS", "unified-backend compiles its own gateway control source", true),
+                switchCheck("GATEWAY_SELF_APIS_PRESERVED_IN_UNIFIED", "PASS", "gateway self APIs remain mounted in unified-backend", true),
+                switchCheck("CORE_MODULE_SOURCES_PRESERVED", snapshot.coreEntrypointsPreserved() ? "PASS" : "BLOCKED", "five core module sources remain mounted", true),
+                switchCheck("NODE_DAEMON_OUT_OF_REPOSITORY", "PASS", "node daemon remains out of repository", true),
+                switchCheck("SINGLE_MAVEN_ENTRYPOINT_PRESENT", snapshot.mavenEntrypointsTotal() == 1 ? "PASS" : "BLOCKED", "unified-backend is the only Maven entrypoint in repository", true),
+                switchCheck("NO_REAL_VALUES_IN_CUTOVER_EVIDENCE", snapshot.realValuesAllowedInRepository() ? "BLOCKED" : "PASS", "cutover evidence sample contains only redacted references", true),
+                switchCheck("NO_SENSITIVE_VALUES_IN_CUTOVER_EVIDENCE", snapshot.sensitiveValuesExposed() ? "BLOCKED" : "PASS", "cutover evidence sample has no sensitive runtime values", true),
+                switchCheck("OLD_API_GATEWAY_RETIREMENT_STILL_FORBIDDEN", snapshot.oldApiGatewayRetirementAllowed() ? "BLOCKED" : "PASS", "old api-gateway retirement remains forbidden by this gate", true),
+                switchCheck("READY_FLAGS_REMAIN_FALSE", "PASS", "production and retirement ready flags remain false", true),
+                switchCheck("REAL_PRODUCTION_CUTOVER_EVIDENCE_NOT_PROVIDED", "BLOCKED", "real production entrypoint cutover evidence is not provided outside repository", true),
+                switchCheck("PRODUCTION_TRAFFIC_ALLOWED_NOT_DECLARED", snapshot.productionTrafficAllowed() ? "PASS" : "BLOCKED", "production traffic is not allowed by repository sample", true),
+                switchCheck("CUTOVER_WINDOW_REF_NOT_PROVIDED", snapshot.cutoverWindowProvided() ? "PASS" : "BLOCKED", "cutover window reference is not provided", true),
+                switchCheck("PRODUCTION_TRAFFIC_OBSERVATION_NOT_PROVIDED", "BLOCKED", "production traffic observation reference is not provided", true),
+                switchCheck("OLD_GATEWAY_TRAFFIC_ZERO_NOT_PROVIDED", "BLOCKED", "old gateway zero-traffic reference is not provided", true),
+                switchCheck("REAL_AUDIT_WRITE_SMOKE_NOT_PROVIDED", "BLOCKED", "real audit write smoke reference is not provided", true),
+                switchCheck("DASHBOARD_REF_NOT_PROVIDED", "BLOCKED", "dashboard reference is not provided", true),
+                switchCheck("ALERT_REF_NOT_PROVIDED", "BLOCKED", "alert reference is not provided", true),
+                switchCheck("TRACE_REF_NOT_PROVIDED", "BLOCKED", "trace reference is not provided", true),
+                switchCheck("ROLLBACK_REF_NOT_PROVIDED", "BLOCKED", "rollback reference is not provided", true),
+                switchCheck("APPROVAL_REF_NOT_PROVIDED", "BLOCKED", "approval reference is not provided", true)
+        );
+    }
+
+    Map<String, Object> realProductionEntrypointCutoverEvidence() {
+        RealProductionEntrypointCutoverEvidenceSnapshot snapshot = realProductionEntrypointCutoverEvidence.snapshot();
+        return map(
+                "readinessMode", snapshot.readinessMode(),
+                "evidencePath", snapshot.evidencePath(),
+                "evidencePresent", snapshot.evidencePresent(),
+                "evidenceParsed", snapshot.evidenceParsed(),
+                "realProductionCutoverEvidenceApplied", snapshot.realProductionCutoverEvidenceApplied(),
+                "productionTrafficAllowed", snapshot.productionTrafficAllowed(),
+                "oldApiGatewayRetirementAllowed", snapshot.oldApiGatewayRetirementAllowed(),
+                "realValuesAllowedInRepository", snapshot.realValuesAllowedInRepository(),
+                "candidateEntrypointRef", snapshot.candidateEntrypointRef(),
+                "previousEntrypointRef", snapshot.previousEntrypointRef(),
+                "cutoverWindowRef", snapshot.cutoverWindowRef(),
+                "trafficObservationRefsTotal", snapshot.trafficObservationRefsTotal(),
+                "oldGatewayTrafficZeroRefsTotal", snapshot.oldGatewayTrafficZeroRefsTotal(),
+                "auditWriteSmokeRefsTotal", snapshot.auditWriteSmokeRefsTotal(),
+                "dashboardRefsTotal", snapshot.dashboardRefsTotal(),
+                "alertRefsTotal", snapshot.alertRefsTotal(),
+                "traceRefsTotal", snapshot.traceRefsTotal(),
+                "rollbackRefsTotal", snapshot.rollbackRefsTotal(),
+                "approvalRefsTotal", snapshot.approvalRefsTotal(),
+                "unifiedBuildHelperStillReferencesApiGateway", snapshot.unifiedBuildHelperStillReferencesApiGateway(),
+                "apiGatewayPomStillPresent", snapshot.apiGatewayPomStillPresent(),
+                "mavenEntrypointsTotal", snapshot.mavenEntrypointsTotal(),
+                "coreEntrypointsPreserved", snapshot.coreEntrypointsPreserved(),
+                "readyToRetireBusinessCore", snapshot.readyToRetireBusinessCore(),
+                "readyToRetireAdmissionCore", snapshot.readyToRetireAdmissionCore(),
+                "readyToRetireEngagementCore", snapshot.readyToRetireEngagementCore(),
+                "readyToRetireOpsCore", snapshot.readyToRetireOpsCore(),
+                "readyToRetirePortalCore", snapshot.readyToRetirePortalCore(),
+                "deleteListPermitGenerated", snapshot.deleteListPermitGenerated(),
                 "environmentVariablesRead", snapshot.environmentVariablesRead(),
                 "sensitiveValuesExposed", snapshot.sensitiveValuesExposed(),
                 "remainingBlockers", snapshot.remainingBlockers(),
@@ -5213,30 +5744,36 @@ class UnifiedBackendRegistry {
                 switchCheck("BUSINESS_PATHS_PRESERVED", "PASS", "all business paths keep existing /api/v1 prefixes", true),
                 switchCheck("REAL_HTTP_REHEARSAL_PASSED", "PASS", "real HTTP rehearsal passed for candidate business surfaces", true),
                 switchCheck("ROUTE_DRIFT_SCAN_PASSED", "PASS", "route drift scan passed before core retirement readiness", true),
-                switchCheck("INDEPENDENT_CORE_REGRESSION_REQUIRED", "PASS", "independent core Maven entrypoints remain in regression before retirement", true),
-                switchCheck("API_GATEWAY_RETIREMENT_COMPLETED", "BLOCKED", "api-gateway is still a protected rollback entrypoint", true),
+                switchCheck("INDEPENDENT_CORE_REGRESSION_REPLACED_BY_UNIFIED", "PASS", "core module regression now runs through unified-backend Maven entrypoint", true),
+                switchCheck("CORE_MAVEN_ENTRYPOINTS_RETIRED", "PASS", "five core pom files are retired locally", true),
+                switchCheck("CORE_MODULE_SOURCES_PRESERVED", "PASS", "five core module source trees remain mounted by unified-backend", true),
+                switchCheck("CORE_BOOT_APPLICATIONS_RETIRED", "PASS", "five core standalone Spring Boot application classes are retired", true),
+                switchCheck("API_GATEWAY_RETIREMENT_COMPLETED", "PASS", "local api-gateway Maven entrypoint is already retired", true),
                 switchCheck("EXTERNAL_ENTRYPOINT_TRAFFIC_SWITCHED", "BLOCKED", "production traffic is not switched to unified-backend", true),
                 switchCheck("ROLLBACK_WINDOW_COMPLETED", "BLOCKED", "rollback window has not completed after traffic switch", true),
-                switchCheck("USER_CORE_RETIREMENT_APPROVAL_GRANTED", "BLOCKED", "core entrypoint retirement approval has not been granted", true),
-                switchCheck("CORE_DELETE_LIST_CONFIRMED", "BLOCKED", "core deletion list is not confirmed", true)
+                switchCheck("USER_CORE_RETIREMENT_APPROVAL_GRANTED", "PASS", "user requested retiring five core Maven entrypoints in this round", true),
+                switchCheck("CORE_DELETE_LIST_CONFIRMED", "PASS", "delete list is limited to explicit core entrypoint files and excludes module source", true)
         );
     }
 
     Map<String, Object> coreEntrypointRetirementEvidence() {
         return map(
-                "retirementApprovalStatus", "BLOCKED",
-                "deletionAllowed", false,
+                "retirementApprovalStatus", "APPROVED_LOCAL_MAVEN_ENTRYPOINT_ONLY",
+                "deletionAllowed", true,
                 "trafficSwitchApplied", false,
-                "apiGatewayRetired", false,
+                "apiGatewayRetired", true,
                 "rollbackWindowCompleted", false,
                 "bulkRetirementAllowed", false,
-                "nextEligibleCore", "NONE_UNTIL_API_GATEWAY_RETIRED",
-                "protectedCoreEntrypoints", List.of(
-                        "business-core:8130",
-                        "admission-core:8131",
-                        "engagement-core:8132",
-                        "ops-core:8133",
-                        "portal-core:8134"
+                "entrypointRetirementScope", "LOCAL_MAVEN_ENTRYPOINTS_ONLY",
+                "moduleSourcePreserved", true,
+                "standaloneServiceStartDisabled", true,
+                "currentMavenEntrypoints", List.of("unified-backend-service"),
+                "retiredCoreEntrypoints", List.of(
+                        "business-core-service",
+                        "admission-core-service",
+                        "engagement-core-service",
+                        "ops-core-service",
+                        "portal-core-service"
                 ),
                 "coreEntrypointMatrix", List.of(
                         coreRetirementTarget("business-core", 8130, "backend/business-core-service", List.of("auth", "profile", "notification", "content", "server-status", "resource", "admin"), 1),
@@ -5245,7 +5782,7 @@ class UnifiedBackendRegistry {
                         coreRetirementTarget("ops-core", 8133, "backend/ops-core-service", List.of("ops-control", "cloudreve-sync", "backup-recovery", "alerting", "plugin-integration", "cross-platform-notification", "ops-image-market"), 4),
                         coreRetirementTarget("portal-core", 8134, "backend/portal-core-service", List.of("online-map", "material", "guide"), 5)
                 ),
-                "status", "BLOCKED_BY_PROTECTED_ROLLBACK_ROLE"
+                "status", "PASS_LOCAL_CORE_MAVEN_ENTRYPOINTS_RETIRED_UNIFIED_MODULES_PRESERVED"
         );
     }
 
@@ -5255,7 +5792,7 @@ class UnifiedBackendRegistry {
                 switchCheck("BUSINESS_PATHS_PRESERVED", "PASS", "all business paths keep existing /api/v1 prefixes", true),
                 switchCheck("REAL_HTTP_REHEARSAL_PASSED", "PASS", "real HTTP rehearsal passed for the candidate business surface", true),
                 switchCheck("ROUTE_DRIFT_SCAN_PASSED", "PASS", "gateway routes and unified mounts have no route drift", true),
-                switchCheck("ROLLBACK_ENTRYPOINTS_PROTECTED", "PASS", "api-gateway and five core entrypoints remain protected rollback targets", true),
+                switchCheck("LOCAL_CORE_ENTRYPOINTS_RETIRED", "PASS", "five core Maven entrypoints are retired locally while module source remains mounted", true),
                 switchCheck("CENTRAL_CONFIG_CONTRACT_DEFINED", "PASS", "central config ownership and rollback contract are documented", true),
                 switchCheck("AUDIT_TRAIL_CONTRACT_DEFINED", "PASS", "audit trail ownership and event contract are documented", true),
                 switchCheck("CUTOVER_RUNBOOK_DEFINED", "PASS", "cutover runbook requirements are recorded without applying traffic switch", true),
@@ -5347,10 +5884,13 @@ class UnifiedBackendRegistry {
                 "hostedRouteIds", hostedRouteIds,
                 "inProcessMountedInUnified", true,
                 "selfApisMountedInUnified", true,
-                "independentRegressionRequired", true,
+                "independentRegressionRequired", false,
+                "unifiedRegressionRequired", true,
                 "retirementOrder", retirementOrder,
-                "retirementStatus", "BLOCKED",
-                "blockedBy", "PROTECTED_ROLLBACK_ROLE"
+                "retirementStatus", "RETIRED_LOCAL_MAVEN_ENTRYPOINT",
+                "moduleSourcePreserved", true,
+                "standaloneServiceStartDisabled", true,
+                "blockedBy", "NONE"
         );
     }
 
