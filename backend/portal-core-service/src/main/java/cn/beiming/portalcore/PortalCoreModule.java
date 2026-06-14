@@ -653,7 +653,7 @@ record PortalCoreModuleRegistration(String moduleKey,
         data.put("contract", contract);
         data.put("localTestDocument", localTestDocument);
         data.put("legacyTestCommand", legacyTestCommand);
-        data.put("currentTestCommand", "mvn -q -f backend/portal-core-service/pom.xml test");
+        data.put("currentTestCommand", "mvn -q -f backend/unified-backend-service/pom.xml test");
         data.put("contractRoutesTotal", routesTotal);
         data.put("routeDriftStatus", "NO_DRIFT");
         data.put("businessContractOwnedByModule", true);

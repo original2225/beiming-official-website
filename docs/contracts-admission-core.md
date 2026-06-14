@@ -230,7 +230,7 @@ Spring Boot 主应用建议放在 `cn.beiming.admission`，组件扫描范围覆
         "service": "business-core-service",
         "port": 8130,
         "contract": "docs/contracts-business-core.md",
-        "testCommand": "mvn -f backend/business-core-service/pom.xml test",
+        "testCommand": "mvn -q -f backend/unified-backend-service/pom.xml test",
         "lastVerifiedAt": null
       }
     ],
@@ -337,7 +337,7 @@ Spring Boot 主应用建议放在 `cn.beiming.admission`，组件扫描范围覆
 
 `admission-core` 完成的最低标准是，单进程承载第二批四个业务模块的全部既有 API 路径，且响应格式、错误码、认证、权限、请求编号、分页、状态流转、幂等、审计和降级行为与四个模块正式契约一致。
 
-`mvn -f backend/admission-core-service/pom.xml test` 必须覆盖本文档两个自有接口和四个模块继承过来的全部契约测试。第二批旧服务清理后，相关回归基线为 `admission-core-service`、`business-core-service` 和 `unified-backend-service`，不得为了测试恢复 `onboarding-service`、`exam-service`、`whitelist-service`、`attendance-service` 或已退役的 `api-gateway-service` Maven 入口。
+当前统一后端回归命令 `mvn -q -f backend/unified-backend-service/pom.xml test` 必须覆盖本文档两个自有接口和四个模块继承过来的全部契约测试。第二批旧服务清理后，相关回归基线由统一后端装配的 `admission-core` 和前序 `business-core` 模块承担，不得为了测试恢复 `onboarding-service`、`exam-service`、`whitelist-service`、`attendance-service` 或已退役的 `api-gateway-service` Maven 入口。
 
 `admission-core` 直连合并和第二批网关切换均已完成测试闭环。第二批业务路径经网关访问时仍保持原路径，网关只切换上游端口，不改写业务前缀。
 

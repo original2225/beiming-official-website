@@ -3883,7 +3883,7 @@ class UnifiedBackendRegistry {
     List<Map<String, Object>> productionSwitchChecks() {
         return List.of(
                 switchCheck("ALL_CURRENT_BUSINESS_ROUTES_IN_PROCESS", "PASS", "all current official backend business routes are mounted in-process", true),
-                switchCheck("CURRENT_ENTRYPOINTS_PRESERVED", "PASS", "current six production entrypoints remain available for rollback", true),
+                switchCheck("CURRENT_ENTRYPOINTS_PRESERVED", "PASS", "current unified backend Maven entrypoint remains available and historical rollback evidence is preserved", true),
                 switchCheck("ROUTE_PREFIX_AND_RESPONSE_PRESERVED", "PASS", "candidate preserves existing route prefixes and response envelope", true),
                 switchCheck("EXTERNAL_NODE_EXECUTOR_OUT_OF_REPOSITORY", "PASS", "external node executor is out of repository and not connected", true),
                 switchCheck("LEGACY_ENTRYPOINTS_NOT_RESTORED", "PASS", "retired legacy service entrypoints are not restored", true),

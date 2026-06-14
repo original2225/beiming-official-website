@@ -3759,7 +3759,8 @@ class UnifiedBackendApiContractTest {
                 .contains("VITE_API_BASE_URL")
                 .contains("/api/v1/**")
                 .contains("http://127.0.0.1:8135")
-                .contains("http://127.0.0.1:8125");
+                .contains("api-gateway:8125")
+                .contains("历史回滚引用");
         assertThat(docs.get("frontend-development-guide"))
                 .contains("VITE_API_BASE_URL")
                 .contains("/api/v1/auth/login")
@@ -4314,7 +4315,8 @@ class UnifiedBackendApiContractTest {
                 .contains("VITE_API_BASE_URL")
                 .contains("/api/v1/**")
                 .contains("http://127.0.0.1:8135")
-                .contains("http://127.0.0.1:8125");
+                .contains("api-gateway:8125")
+                .contains("历史回滚引用");
         assertThat(docs.get("frontend-development-guide"))
                 .contains("VITE_API_BASE_URL")
                 .contains("/api/v1/auth/login")
@@ -4830,6 +4832,70 @@ class UnifiedBackendApiContractTest {
                 .doesNotContain("mvn -q -f backend/portal-core-service/pom.xml test")
                 .contains("mvn -q -f backend/unified-backend-service/pom.xml test")
                 .contains("five core module sources remain mounted");
+    }
+
+    @Test
+    void unifiedBackendDocsRuntimeAndFrontendGuideUseSingleBackendEntrypoint() throws Exception {
+        JsonNode readiness = performJson(get("/api/v1/unified-backend/admin/readiness")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-single-entrypoint-final-guard"));
+        JsonNode gatewayTopology = performJson(get("/api/v1/gateway/admin/runtime-topology")
+                .header("Authorization", "Bearer owner-token")
+                .header("X-Request-Id", "req-single-entrypoint-topology-final-guard"));
+
+        String docsAndRuntime = readiness.toString()
+                + gatewayTopology.toString()
+                + Files.readString(Path.of("../../docs/frontend-api-handbook.md"))
+                + Files.readString(Path.of("../../docs/frontend-development-guide.md"))
+                + Files.readString(Path.of("../../docs/contracts-unified-backend.md"))
+                + Files.readString(Path.of("../../docs/contracts-api-gateway.md"))
+                + Files.readString(Path.of("../../docs/contracts-overview.md"))
+                + Files.readString(Path.of("../../docs/api-reference.md"))
+                + Files.readString(Path.of("../unified-backend-service/src/main/java/cn/beiming/unifiedbackend/UnifiedBackendModule.java"))
+                + Files.readString(Path.of("../ops-core-service/src/main/java/cn/beiming/opscore/OpsCoreModule.java"))
+                + Files.readString(Path.of("../portal-core-service/src/main/java/cn/beiming/portalcore/PortalCoreModule.java"));
+
+        assertThat(readiness.at("/data/readyForProduction").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/readyToReplaceGateway").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/readyToRetireBusinessCore").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/readyToRetireAdmissionCore").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/readyToRetireEngagementCore").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/readyToRetireOpsCore").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/readyToRetirePortalCore").asBoolean()).isFalse();
+        assertThat(readiness.at("/data/currentProductionEntrypointsTotal").asInt()).isEqualTo(1);
+        assertThat(readiness.at("/data/candidateEntrypointsTotal").asInt()).isEqualTo(1);
+
+        assertThat(docsAndRuntime)
+                .contains("http://127.0.0.1:8135")
+                .contains("mvn -q -f backend/unified-backend-service/pom.xml test")
+                .doesNotContain("本地联调当前仍可走网关回滚入口 `http://127.0.0.1:8125`")
+                .doesNotContain("默认使用 `http://127.0.0.1:8125`")
+                .doesNotContain("VITE_API_BASE_URL` 覆盖默认网关地址")
+                .doesNotContain("当前 6 个官网后端回滚入口")
+                .doesNotContain("当前 6 个生产后端回滚入口")
+                .doesNotContain("当前网关自身 in-process 挂载仍未实现")
+                .doesNotContain("in-process 挂载仍未实现")
+                .doesNotContain("mvn -q -f backend/api-gateway-service/pom.xml test")
+                .doesNotContain("mvn -q -f backend/business-core-service/pom.xml test")
+                .doesNotContain("mvn -q -f backend/admission-core-service/pom.xml test")
+                .doesNotContain("mvn -q -f backend/engagement-core-service/pom.xml test")
+                .doesNotContain("mvn -q -f backend/ops-core-service/pom.xml test")
+                .doesNotContain("mvn -q -f backend/portal-core-service/pom.xml test")
+                .doesNotContain("mvn -f backend/api-gateway-service/pom.xml test")
+                .doesNotContain("mvn -f backend/business-core-service/pom.xml test")
+                .doesNotContain("mvn -f backend/admission-core-service/pom.xml test")
+                .doesNotContain("mvn -f backend/engagement-core-service/pom.xml test")
+                .doesNotContain("mvn -f backend/ops-core-service/pom.xml test")
+                .doesNotContain("mvn -f backend/portal-core-service/pom.xml test")
+                .doesNotContain("currentTestCommand\",\"mvn -q -f backend/ops-core-service/pom.xml test")
+                .doesNotContain("currentTestCommand\",\"mvn -q -f backend/portal-core-service/pom.xml test")
+                .doesNotContain("currentTestCommand\", \"mvn -q -f backend/ops-core-service/pom.xml test")
+                .doesNotContain("currentTestCommand\", \"mvn -q -f backend/portal-core-service/pom.xml test")
+                .doesNotContain("readyForProduction" + "=true")
+                .doesNotContain("readyToReplaceGateway" + "=true")
+                .doesNotContain("bulkRetirementAllowed" + "=true")
+                .doesNotContain("oldApiGatewayRetirementAllowed" + "=true")
+                .doesNotContain("productionTrafficSwitched" + "=true");
     }
 
     @Test

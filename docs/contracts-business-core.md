@@ -435,8 +435,8 @@ Spring Boot 主应用建议放在 `cn.beiming.core`，组件扫描范围覆盖 `
 
 `business-core` 完成的最低标准是，单进程承载第一批七个业务模块的全部既有 API 路径，且响应格式、错误码、认证、权限、请求编号、分页、状态流转、幂等、审计和降级行为与七个模块正式契约一致。
 
-`mvn -f backend/business-core-service/pom.xml test` 必须覆盖本文档三个自有接口和七个模块继承过来的全部契约测试。第一批旧服务源码清理后，`BusinessCoreLegacyBaselineTest` 必须确认旧服务运行文件不存在，且七个模块正式契约和 `business-core-service` 运行入口仍存在。
+当前统一后端回归命令 `mvn -q -f backend/unified-backend-service/pom.xml test` 必须覆盖本文档三个自有接口和七个模块继承过来的全部契约测试。第一批旧服务源码清理后，旧服务运行文件不得恢复，七个模块正式契约和 `business-core` 模块源码必须继续由统一后端装配。
 
-`business-core` 直连合并和第一批网关切换均已完成测试闭环。用户确认后，第一批旧服务源码和 Maven 运行入口已按明确文件路径逐个清理，后续运行以 `business-core-service` 为准。
+`business-core` 直连合并和第一批网关切换均已完成测试闭环。用户确认后，第一批旧服务源码和 Maven 运行入口已按明确文件路径逐个清理，当前本地运行以 `unified-backend-service:8135` 装配的 `business-core` 模块为准。
 
 旧服务目录不得因本契约自动批量删除。需要继续清理残留空目录或其他批次旧服务时，必须单独确认范围；删除文件只能逐个明确路径处理。

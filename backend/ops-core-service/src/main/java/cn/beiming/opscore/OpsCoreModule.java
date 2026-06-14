@@ -594,7 +594,7 @@ record OpsCoreModuleRegistration(String moduleKey,
         data.put("localTestDocument", localTestDocument);
         data.put("legacyServiceRetired", true);
         data.put("legacyTestCommand", null);
-        data.put("currentTestCommand", "mvn -q -f backend/ops-core-service/pom.xml test");
+        data.put("currentTestCommand", "mvn -q -f backend/unified-backend-service/pom.xml test");
         data.put("contractRoutesTotal", routesTotal);
         data.put("routeDriftStatus", "NO_DRIFT");
         data.put("businessContractOwnedByModule", true);
