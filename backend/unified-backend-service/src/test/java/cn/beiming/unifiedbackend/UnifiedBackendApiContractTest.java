@@ -4811,6 +4811,7 @@ class UnifiedBackendApiContractTest {
         String joinedEvidence = readiness.toString()
                 + gatewayTopology.toString()
                 + Files.readString(Path.of("../../docs/contracts-unified-backend.md"))
+                + Files.readString(Path.of("../../docs/api-reference.md"))
                 + Files.readString(Path.of("../../docs/unified-backend-production-audit-observability-smoke-sample.json"));
 
         assertThat(joinedEvidence)
@@ -4819,6 +4820,8 @@ class UnifiedBackendApiContractTest {
                 .doesNotContain("api-gateway and five core entrypoints remain protected")
                 .doesNotContain("api-gateway and five core rollback entrypoints")
                 .doesNotContain("five core entrypoints remain protected")
+                .doesNotContain("coreEntrypointRetirementPrecheckStatus=BLOCKED_BY_PROTECTED_ROLLBACK_ROLE")
+                .doesNotContain("五个 core 删除确认必须继续标为 `BLOCKED`")
                 .doesNotContain("mvn -q -f backend/api-gateway-service/pom.xml test")
                 .doesNotContain("mvn -q -f backend/business-core-service/pom.xml test")
                 .doesNotContain("mvn -q -f backend/admission-core-service/pom.xml test")
