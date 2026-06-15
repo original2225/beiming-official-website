@@ -7,6 +7,9 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -40,17 +43,28 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 
+@Configuration
+class ActivityEvidenceConfiguration {
+    @Bean
+    @ConditionalOnMissingBean
+    ActivityFlowEvidenceRecorder activityFlowEvidenceRecorder() {
+        return new NoopActivityFlowEvidenceRecorder();
+    }
+}
+
 @RestController
 @RequestMapping("/api/v1/activity")
 class ActivityController {
     private final ActivityStore store;
     private final ActivityAuth auth;
     private final ActivityProperties properties;
+    private final ActivityFlowEvidenceRecorder evidenceRecorder;
 
-    ActivityController(ActivityStore store, ActivityAuth auth, ActivityProperties properties) {
+    ActivityController(ActivityStore store, ActivityAuth auth, ActivityProperties properties, ActivityFlowEvidenceRecorder evidenceRecorder) {
         this.store = store;
         this.auth = auth;
         this.properties = properties;
+        this.evidenceRecorder = evidenceRecorder;
     }
 
     @GetMapping("/events")
@@ -157,7 +171,9 @@ class ActivityController {
             ensureAuditWritable(request);
             ActivityRegistrationRecord registration = store.createRegistration(activity, actor, body);
             store.audit("ACTIVITY_REGISTERED", activity.activityId, registration.registrationId, actor.userId, "SUCCESS");
-            return created(request, registration.currentUserView());
+            Map<String, Object> payload = registration.currentUserView();
+            evidenceRecorder.recordRegistrationWrite(request, "ACTIVITY_REGISTERED", payload, HttpStatus.CREATED.value());
+            return created(request, payload);
         });
     }
 
@@ -178,7 +194,9 @@ class ActivityController {
             ensureAuditWritable(request);
             store.cancelRegistration(registration, actor.userId);
             store.audit("ACTIVITY_REGISTRATION_CANCELED", activity.activityId, registration.registrationId, actor.userId, "SUCCESS");
-            return ok(request, registration.currentUserView());
+            Map<String, Object> payload = registration.currentUserView();
+            evidenceRecorder.recordRegistrationWrite(request, "ACTIVITY_REGISTRATION_CANCELED", payload, HttpStatus.OK.value());
+            return ok(request, payload);
         });
     }
 
@@ -242,7 +260,9 @@ class ActivityController {
             ensureAuditWritable(request);
             ActivityRecord activity = store.createActivity(body, actor);
             store.audit("ACTIVITY_CREATED", activity.activityId, activity.activityId, actor.userId, "SUCCESS");
-            return created(request, activity.adminView());
+            Map<String, Object> payload = activity.adminView();
+            evidenceRecorder.recordEventWrite(request, "ACTIVITY_CREATED", payload, HttpStatus.CREATED.value());
+            return created(request, payload);
         });
     }
 
@@ -261,7 +281,9 @@ class ActivityController {
             store.applyEditableFields(activity, body);
             activity.updatedAt = now();
             store.audit("ACTIVITY_UPDATED", activity.activityId, activity.activityId, actor.userId, "SUCCESS");
-            return ok(request, activity.adminView());
+            Map<String, Object> payload = activity.adminView();
+            evidenceRecorder.recordEventWrite(request, "ACTIVITY_UPDATED", payload, HttpStatus.OK.value());
+            return ok(request, payload);
         });
     }
 
@@ -279,7 +301,9 @@ class ActivityController {
             activity.status = "PENDING_REVIEW";
             activity.submittedAt = now();
             store.audit("ACTIVITY_SUBMITTED", activity.activityId, activity.activityId, actor.userId, "SUCCESS");
-            return ok(request, activity.adminView());
+            Map<String, Object> payload = activity.adminView();
+            evidenceRecorder.recordEventWrite(request, "ACTIVITY_SUBMITTED", payload, HttpStatus.OK.value());
+            return ok(request, payload);
         });
     }
 
@@ -298,7 +322,9 @@ class ActivityController {
             activity.reviewedAt = now();
             activity.notificationFailure = notificationFailure(request);
             store.audit("ACTIVITY_APPROVED", activity.activityId, activity.activityId, actor.userId, "SUCCESS");
-            return ok(request, activity.adminView());
+            Map<String, Object> payload = activity.adminView();
+            evidenceRecorder.recordEventWrite(request, "ACTIVITY_APPROVED", payload, HttpStatus.OK.value());
+            return ok(request, payload);
         });
     }
 
@@ -330,7 +356,9 @@ class ActivityController {
             activity.status = "REGISTRATION_OPEN";
             activity.publishedAt = now();
             store.audit("ACTIVITY_PUBLISHED", activity.activityId, activity.activityId, actor.userId, "SUCCESS");
-            return ok(request, activity.adminView());
+            Map<String, Object> payload = activity.adminView();
+            evidenceRecorder.recordEventWrite(request, "ACTIVITY_PUBLISHED", payload, HttpStatus.OK.value());
+            return ok(request, payload);
         });
     }
 
@@ -373,7 +401,9 @@ class ActivityController {
             activity.status = "OFFLINE";
             activity.offlineAt = now();
             store.audit("ACTIVITY_OFFLINED", activity.activityId, activity.activityId, actor.userId, "SUCCESS");
-            return ok(request, activity.adminView());
+            Map<String, Object> payload = activity.adminView();
+            evidenceRecorder.recordEventWrite(request, "ACTIVITY_OFFLINED", payload, HttpStatus.OK.value());
+            return ok(request, payload);
         });
     }
 
@@ -388,7 +418,9 @@ class ActivityController {
             activity.status = "ARCHIVED";
             activity.archivedAt = now();
             store.audit("ACTIVITY_ARCHIVED", activity.activityId, activity.activityId, actor.userId, "SUCCESS");
-            return ok(request, activity.adminView());
+            Map<String, Object> payload = activity.adminView();
+            evidenceRecorder.recordEventWrite(request, "ACTIVITY_ARCHIVED", payload, HttpStatus.OK.value());
+            return ok(request, payload);
         });
     }
 
@@ -404,7 +436,9 @@ class ActivityController {
             activity.status = "DELETED";
             activity.deletedAt = now();
             store.audit("ACTIVITY_DELETED", activity.activityId, activity.activityId, actor.userId, "SUCCESS");
-            return ok(request, activity.adminView());
+            Map<String, Object> payload = activity.adminView();
+            evidenceRecorder.recordEventWrite(request, "ACTIVITY_DELETED", payload, HttpStatus.OK.value());
+            return ok(request, payload);
         });
     }
 
@@ -446,7 +480,9 @@ class ActivityController {
             registration.updatedAt = now();
             registration.notificationFailure = notificationFailure(request);
             store.audit("ACTIVITY_REGISTRATION_CONFIRMED", activity.activityId, registration.registrationId, actor.userId, "SUCCESS");
-            return ok(request, registration.adminView());
+            Map<String, Object> payload = registration.adminView();
+            evidenceRecorder.recordRegistrationWrite(request, "ACTIVITY_REGISTRATION_CONFIRMED", payload, HttpStatus.OK.value());
+            return ok(request, payload);
         });
     }
 
@@ -466,7 +502,9 @@ class ActivityController {
             registration.updatedAt = now();
             registration.notificationFailure = notificationFailure(request);
             store.audit("ACTIVITY_REGISTRATION_REJECTED", activity.activityId, registration.registrationId, actor.userId, "SUCCESS");
-            return ok(request, registration.adminView());
+            Map<String, Object> payload = registration.adminView();
+            evidenceRecorder.recordRegistrationWrite(request, "ACTIVITY_REGISTRATION_REJECTED", payload, HttpStatus.OK.value());
+            return ok(request, payload);
         });
     }
 
@@ -491,7 +529,9 @@ class ActivityController {
             activity.waitlistedCount = Math.max(0, activity.waitlistedCount - 1);
             registration.notificationFailure = notificationFailure(request);
             store.audit("ACTIVITY_WAITLIST_PROMOTED", activity.activityId, registration.registrationId, actor.userId, "SUCCESS");
-            return ok(request, registration.adminView());
+            Map<String, Object> payload = registration.adminView();
+            evidenceRecorder.recordRegistrationWrite(request, "ACTIVITY_WAITLIST_PROMOTED", payload, HttpStatus.OK.value());
+            return ok(request, payload);
         });
     }
 
@@ -505,7 +545,9 @@ class ActivityController {
             ensureAuditWritable(request);
             store.cancelRegistration(registration, actor.userId);
             store.audit("ACTIVITY_REGISTRATION_ADMIN_CANCELED", registration.activityId, registration.registrationId, actor.userId, "SUCCESS");
-            return ok(request, registration.adminView());
+            Map<String, Object> payload = registration.adminView();
+            evidenceRecorder.recordRegistrationWrite(request, "ACTIVITY_REGISTRATION_ADMIN_CANCELED", payload, HttpStatus.OK.value());
+            return ok(request, payload);
         });
     }
 
@@ -533,7 +575,9 @@ class ActivityController {
             registration.updatedAt = now();
             registration.notificationFailure = notificationFailure(request);
             store.audit("ACTIVITY_REGISTRATION_CHECKED_IN", activity.activityId, registration.registrationId, actor.userId, "SUCCESS");
-            return ok(request, registration.adminView());
+            Map<String, Object> payload = registration.adminView();
+            evidenceRecorder.recordRegistrationWrite(request, "ACTIVITY_REGISTRATION_CHECKED_IN", payload, HttpStatus.OK.value());
+            return ok(request, payload);
         });
     }
 
@@ -554,7 +598,9 @@ class ActivityController {
             registration.updatedAt = now();
             activity.noShowCount++;
             store.audit("ACTIVITY_REGISTRATION_NO_SHOW", activity.activityId, registration.registrationId, actor.userId, "SUCCESS");
-            return ok(request, registration.adminView());
+            Map<String, Object> payload = registration.adminView();
+            evidenceRecorder.recordRegistrationWrite(request, "ACTIVITY_REGISTRATION_NO_SHOW", payload, HttpStatus.OK.value());
+            return ok(request, payload);
         });
     }
 
@@ -575,7 +621,9 @@ class ActivityController {
             result.details = text(body, "details", "");
             result.updatedAt = now();
             store.audit("ACTIVITY_RESULT_UPSERTED", activity.activityId, result.resultId, actor.userId, "SUCCESS");
-            return ok(request, result.view());
+            Map<String, Object> payload = result.view();
+            evidenceRecorder.recordResultWrite(request, "ACTIVITY_RESULT_UPSERTED", payload, HttpStatus.OK.value());
+            return ok(request, payload);
         });
     }
 
@@ -595,7 +643,9 @@ class ActivityController {
             result.publishedAt = now();
             activity.status = "RESULT_PUBLISHED";
             store.audit("ACTIVITY_RESULT_PUBLISHED", activity.activityId, result.resultId, actor.userId, "SUCCESS");
-            return ok(request, result.view());
+            Map<String, Object> payload = result.view();
+            evidenceRecorder.recordResultWrite(request, "ACTIVITY_RESULT_PUBLISHED", payload, HttpStatus.OK.value());
+            return ok(request, payload);
         });
     }
 
@@ -613,7 +663,9 @@ class ActivityController {
             ensureAuditWritable(request);
             ActivityRewardRecord reward = store.createReward(activity, registration, body);
             store.audit("ACTIVITY_REWARD_CREATED", activity.activityId, reward.rewardId, actor.userId, "SUCCESS");
-            return created(request, reward.adminView());
+            Map<String, Object> payload = reward.adminView();
+            evidenceRecorder.recordRewardWrite(request, "ACTIVITY_REWARD_CREATED", payload, HttpStatus.CREATED.value());
+            return created(request, payload);
         });
     }
 
@@ -632,7 +684,9 @@ class ActivityController {
             reward.issuedAt = now();
             reward.notificationFailure = notificationFailure(request);
             store.audit("ACTIVITY_REWARD_ISSUED", reward.activityId, reward.rewardId, actor.userId, "SUCCESS");
-            return ok(request, reward.adminView());
+            Map<String, Object> payload = reward.adminView();
+            evidenceRecorder.recordRewardWrite(request, "ACTIVITY_REWARD_ISSUED", payload, HttpStatus.OK.value());
+            return ok(request, payload);
         });
     }
 
@@ -648,7 +702,9 @@ class ActivityController {
             reward.status = "REVOKED";
             reward.revokedAt = now();
             store.audit("ACTIVITY_REWARD_REVOKED", reward.activityId, reward.rewardId, actor.userId, "SUCCESS");
-            return ok(request, reward.adminView());
+            Map<String, Object> payload = reward.adminView();
+            evidenceRecorder.recordRewardWrite(request, "ACTIVITY_REWARD_REVOKED", payload, HttpStatus.OK.value());
+            return ok(request, payload);
         });
     }
 
@@ -671,7 +727,12 @@ class ActivityController {
                 }
             }
             store.audit("ACTIVITY_CONTRIBUTION_CANDIDATES_CREATED", activity.activityId, activity.activityId, actor.userId, "SUCCESS");
-            return created(request, Map.of("items", created, "total", created.size()));
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("activityId", activity.activityId);
+            payload.put("items", created);
+            payload.put("total", created.size());
+            evidenceRecorder.recordCandidateWrite(request, "ACTIVITY_CONTRIBUTION_CANDIDATES_CREATED", payload, HttpStatus.CREATED.value());
+            return created(request, payload);
         });
     }
 
@@ -739,7 +800,9 @@ class ActivityController {
             activity.status = status;
             activity.reviewedAt = now();
             store.audit(action, activity.activityId, activity.activityId, actor.userId, "SUCCESS");
-            return ok(request, activity.adminView());
+            Map<String, Object> payload = activity.adminView();
+            evidenceRecorder.recordEventWrite(request, action, payload, HttpStatus.OK.value());
+            return ok(request, payload);
         });
     }
 
@@ -755,7 +818,9 @@ class ActivityController {
             activity.status = to;
             activity.updatedAt = now();
             store.audit(action, activity.activityId, activity.activityId, actor.userId, "SUCCESS");
-            return ok(request, activity.adminView());
+            Map<String, Object> payload = activity.adminView();
+            evidenceRecorder.recordEventWrite(request, action, payload, HttpStatus.OK.value());
+            return ok(request, payload);
         });
     }
 
@@ -1570,6 +1635,40 @@ class Actor {
         this.displayName = displayName;
         this.memberId = memberId;
         this.authMode = authMode;
+    }
+}
+
+interface ActivityFlowEvidenceRecorder {
+    void recordEventWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordRegistrationWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordResultWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordRewardWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordCandidateWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+}
+
+class NoopActivityFlowEvidenceRecorder implements ActivityFlowEvidenceRecorder {
+    @Override
+    public void recordEventWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordRegistrationWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordResultWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordRewardWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordCandidateWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
     }
 }
 
