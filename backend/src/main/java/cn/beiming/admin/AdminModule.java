@@ -4,6 +4,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -52,6 +53,12 @@ class AdminModule {
     TestAdminAuthProvider adminAuthProvider(@Value("${beiming.admin.test-mode:false}") boolean testMode) {
         return new TestAdminAuthProvider(testMode);
     }
+
+    @Bean
+    @ConditionalOnMissingBean
+    AdminFlowEvidenceRecorder adminFlowEvidenceRecorder() {
+        return new NoopAdminFlowEvidenceRecorder();
+    }
 }
 
 @RestController
@@ -59,10 +66,12 @@ class AdminModule {
 class AdminController {
     private final AdminStore store;
     private final TestAdminAuthProvider auth;
+    private final AdminFlowEvidenceRecorder evidenceRecorder;
 
-    AdminController(AdminStore store, TestAdminAuthProvider auth) {
+    AdminController(AdminStore store, TestAdminAuthProvider auth, AdminFlowEvidenceRecorder evidenceRecorder) {
         this.store = store;
         this.auth = auth;
+        this.evidenceRecorder = evidenceRecorder;
     }
 
     @GetMapping("/overview")
@@ -134,7 +143,10 @@ class AdminController {
                                        @RequestBody(required = false) Map<String, Object> body,
                                        HttpServletRequest request) {
         AuthUser actor = auth.requireAny(request, authorization, "ADMIN", "OWNER");
-        return ok(store.patchSettings(actor, body == null ? Map.of() : body, request));
+        Map<String, Object> payload = store.patchSettings(actor, body == null ? Map.of() : body, request);
+        boolean replayed = payload.get("idempotency") instanceof Map<?, ?> idempotency && Boolean.TRUE.equals(idempotency.get("replayed"));
+        evidenceRecorder.recordSettingsWrite(request, replayed ? "ADMIN_SETTINGS_REPLAYED" : "ADMIN_SETTINGS_UPDATED", actor, body == null ? Map.of() : body, payload, HttpStatus.OK.value());
+        return ok(payload);
     }
 
     @GetMapping("/ops/summary")
@@ -1380,6 +1392,16 @@ class Setting {
 }
 
 record IdempotencyRecord(String fingerprint, Map<String, Object> response) {
+}
+
+interface AdminFlowEvidenceRecorder {
+    void recordSettingsWrite(HttpServletRequest request, String action, AuthUser actor, Map<String, Object> requestBody, Map<String, Object> payload, int responseCode);
+}
+
+class NoopAdminFlowEvidenceRecorder implements AdminFlowEvidenceRecorder {
+    @Override
+    public void recordSettingsWrite(HttpServletRequest request, String action, AuthUser actor, Map<String, Object> requestBody, Map<String, Object> payload, int responseCode) {
+    }
 }
 
 class TreeStableMap extends LinkedHashMap<String, String> {
