@@ -7,6 +7,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
@@ -51,13 +52,16 @@ import java.util.regex.Pattern;
 @RequestMapping("/api/v1/auth")
 class AuthController {
     private final AuthStore store;
+    private final AuthFlowEvidenceRecorder evidenceRecorder;
 
-    AuthController(AuthStore store) {
+    AuthController(AuthStore store, AuthFlowEvidenceRecorder evidenceRecorder) {
         this.store = store;
+        this.evidenceRecorder = evidenceRecorder;
     }
 
     @PostMapping("/register")
-    ResponseEntity<Map<String, Object>> register(@RequestBody(required = false) Map<String, Object> body) {
+    ResponseEntity<Map<String, Object>> register(HttpServletRequest request,
+                                                 @RequestBody(required = false) Map<String, Object> body) {
         body = bodyOrEmpty(body);
         String invitationCode = requiredString(body, "invitationCode");
         String username = requiredString(body, "username");
@@ -66,20 +70,31 @@ class AuthController {
         validateUsername(username);
         validatePassword(password);
         validateDisplayName(displayName);
-        return created(store.register(invitationCode, username, password, displayName, optionalString(body, "idempotencyKey")));
+        Map<String, Object> payload = store.register(invitationCode, username, password, displayName, optionalString(body, "idempotencyKey"));
+        ResponseEntity<Map<String, Object>> response = created(payload);
+        evidenceRecorder.recordRegisterSuccess(request, invitationCode, username, payload, response.getStatusCode().value());
+        return response;
     }
 
     @PostMapping("/login")
-    ResponseEntity<Map<String, Object>> login(@RequestBody(required = false) Map<String, Object> body) {
+    ResponseEntity<Map<String, Object>> login(HttpServletRequest request,
+                                              @RequestBody(required = false) Map<String, Object> body) {
         body = bodyOrEmpty(body);
-        return ok(store.login(requiredString(body, "username"), requiredString(body, "password"), optionalString(body, "idempotencyKey")));
+        String username = requiredString(body, "username");
+        Map<String, Object> payload = store.login(username, requiredString(body, "password"), optionalString(body, "idempotencyKey"));
+        ResponseEntity<Map<String, Object>> response = ok(payload);
+        evidenceRecorder.recordLoginSuccess(request, username, payload, response.getStatusCode().value());
+        return response;
     }
 
     @PostMapping("/logout")
-    ResponseEntity<Map<String, Object>> logout(@RequestHeader(value = "Authorization", required = false) String authorization) {
+    ResponseEntity<Map<String, Object>> logout(HttpServletRequest request,
+                                               @RequestHeader(value = "Authorization", required = false) String authorization) {
         CurrentSession session = store.requireSessionForLogout(authorization);
         store.logout(session);
-        return ok(null);
+        ResponseEntity<Map<String, Object>> response = ok(null);
+        evidenceRecorder.recordLogoutSuccess(request, session.user.username, session.token, response.getStatusCode().value());
+        return response;
     }
 
     @GetMapping("/me")
@@ -375,6 +390,34 @@ class AuthLocalWebConfig {
     @Bean
     ApplicationRunner authLocalSeedData(AuthStore store) {
         return args -> store.seedLocalDevDataIfEmpty();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    AuthFlowEvidenceRecorder authFlowEvidenceRecorder() {
+        return new NoopAuthFlowEvidenceRecorder();
+    }
+}
+
+interface AuthFlowEvidenceRecorder {
+    void recordRegisterSuccess(HttpServletRequest request, String rawInvitationCode, String username, Map<String, Object> payload, int responseCode);
+
+    void recordLoginSuccess(HttpServletRequest request, String username, Map<String, Object> payload, int responseCode);
+
+    void recordLogoutSuccess(HttpServletRequest request, String username, String token, int responseCode);
+}
+
+class NoopAuthFlowEvidenceRecorder implements AuthFlowEvidenceRecorder {
+    @Override
+    public void recordRegisterSuccess(HttpServletRequest request, String rawInvitationCode, String username, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordLoginSuccess(HttpServletRequest request, String username, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordLogoutSuccess(HttpServletRequest request, String username, String token, int responseCode) {
     }
 }
 
