@@ -5,6 +5,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -56,6 +57,12 @@ class AttendanceModule {
     AttendanceTestControls attendanceTestControls(@Value("${attendance.test-controls.enabled:false}") boolean enabled) {
         return new AttendanceTestControls(enabled);
     }
+
+    @Bean
+    @ConditionalOnMissingBean
+    AttendanceFlowEvidenceRecorder attendanceFlowEvidenceRecorder() {
+        return new NoopAttendanceFlowEvidenceRecorder();
+    }
 }
 
 @RestController
@@ -63,10 +70,12 @@ class AttendanceModule {
 class AttendanceController {
     private final AttendanceStore store;
     private final TestAttendanceAuthProvider auth;
+    private final AttendanceFlowEvidenceRecorder evidenceRecorder;
 
-    AttendanceController(AttendanceStore store, TestAttendanceAuthProvider auth) {
+    AttendanceController(AttendanceStore store, TestAttendanceAuthProvider auth, AttendanceFlowEvidenceRecorder evidenceRecorder) {
         this.store = store;
         this.auth = auth;
+        this.evidenceRecorder = evidenceRecorder;
     }
 
     @GetMapping("/leaderboard")
@@ -126,7 +135,11 @@ class AttendanceController {
                                                    HttpServletRequest request) {
         AttendanceUser actor = auth.requireAny(authorization, request, "ADMIN", "OWNER");
         MutationResult result = store.initialize(actor, bodyOrEmpty(body), request);
-        return ResponseEntity.status(result.created() ? HttpStatus.CREATED : HttpStatus.OK).body(okBody(result.value()));
+        int responseCode = result.created() ? HttpStatus.CREATED.value() : HttpStatus.OK.value();
+        if (result.created()) {
+            evidenceRecorder.recordInitializationWrite(request, "ATTENDANCE_INITIALIZED", result.value(), responseCode);
+        }
+        return ResponseEntity.status(responseCode).body(okBody(result.value()));
     }
 
     @PostMapping("/admin/accounts/{accountId}/adjustments")
@@ -135,7 +148,9 @@ class AttendanceController {
                                @RequestBody(required = false) Map<String, Object> body,
                                HttpServletRequest request) {
         AttendanceUser actor = auth.requireAny(authorization, request, "ADMIN", "OWNER");
-        return ok(store.adjust(actor, accountId, bodyOrEmpty(body), request));
+        Map<String, Object> payload = store.adjust(actor, accountId, bodyOrEmpty(body), request);
+        evidenceRecorder.recordAdjustmentWrite(request, "ATTENDANCE_SCORE_ADJUSTED", payload, HttpStatus.OK.value());
+        return ok(payload);
     }
 
     @PostMapping("/admin/ledger/{ledgerId}/reverse")
@@ -152,7 +167,9 @@ class AttendanceController {
                                                            @RequestBody(required = false) Map<String, Object> body,
                                                            HttpServletRequest request) {
         AttendanceUser actor = auth.requireAny(authorization, request, "ADMIN", "OWNER");
-        return ResponseEntity.status(HttpStatus.CREATED).body(okBody(store.createContribution(actor, bodyOrEmpty(body), request)));
+        Map<String, Object> payload = store.createContribution(actor, bodyOrEmpty(body), request);
+        evidenceRecorder.recordContributionWrite(request, "ATTENDANCE_CONTRIBUTION_CREATED", payload, HttpStatus.CREATED.value());
+        return ResponseEntity.status(HttpStatus.CREATED).body(okBody(payload));
     }
 
     @PatchMapping("/admin/contributions/{contributionId}")
@@ -178,7 +195,11 @@ class AttendanceController {
                                                    HttpServletRequest request) {
         AttendanceUser actor = auth.requireAny(authorization, request, "ADMIN", "OWNER");
         MutationResult result = store.runMonthly(actor, bodyOrEmpty(body), request);
-        return ResponseEntity.status(result.created() ? HttpStatus.CREATED : HttpStatus.OK).body(okBody(result.value()));
+        int responseCode = result.created() ? HttpStatus.CREATED.value() : HttpStatus.OK.value();
+        if (result.created()) {
+            evidenceRecorder.recordMonthlyRunWrite(request, "ATTENDANCE_MONTHLY_RUN_EXECUTED", result.value(), responseCode);
+        }
+        return ResponseEntity.status(responseCode).body(okBody(result.value()));
     }
 
     @GetMapping("/admin/monthly-runs/{runId}")
@@ -1244,6 +1265,34 @@ record MutationResult(boolean created, Map<String, Object> value) {
 }
 
 record AttendanceTestControls(boolean enabled) {
+}
+
+interface AttendanceFlowEvidenceRecorder {
+    void recordInitializationWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordAdjustmentWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordContributionWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordMonthlyRunWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+}
+
+class NoopAttendanceFlowEvidenceRecorder implements AttendanceFlowEvidenceRecorder {
+    @Override
+    public void recordInitializationWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordAdjustmentWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordContributionWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordMonthlyRunWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
 }
 
 class AttendanceAccountRecord {
