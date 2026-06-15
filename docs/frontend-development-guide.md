@@ -24,49 +24,9 @@ Zustand 更适合本项目第一版，因为登录态、当前用户、权限、
 
 ## 后端入口和端口
 
-本地联调默认入口为 `http://127.0.0.1:8135`。第四十一轮生产审计和观测 smoke 演练下，后端单服务目标入口仍为 `http://127.0.0.1:8135`；`productionAuditObservabilitySmokeStatus=PASS_PRODUCTION_AUDIT_OBSERVABILITY_SMOKE_REHEARSAL_NOT_PRODUCTION` 只表示审计 sink 绑定、审计事件 schema、写入 smoke 引用、HTTP smoke、错误率、延迟、业务码、trace、dashboard、alert 和 rollback 引用已经被本地样板记录和测试守卫，不表示真实 audit sink、真实审计写入、真实观测平台、真实 dashboard、真实告警或真实 trace 管道已经接入。`productionRuntimeConfigShellStatus=PASS_PRODUCTION_RUNTIME_CONFIG_SHELL_REHEARSAL_NOT_PRODUCTION` 只表示生产 profile、集中配置 provider、敏感配置外置、部署入口和回滚配置这些接入槽位已经被本地样板记录和测试守卫，不表示真实生产 profile 已绑定、真实集中配置 provider 已连接或真实部署入口已应用。`productionExternalValueIntakeRehearsalStatus=PASS_EXTERNAL_VALUE_INTAKE_REHEARSAL_NOT_PRODUCTION` 只表示外部值保管类型、值组、值引用、注入目标、验证引用、回滚引用、审批引用和脱敏规则已经被本地样板记录和测试守卫，不表示真实外部值已经提供或应用。`productionCutoverEvidenceConsistencyAuditStatus=PASS_LOCAL_CUTOVER_EVIDENCE_CONSISTENCY_AUDIT_NOT_PRODUCTION` 只表示仓库内切流样板、集中配置样板、audit sink 样板、runbook、审批包和外部参数 manifest 的字段、命令、阻塞项和脱敏口径一致，不表示真实生产参数已经提供或生产流量已经切换。`productionCutoverExternalParameterManifestStatus=PASS_REDACTED_EXTERNAL_PARAMETER_MANIFEST_REHEARSAL_NOT_PRODUCTION` 只表示前端入口、代理 upstream、部署入口、集中配置、生产 profile、敏感配置外置、audit sink、观测字段、回滚授权和退役审批这些外部参数槽位已经被统一记录和脱敏校验，不表示真实外部参数已经提供。`productionCutoverApprovalPackageStatus=PASS_LOCAL_APPROVAL_PACKAGE_REHEARSAL_NOT_PRODUCTION` 只表示统一后端入口覆盖、本地外部入口演练、本地 file provider、本地 audit sink adapter、生产切换 runbook、外部参数清单、审批角色、go/no-go 矩阵、观测字段、回滚授权和退役门禁已经被统一记录和测试守卫，不表示真实前端、反向代理、部署入口或生产流量已经切到统一后端入口。`productionCentralConfigProviderStatus=PASS_LOCAL_FILE_PROVIDER_REHEARSAL_NOT_PRODUCTION` 只表示本地非密钥 file provider 样板已经完成加载、解析、校验、脱敏和映射验证，不表示真实 Nacos、Spring Cloud Config、Consul、Kubernetes ConfigMap、部署平台配置或生产 profile 已接入。`auditSinkAdapterRehearsalStatus=PASS_LOCAL_AUDIT_SINK_REHEARSAL_NOT_PRODUCTION` 只表示本地非生产 JSONL audit sink adapter 完成事件构造、写入 smoke、只读回放、导出摘要、保留策略记录和脱敏检查，不表示真实数据库、对象存储、日志平台、审计平台、SIEM 或生产 audit sink 已接入。`api-gateway:8125` 只保留为历史旧入口、回滚引用或外部证据样板引用，不是当前本地默认 API base URL。业务路径保持原样，例如登录为 `POST /api/v1/auth/login`，不是 `/api/v1/gateway/auth/login`，也不是 `/api/v1/unified-backend/auth/login`。本仓库没有真实前端或外部代理配置，所以这里不声称生产流量已经切换。
+本地联调默认入口为 `http://127.0.0.1:8135`。前端只配置一个 API base URL，所有业务请求都走 `/api/v1/**` 原路径，例如登录为 `POST /api/v1/auth/login`。不要把业务路径改成 `/api/v1/gateway/auth/login` 或 `/api/v1/unified-backend/auth/login`。
 
-第五十一轮外部入口与切流证据接收门禁只新增后端 readiness 证据。`externalEntrypointCutoverEvidenceIntakeStatus=BLOCKED_BY_EXTERNAL_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED` 时，运维页只能展示 `docs/unified-backend-external-entrypoint-cutover-evidence-intake-sample.json` 对应的前端入口、反向代理 upstream、部署入口、回滚入口、灰度权重、观测引用和审批引用尚未提供，不得展示成真实生产切流完成，不得把 `readyForProduction=false`、`readyToReplaceGateway=false` 或 `oldApiGatewayRetirementAllowed=false` 隐藏成可切换状态。即使本地联调把 `VITE_API_BASE_URL` 指向 `http://127.0.0.1:8135`，业务路径仍是 `POST /api/v1/auth/login` 这类 `/api/v1/**` 原路径。
-
-第四十二轮受控生产入口切流收据门禁只新增后端 readiness 证据。`productionControlledCutoverStatus=BLOCKED_BY_REAL_CUTOVER_RECEIPT_NOT_PROVIDED` 时，本地默认入口仍是 `http://127.0.0.1:8135`，但不得展示成生产切流完成，也不改任何业务路径。这个状态可以在运维页展示为外部切流收据未提供。
-
-第四十三轮 `api-gateway-service` 受控退役预检同样只新增后端 readiness 证据。`apiGatewayControlledRetirementStatus=BLOCKED_BY_API_GATEWAY_RETIREMENT_RECEIPT_NOT_PROVIDED` 时，运维页只能展示 `docs/unified-backend-api-gateway-retirement-receipt-sample.json` 对应的本地退役门禁、删除清单和回滚引用尚未获得真实生产收据，不得展示成生产切流完成。即使本地联调把 `VITE_API_BASE_URL` 指向 `http://127.0.0.1:8135`，也只是在访问 `backend:8135` 统一后端入口，业务路径仍是 `POST /api/v1/auth/login` 这类 `/api/v1/**` 原路径，不改成统一后端专用路径。
-
-第四十四轮 `api-gateway-service` 外部退役证据接收与删除审批门禁仍只新增后端 readiness 证据。`apiGatewayExternalRetirementEvidenceStatus=BLOCKED_BY_EXTERNAL_API_GATEWAY_RETIREMENT_EVIDENCE_NOT_PROVIDED` 时，运维页只能展示 `docs/unified-backend-api-gateway-external-retirement-evidence-sample.json` 对应的外部证据接收门禁、真实切流引用、真实流量归零引用、真实 audit write smoke 引用、dashboard、alert、trace、回滚窗口和用户删除清单确认尚未提供，不得展示成生产切流完成。即使本地联调把 `VITE_API_BASE_URL` 指向 `http://127.0.0.1:8135`，业务路径仍是 `POST /api/v1/auth/login` 这类 `/api/v1/**` 原路径。
-
-第四十六轮真实生产入口切流证据闭环门禁仍只新增后端 readiness 证据。`realProductionEntrypointCutoverStatus=BLOCKED_BY_REAL_PRODUCTION_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED` 时，运维页只能展示 `docs/unified-backend-real-production-entrypoint-cutover-evidence-sample.json` 对应的真实切流证据接收门禁、切流窗口引用、生产流量观测引用、旧网关新流量归零引用、audit write smoke 引用、dashboard、alert、trace、回滚和审批引用尚未提供，不得展示成生产入口已切到 `backend:8135`。该门禁即使证据完整也保持 `oldApiGatewayRetirementAllowed=false`。即使本地联调把 `VITE_API_BASE_URL` 指向 `http://127.0.0.1:8135`，业务路径仍是 `POST /api/v1/auth/login` 这类 `/api/v1/**` 原路径。
-
-单服务直连只用于排障，不应写在业务页面里。端口统一放在前端常量文件中，便于联调和排障页读取。
-
-| 模块 | 端口 | 用途 |
-| --- | ---: | --- |
-| auth | 8130 | 登录、注册、当前用户、会话、密码、邀请码、角色、Minecraft 绑定 |
-| profile | 8130 | 成员公开档案、当前用户档案、后台成员维护 |
-| notification | 8130 | 站内通知、未读数、已读、归档、模板维护 |
-| content | 8130 | 首页内容、公告文章、专题、SEO、分类标签 |
-| server-status | 8130 | 玩家可见服务器状态、线路、历史快照 |
-| resource | 8130 | 资源展示、资源版本、下载票据、Cloudreve 分享 |
-| admin | 8130 | 后台首页、待办、配置、审计、数据看板 |
-| onboarding | 8131 | 入服进度、步骤完成、规则确认 |
-| exam | 8131 | 考试方向、题库、试卷、答题、阅卷 |
-| whitelist | 8131 | 白名单申请、补充、撤回、审核、移除 |
-| attendance | 8131 | 考勤积分、积分流水、榜单、月度任务 |
-| community | 8132 | 板块、帖子、评论、点赞、收藏、投票、举报、工单、处罚 |
-| activity | 8132 | 活动列表、报名、签到、结果、奖励 |
-| calendar | 8132 | 日程、维护窗口、工程节点、提醒 |
-| changelog | 8132 | 更新日志、维护日志、插件变更、规则调整 |
-| ops-control | 8133 | 运维控制台控制面，由 `ops-core-service` 承载 |
-| cloudreve-sync | 8133 | Cloudreve provider、目录同步、文件快照、分享解析，由 `ops-core-service` 承载 |
-| backup-recovery | 8133 | 备份域、策略、任务、备份点、恢复申请，由 `ops-core-service` 承载 |
-| alerting | 8133 | 告警规则、事件、静默、订阅，由 `ops-core-service` 承载 |
-| online-map | 8134 | 在线地图 provider、世界、图层、marker、区域，由 `portal-core-service` 承载 |
-| plugin-integration | 8133 | 插件源、实例、事件、命令、同步任务，由 `ops-core-service` 承载 |
-| cross-platform-notification | 8133 | 跨平台通知渠道、模板、投递任务，由 `ops-core-service` 承载 |
-| ops-image-market | 8133 | 运维镜像、仓库、版本、拉取任务，由 `ops-core-service` 承载 |
-| api-gateway | 8125 | 回滚入口、路由表、上游健康、请求日志 |
-| portal-core | 8134 | 玩家门户体验运行入口，承载 guide、material 和 online-map |
-| material | 8134 | 素材投稿、素材展示、精选、审核、授权，由 `portal-core-service` 承载 |
-| guide | 8134 | 指南、规则、指令、外部交流入口、反馈，由 `portal-core-service` 承载 |
+当前后端是模块化单体，唯一后端 Maven 入口是 `backend/pom.xml`。历史端口、旧服务名和旧网关入口不得写进前端业务页面、常量或默认配置。生产入口、反向代理 upstream、观测面板和审批证据属于仓库外部署资料，不放入前端代码和正式 API 文档。
 
 ## 前端功能范围
 
@@ -207,7 +167,9 @@ export interface FieldError {
 
 环境变量建议使用 `VITE_API_BASE_URL` 覆盖默认 API 地址。没有配置时默认使用 `http://127.0.0.1:8135`，并保持所有 `/api/v1/**` 业务路径不变。
 
-`http://127.0.0.1:8125` 只保留为历史旧入口、回滚引用或外部证据样板引用。
+不要在前端默认配置中保留旧网关地址。
+
+前端可以展示统一后端 readiness 中的受控生产入口字段，但只能按阻断状态展示。`apiGatewayControlledRetirementStatus=BLOCKED_BY_API_GATEWAY_RETIREMENT_RECEIPT_NOT_PROVIDED`、`apiGatewayExternalRetirementEvidenceStatus=BLOCKED_BY_EXTERNAL_API_GATEWAY_RETIREMENT_EVIDENCE_NOT_PROVIDED`、`realProductionEntrypointCutoverStatus=BLOCKED_BY_REAL_PRODUCTION_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED` 和 `externalEntrypointCutoverEvidenceIntakeStatus=BLOCKED_BY_EXTERNAL_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED` 都表示仓库外证据未提供，不得展示成真实生产切流完成。相关外部证据只使用 `EXTERNAL_EVIDENCE_REF:API_GATEWAY_RETIREMENT_RECEIPT`、`EXTERNAL_EVIDENCE_REF:API_GATEWAY_EXTERNAL_RETIREMENT`、`EXTERNAL_EVIDENCE_REF:REAL_PRODUCTION_ENTRYPOINT_CUTOVER` 和 `EXTERNAL_EVIDENCE_REF:EXTERNAL_ENTRYPOINT_CUTOVER_INTAKE` 这样的脱敏引用，`api-gateway-service` 只作为历史回滚引用，当前后端入口保持 `backend:8135`，`docs/` 不再保留 JSON 或 JSONL 样例文件。没有仓库外证据时，`readyForProduction=false`、`readyToReplaceGateway=false`、`oldApiGatewayRetirementAllowed=false`、`readyToRetireBusinessCore=false`、`readyToRetireAdmissionCore=false`、`readyToRetireEngagementCore=false`、`readyToRetireOpsCore=false` 和 `readyToRetirePortalCore=false` 必须保持。
 
 ## 状态管理
 
@@ -257,7 +219,7 @@ Tailwind 断点按默认体系使用，优先使用 `sm`、`md`、`lg`、`xl`。
 
 前端建议按工程骨架、API client 和类型、认证登录、公开首页、公开内容页、用户中心、入服流程、社区活动、后台骨架、业务后台、运维控制台的顺序推进。
 
-当前后端契约已经覆盖 27 个模块和 746 个唯一接口，`guide`、`material` 和 `online-map` 当前都由 `portal-core-service:8134` 承载。前端第一轮不应试图一次实现全部后台和运维页面。更稳的做法是先完成工程骨架、统一 API 层、统一类型、统一错误处理、权限路由和公开页核心链路，再分域推进。
+当前后端契约已经覆盖全部现有模块。前端第一轮不应试图一次实现全部后台和运维页面。更稳的做法是先完成工程骨架、统一 API 层、统一类型、统一错误处理、权限路由和公开页核心链路，再分域推进。
 
 ## 验收口径
 
@@ -265,6 +227,4 @@ Tailwind 断点按默认体系使用，优先使用 `sm`、`md`、`lg`、`xl`。
 
 任何接口缺口都应回到对应 `docs/contracts-<module>.md` 补齐契约，再更新本地测试文档和自动化测试。前端不能先吞业务。
 
-第四十七轮本地开发态 `api-gateway-service` 入口退役不要求前端改页面或改路径。`localApiGatewayEntrypointRetirementStatus=PASS_LOCAL_API_GATEWAY_ENTRYPOINT_RETIRED_UNIFIED_GATEWAY_APIS_PRESERVED` 时，只能显示本地旧网关 Maven 入口已退役；联调继续面向 `backend:8135` 和 `/api/v1/**` 原路径。
-
-本轮五个 core 独立 Maven 入口退役同样不要求前端改页面或改路径。`coreEntrypointRetirementPrecheckStatus=PASS_LOCAL_CORE_MAVEN_ENTRYPOINTS_RETIRED_UNIFIED_MODULES_PRESERVED` 时，只能显示本地独立启动入口已退役、模块源码仍由统一后端装配；`readyToRetireBusinessCore=false`、`readyToRetireAdmissionCore=false`、`readyToRetireEngagementCore=false`、`readyToRetireOpsCore=false` 和 `readyToRetirePortalCore=false` 仍表示真实生产退役未闭环。不要提示业务模块被删除，不要提供恢复旧 core 入口的操作。
+前端验收只面向当前模块化单体入口和正式 API 契约，不再引用旧独立服务入口。

@@ -4,7 +4,7 @@
 
 ## 文档定位
 
-本文档定义当前模块化单体后端所有接口共享的基础契约。当前仓库唯一后端 Maven 入口是 `backend/pom.xml`，本地后端服务端口是 `8135`，本地联调默认入口统一为 `http://127.0.0.1:8135`，业务路径保持 `/api/v1/**` 原样。历史独立服务入口和历史端口只作为追溯字段、回滚引用或脱敏证据样板引用，不作为当前开发、联调、测试或前端调用入口。
+本文档定义当前模块化单体后端所有接口共享的基础契约。当前仓库唯一后端 Maven 入口是 `backend/pom.xml`，本地后端服务端口是 `8135`，本地联调默认入口统一为 `http://127.0.0.1:8135`，业务路径保持 `/api/v1/**` 原样。历史独立服务入口和历史端口只作为追溯字段、回滚引用或仓库外证据引用，不作为当前开发、联调、测试或前端调用入口。
 
 本文档适用于官网公开页、用户中心、管理后台、运维控制台、统一后端入口、内置网关兼容面、全部业务模块和后续外部节点执行器控制面。各模块独立契约必须引用本文档，不得另起一套响应格式、认证方式、分页格式、权限模型、审计字段、状态模型或时间格式。
 
@@ -130,6 +130,10 @@
 ## 审计字段
 
 后台关键操作和高风险操作必须写审计。审计字段至少包含 `id`、`requestId`、`actorUserId`、`actorRole`、`actorPermissions`、`sourceIp`、`targetType`、`targetId`、`action`、`riskLevel`、`reason`、`paramsSummary`、`beforeState`、`afterState`、`result`、`failureReason` 和 `createdAt`。
+
+## 受控生产入口证据
+
+统一后端 readiness 可以暴露受控生产入口和旧入口退役字段。`apiGatewayControlledRetirementStatus=BLOCKED_BY_API_GATEWAY_RETIREMENT_RECEIPT_NOT_PROVIDED`、`apiGatewayExternalRetirementEvidenceStatus=BLOCKED_BY_EXTERNAL_API_GATEWAY_RETIREMENT_EVIDENCE_NOT_PROVIDED`、`realProductionEntrypointCutoverStatus=BLOCKED_BY_REAL_PRODUCTION_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED` 和 `externalEntrypointCutoverEvidenceIntakeStatus=BLOCKED_BY_EXTERNAL_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED` 只能说明仓库外证据未提供，不能说明真实生产切流完成、旧网关新流量归零或删除审批完成。运行态只返回 `EXTERNAL_EVIDENCE_REF:API_GATEWAY_RETIREMENT_RECEIPT`、`EXTERNAL_EVIDENCE_REF:API_GATEWAY_EXTERNAL_RETIREMENT`、`EXTERNAL_EVIDENCE_REF:REAL_PRODUCTION_ENTRYPOINT_CUTOVER` 和 `EXTERNAL_EVIDENCE_REF:EXTERNAL_ENTRYPOINT_CUTOVER_INTAKE` 这类脱敏引用，`api-gateway-service` 只作为历史回滚引用，当前入口保持 `backend:8135`，`docs/` 不再保留 JSON 或 JSONL 样例文件。没有仓库外证据时，`readyForProduction=false`、`readyToReplaceGateway=false`、`oldApiGatewayRetirementAllowed=false`、`readyToRetireBusinessCore=false`、`readyToRetireAdmissionCore=false`、`readyToRetireEngagementCore=false`、`readyToRetireOpsCore=false` 和 `readyToRetirePortalCore=false` 必须保持。
 
 ## 验收口径
 

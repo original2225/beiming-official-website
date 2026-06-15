@@ -45,19 +45,15 @@
 
 ## 当前调用规则
 
-前端、测试和本地联调只调用 `http://127.0.0.1:8135`。`api-gateway`、五个 core 和业务模块在当前进程内挂载。历史服务名、历史目录和历史端口只允许出现在受控退役、回滚引用、脱敏样板或运行态追溯字段中，不得作为新的 API 调用入口。
+前端、测试和本地联调只调用 `http://127.0.0.1:8135`。`api-gateway`、五个 core 和业务模块在当前进程内挂载。历史服务名、历史目录和历史端口只允许出现在受控退役、回滚引用、仓库外证据引用或运行态追溯字段中，不得作为新的 API 调用入口。
 
 ## 受控证据字段
 
-统一后端 readiness 仍保留生产入口、旧入口退役、外部入口和审计观测相关门禁字段，前端和运维手册只能把这些字段展示为本地结构化证据或外部证据接收状态，不能展示成真实生产切流完成。
+统一后端 readiness 只保留生产入口、旧入口退役、外部入口和审计观测相关状态字段。真实切流、真实退役、真实观测和审批证据不存放在仓库 `docs/` 中，也不再用本地文件占位。
 
-`apiGatewayControlledRetirementStatus` 当前为 `BLOCKED_BY_API_GATEWAY_RETIREMENT_RECEIPT_NOT_PROVIDED`，对应样板为 `docs/unified-backend-api-gateway-retirement-receipt-sample.json`。该字段只说明 `api-gateway-service` 退役收据结构存在，不证明真实生产入口已切换到 `backend:8135`。
+`apiGatewayControlledRetirementStatus=BLOCKED_BY_API_GATEWAY_RETIREMENT_RECEIPT_NOT_PROVIDED`、`apiGatewayExternalRetirementEvidenceStatus=BLOCKED_BY_EXTERNAL_API_GATEWAY_RETIREMENT_EVIDENCE_NOT_PROVIDED`、`realProductionEntrypointCutoverStatus=BLOCKED_BY_REAL_PRODUCTION_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED`、`externalEntrypointCutoverEvidenceIntakeStatus=BLOCKED_BY_EXTERNAL_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED` 和 `productionControlledCutoverStatus=BLOCKED_BY_REAL_CUTOVER_RECEIPT_NOT_PROVIDED` 只能展示为外部证据未提供或生产切流未完成，不能展示成真实生产切流完成。运行态只返回 `EXTERNAL_EVIDENCE_REF:API_GATEWAY_RETIREMENT_RECEIPT`、`EXTERNAL_EVIDENCE_REF:API_GATEWAY_EXTERNAL_RETIREMENT`、`EXTERNAL_EVIDENCE_REF:REAL_PRODUCTION_ENTRYPOINT_CUTOVER` 和 `EXTERNAL_EVIDENCE_REF:EXTERNAL_ENTRYPOINT_CUTOVER_INTAKE` 作为仓库外脱敏证据引用，`api-gateway-service` 只作为历史回滚引用，当前入口保持 `backend:8135`，`docs/` 不再保留 JSON 或 JSONL 样例文件。
 
-`realProductionEntrypointCutoverStatus` 当前为 `BLOCKED_BY_REAL_PRODUCTION_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED`，对应样板为 `docs/unified-backend-real-production-entrypoint-cutover-evidence-sample.json`。即使样板完整，`oldApiGatewayRetirementAllowed=false` 仍必须保持，`api-gateway-service` 仍只能作为历史回滚引用。
-
-`externalEntrypointCutoverEvidenceIntakeStatus` 当前为 `BLOCKED_BY_EXTERNAL_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED`，对应样板为 `docs/unified-backend-external-entrypoint-cutover-evidence-intake-sample.json`。该外部入口与切流证据接收门禁只接收 `frontendEntrypointRef`、`reverseProxyUpstreamRef`、`deploymentEntrypointRef`、`rollbackEntrypointRef`、`canaryWeightRef`、`observabilityRef` 和 `approvalRef` 等脱敏引用，不读取真实域名、token、连接串或 dashboard 地址。
-
-`productionControlledCutoverStatus` 当前为 `BLOCKED_BY_REAL_CUTOVER_RECEIPT_NOT_PROVIDED`。`localApiGatewayEntrypointRetirementStatus` 当前为 `PASS_LOCAL_API_GATEWAY_ENTRYPOINT_RETIRED_UNIFIED_GATEWAY_APIS_PRESERVED`。这些字段不改变 `readyForProduction=false`、`readyToReplaceGateway=false`、`readyToRetireBusinessCore=false`、`readyToRetireAdmissionCore=false`、`readyToRetireEngagementCore=false`、`readyToRetireOpsCore=false`、`readyToRetirePortalCore=false` 和 `oldApiGatewayRetirementAllowed=false` 的保护结论。
+`localApiGatewayEntrypointRetirementStatus` 当前为 `PASS_LOCAL_API_GATEWAY_ENTRYPOINT_RETIRED_UNIFIED_GATEWAY_APIS_PRESERVED`。这些字段不改变 `readyForProduction=false`、`readyToReplaceGateway=false`、`readyToRetireBusinessCore=false`、`readyToRetireAdmissionCore=false`、`readyToRetireEngagementCore=false`、`readyToRetireOpsCore=false`、`readyToRetirePortalCore=false` 和 `oldApiGatewayRetirementAllowed=false` 的保护结论。
 
 前端环境变量继续使用 `VITE_API_BASE_URL` 指向 `http://127.0.0.1:8135`。`api-gateway:8125` 只保留为历史回滚引用，不作为当前接口基址。
 

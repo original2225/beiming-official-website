@@ -6,7 +6,7 @@
 
 北冥官网当前以后端模块化单体和前后端分离为主线继续演进。当前唯一后端 Maven 入口是 `backend/pom.xml`，本地后端服务端口是 `8135`，本地联调默认入口统一为 `http://127.0.0.1:8135`，业务路径保持 `/api/v1/**` 原样。
 
-系统采用前后端分离设计。前端负责官网展示、用户中心、管理后台和运维控制台界面。后端按业务模块拆分边界，在同一个 Spring Boot 工程内统一编译、测试和运行。历史独立入口和端口只作为模块来源、回滚引用或脱敏证据样板引用保留，不再作为当前仓库的开发架构。
+系统采用前后端分离设计。前端负责官网展示、用户中心、管理后台和运维控制台界面。后端按业务模块拆分边界，在同一个 Spring Boot 工程内统一编译、测试和运行。历史独立入口和端口只作为模块来源或回滚追溯引用保留，不再作为当前仓库的开发架构。
 
 服务器运维能力采用控制面和节点守护进程分离。官网后台只发起授权后的管理请求，真实服务器上的容器、虚拟机、文件、日志和 Minecraft 实例操作由节点守护进程执行。
 
@@ -110,26 +110,9 @@ API 网关或后端入口
 
 `ops-core` 是第四批和第六期运行合并单元，承载 `ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`ops-image-market` 和 `cross-platform-notification` 的现有业务路径。它只收敛运行入口，不改变七个模块的数据归属、正式契约、路径前缀、权限、状态机、错误码、审计对象或失败降级规则。`cross-platform-notification` 仍只负责外部渠道控制面和模拟投递，不执行真实外部消息发送、真实回调签名或生产凭据托管。
 
-第七轮生产化优化不继续合并运行入口。`ops-core` 增加经 `api-gateway` 访问的真实 HTTP smoke、自有 readiness 中的 smoke 状态和可信网关内部签名状态；`api-gateway` 在注入可信身份头时同步注入内部时间戳和 HMAC 签名；`ops-core` 管理接口验证签名后才接受可信身份上下文。`alerting` 告警命中后的外部通知只通过 `cross-platform-notification` 的模拟外部投递模型留下 delivery、attempt 和审计摘要，不执行真实外部发送，不关闭告警主状态，不绕过 CPN 的 provider、模板、路由、receiver、幂等和脱敏规则。
-
-第八轮单服务合并准备不真正合并进程。`api-gateway` 增加只读运行拓扑，用来固化当时 6 个官网后端回滚入口、25 条业务转发路由、五个 core 运行单元和外部节点执行器出仓边界。后续如果把 `api-gateway` 与五个 core 收敛成统一后端入口，必须先保持现有路径前缀、认证方式、响应格式、模块数据归属和测试守卫不变，再逐步替换为 in-process 装配。外部节点执行器不进入统一后端候选。
-
 当前统一后端入口由 `backend:8135` 承载。它在同一 Spring Boot 工程内挂载 `api-gateway`、`business-core`、`admission-core`、`engagement-core`、`ops-core`、`portal-core` 和全部业务模块，当前必须保留 `/api/v1/gateway/**`、`/api/v1/business-core/**`、`/api/v1/admission-core/**`、`/api/v1/engagement-core/**`、`/api/v1/ops-core/**`、`/api/v1/portal-core/**`、`/api/v1/auth/**`、`/api/v1/profile/**`、`/api/v1/notifications/**`、`/api/v1/content/**`、`/api/v1/server-status/**`、`/api/v1/resources/**`、`/api/v1/admin/**`、`/api/v1/onboarding/**`、`/api/v1/exams/**`、`/api/v1/whitelist/**`、`/api/v1/attendance/**`、`/api/v1/community/**`、`/api/v1/activity/**`、`/api/v1/calendar/**`、`/api/v1/changelog/**`、`/api/v1/ops-control/**`、`/api/v1/cloudreve-sync/**`、`/api/v1/backup-recovery/**`、`/api/v1/alerting/**`、`/api/v1/plugin-integration/**`、`/api/v1/cross-platform-notification/**`、`/api/v1/ops-image-market/**`、`/api/v1/guides/**`、`/api/v1/materials/**` 和 `/api/v1/online-map/**` 原路径、原响应格式、原认证方式和原错误码。五个 core 模块源码已经物理位于 `backend/src/main/java`，由 `backend/pom.xml` 统一编译和测试，不再通过 build-helper 装配旧 core 源码目录。真实生产入口切流、真实集中配置 provider、持久化审计 sink、真实观测 smoke、回滚窗口完成和审批证据仍在仓库外阻塞。
 
-第四十二轮在统一后端入口上增加受控生产入口切流收据门禁。该门禁只读取仓库内脱敏收据样板或经过脱敏复核的外部收据结构，默认 `productionControlledCutoverStatus=BLOCKED_BY_REAL_CUTOVER_RECEIPT_NOT_PROVIDED`。没有真实外部切流收据、真实生产流量观测、真实审计写入 smoke、真实 dashboard、真实 alert、真实 trace 和回滚窗口完成证据时，`readyForProduction`、`readyToReplaceGateway` 和所有旧入口退役字段必须保持 false。第四十二轮不删除 `api-gateway-service` 或五个 core，旧入口退役只能在后续轮次按顺序逐个处理。
-
-第四十三轮在统一后端入口上增加 `api-gateway-service:8125` 受控退役预检门禁。该门禁只读取仓库内脱敏退役收据样板 `docs/unified-backend-api-gateway-retirement-receipt-sample.json`，默认 `apiGatewayControlledRetirementStatus=BLOCKED_BY_API_GATEWAY_RETIREMENT_RECEIPT_NOT_PROVIDED`。它只证明 `backend:8135` 已具备退役收据结构、删除清单、网关自有 API parity、回滚入口、五个 core 保护和 unified 自承载网关源码的本地校验能力，不证明真实生产入口已切换，不证明 `api-gateway` 新流量归零，不证明回滚窗口完成，也不允许删除 `api-gateway-service`。`backend` 不再通过 build-helper 编译 `../api-gateway-service/src/main/java`，但 `api-gateway-service:8125` 仍是受保护回滚入口。五个 core 继续保持 `readyToRetireBusinessCore=false`、`readyToRetireAdmissionCore=false`、`readyToRetireEngagementCore=false`、`readyToRetireOpsCore=false` 和 `readyToRetirePortalCore=false`。
-
-第四十四轮在统一后端入口上增加 `api-gateway-service:8125` 外部退役证据接收与删除审批门禁。该门禁只读取仓库内脱敏样板 `docs/unified-backend-api-gateway-external-retirement-evidence-sample.json` 和经过脱敏复核的外部证据结构，默认 `apiGatewayExternalRetirementEvidenceStatus=BLOCKED_BY_EXTERNAL_API_GATEWAY_RETIREMENT_EVIDENCE_NOT_PROVIDED`。它只证明系统已经具备接收真实切流、流量归零、真实 audit write smoke、dashboard、alert、trace、回滚窗口、退役审批和用户删除清单确认的结构化门禁，不证明这些外部事实已经发生。没有真实外部证据和用户删除清单确认时，`api-gateway-service:8125` 仍是受保护回滚入口，五个 core 不进入退役执行。
-
-第四十六轮在统一后端入口上增加真实生产入口切流证据闭环门禁。该门禁只读取仓库内脱敏样板 `docs/unified-backend-real-production-entrypoint-cutover-evidence-sample.json` 和经过脱敏复核的切流证据结构，默认 `realProductionEntrypointCutoverStatus=BLOCKED_BY_REAL_PRODUCTION_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED`。它只证明系统已经具备接收真实生产入口切流、切流窗口、生产流量观测、旧网关新流量归零、真实 audit write smoke、dashboard、alert、trace、回滚和审批的结构化门禁，不证明这些外部事实已经发生。即使切流证据样板完整，`oldApiGatewayRetirementAllowed` 仍保持 `false`，`api-gateway-service:8125` 仍是受保护回滚入口，五个 core 不进入退役执行。
-
-第五十一轮在统一后端入口上增加外部入口与切流证据接收门禁。该门禁只读取仓库内脱敏样板 `docs/unified-backend-external-entrypoint-cutover-evidence-intake-sample.json` 和经过脱敏复核的外部入口证据结构，默认 `externalEntrypointCutoverEvidenceIntakeStatus=BLOCKED_BY_EXTERNAL_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED`。它只证明系统已经具备接收前端入口、反向代理 upstream、部署入口、回滚入口、灰度权重、观测引用和审批引用的结构化格式，不证明真实外部入口已配置，不读取真实域名、token、连接串或 dashboard 地址，不执行真实切流。没有真实外部入口证据、集中配置 provider、持久化审计 sink 和真实观测 smoke 时，`readyForProduction=false`、`readyToReplaceGateway=false` 和 `oldApiGatewayRetirementAllowed=false` 必须保持不变。
-
-
-第四十七轮在统一后端入口上完成本地开发态 `api-gateway-service` 入口退役门禁。当前 `localApiGatewayEntrypointRetirementStatus=PASS_LOCAL_API_GATEWAY_ENTRYPOINT_RETIRED_UNIFIED_GATEWAY_APIS_PRESERVED`，只证明 `backend:8135` 已自承载网关能力，不证明真实生产切流完成。
-
-本轮在用户确认下完成五个 core 独立 Maven 入口本地退役。`backend/pom.xml` 成为仓库内唯一后端 Maven 启动入口，五个 core 模块源码已经物理位于 `backend/src/main/java`，由 `backend/pom.xml` 统一编译和测试，不再通过 build-helper 装配旧 core 源码目录。该调整只退出 `pom.xml`、独立 Spring Boot 启动类和独立 `application.yml`，不改变 `auth`、`profile`、`notification`、`content`、`server-status`、`resource`、`admin`、`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar`、`changelog`、`ops-control`、`cloudreve-sync`、`backup-recovery`、`alerting`、`plugin-integration`、`cross-platform-notification`、`ops-image-market`、`guide`、`material` 和 `online-map` 的正式路径、权限、响应格式、错误码、审计或降级规则。真实生产入口切流、真实流量观测、集中配置和持久化审计仍未完成。
+统一后端 readiness 可以暴露生产入口、旧入口退役、外部入口和审计观测相关状态字段，但这些字段只代表仓库内运行态和外部证据接收状态。`apiGatewayControlledRetirementStatus=BLOCKED_BY_API_GATEWAY_RETIREMENT_RECEIPT_NOT_PROVIDED`、`apiGatewayExternalRetirementEvidenceStatus=BLOCKED_BY_EXTERNAL_API_GATEWAY_RETIREMENT_EVIDENCE_NOT_PROVIDED`、`realProductionEntrypointCutoverStatus=BLOCKED_BY_REAL_PRODUCTION_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED` 和 `externalEntrypointCutoverEvidenceIntakeStatus=BLOCKED_BY_EXTERNAL_ENTRYPOINT_CUTOVER_EVIDENCE_NOT_PROVIDED` 必须继续引用 `EXTERNAL_EVIDENCE_REF:API_GATEWAY_RETIREMENT_RECEIPT`、`EXTERNAL_EVIDENCE_REF:API_GATEWAY_EXTERNAL_RETIREMENT`、`EXTERNAL_EVIDENCE_REF:REAL_PRODUCTION_ENTRYPOINT_CUTOVER` 和 `EXTERNAL_EVIDENCE_REF:EXTERNAL_ENTRYPOINT_CUTOVER_INTAKE`。真实切流、真实观测、真实审批和生产退役证据不写入仓库，`api-gateway-service` 只作为历史回滚引用，当前入口保持 `backend:8135`。没有仓库外证据时，`readyForProduction=false`、`readyToReplaceGateway=false`、`oldApiGatewayRetirementAllowed=false`、`readyToRetireBusinessCore=false`、`readyToRetireAdmissionCore=false`、`readyToRetireEngagementCore=false`、`readyToRetireOpsCore=false` 和 `readyToRetirePortalCore=false` 必须保持。
 
 ## 公共基础契约
 
