@@ -4,6 +4,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
@@ -50,6 +51,12 @@ class ResourceModule {
     TestResourceAuthProvider resourceAuthProvider() {
         return new TestResourceAuthProvider();
     }
+
+    @Bean
+    @ConditionalOnMissingBean
+    ResourceFlowEvidenceRecorder resourceFlowEvidenceRecorder() {
+        return new NoopResourceFlowEvidenceRecorder();
+    }
 }
 
 @RestController
@@ -57,10 +64,12 @@ class ResourceModule {
 class ResourceController {
     private final ResourceStore store;
     private final TestResourceAuthProvider auth;
+    private final ResourceFlowEvidenceRecorder evidenceRecorder;
 
-    ResourceController(ResourceStore store, TestResourceAuthProvider auth) {
+    ResourceController(ResourceStore store, TestResourceAuthProvider auth, ResourceFlowEvidenceRecorder evidenceRecorder) {
         this.store = store;
         this.auth = auth;
+        this.evidenceRecorder = evidenceRecorder;
     }
 
     @GetMapping
@@ -94,7 +103,9 @@ class ResourceController {
                                  @PathVariable String versionId,
                                  @RequestBody(required = false) Map<String, Object> body,
                                  HttpServletRequest request) {
-        return ok(store.download(auth, authorization, resourceId, versionId, body == null ? Map.of() : body, request));
+        Map<String, Object> payload = store.download(auth, authorization, resourceId, versionId, body == null ? Map.of() : body, request);
+        evidenceRecorder.recordDownloadWrite(request, "RESOURCE_DOWNLOADED", payload, HttpStatus.OK.value());
+        return ok(payload);
     }
 
     @GetMapping("/admin/items")
@@ -118,7 +129,10 @@ class ResourceController {
                                                    @RequestBody Map<String, Object> body,
                                                    HttpServletRequest request) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ResponseEntity.status(HttpStatus.CREATED).body(okData(store.createItem(actor, body, request)));
+        Map<String, Object> payload = store.createItem(actor, body, request);
+        ResponseEntity<Map<String, Object>> response = ResponseEntity.status(HttpStatus.CREATED).body(okData(payload));
+        evidenceRecorder.recordResourceWrite(request, "RESOURCE_CREATED", payload, response.getStatusCode().value());
+        return response;
     }
 
     @PatchMapping("/admin/items/{resourceId}")
@@ -215,7 +229,10 @@ class ResourceController {
                                                       @RequestBody Map<String, Object> body,
                                                       HttpServletRequest request) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ResponseEntity.status(HttpStatus.CREATED).body(okData(store.createVersion(actor, resourceId, body, request)));
+        Map<String, Object> payload = store.createVersion(actor, resourceId, body, request);
+        ResponseEntity<Map<String, Object>> response = ResponseEntity.status(HttpStatus.CREATED).body(okData(payload));
+        evidenceRecorder.recordVersionWrite(request, "RESOURCE_VERSION_CREATED", payload, response.getStatusCode().value());
+        return response;
     }
 
     @PatchMapping("/admin/items/{resourceId}/versions/{versionId}")
@@ -260,7 +277,10 @@ class ResourceController {
                                                        @RequestBody Map<String, Object> body,
                                                        HttpServletRequest request) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ResponseEntity.status(HttpStatus.CREATED).body(okData(store.createCategory(actor, body, request)));
+        Map<String, Object> payload = store.createCategory(actor, body, request);
+        ResponseEntity<Map<String, Object>> response = ResponseEntity.status(HttpStatus.CREATED).body(okData(payload));
+        evidenceRecorder.recordCategoryWrite(request, "RESOURCE_CATEGORY_CREATED", payload, response.getStatusCode().value());
+        return response;
     }
 
     @PatchMapping("/admin/categories/{categoryId}")
@@ -1247,6 +1267,34 @@ class ResourceStore {
         if (value == null) return fallback;
         if (value instanceof Number number) return number.intValue();
         return Integer.parseInt(value.toString());
+    }
+}
+
+interface ResourceFlowEvidenceRecorder {
+    void recordResourceWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordVersionWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordCategoryWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordDownloadWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+}
+
+class NoopResourceFlowEvidenceRecorder implements ResourceFlowEvidenceRecorder {
+    @Override
+    public void recordResourceWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordVersionWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordCategoryWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordDownloadWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
     }
 }
 
