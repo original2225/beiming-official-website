@@ -7,6 +7,9 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
@@ -37,17 +40,28 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
+@Configuration
+class OpsControlEvidenceConfiguration {
+    @Bean
+    @ConditionalOnMissingBean
+    OpsControlFlowEvidenceRecorder opsControlFlowEvidenceRecorder() {
+        return new NoopOpsControlFlowEvidenceRecorder();
+    }
+}
+
 @RestController
 @RequestMapping("/api/v1/ops-control")
 class OpsControlController {
     private final OpsStore store;
     private final OpsAuth auth;
     private final OpsProperties properties;
+    private final OpsControlFlowEvidenceRecorder evidenceRecorder;
 
-    OpsControlController(OpsStore store, OpsAuth auth, OpsProperties properties) {
+    OpsControlController(OpsStore store, OpsAuth auth, OpsProperties properties, OpsControlFlowEvidenceRecorder evidenceRecorder) {
         this.store = store;
         this.auth = auth;
         this.properties = properties;
+        this.evidenceRecorder = evidenceRecorder;
     }
 
     @GetMapping("/overview")
@@ -150,7 +164,9 @@ class OpsControlController {
                         stringList(body.get("capabilities")), actor.userId);
                 store.nodes.put(nodeId, node);
                 store.audit("OPS_NODE_CREATED", "NODE", nodeId, actor, request, body, "MEDIUM", "SUCCESS", null, null, node.status);
-                return created(request, Map.of("node", node.view(), "registrationTokenMasked", "ops-reg-****"));
+                Map<String, Object> nodeView = node.view();
+                evidenceRecorder.recordNodeWrite(request, "OPS_NODE_CREATED", nodeView, HttpStatus.CREATED.value());
+                return created(request, Map.of("node", nodeView, "registrationTokenMasked", "ops-reg-****"));
             }
         });
     }
@@ -171,7 +187,9 @@ class OpsControlController {
                 node.status = "DISABLED";
                 node.updatedAt = now();
                 store.audit("OPS_NODE_DISABLED", "NODE", nodeId, actor, request, body, "HIGH", "SUCCESS", null, before, node.status);
-                return ok(request, node.view());
+                Map<String, Object> payload = node.view();
+                evidenceRecorder.recordNodeWrite(request, "OPS_NODE_DISABLED", payload, HttpStatus.OK.value());
+                return ok(request, payload);
             }
         });
     }
@@ -192,7 +210,9 @@ class OpsControlController {
                 node.status = "OFFLINE";
                 node.updatedAt = now();
                 store.audit("OPS_NODE_ENABLED", "NODE", nodeId, actor, request, body, "MEDIUM", "SUCCESS", null, before, node.status);
-                return ok(request, node.view());
+                Map<String, Object> payload = node.view();
+                evidenceRecorder.recordNodeWrite(request, "OPS_NODE_ENABLED", payload, HttpStatus.OK.value());
+                return ok(request, payload);
             }
         });
     }
@@ -219,7 +239,11 @@ class OpsControlController {
             }
             updateRuntimeSnapshots(nodeId, body);
             store.audit("OPS_NODE_HEARTBEAT", "NODE", nodeId, actor, request, body, "MEDIUM", "SUCCESS", null, before, node.status);
-            return ok(request, node.view());
+            Map<String, Object> payload = node.view();
+            payload.put("runtimeEvidence", runtimeEvidence(nodeId));
+            evidenceRecorder.recordNodeWrite(request, "OPS_NODE_HEARTBEAT", payload, HttpStatus.OK.value());
+            payload.remove("runtimeEvidence");
+            return ok(request, payload);
         }
     }
 
@@ -390,7 +414,13 @@ class OpsControlController {
                 }
                 store.tasks.put(taskId, task);
                 store.audit("OPS_TASK_CREATED", "TASK", taskId, actor, request, body, risk, "SUCCESS", null, null, task.status);
-                return created(request, task.view());
+                Map<String, Object> payload = task.view();
+                evidenceRecorder.recordTaskWrite(request, "OPS_TASK_CREATED", payload, HttpStatus.CREATED.value());
+                if (task.approvalId != null) {
+                    evidenceRecorder.recordApprovalWrite(request, "OPS_APPROVAL_CREATED",
+                            Map.of("approval", store.approval(task.approvalId).view(), "task", payload), HttpStatus.CREATED.value());
+                }
+                return created(request, payload);
             }
         });
     }
@@ -457,7 +487,9 @@ class OpsControlController {
                     task.updatedAt = beforeUpdatedAt;
                     throw exception;
                 }
-                return ok(request, task.view());
+                Map<String, Object> payload = task.view();
+                evidenceRecorder.recordTaskWrite(request, "OPS_TASK_CANCELED", payload, HttpStatus.OK.value());
+                return ok(request, payload);
             }
         });
     }
@@ -494,7 +526,9 @@ class OpsControlController {
                 task.updatedAt = beforeUpdatedAt;
                 throw exception;
             }
-            return ok(request, task.view());
+            Map<String, Object> payload = task.view();
+            evidenceRecorder.recordTaskWrite(request, "OPS_TASK_NODE_RESULT_RECORDED", payload, HttpStatus.OK.value());
+            return ok(request, payload);
         }
     }
 
@@ -625,7 +659,9 @@ class OpsControlController {
                     task.updatedAt = taskBeforeUpdatedAt;
                     throw exception;
                 }
-                return ok(request, Map.of("approval", approval.view(), "task", task.view()));
+                Map<String, Object> payload = Map.of("approval", approval.view(), "task", task.view());
+                evidenceRecorder.recordApprovalWrite(request, approved ? "OPS_APPROVAL_APPROVED" : "OPS_APPROVAL_REJECTED", payload, HttpStatus.OK.value());
+                return ok(request, payload);
             }
         });
     }
@@ -736,6 +772,33 @@ class OpsControlController {
                         itemText(item, "type", "FILE"), itemLong(item.get("sizeBytes"), 0L), itemBoolean(item.get("editableText"))));
             }
         }
+    }
+
+    private Map<String, Object> runtimeEvidence(String nodeId) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("containers", store.containers.values().stream()
+                .filter(container -> container.nodeId.equals(nodeId))
+                .map(container -> withNodeId(container.view(false), nodeId))
+                .toList());
+        data.put("vms", store.vms.values().stream()
+                .filter(vm -> vm.nodeId.equals(nodeId))
+                .map(vm -> withNodeId(vm.view(), nodeId))
+                .toList());
+        data.put("minecraftInstances", store.minecraft.values().stream()
+                .filter(instance -> instance.nodeId.equals(nodeId))
+                .map(instance -> withNodeId(instance.view(), nodeId))
+                .toList());
+        data.put("files", store.files.values().stream()
+                .filter(file -> file.nodeId.equals(nodeId))
+                .map(OpsFile::view)
+                .toList());
+        return data;
+    }
+
+    private Map<String, Object> withNodeId(Map<String, Object> source, String nodeId) {
+        Map<String, Object> copy = new LinkedHashMap<>(source);
+        copy.putIfAbsent("nodeId", nodeId);
+        return copy;
     }
 
     private static boolean matchesPath(String queryPath, String filePath) {
@@ -1083,6 +1146,28 @@ class OpsStore {
 }
 
 record OpsIdempotency(String fingerprint, HttpStatus status, Object data) {
+}
+
+interface OpsControlFlowEvidenceRecorder {
+    void recordNodeWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordTaskWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordApprovalWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+}
+
+class NoopOpsControlFlowEvidenceRecorder implements OpsControlFlowEvidenceRecorder {
+    @Override
+    public void recordNodeWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordTaskWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordApprovalWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
 }
 
 class OpsNode {

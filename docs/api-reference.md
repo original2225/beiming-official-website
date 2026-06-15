@@ -120,6 +120,20 @@
 
 后台审计和运维接口包括 `GET /admin/audit-logs` 和 `GET /admin/ops/summary`。审计筛选支持 `actorUserId`、`action`、`targetType`、`targetId`、`releaseId`、`result`、`from`、`to` 和 `sort`。审计字段至少包括 `requestId`、`action`、`targetType`、`releaseId`、`targetId`、`actorUserId`、`actorRole`、`result`、`reason`、`paramsSummary`、`beforeState`、`afterState`、`failureReason` 和 `createdAt`。验收时，涉及数据库新增或更新的自动化测试必须通过真实 HTTP 请求进入后端，完成后使用独立 SQL 查询验证版本、收藏、日历同步、审计和请求日志证据，并在测试日志输出 `SQL evidence`。
 
+## ops-control 模块接口
+
+`ops-control` 由 `ops-core` 承载，路径前缀为 `/api/v1/ops-control`，负责节点、资产、容器、虚拟机、Minecraft 实例、授权文件、日志查询、受控任务、审批和审计。所有接口都要求登录，读接口要求 `NODE_READ`，节点注册、启停和心跳要求 `NODE_WRITE`，容器和 Minecraft 操作要求 `CONTAINER_OPERATE`，虚拟机操作要求 `VM_OPERATE`，文件操作要求 `FILE_MANAGE`，终端命令和 Minecraft 命令要求 `TERMINAL_ACCESS`，高风险审批要求 `HIGH_RISK_APPROVE`。写接口使用 `idempotencyKey`，同一操作者、作用域和请求指纹返回原结果，同键不同指纹返回 `409/49412`。
+
+资产和节点读取接口包括 `GET /overview`、`GET /assets`、`GET /assets/{assetId}`、`GET /nodes`、`GET /nodes/{nodeId}`、`GET /nodes/{nodeId}/capabilities`、`GET /nodes/{nodeId}/metrics/latest`、`GET /nodes/{nodeId}/containers`、`GET /nodes/{nodeId}/containers/{containerId}`、`GET /nodes/{nodeId}/vms`、`GET /nodes/{nodeId}/vms/{vmId}`、`GET /nodes/{nodeId}/minecraft-instances` 和 `GET /nodes/{nodeId}/minecraft-instances/{instanceId}`。列表接口使用统一分页和排序。节点详情包含最新指标和降级状态，运行时清单只展示脱敏快照，不泄露真实系统路径、token、命令行密钥或节点凭据。
+
+节点写接口包括 `POST /nodes`、`PATCH /nodes/{nodeId}/disable`、`PATCH /nodes/{nodeId}/enable` 和 `POST /nodes/{nodeId}/heartbeat`。注册节点返回 `node` 和脱敏注册 token；禁用必须带 `confirmText=DISABLE_OPS_NODE`；心跳可更新节点状态、版本、能力点、指标、容器、虚拟机、Minecraft 实例和授权文件快照。审计失败时必须回滚节点创建或状态变更。节点不存在返回 `404/49401`，节点冲突返回 `409/49411`，确认文本不匹配返回 `409/49413`。
+
+文件和日志接口包括 `GET /nodes/{nodeId}/files`、`POST /nodes/{nodeId}/files/read` 和 `POST /nodes/{nodeId}/logs/query`。文件路径必须以授权根内的 `/` 开头，禁止路径穿越、反斜杠和控制字符，非法路径返回 `409/49414`。文件读取和日志查询只返回脱敏摘要，并写入审计，不返回真实文件内容、真实日志密钥、真实系统路径或真实节点执行输出。
+
+任务接口包括 `POST /tasks`、`GET /tasks`、`GET /tasks/{taskId}`、`PATCH /tasks/{taskId}/cancel` 和 `POST /tasks/{taskId}/node-result`。任务字段包括 `taskType`、`nodeId`、`targetType`、`targetId`、`params`、`reason`、`confirmText` 和 `idempotencyKey`。任务状态包括 `QUEUED`、`DISPATCHED`、`RUNNING`、`SUCCEEDED`、`FAILED`、`TIMEOUT`、`CANCELED` 和 `PENDING_APPROVAL`。高风险任务必须确认，更高风险任务生成审批。节点离线返回 `409/49415`，任务状态冲突返回 `409/49410`，目标不存在返回 `404/49400`。节点结果只能由具备 `NODE_WRITE` 的节点写入方回写，并必须保留 `nodeRequestId`、结果摘要、失败原因和审计记录。
+
+审批、审计和运维摘要接口包括 `GET /approvals`、`GET /approvals/{approvalId}`、`PATCH /approvals/{approvalId}/approve`、`PATCH /approvals/{approvalId}/reject`、`GET /audit-logs` 和 `GET /ops/summary`。审批字段包括 `approvalId`、`taskId`、`status`、`riskLevel`、`requestedBy`、`approvedBy`、`reviewComment`、`createdAt`、`reviewedAt` 和 `expiresAt`。关键审计字段包括 `requestId`、`actorUserId`、`actorRole`、`actorPermissions`、`targetType`、`targetId`、`action`、`riskLevel`、`reason`、`paramsSummary`、`beforeState`、`afterState`、`result`、`failureReason` 和 `createdAt`。涉及数据库新增或更新的自动化测试必须通过真实 HTTP 请求进入后端，完成后使用独立 SQL 查询验证节点、运行时快照、任务、审批、审计和请求日志证据，并在测试日志输出 `SQL evidence`。
+
 ## 受控生产入口字段
 
 统一后端 readiness 可以暴露生产入口、旧入口退役、外部入口和审计观测相关状态字段。当前这些字段只代表仓库内运行态和外部证据接收状态，不代表真实生产切流完成。
