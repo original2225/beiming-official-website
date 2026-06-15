@@ -4,6 +4,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
@@ -56,6 +57,12 @@ class ServerStatusModule {
     TestStatusCollector testStatusCollector() {
         return new TestStatusCollector();
     }
+
+    @Bean
+    @ConditionalOnMissingBean
+    ServerStatusFlowEvidenceRecorder serverStatusFlowEvidenceRecorder() {
+        return new NoopServerStatusFlowEvidenceRecorder();
+    }
 }
 
 @RestController
@@ -64,11 +71,13 @@ class ServerStatusController {
     private final ServerStatusStore store;
     private final TestAuthContextProvider auth;
     private final TestStatusCollector collector;
+    private final ServerStatusFlowEvidenceRecorder evidenceRecorder;
 
-    ServerStatusController(ServerStatusStore store, TestAuthContextProvider auth, TestStatusCollector collector) {
+    ServerStatusController(ServerStatusStore store, TestAuthContextProvider auth, TestStatusCollector collector, ServerStatusFlowEvidenceRecorder evidenceRecorder) {
         this.store = store;
         this.auth = auth;
         this.collector = collector;
+        this.evidenceRecorder = evidenceRecorder;
     }
 
     @GetMapping("/overview")
@@ -110,9 +119,13 @@ class ServerStatusController {
 
     @PostMapping("/admin/sources")
     ResponseEntity<Map<String, Object>> createSource(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                                     HttpServletRequest request,
                                                      @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ResponseEntity.status(HttpStatus.CREATED).body(okData(store.createSource(actor, body)));
+        Map<String, Object> payload = store.createSource(actor, body);
+        ResponseEntity<Map<String, Object>> response = ResponseEntity.status(HttpStatus.CREATED).body(okData(payload));
+        evidenceRecorder.recordSourceWrite(request, "SERVER_STATUS_SOURCE_CREATED", payload, response.getStatusCode().value());
+        return response;
     }
 
     @PatchMapping("/admin/sources/{sourceId}")
@@ -141,10 +154,13 @@ class ServerStatusController {
 
     @PostMapping("/admin/sources/{sourceId}/refresh")
     Map<String, Object> refreshSource(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                      HttpServletRequest request,
                                       @PathVariable String sourceId,
                                       @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ok(store.refreshSource(actor, collector, sourceId, body));
+        Map<String, Object> payload = store.refreshSource(actor, collector, sourceId, body);
+        evidenceRecorder.recordSnapshotWrite(request, "SERVER_STATUS_SOURCE_REFRESHED", payload, HttpStatus.OK.value());
+        return ok(payload);
     }
 
     @GetMapping("/admin/lines")
@@ -156,9 +172,13 @@ class ServerStatusController {
 
     @PostMapping("/admin/lines")
     ResponseEntity<Map<String, Object>> createLine(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                                   HttpServletRequest request,
                                                    @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ResponseEntity.status(HttpStatus.CREATED).body(okData(store.createLine(actor, body)));
+        Map<String, Object> payload = store.createLine(actor, body);
+        ResponseEntity<Map<String, Object>> response = ResponseEntity.status(HttpStatus.CREATED).body(okData(payload));
+        evidenceRecorder.recordLineWrite(request, "SERVER_STATUS_LINE_CREATED", payload, response.getStatusCode().value());
+        return response;
     }
 
     @PatchMapping("/admin/lines/{lineId}")
@@ -194,9 +214,13 @@ class ServerStatusController {
 
     @PostMapping("/admin/outages")
     ResponseEntity<Map<String, Object>> createOutage(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                                     HttpServletRequest request,
                                                      @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ResponseEntity.status(HttpStatus.CREATED).body(okData(store.createOutage(actor, body)));
+        Map<String, Object> payload = store.createOutage(actor, body);
+        ResponseEntity<Map<String, Object>> response = ResponseEntity.status(HttpStatus.CREATED).body(okData(payload));
+        evidenceRecorder.recordOutageWrite(request, "SERVER_STATUS_OUTAGE_CREATED", payload, response.getStatusCode().value());
+        return response;
     }
 
     @PatchMapping("/admin/outages/{outageId}")
@@ -266,6 +290,34 @@ class ServerStatusController {
             map.put(String.valueOf(pairs[i]), pairs[i + 1]);
         }
         return map;
+    }
+}
+
+interface ServerStatusFlowEvidenceRecorder {
+    void recordSourceWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordSnapshotWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordLineWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordOutageWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+}
+
+class NoopServerStatusFlowEvidenceRecorder implements ServerStatusFlowEvidenceRecorder {
+    @Override
+    public void recordSourceWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordSnapshotWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordLineWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordOutageWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
     }
 }
 
