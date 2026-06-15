@@ -7,6 +7,9 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
@@ -38,6 +41,15 @@ import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
+@Configuration
+class BackupRecoveryEvidenceConfiguration {
+    @Bean
+    @ConditionalOnMissingBean
+    BackupRecoveryFlowEvidenceRecorder backupRecoveryFlowEvidenceRecorder() {
+        return new NoopBackupRecoveryFlowEvidenceRecorder();
+    }
+}
+
 @RestController
 @RequestMapping("/api/v1/backup-recovery")
 class BackupRecoveryController {
@@ -45,11 +57,13 @@ class BackupRecoveryController {
     private final BackupRecoveryStore store;
     private final BackupRecoveryAuth auth;
     private final BackupRecoveryProperties properties;
+    private final BackupRecoveryFlowEvidenceRecorder evidenceRecorder;
 
-    BackupRecoveryController(BackupRecoveryStore store, BackupRecoveryAuth auth, BackupRecoveryProperties properties) {
+    BackupRecoveryController(BackupRecoveryStore store, BackupRecoveryAuth auth, BackupRecoveryProperties properties, BackupRecoveryFlowEvidenceRecorder evidenceRecorder) {
         this.store = store;
         this.auth = auth;
         this.properties = properties;
+        this.evidenceRecorder = evidenceRecorder;
     }
 
     @GetMapping("/health")
@@ -124,7 +138,9 @@ class BackupRecoveryController {
                         text(body.get("encryptionMode")), "DRAFT", actor.userId);
                 store.policies.put(policyId, policy);
                 store.audit("BACKUP_POLICY_CREATED", "POLICY", policyId, actor, request, body, "MEDIUM", "SUCCESS", null, null, policy.status);
-                return created(request, policy.view());
+                Map<String, Object> view = policy.view();
+                evidenceRecorder.recordPolicyWrite(request, "BACKUP_POLICY_CREATED", view, HttpStatus.CREATED.value());
+                return created(request, view);
             }
         });
     }
@@ -163,7 +179,9 @@ class BackupRecoveryController {
                 policy.updatedBy = actor.userId;
                 policy.updatedAt = now();
                 store.audit("BACKUP_POLICY_UPDATED", "POLICY", policyId, actor, request, body, "MEDIUM", "SUCCESS", null, before, policy.status);
-                return ok(request, policy.view());
+                Map<String, Object> view = policy.view();
+                evidenceRecorder.recordPolicyWrite(request, "BACKUP_POLICY_UPDATED", view, HttpStatus.OK.value());
+                return ok(request, view);
             }
         });
     }
@@ -193,7 +211,9 @@ class BackupRecoveryController {
                 policy.updatedBy = actor.userId;
                 policy.updatedAt = now();
                 store.audit(action, "POLICY", policyId, actor, request, body, "MEDIUM", "SUCCESS", null, before, status);
-                return ok(request, policy.view());
+                Map<String, Object> view = policy.view();
+                evidenceRecorder.recordPolicyWrite(request, action, view, HttpStatus.OK.value());
+                return ok(request, view);
             }
         });
     }
@@ -229,9 +249,10 @@ class BackupRecoveryController {
                 store.jobs.put(jobId, job);
                 policy.lastRunStatus = status;
                 policy.updatedAt = now();
+                BackupPoint point = null;
                 if ("SUCCEEDED".equals(status)) {
                     String pointId = "point-" + store.nextId();
-                    BackupPoint point = new BackupPoint(pointId, policy.policyId, jobId, domains, policy.storageRef, policy.encryptionMode);
+                    point = new BackupPoint(pointId, policy.policyId, jobId, domains, policy.storageRef, policy.encryptionMode);
                     store.points.put(pointId, point);
                     job.resultSummary = Map.of("backupPointId", pointId, "domainsTotal", domains.size(), "sizeBytes", point.sizeBytes);
                     domains.forEach(domainKey -> {
@@ -242,7 +263,12 @@ class BackupRecoveryController {
                     job.failureReason = status.equals("FAILED") ? "SIMULATED_BACKUP_FAILURE" : null;
                 }
                 store.audit("BACKUP_JOB_CREATED", "JOB", jobId, actor, request, body, "HIGH", "SUCCESS", null, null, status);
-                return created(request, job.view());
+                Map<String, Object> view = job.view();
+                if (point != null) {
+                    view.put("backupPoint", point.view());
+                }
+                evidenceRecorder.recordJobWrite(request, "BACKUP_JOB_CREATED", view, HttpStatus.CREATED.value());
+                return created(request, view);
             }
         });
     }
@@ -288,7 +314,9 @@ class BackupRecoveryController {
                 job.finishedAt = now();
                 job.updatedAt = job.finishedAt;
                 store.audit("BACKUP_JOB_CANCELLED", "JOB", jobId, actor, request, body, "MEDIUM", "SUCCESS", null, before, job.status);
-                return ok(request, job.view());
+                Map<String, Object> view = job.view();
+                evidenceRecorder.recordJobWrite(request, "BACKUP_JOB_CANCELLED", view, HttpStatus.OK.value());
+                return ok(request, view);
             }
         });
     }
@@ -348,7 +376,9 @@ class BackupRecoveryController {
                 }
                 store.verifications.put(verificationId, verification);
                 store.audit("BACKUP_POINT_VERIFIED", "BACKUP_POINT", pointId, actor, request, body, "HIGH", "SUCCESS", null, null, point.status);
-                return ok(request, verification.view());
+                Map<String, Object> view = verification.view();
+                evidenceRecorder.recordPointVerification(request, "BACKUP_POINT_VERIFIED", view, point.view(), HttpStatus.OK.value());
+                return ok(request, view);
             }
         });
     }
@@ -371,7 +401,9 @@ class BackupRecoveryController {
                 RestoreDrill drill = new RestoreDrill(drillId, point.backupPointId, domains, "drill-failed".equals(mode) ? "FAILED" : "PASSED", actor.userId);
                 store.drills.put(drillId, drill);
                 store.audit("RESTORE_DRILL_CREATED", "RESTORE_DRILL", drillId, actor, request, body, "HIGH", "SUCCESS", null, null, drill.status);
-                return created(request, drill.view());
+                Map<String, Object> view = drill.view();
+                evidenceRecorder.recordDrillWrite(request, "RESTORE_DRILL_CREATED", view, HttpStatus.CREATED.value());
+                return created(request, view);
             }
         });
     }
@@ -427,7 +459,9 @@ class BackupRecoveryController {
                 RestoreRequest restore = new RestoreRequest(requestId, point.backupPointId, domains, restoreMode, status, actor.userId, text(body.get("reason")));
                 store.restores.put(requestId, restore);
                 store.audit("RESTORE_REQUEST_CREATED", "RESTORE_REQUEST", requestId, actor, request, body, "CRITICAL", "SUCCESS", null, null, status);
-                return created(request, restore.view());
+                Map<String, Object> view = restore.view();
+                evidenceRecorder.recordRestoreWrite(request, "RESTORE_REQUEST_CREATED", view, HttpStatus.CREATED.value());
+                return created(request, view);
             }
         });
     }
@@ -476,7 +510,9 @@ class BackupRecoveryController {
                 restore.updatedAt = now();
                 restore.approvalSummary = Map.of("reviewComment", text(body.get("reviewComment")), "executionMode", "SIMULATED_ONLY", "reviewedAt", restore.updatedAt);
                 store.audit("RESTORE_REQUEST_APPROVED", "RESTORE_REQUEST", restoreRequestId, actor, request, body, "CRITICAL", "SUCCESS", null, before, restore.status);
-                return ok(request, restore.view());
+                Map<String, Object> view = restore.view();
+                evidenceRecorder.recordRestoreWrite(request, "RESTORE_REQUEST_APPROVED", view, HttpStatus.OK.value());
+                return ok(request, view);
             }
         });
     }
@@ -498,7 +534,9 @@ class BackupRecoveryController {
                 restore.updatedAt = now();
                 restore.approvalSummary = Map.of("reviewComment", text(body.get("reviewComment")), "executionMode", "BLOCKED_BY_CONTRACT", "reviewedAt", restore.updatedAt);
                 store.audit("RESTORE_REQUEST_REJECTED", "RESTORE_REQUEST", restoreRequestId, actor, request, body, "HIGH", "SUCCESS", null, before, restore.status);
-                return ok(request, restore.view());
+                Map<String, Object> view = restore.view();
+                evidenceRecorder.recordRestoreWrite(request, "RESTORE_REQUEST_REJECTED", view, HttpStatus.OK.value());
+                return ok(request, view);
             }
         });
     }
@@ -754,6 +792,40 @@ class BackupRecoveryController {
 
     private static String now() {
         return Instant.now().toString();
+    }
+}
+
+interface BackupRecoveryFlowEvidenceRecorder {
+    void recordPolicyWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordJobWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordPointVerification(HttpServletRequest request, String action, Map<String, Object> verification, Map<String, Object> point, int responseCode);
+
+    void recordDrillWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordRestoreWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+}
+
+class NoopBackupRecoveryFlowEvidenceRecorder implements BackupRecoveryFlowEvidenceRecorder {
+    @Override
+    public void recordPolicyWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordJobWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordPointVerification(HttpServletRequest request, String action, Map<String, Object> verification, Map<String, Object> point, int responseCode) {
+    }
+
+    @Override
+    public void recordDrillWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordRestoreWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
     }
 }
 

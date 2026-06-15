@@ -148,6 +148,20 @@ provider 接口包括 `GET /providers`、`GET /providers/{providerId}`、`POST /
 
 审计接口为 `GET /audit-logs`。审计筛选支持 `actorUserId`、`providerId`、`fileId`、`shareSnapshotId`、`jobId`、`action`、`result`、`from`、`to` 和 `sort`。审计字段至少包括 `requestId`、`actorUserId`、`actorRole`、`actorPermissions`、`targetType`、`targetId`、`action`、`riskLevel`、`reason`、`paramsSummary`、`beforeState`、`afterState`、`result`、`failureReason`、`providerId`、`fileId`、`shareSnapshotId`、`jobId`、`dependencyStatus` 和 `createdAt`。审计写入失败必须阻断对应写操作并返回 `500/55301`。涉及数据库新增或更新的自动化测试必须通过真实 HTTP 请求进入后端，完成后使用独立 SQL 查询验证 provider、share、sync job、文件快照、审计和请求日志证据，并在测试日志输出 `SQL evidence`。
 
+## backup-recovery 模块接口
+
+`backup-recovery` 由 `ops-core` 承载，路径前缀为 `/api/v1/backup-recovery`，负责备份域、备份策略、备份任务、备份点、校验、恢复演练、恢复申请、审批摘要和审计。所有非健康检查接口都要求登录，读取接口要求 `NODE_READ` 或 `HIGH_RISK_APPROVE`，策略和任务写入要求 `NODE_WRITE` 且操作者为 `ADMIN` 或 `OWNER`，备份点校验、恢复演练、恢复申请和审批要求 `HIGH_RISK_APPROVE` 且操作者为 `ADMIN` 或 `OWNER`。所有写接口必须带 `idempotencyKey`，同一操作者、同一作用域、同一请求指纹返回原结果；同键不同指纹返回 `409/49812`。
+
+健康、摘要和备份域接口包括 `GET /health`、`GET /ops/summary` 和 `GET /domains`。摘要返回域、策略、任务、备份点、已校验备份点、恢复演练、恢复申请、审计、幂等、最近成功和失败时间、降级状态和生产缺口。认证依赖不可用、超时或结构不兼容时分别返回 `502/46810`、`504/46811` 和 `502/46812`。本地测试控制关闭时，所有测试控制头必须被忽略。
+
+策略接口包括 `GET /policies`、`GET /policies/{policyId}`、`POST /policies`、`PATCH /policies/{policyId}`、`PATCH /policies/{policyId}/enable` 和 `PATCH /policies/{policyId}/disable`。策略字段包括 `policyId`、`displayName`、`domains`、`scheduleSummary`、`retentionDays`、`minimumCopies`、`storageRef`、`encryptionMode`、`status`、`lastRunStatus`、`createdBy`、`updatedBy`、`createdAt` 和 `updatedAt`。状态包括 `DRAFT`、`ENABLED`、`DISABLED` 和 `ARCHIVED`。策略不存在返回 `404/49801`，状态冲突返回 `409/49810`，名称冲突返回 `409/49811`。
+
+备份任务和备份点接口包括 `POST /jobs`、`GET /jobs`、`GET /jobs/{jobId}`、`PATCH /jobs/{jobId}/cancel`、`GET /backup-points`、`GET /backup-points/{backupPointId}` 和 `POST /backup-points/{backupPointId}/verify`。任务字段包括 `jobId`、`policyId`、`trigger`、`status`、`domains`、`startedAt`、`finishedAt`、`resultSummary`、`failureReason`、`idempotencyKey`、`createdBy`、`createdAt` 和 `updatedAt`。成功任务必须生成 `backupPointId`，同步策略 `lastRunStatus`，并更新域最近备份点。任务状态包括 `PENDING`、`RUNNING`、`PENDING_APPROVAL`、`SUCCEEDED`、`FAILED`、`TIMEOUT` 和 `CANCELLED`。只有待执行或运行中任务可以取消，终态取消返回 `409/49810`。备份点字段包括 `backupPointId`、`policyId`、`jobId`、`domains`、`storageRef`、`checksumSummary`、`sizeBytes`、`encrypted`、`verified`、`verifiedAt`、`expiresAt`、`status` 和 `createdAt`。备份点不存在返回 `404/49803`，不可用备份点校验或恢复返回 `409/49813`。
+
+恢复演练和恢复申请接口包括 `POST /restore-drills`、`GET /restore-drills`、`GET /restore-drills/{drillId}`、`POST /restore-requests`、`GET /restore-requests`、`GET /restore-requests/{restoreRequestId}`、`PATCH /restore-requests/{restoreRequestId}/approve` 和 `PATCH /restore-requests/{restoreRequestId}/reject`。恢复演练字段包括 `drillId`、`backupPointId`、`domains`、`status`、`validationSummary`、`startedAt`、`finishedAt`、`failureReason`、`createdBy` 和 `createdAt`。恢复申请字段包括 `restoreRequestId`、`backupPointId`、`domains`、`restoreMode`、`riskLevel`、`status`、`approvalSummary`、`requestedBy`、`approvedBy`、`reason`、`createdAt` 和 `updatedAt`。`SANDBOX_RESTORE` 必须先有通过的演练，否则返回 `409/49814`。申请确认文本必须为 `REQUEST_RESTORE_REVIEW`，审批确认文本必须为 `APPROVE_SIMULATED_RESTORE`。恢复审批禁止自审，状态冲突返回 `409/49810`。仓库内只允许模拟恢复，不允许生产写入。
+
+审计接口为 `GET /audit-logs`。审计筛选支持 `actorUserId`、`policyId`、`jobId`、`backupPointId`、`drillId`、`restoreRequestId`、`action`、`result`、`riskLevel`、`from`、`to` 和 `sort`。审计字段至少包括 `requestId`、`actorUserId`、`actorRole`、`actorPermissions`、`targetType`、`targetId`、`action`、`riskLevel`、`reason`、`paramsSummary`、`beforeState`、`afterState`、`result`、`failureReason`、`policyId`、`jobId`、`backupPointId`、`drillId`、`restoreRequestId`、`dependencyStatus` 和 `createdAt`。审计写入失败必须阻断对应写操作并返回 `500/55401`。涉及数据库新增或更新的自动化测试必须通过真实 HTTP 请求进入后端，完成后使用独立 SQL 查询验证策略、任务、备份点、校验记录、恢复演练、恢复申请、审批摘要、审计和请求日志证据，并在测试日志输出 `SQL evidence`。
+
 ## 受控生产入口字段
 
 统一后端 readiness 可以暴露生产入口、旧入口退役、外部入口和审计观测相关状态字段。当前这些字段只代表仓库内运行态和外部证据接收状态，不代表真实生产切流完成。
