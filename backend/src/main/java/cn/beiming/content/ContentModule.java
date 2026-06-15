@@ -6,6 +6,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
@@ -61,6 +62,12 @@ class ContentModule {
     TestNotificationClient testNotificationClient() {
         return new TestNotificationClient();
     }
+
+    @Bean
+    @ConditionalOnMissingBean
+    ContentFlowEvidenceRecorder contentFlowEvidenceRecorder() {
+        return new NoopContentFlowEvidenceRecorder();
+    }
 }
 
 @RestController
@@ -70,12 +77,14 @@ class ContentController {
     private final TestAuthContextProvider auth;
     private final TestProfileSnapshotProvider profile;
     private final TestNotificationClient notification;
+    private final ContentFlowEvidenceRecorder evidenceRecorder;
 
-    ContentController(ContentStore store, TestAuthContextProvider auth, TestProfileSnapshotProvider profile, TestNotificationClient notification) {
+    ContentController(ContentStore store, TestAuthContextProvider auth, TestProfileSnapshotProvider profile, TestNotificationClient notification, ContentFlowEvidenceRecorder evidenceRecorder) {
         this.store = store;
         this.auth = auth;
         this.profile = profile;
         this.notification = notification;
+        this.evidenceRecorder = evidenceRecorder;
     }
 
     @GetMapping("/home")
@@ -155,9 +164,13 @@ class ContentController {
 
     @PostMapping("/admin/items")
     ResponseEntity<Map<String, Object>> createItem(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                                   HttpServletRequest request,
                                                    @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ResponseEntity.status(HttpStatus.CREATED).body(okData(store.createItem(actor, profile, body)));
+        Map<String, Object> payload = store.createItem(actor, profile, body);
+        ResponseEntity<Map<String, Object>> response = ResponseEntity.status(HttpStatus.CREATED).body(okData(payload));
+        evidenceRecorder.recordItemWrite(request, "CONTENT_ITEM_CREATED", payload, response.getStatusCode().value());
+        return response;
     }
 
     @PatchMapping("/admin/items/{contentId}")
@@ -210,10 +223,13 @@ class ContentController {
 
     @PatchMapping("/admin/items/{contentId}/publish")
     Map<String, Object> publishItem(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                    HttpServletRequest request,
                                     @PathVariable String contentId,
                                     @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ok(store.publish(actor, notification, contentId, body));
+        Map<String, Object> payload = store.publish(actor, notification, contentId, body);
+        evidenceRecorder.recordItemWrite(request, "CONTENT_ITEM_PUBLISHED", payload, HttpStatus.OK.value());
+        return ok(payload);
     }
 
     @PatchMapping("/admin/items/{contentId}/offline")
@@ -316,9 +332,13 @@ class ContentController {
 
     @PostMapping("/admin/categories")
     ResponseEntity<Map<String, Object>> createCategory(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                                       HttpServletRequest request,
                                                        @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ResponseEntity.status(HttpStatus.CREATED).body(okData(store.createCategory(actor, body)));
+        Map<String, Object> payload = store.createCategory(actor, body);
+        ResponseEntity<Map<String, Object>> response = ResponseEntity.status(HttpStatus.CREATED).body(okData(payload));
+        evidenceRecorder.recordCategoryWrite(request, "CONTENT_CATEGORY_CREATED", payload, response.getStatusCode().value());
+        return response;
     }
 
     @PatchMapping("/admin/categories/{categoryId}")
@@ -444,9 +464,13 @@ class ContentController {
 
     @PutMapping("/admin/seo/by-route")
     Map<String, Object> saveSeo(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                HttpServletRequest request,
                                 @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ok(store.saveSeo(actor, body));
+        boolean created = !store.seoExistsByRoute(String.valueOf(body.get("route")));
+        Map<String, Object> payload = store.saveSeo(actor, body);
+        evidenceRecorder.recordSeoWrite(request, created ? "CONTENT_SEO_CREATED" : "CONTENT_SEO_UPDATED", payload, HttpStatus.OK.value());
+        return ok(payload);
     }
 
     @PatchMapping("/admin/seo/{seoId}/disable")
@@ -481,6 +505,28 @@ class ContentController {
             map.put(String.valueOf(pairs[i]), pairs[i + 1]);
         }
         return map;
+    }
+}
+
+interface ContentFlowEvidenceRecorder {
+    void recordItemWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordCategoryWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordSeoWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+}
+
+class NoopContentFlowEvidenceRecorder implements ContentFlowEvidenceRecorder {
+    @Override
+    public void recordItemWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordCategoryWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordSeoWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
     }
 }
 
@@ -1287,6 +1333,10 @@ class ContentStore {
         Map<String, Object> result = seoMap(record);
         remember(idemKey, body, result);
         return result;
+    }
+
+    synchronized boolean seoExistsByRoute(String route) {
+        return seo.values().stream().anyMatch(record -> Objects.equals(record.route, route));
     }
 
     synchronized Map<String, Object> disableSeo(AuthUser actor, String seoId, Map<String, Object> body) {
