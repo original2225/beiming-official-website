@@ -5,6 +5,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -58,6 +59,12 @@ class WhitelistModule {
     WhitelistTestControls whitelistTestControls(@Value("${whitelist.test-controls.enabled:false}") boolean enabled) {
         return new WhitelistTestControls(enabled);
     }
+
+    @Bean
+    @ConditionalOnMissingBean
+    WhitelistFlowEvidenceRecorder whitelistFlowEvidenceRecorder() {
+        return new NoopWhitelistFlowEvidenceRecorder();
+    }
 }
 
 @RestController
@@ -65,10 +72,12 @@ class WhitelistModule {
 class WhitelistController {
     private final WhitelistStore store;
     private final TestWhitelistAuthProvider auth;
+    private final WhitelistFlowEvidenceRecorder evidenceRecorder;
 
-    WhitelistController(WhitelistStore store, TestWhitelistAuthProvider auth) {
+    WhitelistController(WhitelistStore store, TestWhitelistAuthProvider auth, WhitelistFlowEvidenceRecorder evidenceRecorder) {
         this.store = store;
         this.auth = auth;
+        this.evidenceRecorder = evidenceRecorder;
     }
 
     @PostMapping("/me/applications")
@@ -77,7 +86,9 @@ class WhitelistController {
                                                           HttpServletRequest request) {
         WhitelistUser user = auth.requireUser(authorization, request);
         MutationResult result = store.createApplication(user, bodyOrEmpty(body), request);
-        return ResponseEntity.status(result.created() ? HttpStatus.CREATED : HttpStatus.OK).body(okBody(result.value()));
+        int responseCode = result.created() ? HttpStatus.CREATED.value() : HttpStatus.OK.value();
+        evidenceRecorder.recordApplicationWrite(request, result.created() ? "WHITELIST_APPLICATION_CREATED" : "WHITELIST_APPLICATION_REPLAYED", result.value(), responseCode);
+        return ResponseEntity.status(responseCode).body(okBody(result.value()));
     }
 
     @GetMapping("/me/applications/current")
@@ -109,7 +120,9 @@ class WhitelistController {
                                         @RequestBody(required = false) Map<String, Object> body,
                                         HttpServletRequest request) {
         WhitelistUser user = auth.requireUser(authorization, request);
-        return ok(store.updateMaterials(user, applicationId, bodyOrEmpty(body), request));
+        Map<String, Object> payload = store.updateMaterials(user, applicationId, bodyOrEmpty(body), request);
+        evidenceRecorder.recordMaterialsWrite(request, "WHITELIST_MATERIALS_UPDATED", payload, HttpStatus.OK.value());
+        return ok(payload);
     }
 
     @PostMapping("/me/applications/{applicationId}/submit")
@@ -118,7 +131,9 @@ class WhitelistController {
                                @RequestBody(required = false) Map<String, Object> body,
                                HttpServletRequest request) {
         WhitelistUser user = auth.requireUser(authorization, request);
-        return ok(store.submit(user, applicationId, bodyOrEmpty(body), request));
+        Map<String, Object> payload = store.submit(user, applicationId, bodyOrEmpty(body), request);
+        evidenceRecorder.recordApplicationWrite(request, "WHITELIST_APPLICATION_SUBMITTED", payload, HttpStatus.OK.value());
+        return ok(payload);
     }
 
     @PatchMapping("/me/applications/{applicationId}/supplement")
@@ -187,7 +202,10 @@ class WhitelistController {
                                 @RequestBody(required = false) Map<String, Object> body,
                                 HttpServletRequest request) {
         WhitelistUser actor = auth.requireAny(authorization, request, "ADMIN", "OWNER");
-        return ok(store.approve(actor, applicationId, bodyOrEmpty(body), request));
+        Map<String, Object> payload = store.approve(actor, applicationId, bodyOrEmpty(body), request);
+        evidenceRecorder.recordApplicationWrite(request, "WHITELIST_APPROVED", payload, HttpStatus.OK.value());
+        evidenceRecorder.recordAttendanceHandoffWrite(request, "WHITELIST_ATTENDANCE_HANDOFF_GENERATED", payload, HttpStatus.OK.value());
+        return ok(payload);
     }
 
     @PatchMapping("/admin/applications/{applicationId}/reject")
@@ -1060,6 +1078,28 @@ class TestWhitelistAuthProvider {
         } catch (IllegalArgumentException exception) {
             throw new WhitelistException(502, 47002, "auth incompatible");
         }
+    }
+}
+
+interface WhitelistFlowEvidenceRecorder {
+    void recordApplicationWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordMaterialsWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordAttendanceHandoffWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+}
+
+class NoopWhitelistFlowEvidenceRecorder implements WhitelistFlowEvidenceRecorder {
+    @Override
+    public void recordApplicationWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordMaterialsWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordAttendanceHandoffWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
     }
 }
 
