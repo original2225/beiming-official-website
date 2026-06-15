@@ -1,6 +1,16 @@
 server:
   port: 8135
 
+spring:
+  autoconfigure:
+    exclude: ${SPRING_AUTOCONFIGURE_EXCLUDE:org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration,org.springframework.boot.autoconfigure.jdbc.JdbcTemplateAutoConfiguration,org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration}
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:}
+    username: ${SPRING_DATASOURCE_USERNAME:}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
+  flyway:
+    enabled: ${SPRING_FLYWAY_ENABLED:false}
+
 api-gateway:
   internal-signing-secret: local-test-gateway-signing-secret
   upstreams:

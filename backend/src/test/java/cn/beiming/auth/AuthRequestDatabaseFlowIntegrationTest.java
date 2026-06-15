@@ -15,14 +15,16 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
-import java.sql.Statement;
-import java.sql.Timestamp;
-import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -32,13 +34,29 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest(
         classes = BusinessCoreServiceApplication.class,
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = "beiming.business-core.test-control-headers.enabled=true"
+        properties = {
+                "beiming.business-core.test-control-headers.enabled=true",
+                "spring.autoconfigure.exclude=",
+                "spring.flyway.enabled=true"
+        }
 )
+@Testcontainers
 class AuthRequestDatabaseFlowIntegrationTest {
     private static final String FLOW_ID = "auth-register-" + UUID.randomUUID();
-    private static final String DB_URL = "jdbc:h2:mem:auth_flow_evidence;MODE=MySQL;DATABASE_TO_UPPER=false;DB_CLOSE_DELAY=-1";
-    private static final String DB_USER = "sa";
-    private static final String DB_PASSWORD = "";
+
+    @Container
+    static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine")
+            .withDatabaseName("beiming_auth_flow")
+            .withUsername("beiming")
+            .withPassword("beiming");
+
+    @DynamicPropertySource
+    static void postgresqlProperties(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
+        registry.add("spring.datasource.username", POSTGRES::getUsername);
+        registry.add("spring.datasource.password", POSTGRES::getPassword);
+        registry.add("spring.datasource.driver-class-name", POSTGRES::getDriverClassName);
+    }
 
     @LocalServerPort
     int port;
@@ -57,18 +75,6 @@ class AuthRequestDatabaseFlowIntegrationTest {
         store.reset();
         store.seedOwner("owner", "Password12345");
         store.seedInvitation("PLAYER-CODE-1", "PLAYER", java.util.Set.of("USER"), java.util.Set.of(), 10, null, "owner");
-        try (Connection connection = openConnection();
-             Statement statement = connection.createStatement()) {
-            createEvidenceTables(statement);
-            List.of(
-                    "auth_flow_request_log",
-                    "auth_flow_sessions",
-                    "auth_flow_invitation_usage",
-                    "auth_flow_audits",
-                    "auth_flow_session_revocations",
-                    "auth_flow_users"
-            ).forEach(table -> deleteFlowRows(statement, table));
-        }
     }
 
     @Test
@@ -103,22 +109,22 @@ class AuthRequestDatabaseFlowIntegrationTest {
 
         try (Connection connection = openConnection()) {
             assertSingleValue(connection,
-                    "SELECT username FROM auth_flow_users WHERE flow_id = ? AND username = ? AND status = 'PENDING_PROFILE'",
-                    FLOW_ID, username, username);
+                    "SELECT username FROM auth_users WHERE username = ? AND status = 'PENDING_PROFILE'",
+                    username, username);
             assertSingleValue(connection,
-                    "SELECT COUNT(*) FROM auth_flow_sessions WHERE flow_id = ? AND username = ? AND token_type = 'Bearer'",
-                    FLOW_ID, username, 1L);
+                    "SELECT COUNT(*) FROM auth_sessions s JOIN auth_users u ON u.user_id = s.user_id WHERE u.username = ? AND s.revoked = false",
+                    username, 1L);
             assertSingleValue(connection,
-                    "SELECT used_count FROM auth_flow_invitation_usage WHERE flow_id = ? AND raw_code = 'PLAYER-CODE-1'",
-                    FLOW_ID, 1);
+                    "SELECT used_count FROM auth_invitations WHERE code_prefix = 'PLAYER-C'",
+                    1);
             assertSingleValue(connection,
-                    "SELECT COUNT(*) FROM auth_flow_audits WHERE flow_id = ? AND action = 'AUTH_REGISTER_SUCCESS' AND result = 'SUCCESS'",
-                    FLOW_ID, 1L);
+                    "SELECT COUNT(*) FROM app_audit_logs WHERE request_id = ? AND action = 'AUTH_REGISTER_SUCCESS' AND result = 'SUCCESS'",
+                    requestId, 1L);
             assertSingleValue(connection,
-                    "SELECT response_code FROM auth_flow_request_log WHERE flow_id = ? AND request_id = ? AND path = '/api/v1/auth/register'",
-                    FLOW_ID, requestId, 201);
+                    "SELECT response_code FROM app_request_logs WHERE request_id = ? AND path = '/api/v1/auth/register'",
+                    requestId, 201);
         }
-        System.out.println("SQL evidence: auth register request reached backend, wrote user/session/invitation/audit/request rows, and returned 201.");
+        System.out.println("SQL evidence: PostgreSQL auth register wrote auth_users/auth_sessions/auth_invitations/app_audit_logs/app_request_logs and returned 201.");
     }
 
     @Test
@@ -146,16 +152,16 @@ class AuthRequestDatabaseFlowIntegrationTest {
 
         try (Connection connection = openConnection()) {
             assertSingleValue(connection,
-                    "SELECT COUNT(*) FROM auth_flow_sessions WHERE flow_id = ? AND username = ? AND token_type = 'Bearer'",
-                    FLOW_ID, "owner", 1L);
+                    "SELECT COUNT(*) FROM auth_sessions s JOIN auth_users u ON u.user_id = s.user_id WHERE u.username = ? AND s.revoked = false",
+                    "owner", 1L);
             assertSingleValue(connection,
-                    "SELECT COUNT(*) FROM auth_flow_audits WHERE flow_id = ? AND action = 'AUTH_LOGIN_SUCCESS' AND result = 'SUCCESS'",
-                    FLOW_ID, 1L);
+                    "SELECT COUNT(*) FROM app_audit_logs WHERE request_id = ? AND action = 'AUTH_LOGIN_SUCCESS' AND result = 'SUCCESS'",
+                    requestId, 1L);
             assertSingleValue(connection,
-                    "SELECT response_code FROM auth_flow_request_log WHERE flow_id = ? AND request_id = ? AND path = '/api/v1/auth/login'",
-                    FLOW_ID, requestId, 200);
+                    "SELECT response_code FROM app_request_logs WHERE request_id = ? AND path = '/api/v1/auth/login'",
+                    requestId, 200);
         }
-        System.out.println("SQL evidence: auth login request reached backend, wrote session/audit/request rows, and returned 200.");
+        System.out.println("SQL evidence: PostgreSQL auth login wrote auth_sessions/app_audit_logs/app_request_logs and returned 200.");
     }
 
     @Test
@@ -182,16 +188,50 @@ class AuthRequestDatabaseFlowIntegrationTest {
 
         try (Connection connection = openConnection()) {
             assertSingleValue(connection,
-                    "SELECT COUNT(*) FROM auth_flow_session_revocations WHERE flow_id = ? AND username = ? AND token = ?",
-                    FLOW_ID, "owner", token, 1L);
+                    "SELECT COUNT(*) FROM auth_sessions s JOIN auth_users u ON u.user_id = s.user_id WHERE u.username = ? AND s.revoked = true",
+                    "owner", 1L);
             assertSingleValue(connection,
-                    "SELECT COUNT(*) FROM auth_flow_audits WHERE flow_id = ? AND action = 'AUTH_LOGOUT_SUCCESS' AND result = 'SUCCESS'",
-                    FLOW_ID, 1L);
+                    "SELECT COUNT(*) FROM auth_sessions WHERE token_hash = ?",
+                    token, 0L);
             assertSingleValue(connection,
-                    "SELECT response_code FROM auth_flow_request_log WHERE flow_id = ? AND request_id = ? AND path = '/api/v1/auth/logout'",
-                    FLOW_ID, logoutRequestId, 200);
+                    "SELECT COUNT(*) FROM app_audit_logs WHERE request_id = ? AND action = 'AUTH_LOGOUT_SUCCESS' AND result = 'SUCCESS'",
+                    logoutRequestId, 1L);
+            assertSingleValue(connection,
+                    "SELECT response_code FROM app_request_logs WHERE request_id = ? AND path = '/api/v1/auth/logout'",
+                    logoutRequestId, 200);
         }
-        System.out.println("SQL evidence: auth logout request reached backend, wrote revocation/audit/request rows, and returned 200.");
+        System.out.println("SQL evidence: PostgreSQL auth logout updated auth_sessions and wrote app_audit_logs/app_request_logs.");
+    }
+
+    @Test
+    void registerIdempotencyPersistsReplayEvidenceInPostgreSQL() throws Exception {
+        String firstRequestId = "req-idem-first-" + FLOW_ID;
+        String secondRequestId = "req-idem-second-" + FLOW_ID;
+        String username = "idem_pg_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+        Map<String, Object> body = Map.of(
+                "invitationCode", "PLAYER-CODE-1",
+                "username", username,
+                "password", "Password12345",
+                "displayName", "Idem User",
+                "idempotencyKey", "idem-" + username
+        );
+
+        JsonNode first = postJson("/api/v1/auth/register", firstRequestId, body, 201);
+        JsonNode second = postJson("/api/v1/auth/register", secondRequestId, body, 201);
+
+        assertThat(second.at("/data/user/id").asText()).isEqualTo(first.at("/data/user/id").asText());
+        try (Connection connection = openConnection()) {
+            assertSingleValue(connection,
+                    "SELECT COUNT(*) FROM auth_users WHERE username = ?",
+                    username, 1L);
+            assertSingleValue(connection,
+                    "SELECT COUNT(*) FROM app_idempotency_records WHERE actor_user_id = 'anonymous' AND scope = 'auth.register' AND idempotency_key = ?",
+                    "idem-" + username, 1L);
+            assertSingleValue(connection,
+                    "SELECT COUNT(*) FROM app_request_logs WHERE request_id IN (?, ?) AND path = '/api/v1/auth/register'",
+                    firstRequestId, secondRequestId, 2L);
+        }
+        System.out.println("SQL evidence: PostgreSQL auth register idempotency replay kept one auth_users row and wrote app_idempotency_records/app_request_logs.");
     }
 
     private String loginForLogout(String requestId) throws Exception {
@@ -209,6 +249,19 @@ class AuthRequestDatabaseFlowIntegrationTest {
         );
         assertThat(response.getStatusCode().value()).isEqualTo(200);
         return objectMapper.readTree(response.getBody()).at("/data/accessToken").asText();
+    }
+
+    private JsonNode postJson(String path, String requestId, Map<String, Object> body, int expectedStatus) throws Exception {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set("X-Request-Id", requestId);
+        ResponseEntity<String> response = http.postForEntity(
+                "http://127.0.0.1:" + port + path,
+                new HttpEntity<>(objectMapper.writeValueAsString(body), headers),
+                String.class
+        );
+        assertThat(response.getStatusCode().value()).isEqualTo(expectedStatus);
+        return objectMapper.readTree(response.getBody());
     }
 
     private static void assertSingleValue(Connection connection, String sql, Object first, Object second, Object expected) throws Exception {
@@ -247,158 +300,16 @@ class AuthRequestDatabaseFlowIntegrationTest {
         }
     }
 
+    private static void assertSingleValue(Connection connection, String sql, Object expected) throws Exception {
+        try (PreparedStatement statement = connection.prepareStatement(sql);
+             ResultSet result = statement.executeQuery()) {
+            assertThat(result.next()).as(sql).isTrue();
+            assertThat(result.getObject(1)).isEqualTo(expected);
+            assertThat(result.next()).as(sql + " must return one row").isFalse();
+        }
+    }
+
     private static Connection openConnection() throws Exception {
-        return DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD);
-    }
-
-    private static void createEvidenceTables(Statement statement) throws Exception {
-        statement.execute("""
-                CREATE TABLE IF NOT EXISTS auth_flow_users (
-                    flow_id VARCHAR(128) NOT NULL,
-                    username VARCHAR(64) NOT NULL,
-                    status VARCHAR(32) NOT NULL,
-                    created_at TIMESTAMP NOT NULL
-                )
-                """);
-        statement.execute("""
-                CREATE TABLE IF NOT EXISTS auth_flow_sessions (
-                    flow_id VARCHAR(128) NOT NULL,
-                    username VARCHAR(64) NOT NULL,
-                    token_type VARCHAR(32) NOT NULL,
-                    created_at TIMESTAMP NOT NULL
-                )
-                """);
-        statement.execute("""
-                CREATE TABLE IF NOT EXISTS auth_flow_invitation_usage (
-                    flow_id VARCHAR(128) NOT NULL,
-                    raw_code VARCHAR(128) NOT NULL,
-                    used_count INT NOT NULL,
-                    created_at TIMESTAMP NOT NULL
-                )
-                """);
-        statement.execute("""
-                CREATE TABLE IF NOT EXISTS auth_flow_audits (
-                    flow_id VARCHAR(128) NOT NULL,
-                    action VARCHAR(128) NOT NULL,
-                    result VARCHAR(32) NOT NULL,
-                    created_at TIMESTAMP NOT NULL
-                )
-                """);
-        statement.execute("""
-                CREATE TABLE IF NOT EXISTS auth_flow_session_revocations (
-                    flow_id VARCHAR(128) NOT NULL,
-                    username VARCHAR(64) NOT NULL,
-                    token VARCHAR(128) NOT NULL,
-                    created_at TIMESTAMP NOT NULL
-                )
-                """);
-        statement.execute("""
-                CREATE TABLE IF NOT EXISTS auth_flow_request_log (
-                    flow_id VARCHAR(128) NOT NULL,
-                    request_id VARCHAR(128) NOT NULL,
-                    path VARCHAR(256) NOT NULL,
-                    response_code INT NOT NULL,
-                    created_at TIMESTAMP NOT NULL
-                )
-                """);
-    }
-
-    private static void deleteFlowRows(Statement statement, String table) {
-        try {
-            statement.executeUpdate("DELETE FROM " + table + " WHERE flow_id = '" + FLOW_ID + "'");
-        } catch (Exception exception) {
-            throw new IllegalStateException(exception);
-        }
-    }
-
-    @TestConfiguration
-    static class EvidenceConfiguration {
-        @Bean
-        AuthFlowEvidenceRecorder authFlowEvidenceRecorder() {
-            return new JdbcAuthFlowEvidenceRecorder();
-        }
-    }
-
-    static class JdbcAuthFlowEvidenceRecorder implements AuthFlowEvidenceRecorder {
-        @Override
-        public void recordRegisterSuccess(jakarta.servlet.http.HttpServletRequest request, String rawInvitationCode, String username, Map<String, Object> payload, int responseCode) {
-            String flowId = request.getHeader("X-Test-Flow-Id");
-            if (flowId == null || flowId.isBlank()) {
-                return;
-            }
-            String requestId = request.getHeader("X-Request-Id");
-            try (Connection connection = openConnection()) {
-                insert(connection,
-                        "INSERT INTO auth_flow_users(flow_id, username, status, created_at) VALUES (?, ?, ?, ?)",
-                        flowId, username, "PENDING_PROFILE", Timestamp.from(Instant.now()));
-                insert(connection,
-                        "INSERT INTO auth_flow_sessions(flow_id, username, token_type, created_at) VALUES (?, ?, ?, ?)",
-                        flowId, username, String.valueOf(payload.get("tokenType")), Timestamp.from(Instant.now()));
-                insert(connection,
-                        "INSERT INTO auth_flow_invitation_usage(flow_id, raw_code, used_count, created_at) VALUES (?, ?, ?, ?)",
-                        flowId, rawInvitationCode, 1, Timestamp.from(Instant.now()));
-                insert(connection,
-                        "INSERT INTO auth_flow_audits(flow_id, action, result, created_at) VALUES (?, ?, ?, ?)",
-                        flowId, "AUTH_REGISTER_SUCCESS", "SUCCESS", Timestamp.from(Instant.now()));
-                insert(connection,
-                        "INSERT INTO auth_flow_request_log(flow_id, request_id, path, response_code, created_at) VALUES (?, ?, ?, ?, ?)",
-                        flowId, requestId, request.getRequestURI(), responseCode, Timestamp.from(Instant.now()));
-            } catch (Exception exception) {
-                throw new IllegalStateException("failed to write auth flow database evidence", exception);
-            }
-        }
-
-        @Override
-        public void recordLoginSuccess(jakarta.servlet.http.HttpServletRequest request, String username, Map<String, Object> payload, int responseCode) {
-            String flowId = request.getHeader("X-Test-Flow-Id");
-            if (flowId == null || flowId.isBlank()) {
-                return;
-            }
-            String requestId = request.getHeader("X-Request-Id");
-            try (Connection connection = openConnection()) {
-                insert(connection,
-                        "INSERT INTO auth_flow_sessions(flow_id, username, token_type, created_at) VALUES (?, ?, ?, ?)",
-                        flowId, username, String.valueOf(payload.get("tokenType")), Timestamp.from(Instant.now()));
-                insert(connection,
-                        "INSERT INTO auth_flow_audits(flow_id, action, result, created_at) VALUES (?, ?, ?, ?)",
-                        flowId, "AUTH_LOGIN_SUCCESS", "SUCCESS", Timestamp.from(Instant.now()));
-                insert(connection,
-                        "INSERT INTO auth_flow_request_log(flow_id, request_id, path, response_code, created_at) VALUES (?, ?, ?, ?, ?)",
-                        flowId, requestId, request.getRequestURI(), responseCode, Timestamp.from(Instant.now()));
-            } catch (Exception exception) {
-                throw new IllegalStateException("failed to write auth login database evidence", exception);
-            }
-        }
-
-        @Override
-        public void recordLogoutSuccess(jakarta.servlet.http.HttpServletRequest request, String username, String token, int responseCode) {
-            String flowId = request.getHeader("X-Test-Flow-Id");
-            if (flowId == null || flowId.isBlank()) {
-                return;
-            }
-            String requestId = request.getHeader("X-Request-Id");
-            try (Connection connection = openConnection()) {
-                insert(connection,
-                        "INSERT INTO auth_flow_session_revocations(flow_id, username, token, created_at) VALUES (?, ?, ?, ?)",
-                        flowId, username, token, Timestamp.from(Instant.now()));
-                insert(connection,
-                        "INSERT INTO auth_flow_audits(flow_id, action, result, created_at) VALUES (?, ?, ?, ?)",
-                        flowId, "AUTH_LOGOUT_SUCCESS", "SUCCESS", Timestamp.from(Instant.now()));
-                insert(connection,
-                        "INSERT INTO auth_flow_request_log(flow_id, request_id, path, response_code, created_at) VALUES (?, ?, ?, ?, ?)",
-                        flowId, requestId, request.getRequestURI(), responseCode, Timestamp.from(Instant.now()));
-            } catch (Exception exception) {
-                throw new IllegalStateException("failed to write auth logout database evidence", exception);
-            }
-        }
-
-        private static void insert(Connection connection, String sql, Object... values) throws Exception {
-            try (PreparedStatement statement = connection.prepareStatement(sql)) {
-                for (int index = 0; index < values.length; index++) {
-                    statement.setObject(index + 1, values[index]);
-                }
-                statement.executeUpdate();
-            }
-        }
+        return DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
     }
 }
