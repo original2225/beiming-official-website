@@ -6,6 +6,9 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
@@ -43,6 +46,15 @@ import java.util.function.Supplier;
 
 import static cn.beiming.pluginintegration.PluginSupport.*;
 
+@Configuration
+class PluginIntegrationEvidenceConfiguration {
+    @Bean
+    @ConditionalOnMissingBean
+    PluginIntegrationFlowEvidenceRecorder pluginIntegrationFlowEvidenceRecorder() {
+        return new NoopPluginIntegrationFlowEvidenceRecorder();
+    }
+}
+
 @RestController
 @RequestMapping("/api/v1/plugin-integration")
 class PluginIntegrationController {
@@ -50,11 +62,13 @@ class PluginIntegrationController {
     private final PluginStore store;
     private final PluginAuth auth;
     private final PluginProperties properties;
+    private final PluginIntegrationFlowEvidenceRecorder evidenceRecorder;
 
-    PluginIntegrationController(PluginStore store, PluginAuth auth, PluginProperties properties) {
+    PluginIntegrationController(PluginStore store, PluginAuth auth, PluginProperties properties, PluginIntegrationFlowEvidenceRecorder evidenceRecorder) {
         this.store = store;
         this.auth = auth;
         this.properties = properties;
+        this.evidenceRecorder = evidenceRecorder;
     }
 
     @GetMapping("/health")
@@ -124,7 +138,9 @@ class PluginIntegrationController {
                 store.seedInstance(provider);
                 store.healthSnapshots.put("health-" + providerId, PluginHealth.seed("health-" + providerId, providerId, provider.healthStatus));
                 store.audit("PLUGIN_PROVIDER_CREATED", "PROVIDER", providerId, actor, request, body, providerRisk(body), "SUCCESS", null, null, provider.status);
-                return created(request, provider.view());
+                Map<String, Object> view = provider.view();
+                evidenceRecorder.recordProviderWrite(request, "PLUGIN_PROVIDER_CREATED", view, HttpStatus.CREATED.value());
+                return created(request, view);
             }
         });
     }
@@ -148,7 +164,9 @@ class PluginIntegrationController {
                 String before = provider.status;
                 provider.patch(body, actor.userId);
                 store.audit("PLUGIN_PROVIDER_UPDATED", "PROVIDER", providerId, actor, request, body, providerPatchHighRisk(body) ? "HIGH" : "MEDIUM", "SUCCESS", null, before, provider.status);
-                return ok(request, provider.view());
+                Map<String, Object> view = provider.view();
+                evidenceRecorder.recordProviderWrite(request, "PLUGIN_PROVIDER_UPDATED", view, HttpStatus.OK.value());
+                return ok(request, view);
             }
         });
     }
@@ -204,7 +222,9 @@ class PluginIntegrationController {
                 provider.updatedBy = actor.userId;
                 provider.updatedAt = now();
                 store.audit(action, "PROVIDER", providerId, actor, request, body, high ? "HIGH" : "MEDIUM", "SUCCESS", null, before, provider.status);
-                return ok(request, provider.view());
+                Map<String, Object> view = provider.view();
+                evidenceRecorder.recordProviderWrite(request, action, view, HttpStatus.OK.value());
+                return ok(request, view);
             }
         });
     }
@@ -290,7 +310,9 @@ class PluginIntegrationController {
                 PluginSchema schema = PluginSchema.from(schemaId, body, actor.userId);
                 store.schemas.put(schemaId, schema);
                 store.audit("PLUGIN_SCHEMA_CREATED", "SCHEMA", schemaId, actor, request, body, "MEDIUM", "SUCCESS", null, null, schema.status);
-                return created(request, schema.view());
+                Map<String, Object> view = schema.view();
+                evidenceRecorder.recordSchemaWrite(request, "PLUGIN_SCHEMA_CREATED", view, HttpStatus.CREATED.value());
+                return created(request, view);
             }
         });
     }
@@ -311,7 +333,9 @@ class PluginIntegrationController {
                 String before = schema.status;
                 schema.patch(body, actor.userId);
                 store.audit("PLUGIN_SCHEMA_UPDATED", "SCHEMA", schemaId, actor, request, body, "MEDIUM", "SUCCESS", null, before, schema.status);
-                return ok(request, schema.view());
+                Map<String, Object> view = schema.view();
+                evidenceRecorder.recordSchemaWrite(request, "PLUGIN_SCHEMA_UPDATED", view, HttpStatus.OK.value());
+                return ok(request, view);
             }
         });
     }
@@ -343,7 +367,9 @@ class PluginIntegrationController {
                 schema.updatedBy = actor.userId;
                 schema.updatedAt = now();
                 store.audit(action, "SCHEMA", schemaId, actor, request, body, "MEDIUM", "SUCCESS", null, before, schema.status);
-                return ok(request, schema.view());
+                Map<String, Object> view = schema.view();
+                evidenceRecorder.recordSchemaWrite(request, action, view, HttpStatus.OK.value());
+                return ok(request, view);
             }
         });
     }
@@ -384,7 +410,9 @@ class PluginIntegrationController {
                 provider.lastEventAt = event.receivedAt;
                 provider.updatedAt = now();
                 store.audit("PLUGIN_EVENT_INGESTED", "EVENT", eventId, actor, request, body, "MEDIUM", "SUCCESS", null, null, event.validationStatus);
-                return created(request, event.view());
+                Map<String, Object> view = event.view();
+                evidenceRecorder.recordEventWrite(request, "PLUGIN_EVENT_INGESTED", view, HttpStatus.CREATED.value());
+                return created(request, view);
             }
         });
     }
@@ -489,7 +517,9 @@ class PluginIntegrationController {
                 PluginRoute route = PluginRoute.from(ruleId, body, actor.userId);
                 store.routes.put(ruleId, route);
                 store.audit("PLUGIN_ROUTE_RULE_CREATED", "ROUTE_RULE", ruleId, actor, request, body, high ? "HIGH" : "MEDIUM", "SUCCESS", null, null, route.enabled ? "ENABLED" : "DISABLED");
-                return created(request, route.view());
+                Map<String, Object> view = route.view();
+                evidenceRecorder.recordRouteWrite(request, "PLUGIN_ROUTE_RULE_CREATED", view, HttpStatus.CREATED.value());
+                return created(request, view);
             }
         });
     }
@@ -517,7 +547,9 @@ class PluginIntegrationController {
                 String before = route.enabled ? "ENABLED" : "DISABLED";
                 route.patch(body, actor.userId);
                 store.audit("PLUGIN_ROUTE_RULE_UPDATED", "ROUTE_RULE", ruleId, actor, request, body, routeHighRisk(body) ? "HIGH" : "MEDIUM", "SUCCESS", null, before, route.enabled ? "ENABLED" : "DISABLED");
-                return ok(request, route.view());
+                Map<String, Object> view = route.view();
+                evidenceRecorder.recordRouteWrite(request, "PLUGIN_ROUTE_RULE_UPDATED", view, HttpStatus.OK.value());
+                return ok(request, view);
             }
         });
     }
@@ -554,7 +586,9 @@ class PluginIntegrationController {
                 route.updatedBy = actor.userId;
                 route.updatedAt = now();
                 store.audit(enabled ? "PLUGIN_ROUTE_RULE_ENABLED" : "PLUGIN_ROUTE_RULE_DISABLED", "ROUTE_RULE", ruleId, actor, request, body, "MEDIUM", "SUCCESS", null, before, route.enabled ? "ENABLED" : "DISABLED");
-                return ok(request, route.view());
+                Map<String, Object> view = route.view();
+                evidenceRecorder.recordRouteWrite(request, enabled ? "PLUGIN_ROUTE_RULE_ENABLED" : "PLUGIN_ROUTE_RULE_DISABLED", view, HttpStatus.OK.value());
+                return ok(request, view);
             }
         });
     }
@@ -589,7 +623,9 @@ class PluginIntegrationController {
                 PluginTask task = PluginTask.from(taskId, body, actor.userId);
                 store.tasks.put(taskId, task);
                 store.audit("PLUGIN_SYNC_TASK_CREATED", "SYNC_TASK", taskId, actor, request, body, task.riskLevel, "SUCCESS", null, null, task.status);
-                return created(request, task.view());
+                Map<String, Object> view = task.view();
+                evidenceRecorder.recordTaskWrite(request, "PLUGIN_SYNC_TASK_CREATED", view, HttpStatus.CREATED.value());
+                return created(request, view);
             }
         });
     }
@@ -634,7 +670,9 @@ class PluginIntegrationController {
                 task.status = "CANCELED";
                 task.updatedAt = now();
                 store.audit("PLUGIN_SYNC_TASK_CANCELED", "SYNC_TASK", taskId, actor, request, body, "MEDIUM", "SUCCESS", null, before, task.status);
-                return ok(request, task.view());
+                Map<String, Object> view = task.view();
+                evidenceRecorder.recordTaskWrite(request, "PLUGIN_SYNC_TASK_CANCELED", view, HttpStatus.OK.value());
+                return ok(request, view);
             }
         });
     }
@@ -701,7 +739,9 @@ class PluginIntegrationController {
                 PluginMapping mapping = PluginMapping.from(mappingId, body, actor.userId, created ? null : store.mappings.get(mappingId));
                 store.mappings.put(mappingId, mapping);
                 store.audit("PLUGIN_OBJECT_MAPPING_UPSERTED", "OBJECT_MAPPING", mappingId, actor, request, body, high ? "HIGH" : "MEDIUM", "SUCCESS", null, null, mapping.status);
-                return created ? created(request, mapping.view()) : ok(request, mapping.view());
+                Map<String, Object> view = mapping.view();
+                evidenceRecorder.recordMappingWrite(request, "PLUGIN_OBJECT_MAPPING_UPSERTED", view, created ? HttpStatus.CREATED.value() : HttpStatus.OK.value());
+                return created ? created(request, view) : ok(request, view);
             }
         });
     }
@@ -721,7 +761,9 @@ class PluginIntegrationController {
                 mapping.updatedBy = actor.userId;
                 mapping.updatedAt = now();
                 store.audit("PLUGIN_OBJECT_MAPPING_ARCHIVED", "OBJECT_MAPPING", mappingId, actor, request, body, "MEDIUM", "SUCCESS", null, before, mapping.status);
-                return ok(request, mapping.view());
+                Map<String, Object> view = mapping.view();
+                evidenceRecorder.recordMappingWrite(request, "PLUGIN_OBJECT_MAPPING_ARCHIVED", view, HttpStatus.OK.value());
+                return ok(request, view);
             }
         });
     }
@@ -2068,6 +2110,46 @@ class PluginSupport {
 
     static List<String> stringList(Object value) {
         return PluginText.stringList(value);
+    }
+}
+
+interface PluginIntegrationFlowEvidenceRecorder {
+    void recordProviderWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordSchemaWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordEventWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordRouteWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordTaskWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordMappingWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+}
+
+class NoopPluginIntegrationFlowEvidenceRecorder implements PluginIntegrationFlowEvidenceRecorder {
+    @Override
+    public void recordProviderWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordSchemaWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordEventWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordRouteWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordTaskWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordMappingWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
     }
 }
 
