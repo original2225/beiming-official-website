@@ -5,6 +5,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -57,6 +58,12 @@ class CommunityModule {
     CommunityTestControls communityTestControls(@Value("${community.test-controls.enabled:false}") boolean enabled) {
         return new CommunityTestControls(enabled);
     }
+
+    @Bean
+    @ConditionalOnMissingBean
+    CommunityFlowEvidenceRecorder communityFlowEvidenceRecorder() {
+        return new NoopCommunityFlowEvidenceRecorder();
+    }
 }
 
 @RestController
@@ -64,10 +71,12 @@ class CommunityModule {
 class CommunityController {
     private final CommunityStore store;
     private final TestCommunityAuthProvider auth;
+    private final CommunityFlowEvidenceRecorder evidenceRecorder;
 
-    CommunityController(CommunityStore store, TestCommunityAuthProvider auth) {
+    CommunityController(CommunityStore store, TestCommunityAuthProvider auth, CommunityFlowEvidenceRecorder evidenceRecorder) {
         this.store = store;
         this.auth = auth;
+        this.evidenceRecorder = evidenceRecorder;
     }
 
     @GetMapping("/boards")
@@ -111,7 +120,11 @@ class CommunityController {
                                                    HttpServletRequest request) {
         CommunityUser actor = auth.requireUser(authorization);
         MutationResult result = store.createPost(actor, bodyOrEmpty(body), request);
-        return ResponseEntity.status(result.created() ? HttpStatus.CREATED : HttpStatus.OK).body(okBody(result.value()));
+        int responseCode = result.created() ? HttpStatus.CREATED.value() : HttpStatus.OK.value();
+        if (result.created()) {
+            evidenceRecorder.recordPostWrite(request, "COMMUNITY_POST_CREATED", result.value(), responseCode);
+        }
+        return ResponseEntity.status(responseCode).body(okBody(result.value()));
     }
 
     @PatchMapping("/me/posts/{postId}")
@@ -147,7 +160,9 @@ class CommunityController {
                                                       @RequestBody(required = false) Map<String, Object> body,
                                                       HttpServletRequest request) {
         CommunityUser actor = auth.requireUser(authorization);
-        return ResponseEntity.status(HttpStatus.CREATED).body(okBody(store.createComment(actor, postId, bodyOrEmpty(body), request)));
+        Map<String, Object> payload = store.createComment(actor, postId, bodyOrEmpty(body), request);
+        evidenceRecorder.recordCommentWrite(request, "COMMUNITY_COMMENT_CREATED", payload, HttpStatus.CREATED.value());
+        return ResponseEntity.status(HttpStatus.CREATED).body(okBody(payload));
     }
 
     @PatchMapping("/me/comments/{commentId}")
@@ -234,7 +249,9 @@ class CommunityController {
                                                    @RequestBody(required = false) Map<String, Object> body,
                                                    HttpServletRequest request) {
         CommunityUser actor = auth.requireUser(authorization);
-        return ResponseEntity.status(HttpStatus.CREATED).body(okBody(store.createReport(actor, "POST", postId, bodyOrEmpty(body), request)));
+        Map<String, Object> payload = store.createReport(actor, "POST", postId, bodyOrEmpty(body), request);
+        evidenceRecorder.recordReportWrite(request, "COMMUNITY_REPORT_CREATED", payload, HttpStatus.CREATED.value());
+        return ResponseEntity.status(HttpStatus.CREATED).body(okBody(payload));
     }
 
     @PostMapping("/me/comments/{commentId}/reports")
@@ -243,7 +260,9 @@ class CommunityController {
                                                       @RequestBody(required = false) Map<String, Object> body,
                                                       HttpServletRequest request) {
         CommunityUser actor = auth.requireUser(authorization);
-        return ResponseEntity.status(HttpStatus.CREATED).body(okBody(store.createReport(actor, "COMMENT", commentId, bodyOrEmpty(body), request)));
+        Map<String, Object> payload = store.createReport(actor, "COMMENT", commentId, bodyOrEmpty(body), request);
+        evidenceRecorder.recordReportWrite(request, "COMMUNITY_REPORT_CREATED", payload, HttpStatus.CREATED.value());
+        return ResponseEntity.status(HttpStatus.CREATED).body(okBody(payload));
     }
 
     @GetMapping("/me/reports")
@@ -306,7 +325,11 @@ class CommunityController {
                                                     HttpServletRequest request) {
         CommunityUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
         MutationResult result = store.createBoard(actor, bodyOrEmpty(body), request);
-        return ResponseEntity.status(result.created() ? HttpStatus.CREATED : HttpStatus.OK).body(okBody(result.value()));
+        int responseCode = result.created() ? HttpStatus.CREATED.value() : HttpStatus.OK.value();
+        if (result.created()) {
+            evidenceRecorder.recordBoardWrite(request, "COMMUNITY_BOARD_CREATED", result.value(), responseCode);
+        }
+        return ResponseEntity.status(responseCode).body(okBody(result.value()));
     }
 
     @PatchMapping("/admin/boards/{boardId}")
@@ -2181,6 +2204,34 @@ record CommunityUser(String userId, String displayName, Set<String> roles, Strin
 }
 
 record CommunityTestControls(boolean enabled) {
+}
+
+interface CommunityFlowEvidenceRecorder {
+    void recordBoardWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordPostWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordCommentWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordReportWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+}
+
+class NoopCommunityFlowEvidenceRecorder implements CommunityFlowEvidenceRecorder {
+    @Override
+    public void recordBoardWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordPostWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordCommentWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordReportWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
 }
 
 record IdempotencyRecord(String fingerprint, Map<String, Object> value) {
