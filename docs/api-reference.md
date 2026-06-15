@@ -134,6 +134,20 @@
 
 审批、审计和运维摘要接口包括 `GET /approvals`、`GET /approvals/{approvalId}`、`PATCH /approvals/{approvalId}/approve`、`PATCH /approvals/{approvalId}/reject`、`GET /audit-logs` 和 `GET /ops/summary`。审批字段包括 `approvalId`、`taskId`、`status`、`riskLevel`、`requestedBy`、`approvedBy`、`reviewComment`、`createdAt`、`reviewedAt` 和 `expiresAt`。关键审计字段包括 `requestId`、`actorUserId`、`actorRole`、`actorPermissions`、`targetType`、`targetId`、`action`、`riskLevel`、`reason`、`paramsSummary`、`beforeState`、`afterState`、`result`、`failureReason` 和 `createdAt`。涉及数据库新增或更新的自动化测试必须通过真实 HTTP 请求进入后端，完成后使用独立 SQL 查询验证节点、运行时快照、任务、审批、审计和请求日志证据，并在测试日志输出 `SQL evidence`。
 
+## cloudreve-sync 模块接口
+
+`cloudreve-sync` 由 `ops-core` 承载，路径前缀为 `/api/v1/cloudreve-sync`，负责 Cloudreve provider 配置摘要、文件快照、分享快照、分享解析、同步任务、审计和运维摘要。所有非健康检查接口都要求登录，读取接口要求 `NODE_READ` 或 `FILE_MANAGE`，provider 写入要求 `NODE_WRITE` 且操作者为 `ADMIN` 或 `OWNER`，分享解析要求 `FILE_MANAGE` 且操作者为 `ADMIN` 或 `OWNER`，同步任务创建和取消要求 `FILE_MANAGE` 或 `NODE_WRITE`。所有写接口必须带 `idempotencyKey`，同一操作者、同一作用域、同一请求指纹返回原结果；同键不同指纹返回 `409/49712`。
+
+健康和摘要接口包括 `GET /health` 和 `GET /ops/summary`。摘要返回 provider、文件、分享、任务、审计、幂等、配额、成本估算、降级状态和生产缺口。依赖认证不可用、超时或结构不兼容时分别返回 `502/46710`、`504/46711` 和 `502/46712`；本地测试控制关闭时，所有测试控制头必须被忽略。
+
+provider 接口包括 `GET /providers`、`GET /providers/{providerId}`、`POST /providers`、`PATCH /providers/{providerId}`、`PATCH /providers/{providerId}/disable` 和 `PATCH /providers/{providerId}/enable`。provider 字段包括 `providerId`、`displayName`、`baseUrlSummary`、`authMode`、`status`、`capabilities`、`quotaTotalBytes`、`quotaUsedBytes`、`quotaUsagePercent`、`quotaWarningThresholdPercent`、`quotaStatus`、`estimatedMonthlyCostCents`、`pricingPlanSummary`、`opsAssetRef`、`lastHealthStatus`、`lastCheckedAt`、`lastSyncJobId`、`createdBy`、`updatedBy`、`createdAt` 和 `updatedAt`。凭据只允许写入，不允许在响应、审计和日志中返回明文。provider 不存在返回 `404/49700`，重复 provider 或禁用 provider 执行同步返回 `409/49710`，Cloudreve 未授权返回 `502/46703`，ops-control 资产依赖不可用返回 `502/46730`。
+
+文件和分享接口包括 `GET /files`、`GET /shares` 和 `POST /shares/resolve`。文件路径必须以 `/` 开头，禁止路径穿越、反斜杠和控制字符，非法路径返回 `400/49714`。分享解析可以通过 `fileId`、`path` 或 `shareUrl` 定位文件，成功后返回 provider、file、share、资源引用、可下载状态和降级摘要。Cloudreve 不可用且允许使用可用旧快照时返回 `stale=true` 和降级原因；没有可用旧快照时返回 `409/49713`。Cloudreve 超时、结构不兼容和未授权分别返回 `504/46701`、`502/46702` 和 `502/46703`。资源依赖不可用、超时和结构不兼容分别返回 `502/46720`、`504/46721` 和 `502/46722`。
+
+同步任务接口包括 `POST /sync-jobs`、`GET /sync-jobs`、`GET /sync-jobs/{jobId}` 和 `PATCH /sync-jobs/{jobId}/cancel`。任务字段包括 `jobId`、`jobType`、`status`、`trigger`、`providerId`、`target`、`idempotencyKey`、`steps`、`resultSummary`、`failureReason`、`createdBy`、`createdAt`、`startedAt`、`finishedAt` 和 `updatedAt`。任务类型包括 `PROVIDER_HEALTH_CHECK`、`DIRECTORY_SYNC`、`SHARE_REFRESH` 和 `RESOURCE_LINK_VERIFY`。状态包括 `PENDING`、`RUNNING`、`SUCCEEDED`、`FAILED` 和 `CANCELLED`。只有 `PENDING` 和 `RUNNING` 可以取消，终态取消返回 `409/49711`。写入同步状态失败返回 `500/55302`。
+
+审计接口为 `GET /audit-logs`。审计筛选支持 `actorUserId`、`providerId`、`fileId`、`shareSnapshotId`、`jobId`、`action`、`result`、`from`、`to` 和 `sort`。审计字段至少包括 `requestId`、`actorUserId`、`actorRole`、`actorPermissions`、`targetType`、`targetId`、`action`、`riskLevel`、`reason`、`paramsSummary`、`beforeState`、`afterState`、`result`、`failureReason`、`providerId`、`fileId`、`shareSnapshotId`、`jobId`、`dependencyStatus` 和 `createdAt`。审计写入失败必须阻断对应写操作并返回 `500/55301`。涉及数据库新增或更新的自动化测试必须通过真实 HTTP 请求进入后端，完成后使用独立 SQL 查询验证 provider、share、sync job、文件快照、审计和请求日志证据，并在测试日志输出 `SQL evidence`。
+
 ## 受控生产入口字段
 
 统一后端 readiness 可以暴露生产入口、旧入口退役、外部入口和审计观测相关状态字段。当前这些字段只代表仓库内运行态和外部证据接收状态，不代表真实生产切流完成。

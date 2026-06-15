@@ -7,6 +7,9 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -38,6 +41,15 @@ import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
+@Configuration
+class CloudreveSyncEvidenceConfiguration {
+    @Bean
+    @ConditionalOnMissingBean
+    CloudreveSyncFlowEvidenceRecorder cloudreveSyncFlowEvidenceRecorder() {
+        return new NoopCloudreveSyncFlowEvidenceRecorder();
+    }
+}
+
 @RestController
 @RequestMapping("/api/v1/cloudreve-sync")
 class CloudreveSyncController {
@@ -45,11 +57,13 @@ class CloudreveSyncController {
     private final CloudreveStore store;
     private final CloudreveAuth auth;
     private final CloudreveProperties properties;
+    private final CloudreveSyncFlowEvidenceRecorder evidenceRecorder;
 
-    CloudreveSyncController(CloudreveStore store, CloudreveAuth auth, CloudreveProperties properties) {
+    CloudreveSyncController(CloudreveStore store, CloudreveAuth auth, CloudreveProperties properties, CloudreveSyncFlowEvidenceRecorder evidenceRecorder) {
         this.store = store;
         this.auth = auth;
         this.properties = properties;
+        this.evidenceRecorder = evidenceRecorder;
     }
 
     @GetMapping("/health")
@@ -116,6 +130,7 @@ class CloudreveSyncController {
                 store.audit("CLOUDREVE_PROVIDER_CREATED", "PROVIDER", providerId, actor, request, body, "MEDIUM", "SUCCESS", null, null, provider.status);
                 Map<String, Object> view = provider.view();
                 view.put("credentialStored", true);
+                evidenceRecorder.recordProviderWrite(request, "CLOUDREVE_PROVIDER_CREATED", view, HttpStatus.CREATED.value());
                 return created(request, view);
             }
         });
@@ -144,6 +159,7 @@ class CloudreveSyncController {
                 store.audit("CLOUDREVE_PROVIDER_UPDATED", "PROVIDER", providerId, actor, request, body, "MEDIUM", "SUCCESS", null, before, provider.status);
                 Map<String, Object> view = provider.view();
                 view.put("credentialRotated", body.containsKey("credential"));
+                evidenceRecorder.recordProviderWrite(request, "CLOUDREVE_PROVIDER_UPDATED", view, HttpStatus.OK.value());
                 return ok(request, view);
             }
         });
@@ -163,7 +179,9 @@ class CloudreveSyncController {
             provider.updatedAt = now();
             provider.updatedBy = actor.userId;
             store.audit("CLOUDREVE_PROVIDER_DISABLED", "PROVIDER", providerId, actor, request, body, "MEDIUM", "SUCCESS", null, before, provider.status);
-            return ok(request, provider.view());
+            Map<String, Object> view = provider.view();
+            evidenceRecorder.recordProviderWrite(request, "CLOUDREVE_PROVIDER_DISABLED", view, HttpStatus.OK.value());
+            return ok(request, view);
         });
     }
 
@@ -184,7 +202,9 @@ class CloudreveSyncController {
             provider.updatedAt = now();
             provider.updatedBy = actor.userId;
             store.audit("CLOUDREVE_PROVIDER_ENABLED", "PROVIDER", providerId, actor, request, body, "MEDIUM", "SUCCESS", null, before, provider.status);
-            return ok(request, provider.view());
+            Map<String, Object> view = provider.view();
+            evidenceRecorder.recordProviderWrite(request, "CLOUDREVE_PROVIDER_ENABLED", view, HttpStatus.OK.value());
+            return ok(request, view);
         });
     }
 
@@ -252,6 +272,7 @@ class CloudreveSyncController {
                     stale.put("degraded", true);
                     stale.put("degradeReasons", List.of("CLOUDREVE_UNAVAILABLE_USING_STALE_SHARE"));
                     store.audit("CLOUDREVE_SHARE_RESOLVED", "SHARE", share.shareSnapshotId, actor, request, body, "MEDIUM", "SUCCESS", null, null, share.status);
+                    evidenceRecorder.recordShareWrite(request, "CLOUDREVE_SHARE_RESOLVED", stale, HttpStatus.OK.value());
                     return ok(request, stale);
                 }
                 if (share == null) {
@@ -263,7 +284,9 @@ class CloudreveSyncController {
                 share.lastResolvedAt = now();
                 share.lastCheckedAt = now();
                 store.audit("CLOUDREVE_SHARE_RESOLVED", "SHARE", share.shareSnapshotId, actor, request, body, "MEDIUM", "SUCCESS", null, null, share.status);
-                return ok(request, resolveResult(provider, file, share));
+                Map<String, Object> result = resolveResult(provider, file, share);
+                evidenceRecorder.recordShareWrite(request, "CLOUDREVE_SHARE_RESOLVED", result, HttpStatus.OK.value());
+                return ok(request, result);
             }
         });
     }
@@ -295,11 +318,18 @@ class CloudreveSyncController {
                         target, text(body.get("idempotencyKey")), actor.userId);
                 job.resultSummary = resultSummary(job);
                 store.jobs.put(jobId, job);
+                CloudreveFile generatedFile = null;
                 if ("DIRECTORY_SYNC".equals(job.jobType) && "SUCCEEDED".equals(status)) {
-                    store.files.putIfAbsent("file-sync-" + jobId, new CloudreveFile("file-sync-" + jobId, provider.providerId, "/packs", "synced-" + jobId + ".zip", "FILE", "ACTIVE", "res-public-client", null));
+                    generatedFile = new CloudreveFile("file-sync-" + jobId, provider.providerId, "/packs", "synced-" + jobId + ".zip", "FILE", "ACTIVE", "res-public-client", null);
+                    store.files.putIfAbsent(generatedFile.fileId, generatedFile);
                 }
                 store.audit("CLOUDREVE_SYNC_JOB_CREATED", "SYNC_JOB", jobId, actor, request, body, "MEDIUM", "SUCCESS", null, null, status);
-                return created(request, job.view());
+                Map<String, Object> view = job.view();
+                if (generatedFile != null) {
+                    view.put("generatedFile", generatedFile.view());
+                }
+                evidenceRecorder.recordJobWrite(request, "CLOUDREVE_SYNC_JOB_CREATED", view, HttpStatus.CREATED.value());
+                return created(request, view);
             }
         });
     }
@@ -344,7 +374,9 @@ class CloudreveSyncController {
             job.finishedAt = now();
             job.updatedAt = now();
             store.audit("CLOUDREVE_SYNC_JOB_CANCELLED", "SYNC_JOB", jobId, actor, request, body, "MEDIUM", "SUCCESS", null, before, job.status);
-            return ok(request, job.view());
+            Map<String, Object> view = job.view();
+            evidenceRecorder.recordJobWrite(request, "CLOUDREVE_SYNC_JOB_CANCELLED", view, HttpStatus.OK.value());
+            return ok(request, view);
         });
     }
 
@@ -685,6 +717,28 @@ class CloudreveSyncController {
     @FunctionalInterface
     interface ResponseSupplier {
         ResponseEntity<Map<String, Object>> get();
+    }
+}
+
+interface CloudreveSyncFlowEvidenceRecorder {
+    void recordProviderWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordShareWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordJobWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+}
+
+class NoopCloudreveSyncFlowEvidenceRecorder implements CloudreveSyncFlowEvidenceRecorder {
+    @Override
+    public void recordProviderWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordShareWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordJobWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
     }
 }
 
