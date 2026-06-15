@@ -9,6 +9,9 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
@@ -41,6 +44,15 @@ import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+@Configuration
+class AlertingEvidenceConfiguration {
+    @Bean
+    @ConditionalOnMissingBean
+    AlertingFlowEvidenceRecorder alertingFlowEvidenceRecorder() {
+        return new NoopAlertingFlowEvidenceRecorder();
+    }
+}
+
 @RestController
 @RequestMapping("/api/v1/alerting")
 class AlertingController {
@@ -48,11 +60,13 @@ class AlertingController {
     private final AlertingStore store;
     private final AlertingAuth auth;
     private final AlertingProperties properties;
+    private final AlertingFlowEvidenceRecorder evidenceRecorder;
 
-    AlertingController(AlertingStore store, AlertingAuth auth, AlertingProperties properties) {
+    AlertingController(AlertingStore store, AlertingAuth auth, AlertingProperties properties, AlertingFlowEvidenceRecorder evidenceRecorder) {
         this.store = store;
         this.auth = auth;
         this.properties = properties;
+        this.evidenceRecorder = evidenceRecorder;
     }
 
     @GetMapping("/health")
@@ -158,7 +172,9 @@ class AlertingController {
                 AlertRule rule = AlertRule.from(ruleId, body, "DRAFT", actor.userId);
                 store.rules.put(ruleId, rule);
                 store.audit("ALERT_RULE_CREATED", "RULE", ruleId, actor, request, body, "MEDIUM", "SUCCESS", null, null, rule.status);
-                return created(request, rule.view());
+                Map<String, Object> view = rule.view();
+                evidenceRecorder.recordRuleWrite(request, "ALERT_RULE_CREATED", view, HttpStatus.CREATED.value());
+                return created(request, view);
             }
         });
     }
@@ -184,7 +200,9 @@ class AlertingController {
                 String before = rule.status;
                 rule.patch(body, actor.userId);
                 store.audit("ALERT_RULE_UPDATED", "RULE", ruleId, actor, request, body, "MEDIUM", "SUCCESS", null, before, rule.status);
-                return ok(request, rule.view());
+                Map<String, Object> view = rule.view();
+                evidenceRecorder.recordRuleWrite(request, "ALERT_RULE_UPDATED", view, HttpStatus.OK.value());
+                return ok(request, view);
             }
         });
     }
@@ -216,7 +234,9 @@ class AlertingController {
                 rule.updatedBy = actor.userId;
                 rule.updatedAt = now();
                 store.audit(action, "RULE", ruleId, actor, request, body, "MEDIUM", "SUCCESS", null, before, rule.status);
-                return ok(request, rule.view());
+                Map<String, Object> view = rule.view();
+                evidenceRecorder.recordRuleWrite(request, action, view, HttpStatus.OK.value());
+                return ok(request, view);
             }
         });
     }
@@ -287,7 +307,16 @@ class AlertingController {
                 AlertEvaluation evaluation = new AlertEvaluation(evaluationId, ruleId, "MATCHED", sourceRef, alertId, dedupeHit, suppressed, actor.userId);
                 store.evaluations.put(evaluationId, evaluation);
                 store.audit("ALERT_RULE_EVALUATED", "RULE", ruleId, actor, request, body, "MEDIUM", "SUCCESS", null, null, evaluation.status);
-                return created(request, evaluation.view());
+                Map<String, Object> evaluationView = evaluation.view();
+                String recordedAlertId = alertId;
+                Map<String, Object> alertView = recordedAlertId == null ? Map.of() : store.alert(recordedAlertId).view();
+                Map<String, Object> deliveryView = store.deliveries.values().stream()
+                        .filter(delivery -> recordedAlertId != null && recordedAlertId.equals(delivery.alertId))
+                        .findFirst()
+                        .map(AlertDelivery::view)
+                        .orElse(Map.of());
+                evidenceRecorder.recordEvaluationWrite(request, "ALERT_RULE_EVALUATED", evaluationView, alertView, deliveryView, HttpStatus.CREATED.value());
+                return created(request, evaluationView);
             }
         });
     }
@@ -339,7 +368,9 @@ class AlertingController {
                     alert.acknowledgedAt = now();
                 }
                 store.audit("ALERT_ACKNOWLEDGED", "ALERT", alertId, actor, request, body, "MEDIUM", "SUCCESS", null, before, alert.status);
-                return ok(request, alert.view());
+                Map<String, Object> view = alert.view();
+                evidenceRecorder.recordAlertWrite(request, "ALERT_ACKNOWLEDGED", view, actor.userId, HttpStatus.OK.value());
+                return ok(request, view);
             }
         });
     }
@@ -368,7 +399,9 @@ class AlertingController {
                     alert.resolutionSummary = text(body.get("resolutionSummary"));
                 }
                 store.audit("ALERT_CLOSED", "ALERT", alertId, actor, request, body, "HIGH", "SUCCESS", null, before, alert.status);
-                return ok(request, alert.view());
+                Map<String, Object> view = alert.view();
+                evidenceRecorder.recordAlertWrite(request, "ALERT_CLOSED", view, actor.userId, HttpStatus.OK.value());
+                return ok(request, view);
             }
         });
     }
@@ -406,7 +439,9 @@ class AlertingController {
                 silence.refreshStatus();
                 store.silences.put(silenceId, silence);
                 store.audit("ALERT_SILENCE_CREATED", "SILENCE", silenceId, actor, request, body, "MEDIUM", "SUCCESS", null, null, silence.status);
-                return created(request, silence.view());
+                Map<String, Object> view = silence.view();
+                evidenceRecorder.recordSilenceWrite(request, "ALERT_SILENCE_CREATED", view, HttpStatus.CREATED.value());
+                return created(request, view);
             }
         });
     }
@@ -432,7 +467,9 @@ class AlertingController {
                     silence.cancelledAt = now();
                 }
                 store.audit("ALERT_SILENCE_CANCELLED", "SILENCE", silenceId, actor, request, body, "MEDIUM", "SUCCESS", null, before, silence.status);
-                return ok(request, silence.view());
+                Map<String, Object> view = silence.view();
+                evidenceRecorder.recordSilenceWrite(request, "ALERT_SILENCE_CANCELLED", view, HttpStatus.OK.value());
+                return ok(request, view);
             }
         });
     }
@@ -466,7 +503,9 @@ class AlertingController {
                 AlertRoute route = AlertRoute.from(routeId, body, actor.userId);
                 store.routes.put(routeId, route);
                 store.audit("ALERT_ROUTE_CREATED", "ROUTE", routeId, actor, request, body, "HIGH", "SUCCESS", null, null, route.status);
-                return created(request, route.view());
+                Map<String, Object> view = route.view();
+                evidenceRecorder.recordRouteWrite(request, "ALERT_ROUTE_CREATED", view, HttpStatus.CREATED.value());
+                return created(request, view);
             }
         });
     }
@@ -485,7 +524,9 @@ class AlertingController {
                 String before = route.status;
                 route.patch(body, actor.userId);
                 store.audit("ALERT_ROUTE_UPDATED", "ROUTE", routeId, actor, request, body, "HIGH", "SUCCESS", null, before, route.status);
-                return ok(request, route.view());
+                Map<String, Object> view = route.view();
+                evidenceRecorder.recordRouteWrite(request, "ALERT_ROUTE_UPDATED", view, HttpStatus.OK.value());
+                return ok(request, view);
             }
         });
     }
@@ -513,7 +554,9 @@ class AlertingController {
                         textOr(body.get("reason"), "alert route test"));
                 store.deliveries.put(deliveryId, delivery);
                 store.audit("ALERT_ROUTE_TESTED", "ROUTE", routeId, actor, request, body, "HIGH", "SUCCESS", null, null, "SENT");
-                return created(request, delivery.view());
+                Map<String, Object> view = delivery.view();
+                evidenceRecorder.recordDeliveryWrite(request, "ALERT_ROUTE_TESTED", view, HttpStatus.CREATED.value());
+                return created(request, view);
             }
         });
     }
@@ -1867,5 +1910,47 @@ class AlertingText {
             source.forEach((key, mapValue) -> result.put(String.valueOf(key), mapValue));
         }
         return result;
+    }
+}
+
+interface AlertingFlowEvidenceRecorder {
+    void recordRuleWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordEvaluationWrite(HttpServletRequest request, String action, Map<String, Object> evaluation, Map<String, Object> alert,
+                               Map<String, Object> delivery, int responseCode);
+
+    void recordAlertWrite(HttpServletRequest request, String action, Map<String, Object> payload, String actorUserId, int responseCode);
+
+    void recordSilenceWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordRouteWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordDeliveryWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+}
+
+class NoopAlertingFlowEvidenceRecorder implements AlertingFlowEvidenceRecorder {
+    @Override
+    public void recordRuleWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordEvaluationWrite(HttpServletRequest request, String action, Map<String, Object> evaluation, Map<String, Object> alert,
+                                      Map<String, Object> delivery, int responseCode) {
+    }
+
+    @Override
+    public void recordAlertWrite(HttpServletRequest request, String action, Map<String, Object> payload, String actorUserId, int responseCode) {
+    }
+
+    @Override
+    public void recordSilenceWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordRouteWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordDeliveryWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
     }
 }
