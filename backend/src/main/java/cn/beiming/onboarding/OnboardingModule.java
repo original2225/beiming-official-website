@@ -5,6 +5,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -58,6 +59,12 @@ class OnboardingModule {
     OnboardingTestControls onboardingTestControls(@Value("${onboarding.test-controls.enabled:false}") boolean enabled) {
         return new OnboardingTestControls(enabled);
     }
+
+    @Bean
+    @ConditionalOnMissingBean
+    OnboardingFlowEvidenceRecorder onboardingFlowEvidenceRecorder() {
+        return new NoopOnboardingFlowEvidenceRecorder();
+    }
 }
 
 @RestController
@@ -65,10 +72,12 @@ class OnboardingModule {
 class OnboardingController {
     private final OnboardingStore store;
     private final TestOnboardingAuthProvider auth;
+    private final OnboardingFlowEvidenceRecorder evidenceRecorder;
 
-    OnboardingController(OnboardingStore store, TestOnboardingAuthProvider auth) {
+    OnboardingController(OnboardingStore store, TestOnboardingAuthProvider auth, OnboardingFlowEvidenceRecorder evidenceRecorder) {
         this.store = store;
         this.auth = auth;
+        this.evidenceRecorder = evidenceRecorder;
     }
 
     @GetMapping("/me/progress")
@@ -84,15 +93,19 @@ class OnboardingController {
                                               HttpServletRequest request) {
         AuthContext user = auth.requireUser(authorization, request);
         MutationResult result = store.start(user, bodyOrEmpty(body), request);
-        return ResponseEntity.status(result.created() ? HttpStatus.CREATED : HttpStatus.OK).body(okBody(result.application()));
+        ResponseEntity<Map<String, Object>> response = ResponseEntity.status(result.created() ? HttpStatus.CREATED : HttpStatus.OK).body(okBody(result.application()));
+        evidenceRecorder.recordApplicationWrite(request, result.created() ? "ONBOARDING_STARTED" : "ONBOARDING_START_REPLAYED", result.application(), response.getStatusCode().value());
+        return response;
     }
 
     @PatchMapping("/me/profile-confirmation")
     Map<String, Object> confirmProfile(@RequestHeader(value = "Authorization", required = false) String authorization,
                                        @RequestBody(required = false) Map<String, Object> body,
-                                       HttpServletRequest request) {
+        HttpServletRequest request) {
         AuthContext user = auth.requireUser(authorization, request);
-        return ok(store.confirmProfile(user, bodyOrEmpty(body), request));
+        Map<String, Object> payload = store.confirmProfile(user, bodyOrEmpty(body), request);
+        evidenceRecorder.recordConfirmationWrite(request, "ONBOARDING_PROFILE_CONFIRMED", "PROFILE", payload, HttpStatus.OK.value());
+        return ok(payload);
     }
 
     @PatchMapping("/me/rules-confirmation")
@@ -114,9 +127,11 @@ class OnboardingController {
     @PostMapping("/me/advance")
     Map<String, Object> advance(@RequestHeader(value = "Authorization", required = false) String authorization,
                                 @RequestBody(required = false) Map<String, Object> body,
-                                HttpServletRequest request) {
+        HttpServletRequest request) {
         AuthContext user = auth.requireUser(authorization, request);
-        return ok(store.advance(user, bodyOrEmpty(body), request));
+        Map<String, Object> payload = store.advance(user, bodyOrEmpty(body), request);
+        evidenceRecorder.recordApplicationWrite(request, "ONBOARDING_READY_FOR_EXAM", payload, HttpStatus.OK.value());
+        return ok(payload);
     }
 
     @GetMapping("/me/next-action")
@@ -163,9 +178,11 @@ class OnboardingController {
     Map<String, Object> block(@RequestHeader(value = "Authorization", required = false) String authorization,
                               @PathVariable String applicationId,
                               @RequestBody(required = false) Map<String, Object> body,
-                              HttpServletRequest request) {
+        HttpServletRequest request) {
         AuthContext actor = auth.requireAny(authorization, request, "ADMIN", "OWNER");
-        return ok(store.block(actor, applicationId, bodyOrEmpty(body), request));
+        Map<String, Object> payload = store.block(actor, applicationId, bodyOrEmpty(body), request);
+        evidenceRecorder.recordApplicationWrite(request, "ONBOARDING_BLOCKED", payload, HttpStatus.OK.value());
+        return ok(payload);
     }
 
     @PatchMapping("/admin/applications/{applicationId}/unblock")
@@ -1105,6 +1122,22 @@ record IdempotencyRecord(String fingerprint, Map<String, Object> value) {
 }
 
 record MutationResult(boolean created, Map<String, Object> application) {
+}
+
+interface OnboardingFlowEvidenceRecorder {
+    void recordApplicationWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordConfirmationWrite(HttpServletRequest request, String action, String confirmationType, Map<String, Object> payload, int responseCode);
+}
+
+class NoopOnboardingFlowEvidenceRecorder implements OnboardingFlowEvidenceRecorder {
+    @Override
+    public void recordApplicationWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordConfirmationWrite(HttpServletRequest request, String action, String confirmationType, Map<String, Object> payload, int responseCode) {
+    }
 }
 
 record OnboardingTestControls(boolean enabled) {
