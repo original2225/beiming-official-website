@@ -7,6 +7,9 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -42,17 +45,28 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 
+@Configuration
+class CalendarEvidenceConfiguration {
+    @Bean
+    @ConditionalOnMissingBean
+    CalendarFlowEvidenceRecorder calendarFlowEvidenceRecorder() {
+        return new NoopCalendarFlowEvidenceRecorder();
+    }
+}
+
 @RestController
 @RequestMapping("/api/v1/calendar")
 class CalendarController {
     private final CalendarStore store;
     private final CalendarAuth auth;
     private final CalendarProperties properties;
+    private final CalendarFlowEvidenceRecorder evidenceRecorder;
 
-    CalendarController(CalendarStore store, CalendarAuth auth, CalendarProperties properties) {
+    CalendarController(CalendarStore store, CalendarAuth auth, CalendarProperties properties, CalendarFlowEvidenceRecorder evidenceRecorder) {
         this.store = store;
         this.auth = auth;
         this.properties = properties;
+        this.evidenceRecorder = evidenceRecorder;
     }
 
     @GetMapping("/events")
@@ -202,7 +216,11 @@ class CalendarController {
             ensureWatchWritable(request);
             CalendarWatchRecord watch = store.watch(event, actor, body);
             store.audit("CALENDAR_EVENT_WATCHED", event.eventId, watch.watchId, actor.userId, "SUCCESS");
-            return created(request, Map.of("watch", watch.view(), "event", event.publicView()));
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("watch", watch.view());
+            payload.put("event", event.publicView());
+            evidenceRecorder.recordWatchWrite(request, "CALENDAR_EVENT_WATCHED", payload, HttpStatus.CREATED.value());
+            return created(request, payload);
         });
     }
 
@@ -216,7 +234,11 @@ class CalendarController {
             ensureWatchWritable(request);
             CalendarWatchRecord watch = store.unwatch(event, actor, body);
             store.audit("CALENDAR_EVENT_UNWATCHED", event.eventId, watch.watchId, actor.userId, "SUCCESS");
-            return ok(request, Map.of("watch", watch.view(), "event", event.summaryView()));
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("watch", watch.view());
+            payload.put("event", event.summaryView());
+            evidenceRecorder.recordWatchWrite(request, "CALENDAR_EVENT_UNWATCHED", payload, HttpStatus.OK.value());
+            return ok(request, payload);
         });
     }
 
@@ -285,7 +307,9 @@ class CalendarController {
             ensureAuditWritable(request);
             CalendarEventRecord event = store.createEvent(body, actor);
             store.audit("CALENDAR_EVENT_CREATED", event.eventId, event.eventId, actor.userId, "SUCCESS");
-            return created(request, event.adminView());
+            Map<String, Object> payload = event.adminView();
+            evidenceRecorder.recordEventWrite(request, "CALENDAR_EVENT_CREATED", payload, HttpStatus.CREATED.value());
+            return created(request, payload);
         });
     }
 
@@ -306,7 +330,9 @@ class CalendarController {
             ensureAuditWritable(request);
             store.applyEventFields(event, body, actor);
             store.audit("CALENDAR_EVENT_UPDATED", event.eventId, event.eventId, actor.userId, "SUCCESS");
-            return ok(request, event.adminView());
+            Map<String, Object> payload = event.adminView();
+            evidenceRecorder.recordEventWrite(request, "CALENDAR_EVENT_UPDATED", payload, HttpStatus.OK.value());
+            return ok(request, payload);
         });
     }
 
@@ -349,7 +375,9 @@ class CalendarController {
             event.updatedBy = actor.userId;
             event.reminderFailure = notificationFailure(request);
             store.audit("CALENDAR_EVENT_PUBLISHED", event.eventId, event.eventId, actor.userId, "SUCCESS");
-            return ok(request, event.adminView());
+            Map<String, Object> payload = event.adminView();
+            evidenceRecorder.recordEventWrite(request, "CALENDAR_EVENT_PUBLISHED", payload, HttpStatus.OK.value());
+            return ok(request, payload);
         });
     }
 
@@ -374,7 +402,9 @@ class CalendarController {
             event.updatedBy = actor.userId;
             event.reminderFailure = notificationFailure(request);
             store.audit("CALENDAR_EVENT_OFFLINED", event.eventId, event.eventId, actor.userId, "SUCCESS");
-            return ok(request, event.adminView());
+            Map<String, Object> payload = event.adminView();
+            evidenceRecorder.recordEventWrite(request, "CALENDAR_EVENT_OFFLINED", payload, HttpStatus.OK.value());
+            return ok(request, payload);
         });
     }
 
@@ -395,7 +425,9 @@ class CalendarController {
             event.updatedAt = now();
             event.updatedBy = actor.userId;
             store.audit("CALENDAR_EVENT_ARCHIVED", event.eventId, event.eventId, actor.userId, "SUCCESS");
-            return ok(request, event.adminView());
+            Map<String, Object> payload = event.adminView();
+            evidenceRecorder.recordEventWrite(request, "CALENDAR_EVENT_ARCHIVED", payload, HttpStatus.OK.value());
+            return ok(request, payload);
         });
     }
 
@@ -419,7 +451,9 @@ class CalendarController {
             event.updatedAt = now();
             event.updatedBy = actor.userId;
             store.audit("CALENDAR_EVENT_DELETED", event.eventId, event.eventId, actor.userId, "SUCCESS");
-            return ok(request, event.adminView());
+            Map<String, Object> payload = event.adminView();
+            evidenceRecorder.recordEventWrite(request, "CALENDAR_EVENT_DELETED", payload, HttpStatus.OK.value());
+            return ok(request, payload);
         });
     }
 
@@ -464,6 +498,11 @@ class CalendarController {
             data.put("items", summaries);
             data.put("activityMode", "TEST_STUB");
             data.put("lastSyncedAt", store.lastActivitySyncAt);
+            data.put("syncedEvents", store.events.values().stream()
+                    .filter(event -> "ACTIVITY".equals(event.sourceType))
+                    .map(CalendarEventRecord::adminView)
+                    .toList());
+            evidenceRecorder.recordActivitySyncWrite(request, "CALENDAR_ACTIVITY_SYNCED", data, HttpStatus.OK.value());
             return ok(request, data);
         });
     }
@@ -541,7 +580,9 @@ class CalendarController {
                 event.reviewedBy = actor.userId;
             }
             store.audit(action, event.eventId, event.eventId, actor.userId, "SUCCESS");
-            return ok(request, event.adminView());
+            Map<String, Object> payload = event.adminView();
+            evidenceRecorder.recordEventWrite(request, action, payload, HttpStatus.OK.value());
+            return ok(request, payload);
         });
     }
 
@@ -1326,6 +1367,28 @@ class Actor {
         this.role = role;
         this.displayName = displayName;
         this.authMode = authMode;
+    }
+}
+
+interface CalendarFlowEvidenceRecorder {
+    void recordEventWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordWatchWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordActivitySyncWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+}
+
+class NoopCalendarFlowEvidenceRecorder implements CalendarFlowEvidenceRecorder {
+    @Override
+    public void recordEventWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordWatchWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordActivitySyncWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
     }
 }
 
