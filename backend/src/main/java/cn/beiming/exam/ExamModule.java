@@ -5,6 +5,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -59,6 +60,12 @@ class ExamModule {
     ExamTestControls examTestControls(@Value("${exam.test-controls.enabled:false}") boolean enabled) {
         return new ExamTestControls(enabled);
     }
+
+    @Bean
+    @ConditionalOnMissingBean
+    ExamFlowEvidenceRecorder examFlowEvidenceRecorder() {
+        return new NoopExamFlowEvidenceRecorder();
+    }
 }
 
 @RestController
@@ -66,10 +73,12 @@ class ExamModule {
 class ExamController {
     private final ExamStore store;
     private final TestExamAuthProvider auth;
+    private final ExamFlowEvidenceRecorder evidenceRecorder;
 
-    ExamController(ExamStore store, TestExamAuthProvider auth) {
+    ExamController(ExamStore store, TestExamAuthProvider auth, ExamFlowEvidenceRecorder evidenceRecorder) {
         this.store = store;
         this.auth = auth;
+        this.evidenceRecorder = evidenceRecorder;
     }
 
     @PostMapping("/me/sessions")
@@ -78,7 +87,9 @@ class ExamController {
                                                       HttpServletRequest request) {
         ExamUser user = auth.requireUser(authorization, request);
         MutationResult result = store.createSession(user, bodyOrEmpty(body), request);
-        return ResponseEntity.status(result.created() ? HttpStatus.CREATED : HttpStatus.OK).body(okBody(result.value()));
+        int responseCode = result.created() ? HttpStatus.CREATED.value() : HttpStatus.OK.value();
+        evidenceRecorder.recordSessionWrite(request, result.created() ? "EXAM_SESSION_CREATED" : "EXAM_SESSION_REPLAYED", result.value(), responseCode);
+        return ResponseEntity.status(responseCode).body(okBody(result.value()));
     }
 
     @GetMapping("/me/sessions/current")
@@ -110,7 +121,9 @@ class ExamController {
                                     @RequestBody(required = false) Map<String, Object> body,
                                     HttpServletRequest request) {
         ExamUser user = auth.requireUser(authorization, request);
-        return ok(store.saveAnswers(user, sessionId, bodyOrEmpty(body), request));
+        Map<String, Object> payload = store.saveAnswers(user, sessionId, bodyOrEmpty(body), request);
+        evidenceRecorder.recordAnswerWrite(request, "EXAM_ANSWERS_SAVED", payload, HttpStatus.OK.value());
+        return ok(payload);
     }
 
     @PostMapping("/me/sessions/{sessionId}/submit")
@@ -119,7 +132,9 @@ class ExamController {
                                @RequestBody(required = false) Map<String, Object> body,
                                HttpServletRequest request) {
         ExamUser user = auth.requireUser(authorization, request);
-        return ok(store.submit(user, sessionId, bodyOrEmpty(body), request));
+        Map<String, Object> payload = store.submit(user, sessionId, bodyOrEmpty(body), request);
+        evidenceRecorder.recordSessionWrite(request, "EXAM_SESSION_SUBMITTED", payload, HttpStatus.OK.value());
+        return ok(payload);
     }
 
     @PatchMapping("/me/sessions/{sessionId}/supplement")
@@ -221,7 +236,9 @@ class ExamController {
                                                        @RequestBody(required = false) Map<String, Object> body,
                                                        HttpServletRequest request) {
         ExamUser actor = auth.requireAny(authorization, request, "ADMIN", "OWNER");
-        return ResponseEntity.status(HttpStatus.CREATED).body(okBody(store.createQuestion(actor, bodyOrEmpty(body), request)));
+        Map<String, Object> payload = store.createQuestion(actor, bodyOrEmpty(body), request);
+        evidenceRecorder.recordQuestionWrite(request, "EXAM_QUESTION_CREATED", payload, HttpStatus.CREATED.value());
+        return ResponseEntity.status(HttpStatus.CREATED).body(okBody(payload));
     }
 
     @PatchMapping("/admin/question-bank/questions/{questionId}")
@@ -1552,6 +1569,28 @@ class TestExamAuthProvider {
 
     private static Map<String, Object> minecraft(String id, String uuid) {
         return ExamStore.mapOf("minecraftId", id, "minecraftUuid", uuid, "verifiedAt", "2026-05-23T12:00:00Z", "source", "MANUAL_VERIFICATION");
+    }
+}
+
+interface ExamFlowEvidenceRecorder {
+    void recordSessionWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordAnswerWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordQuestionWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+}
+
+class NoopExamFlowEvidenceRecorder implements ExamFlowEvidenceRecorder {
+    @Override
+    public void recordSessionWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordAnswerWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordQuestionWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
     }
 }
 
