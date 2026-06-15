@@ -6,6 +6,9 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
@@ -46,10 +49,12 @@ import java.util.regex.Pattern;
 class ProfileController {
     private final ProfileStore store;
     private final ProfileAuthContextProvider auth;
+    private final ProfileFlowEvidenceRecorder evidenceRecorder;
 
-    ProfileController(ProfileStore store, ProfileAuthContextProvider auth) {
+    ProfileController(ProfileStore store, ProfileAuthContextProvider auth, ProfileFlowEvidenceRecorder evidenceRecorder) {
         this.store = store;
         this.auth = auth;
+        this.evidenceRecorder = evidenceRecorder;
     }
 
     @GetMapping("/members")
@@ -77,7 +82,10 @@ class ProfileController {
     ResponseEntity<Map<String, Object>> patchMe(HttpServletRequest request,
                                                 @RequestBody(required = false) Map<String, Object> body) {
         AuthUser current = auth.requireCurrent(request);
-        return ok(store.updateSelf(current, request, bodyOrEmpty(body)));
+        Map<String, Object> payload = store.updateSelf(current, request, bodyOrEmpty(body));
+        ResponseEntity<Map<String, Object>> response = ok(payload);
+        evidenceRecorder.recordMemberWrite(request, "PROFILE_SELF_UPDATED", payload, response.getStatusCode().value());
+        return response;
     }
 
     @GetMapping("/admin/members")
@@ -125,7 +133,10 @@ class ProfileController {
                                                      @RequestBody(required = false) Map<String, Object> body) {
         AuthUser current = auth.requireCurrent(request);
         requireWriter(current);
-        return ok(store.updateStatus(current, request, memberId, bodyOrEmpty(body)));
+        Map<String, Object> payload = store.updateStatus(current, request, memberId, bodyOrEmpty(body));
+        ResponseEntity<Map<String, Object>> response = ok(payload);
+        evidenceRecorder.recordMemberWrite(request, "PROFILE_MEMBER_STATUS_CHANGED", payload, response.getStatusCode().value());
+        return response;
     }
 
     @GetMapping("/admin/groups")
@@ -141,7 +152,10 @@ class ProfileController {
                                                     @RequestBody(required = false) Map<String, Object> body) {
         AuthUser current = auth.requireCurrent(request);
         requireWriter(current);
-        return created(store.createGroup(current, request, bodyOrEmpty(body)));
+        Map<String, Object> payload = store.createGroup(current, request, bodyOrEmpty(body));
+        ResponseEntity<Map<String, Object>> response = created(payload);
+        evidenceRecorder.recordGroupWrite(request, "PROFILE_GROUP_CREATED", payload, response.getStatusCode().value());
+        return response;
     }
 
     @PatchMapping("/admin/groups/{groupId}")
@@ -230,6 +244,31 @@ class ProfileController {
             map.put(String.valueOf(pairs[i]), pairs[i + 1]);
         }
         return map;
+    }
+}
+
+@Configuration
+class ProfileEvidenceConfig {
+    @Bean
+    @ConditionalOnMissingBean
+    ProfileFlowEvidenceRecorder profileFlowEvidenceRecorder() {
+        return new NoopProfileFlowEvidenceRecorder();
+    }
+}
+
+interface ProfileFlowEvidenceRecorder {
+    void recordMemberWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordGroupWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+}
+
+class NoopProfileFlowEvidenceRecorder implements ProfileFlowEvidenceRecorder {
+    @Override
+    public void recordMemberWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordGroupWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
     }
 }
 
