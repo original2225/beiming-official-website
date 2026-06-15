@@ -6,6 +6,9 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
@@ -45,10 +48,12 @@ import java.util.regex.Pattern;
 class NotificationController {
     private final NotificationStore store;
     private final NotificationAuthContextProvider auth;
+    private final NotificationFlowEvidenceRecorder evidenceRecorder;
 
-    NotificationController(NotificationStore store, NotificationAuthContextProvider auth) {
+    NotificationController(NotificationStore store, NotificationAuthContextProvider auth, NotificationFlowEvidenceRecorder evidenceRecorder) {
         this.store = store;
         this.auth = auth;
+        this.evidenceRecorder = evidenceRecorder;
     }
 
     @GetMapping("/me")
@@ -82,7 +87,10 @@ class NotificationController {
                                                  @PathVariable String notificationId,
                                                  @RequestBody(required = false) Map<String, Object> body) {
         AuthUser current = auth.requireCurrent(request);
-        return ok(store.markRead(current.userId, notificationId));
+        Map<String, Object> payload = store.markRead(current.userId, notificationId);
+        ResponseEntity<Map<String, Object>> response = ok(payload);
+        evidenceRecorder.recordRecipientWrite(request, "NOTIFICATION_RECIPIENT_READ", payload, response.getStatusCode().value());
+        return response;
     }
 
     @PatchMapping("/me/read-all")
@@ -103,7 +111,10 @@ class NotificationController {
         if (reason != null && reason.length() > 200) {
             throw ApiException.badRequest("reason");
         }
-        return ok(store.archive(current, notificationId, reason));
+        Map<String, Object> payload = store.archive(current, notificationId, reason);
+        ResponseEntity<Map<String, Object>> response = ok(payload);
+        evidenceRecorder.recordRecipientWrite(request, "NOTIFICATION_RECIPIENT_ARCHIVED", payload, response.getStatusCode().value());
+        return response;
     }
 
     @GetMapping("/admin/messages")
@@ -135,7 +146,10 @@ class NotificationController {
                                                       @RequestBody(required = false) Map<String, Object> body) {
         AuthUser current = auth.requireCurrent(request);
         requireWriter(current);
-        return created(store.createMessage(current, auth, bodyOrEmpty(body), false));
+        Map<String, Object> payload = store.createMessage(current, auth, bodyOrEmpty(body), false);
+        ResponseEntity<Map<String, Object>> response = created(payload);
+        evidenceRecorder.recordMessageWrite(request, "NOTIFICATION_MESSAGE_CREATED", payload, response.getStatusCode().value());
+        return response;
     }
 
     @PostMapping("/admin/messages/from-template")
@@ -180,7 +194,10 @@ class NotificationController {
                                                        @RequestBody(required = false) Map<String, Object> body) {
         AuthUser current = auth.requireCurrent(request);
         requireWriter(current);
-        return created(store.createTemplate(current, bodyOrEmpty(body)));
+        Map<String, Object> payload = store.createTemplate(current, bodyOrEmpty(body));
+        ResponseEntity<Map<String, Object>> response = created(payload);
+        evidenceRecorder.recordTemplateWrite(request, "NOTIFICATION_TEMPLATE_CREATED", payload, response.getStatusCode().value());
+        return response;
     }
 
     @PatchMapping("/admin/templates/{templateId}")
@@ -286,6 +303,37 @@ class NotificationController {
             map.put(String.valueOf(pairs[i]), pairs[i + 1]);
         }
         return map;
+    }
+}
+
+@Configuration
+class NotificationFlowEvidenceConfiguration {
+    @Bean
+    @ConditionalOnMissingBean
+    NotificationFlowEvidenceRecorder notificationFlowEvidenceRecorder() {
+        return new NoopNotificationFlowEvidenceRecorder();
+    }
+}
+
+interface NotificationFlowEvidenceRecorder {
+    void recordMessageWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordRecipientWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordTemplateWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+}
+
+class NoopNotificationFlowEvidenceRecorder implements NotificationFlowEvidenceRecorder {
+    @Override
+    public void recordMessageWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordRecipientWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordTemplateWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
     }
 }
 
