@@ -7,6 +7,9 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -46,6 +49,15 @@ import java.util.function.Supplier;
 
 import static cn.beiming.opsimagemarket.OimSupport.*;
 
+@Configuration
+class OpsImageMarketEvidenceConfiguration {
+    @Bean
+    @ConditionalOnMissingBean
+    OpsImageMarketFlowEvidenceRecorder opsImageMarketFlowEvidenceRecorder() {
+        return new NoopOpsImageMarketFlowEvidenceRecorder();
+    }
+}
+
 @RestController
 @RequestMapping("/api/v1/ops-image-market")
 class OpsImageMarketController {
@@ -53,11 +65,13 @@ class OpsImageMarketController {
     private final OimStore store;
     private final OimAuth auth;
     private final OimProperties properties;
+    private final OpsImageMarketFlowEvidenceRecorder evidenceRecorder;
 
-    OpsImageMarketController(OimStore store, OimAuth auth, OimProperties properties) {
+    OpsImageMarketController(OimStore store, OimAuth auth, OimProperties properties, OpsImageMarketFlowEvidenceRecorder evidenceRecorder) {
         this.store = store;
         this.auth = auth;
         this.properties = properties;
+        this.evidenceRecorder = evidenceRecorder;
     }
 
     @GetMapping("/health")
@@ -125,7 +139,9 @@ class OpsImageMarketController {
             Map<String, Object> provider = providerFrom(providerId, body, actor);
             store.providers.put(providerId, provider);
             store.audit("IMAGE_PROVIDER_CREATED", "PROVIDER", providerId, actor, request, body, "HIGH", "SUCCESS", null, null, "DRAFT");
-            return new WriteResult(HttpStatus.CREATED, copy(provider));
+            Map<String, Object> view = copy(provider);
+            evidenceRecorder.recordProviderWrite(request, "IMAGE_PROVIDER_CREATED", view, HttpStatus.CREATED.value());
+            return new WriteResult(HttpStatus.CREATED, view);
         });
     }
 
@@ -152,7 +168,9 @@ class OpsImageMarketController {
             }
             touch(provider, actor);
             store.audit("IMAGE_PROVIDER_UPDATED", "PROVIDER", providerId, actor, request, body, containsAny(body.keySet(), "endpointSummary", CRED_REF, "allowedNamespaces", "allowedRiskLevels") ? "HIGH" : "MEDIUM", "SUCCESS", null, before, status(provider));
-            return new WriteResult(HttpStatus.OK, copy(provider));
+            Map<String, Object> view = copy(provider);
+            evidenceRecorder.recordProviderWrite(request, "IMAGE_PROVIDER_UPDATED", view, HttpStatus.OK.value());
+            return new WriteResult(HttpStatus.OK, view);
         });
     }
 
@@ -185,7 +203,9 @@ class OpsImageMarketController {
             provider.put("lastHealthCheckedAt", now());
             touch(provider, actor);
             store.audit("IMAGE_PROVIDER_HEALTH_REFRESHED", "PROVIDER", providerId, actor, request, body, "MEDIUM", "SUCCESS", null, before, status(provider));
-            return new WriteResult(HttpStatus.OK, copy(provider));
+            Map<String, Object> view = copy(provider);
+            evidenceRecorder.recordProviderWrite(request, "IMAGE_PROVIDER_HEALTH_REFRESHED", view, HttpStatus.OK.value());
+            return new WriteResult(HttpStatus.OK, view);
         });
     }
 
@@ -217,7 +237,9 @@ class OpsImageMarketController {
             }
             touch(provider, actor);
             store.audit(action, "PROVIDER", providerId, actor, request, body, risk, "SUCCESS", null, before, target);
-            return new WriteResult(HttpStatus.OK, copy(provider));
+            Map<String, Object> view = copy(provider);
+            evidenceRecorder.recordProviderWrite(request, action, view, HttpStatus.OK.value());
+            return new WriteResult(HttpStatus.OK, view);
         });
     }
 
@@ -284,7 +306,9 @@ class OpsImageMarketController {
                     "usageSummary", map("templates", 0, "plans", 0), "createdAt", now(), "updatedAt", now());
             store.images.put(imageId, image);
             store.audit("OPS_IMAGE_CREATED", "IMAGE", imageId, actor, request, body, "MEDIUM", "SUCCESS", null, null, "DRAFT");
-            return new WriteResult(HttpStatus.CREATED, copy(image));
+            Map<String, Object> view = copy(image);
+            evidenceRecorder.recordImageWrite(request, "OPS_IMAGE_CREATED", view, HttpStatus.CREATED.value());
+            return new WriteResult(HttpStatus.CREATED, view);
         });
     }
 
@@ -301,7 +325,9 @@ class OpsImageMarketController {
             patch(image, body, "displayName", "purpose", "visibility", "maintainerSummary", "sourceRef", "architectureSet", "runtimeHints");
             touch(image, actor);
             store.audit("OPS_IMAGE_UPDATED", "IMAGE", imageId, actor, request, body, "MEDIUM", "SUCCESS", null, before, status(image));
-            return new WriteResult(HttpStatus.OK, copy(image));
+            Map<String, Object> view = copy(image);
+            evidenceRecorder.recordImageWrite(request, "OPS_IMAGE_UPDATED", view, HttpStatus.OK.value());
+            return new WriteResult(HttpStatus.OK, view);
         });
     }
 
@@ -350,7 +376,9 @@ class OpsImageMarketController {
             }
             touch(image, actor);
             store.audit(action, "IMAGE", imageId, actor, request, body, risk, "SUCCESS", null, before, target);
-            return new WriteResult(HttpStatus.OK, copy(image));
+            Map<String, Object> view = copy(image);
+            evidenceRecorder.recordImageWrite(request, action, view, HttpStatus.OK.value());
+            return new WriteResult(HttpStatus.OK, view);
         });
     }
 
@@ -419,7 +447,9 @@ class OpsImageMarketController {
                     "createdAt", now(), "updatedAt", now());
             store.versions.put(versionId, version);
             store.audit("IMAGE_VERSION_CREATED", "VERSION", versionId, actor, request, body, "MEDIUM", "SUCCESS", null, null, "DISCOVERED");
-            return new WriteResult(HttpStatus.CREATED, copy(version));
+            Map<String, Object> view = copy(version);
+            evidenceRecorder.recordVersionWrite(request, "IMAGE_VERSION_CREATED", view, HttpStatus.CREATED.value());
+            return new WriteResult(HttpStatus.CREATED, view);
         });
     }
 
@@ -452,7 +482,9 @@ class OpsImageMarketController {
             version.put("compatibilitySummary", map("status", "PASSED"));
             touch(version, actor);
             store.audit("IMAGE_VERSION_APPROVED", "VERSION", imageVersionId, actor, request, body, riskFromSeverity(severity), "SUCCESS", null, before, "APPROVED");
-            return new WriteResult(HttpStatus.OK, copy(version));
+            Map<String, Object> view = copy(version);
+            evidenceRecorder.recordVersionWrite(request, "IMAGE_VERSION_APPROVED", view, HttpStatus.OK.value());
+            return new WriteResult(HttpStatus.OK, view);
         });
     }
 
@@ -493,7 +525,9 @@ class OpsImageMarketController {
             }
             touch(version, actor);
             store.audit(action, "VERSION", versionId, actor, request, body, risk, "SUCCESS", null, before, target);
-            return new WriteResult(HttpStatus.OK, copy(version));
+            Map<String, Object> view = copy(version);
+            evidenceRecorder.recordVersionWrite(request, action, view, HttpStatus.OK.value());
+            return new WriteResult(HttpStatus.OK, view);
         });
     }
 
@@ -550,7 +584,9 @@ class OpsImageMarketController {
                     "status", "DRAFT", "createdAt", now(), "updatedAt", now());
             store.profiles.put(profileId, profile);
             store.audit("IMAGE_COMPAT_PROFILE_CREATED", "PROFILE", profileId, actor, request, body, "MEDIUM", "SUCCESS", null, null, "DRAFT");
-            return new WriteResult(HttpStatus.CREATED, copy(profile));
+            Map<String, Object> view = copy(profile);
+            evidenceRecorder.recordProfileWrite(request, "IMAGE_COMPAT_PROFILE_CREATED", view, HttpStatus.CREATED.value());
+            return new WriteResult(HttpStatus.CREATED, view);
         });
     }
 
@@ -571,7 +607,9 @@ class OpsImageMarketController {
             patch(profile, body, "runtime", "architecture", "minecraftMode", "minimumCpuCores", "minimumMemoryMb", "requiredPortsSummary", "requiredVolumesSummary", "envSchemaSummary", "nodeSelectorSummary");
             touch(profile, actor);
             store.audit("IMAGE_COMPAT_PROFILE_UPDATED", "PROFILE", profileId, actor, request, body, "MEDIUM", "SUCCESS", null, before, status(profile));
-            return new WriteResult(HttpStatus.OK, copy(profile));
+            Map<String, Object> view = copy(profile);
+            evidenceRecorder.recordProfileWrite(request, "IMAGE_COMPAT_PROFILE_UPDATED", view, HttpStatus.OK.value());
+            return new WriteResult(HttpStatus.OK, view);
         });
     }
 
@@ -618,7 +656,9 @@ class OpsImageMarketController {
             profile.put("status", target);
             touch(profile, actor);
             store.audit(action, "PROFILE", profileId, actor, request, body, "MEDIUM", "SUCCESS", null, before, target);
-            return new WriteResult(HttpStatus.OK, copy(profile));
+            Map<String, Object> view = copy(profile);
+            evidenceRecorder.recordProfileWrite(request, action, view, HttpStatus.OK.value());
+            return new WriteResult(HttpStatus.OK, view);
         });
     }
 
@@ -682,7 +722,9 @@ class OpsImageMarketController {
                     "createdAt", now(), "updatedAt", now());
             store.templates.put(templateId, template);
             store.audit("IMAGE_TEMPLATE_CREATED", "TEMPLATE", templateId, actor, request, body, "MEDIUM", "SUCCESS", null, null, "DRAFT");
-            return new WriteResult(HttpStatus.CREATED, copy(template));
+            Map<String, Object> view = copy(template);
+            evidenceRecorder.recordTemplateWrite(request, "IMAGE_TEMPLATE_CREATED", view, HttpStatus.CREATED.value());
+            return new WriteResult(HttpStatus.CREATED, view);
         });
     }
 
@@ -714,7 +756,9 @@ class OpsImageMarketController {
             patch(template, body, "imageVersionId", "displayName", "templateKind", "runtime", "portMappingsSummary", "volumeMountsSummary", "envSchemaSummary", "resourceLimitsSummary", "compatibilityProfileId");
             touch(template, actor);
             store.audit("IMAGE_TEMPLATE_UPDATED", "TEMPLATE", templateId, actor, request, body, "MEDIUM", "SUCCESS", null, before, status(template));
-            return new WriteResult(HttpStatus.OK, copy(template));
+            Map<String, Object> view = copy(template);
+            evidenceRecorder.recordTemplateWrite(request, "IMAGE_TEMPLATE_UPDATED", view, HttpStatus.OK.value());
+            return new WriteResult(HttpStatus.OK, view);
         });
     }
 
@@ -768,7 +812,9 @@ class OpsImageMarketController {
             template.put("status", target);
             touch(template, actor);
             store.audit(action, "TEMPLATE", templateId, actor, request, body, "MEDIUM", "SUCCESS", null, before, target);
-            return new WriteResult(HttpStatus.OK, copy(template));
+            Map<String, Object> view = copy(template);
+            evidenceRecorder.recordTemplateWrite(request, action, view, HttpStatus.OK.value());
+            return new WriteResult(HttpStatus.OK, view);
         });
     }
 
@@ -833,7 +879,9 @@ class OpsImageMarketController {
             version.put("scanSummary", summaryOf(scan, "scanId", "status", "highestSeverity", "signatureStatus", "expiresAt"));
             touch(version, actor);
             store.audit("IMAGE_SCAN_SUMMARY_CREATED", "SCAN", scanId, actor, request, body, "MEDIUM", "SUCCESS", null, null, status);
-            return new WriteResult(HttpStatus.CREATED, copy(scan));
+            Map<String, Object> view = copy(scan);
+            evidenceRecorder.recordScanWrite(request, "IMAGE_SCAN_SUMMARY_CREATED", view, HttpStatus.CREATED.value());
+            return new WriteResult(HttpStatus.CREATED, view);
         });
     }
 
@@ -927,7 +975,9 @@ class OpsImageMarketController {
                     "createdAt", now(), "updatedAt", now(), "finishedAt", null);
             store.plans.put(planId, plan);
             store.audit("IMAGE_PULL_PLAN_CREATED", "IMAGE_PULL_PLAN", planId, actor, request, body, risk, "SUCCESS", null, null, status);
-            return new WriteResult(HttpStatus.CREATED, copy(plan));
+            Map<String, Object> view = copy(plan);
+            evidenceRecorder.recordPlanWrite(request, "IMAGE_PULL_PLAN_CREATED", view, HttpStatus.CREATED.value());
+            return new WriteResult(HttpStatus.CREATED, view);
         });
     }
 
@@ -970,7 +1020,9 @@ class OpsImageMarketController {
             plan.put("approvedBy", actor.userId());
             touch(plan, actor);
             store.audit("IMAGE_PULL_PLAN_APPROVED", "IMAGE_PULL_PLAN", planId, actor, request, body, text(plan.get("riskLevel")), "SUCCESS", null, before, "SIMULATED_READY");
-            return new WriteResult(HttpStatus.OK, copy(plan));
+            Map<String, Object> view = copy(plan);
+            evidenceRecorder.recordPlanWrite(request, "IMAGE_PULL_PLAN_APPROVED", view, HttpStatus.OK.value());
+            return new WriteResult(HttpStatus.OK, view);
         });
     }
 
@@ -994,7 +1046,9 @@ class OpsImageMarketController {
             plan.put("finishedAt", now());
             touch(plan, actor);
             store.audit("IMAGE_PULL_PLAN_CANCELED", "IMAGE_PULL_PLAN", planId, actor, request, body, risk, "SUCCESS", null, before, "CANCELED");
-            return new WriteResult(HttpStatus.OK, copy(plan));
+            Map<String, Object> view = copy(plan);
+            evidenceRecorder.recordPlanWrite(request, "IMAGE_PULL_PLAN_CANCELED", view, HttpStatus.OK.value());
+            return new WriteResult(HttpStatus.OK, view);
         });
     }
 
@@ -1888,5 +1942,51 @@ class OimApiException extends RuntimeException {
 
     int code() {
         return code;
+    }
+}
+
+interface OpsImageMarketFlowEvidenceRecorder {
+    void recordProviderWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordImageWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordVersionWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordProfileWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordTemplateWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordScanWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordPlanWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+}
+
+class NoopOpsImageMarketFlowEvidenceRecorder implements OpsImageMarketFlowEvidenceRecorder {
+    @Override
+    public void recordProviderWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordImageWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordVersionWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordProfileWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordTemplateWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordScanWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordPlanWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
     }
 }
