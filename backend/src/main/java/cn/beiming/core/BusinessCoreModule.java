@@ -275,19 +275,19 @@ class BusinessCoreRegistry {
     );
 
     private final List<ModuleRegistration> modules = List.of(
-            new ModuleRegistration("AUTH", "auth", "/api/v1/auth", "docs/contracts-auth.md", 8101, 20,
+            new ModuleRegistration("AUTH", "auth", "/api/v1/auth", "docs/api-reference.md", 8101, 20,
                     List.of("AuthStore", "AuthLocalWebConfig")),
-            new ModuleRegistration("PROFILE", "profile", "/api/v1/profile", "docs/contracts-profile.md", 8102, 16,
+            new ModuleRegistration("PROFILE", "profile", "/api/v1/profile", "docs/api-reference.md", 8102, 16,
                     List.of("ProfileAuthContextProvider")),
-            new ModuleRegistration("NOTIFICATION", "notification", "/api/v1/notifications", "docs/contracts-notification.md", 8103, 19,
+            new ModuleRegistration("NOTIFICATION", "notification", "/api/v1/notifications", "docs/api-reference.md", 8103, 19,
                     List.of("NotificationAuthContextProvider")),
-            new ModuleRegistration("CONTENT", "content", "/api/v1/content", "docs/contracts-content.md", 8104, 55,
+            new ModuleRegistration("CONTENT", "content", "/api/v1/content", "docs/api-reference.md", 8104, 55,
                     List.of("TestAuthContextProvider", "TestProfileSnapshotProvider", "TestNotificationClient")),
-            new ModuleRegistration("SERVER_STATUS", "server-status", "/api/v1/server-status", "docs/contracts-server-status.md", 8105, 25,
+            new ModuleRegistration("SERVER_STATUS", "server-status", "/api/v1/server-status", "docs/api-reference.md", 8105, 25,
                     List.of("TestAuthContextProvider", "TestStatusCollector")),
-            new ModuleRegistration("RESOURCE", "resource", "/api/v1/resources", "docs/contracts-resource.md", 8106, 29,
+            new ModuleRegistration("RESOURCE", "resource", "/api/v1/resources", "docs/api-reference.md", 8106, 29,
                     List.of("TestResourceAuthProvider")),
-            new ModuleRegistration("ADMIN", "admin", "/api/v1/admin", "docs/contracts-admin.md", 8107, 10,
+            new ModuleRegistration("ADMIN", "admin", "/api/v1/admin", "docs/api-reference.md", 8107, 10,
                     List.of("TestAdminAuthProvider"))
     );
 
@@ -312,7 +312,7 @@ class BusinessCoreRegistry {
         Map<String, Object> gateway = new LinkedHashMap<>();
         gateway.put("service", "unified-backend-service");
         gateway.put("port", 8135);
-        gateway.put("contract", "docs/contracts-unified-backend.md");
+        gateway.put("contract", "docs/api-reference.md");
         gateway.put("testCommand", "mvn -f backend/pom.xml test");
         gateway.put("lastVerifiedAt", FIRST_BATCH_VERIFIED_AT);
         baselines.add(gateway);

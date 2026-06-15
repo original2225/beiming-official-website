@@ -183,13 +183,13 @@ class EngagementCoreRegistry {
     private static final String THIRD_BATCH_BASELINE_VERIFIED_AT = "2026-06-03T00:00:00+08:00";
 
     private final List<EngagementModuleRegistration> modules = List.of(
-            new EngagementModuleRegistration("COMMUNITY", "community", "/api/v1/community", "docs/contracts-community.md", 8112, 64,
+            new EngagementModuleRegistration("COMMUNITY", "community", "/api/v1/community", "docs/api-reference.md", 8112, 64,
                     List.of(), List.of("CommunityPublicSnapshotAdapter"), List.of("business-core:auth", "business-core:profile", "business-core:notification")),
-            new EngagementModuleRegistration("ACTIVITY", "activity", "/api/v1/activity", "docs/contracts-activity.md", 8113, 41,
+            new EngagementModuleRegistration("ACTIVITY", "activity", "/api/v1/activity", "docs/api-reference.md", 8113, 41,
                     List.of("CommunityPublicSnapshotAdapter"), List.of("ActivityCalendarSummaryAdapter"), List.of("business-core:auth", "business-core:profile", "business-core:notification", "community")),
-            new EngagementModuleRegistration("CALENDAR", "calendar", "/api/v1/calendar", "docs/contracts-calendar.md", 8114, 21,
+            new EngagementModuleRegistration("CALENDAR", "calendar", "/api/v1/calendar", "docs/api-reference.md", 8114, 21,
                     List.of("ActivityCalendarSummaryAdapter"), List.of("CalendarReleaseSummaryAdapter"), List.of("business-core:auth", "business-core:notification", "activity")),
-            new EngagementModuleRegistration("CHANGELOG", "changelog", "/api/v1/changelog", "docs/contracts-changelog.md", 8115, 23,
+            new EngagementModuleRegistration("CHANGELOG", "changelog", "/api/v1/changelog", "docs/api-reference.md", 8115, 23,
                     List.of("CalendarReleaseSummaryAdapter"), List.of(), List.of("business-core:auth", "business-core:resource", "business-core:server-status", "business-core:content", "calendar"))
     );
 
@@ -245,7 +245,7 @@ class EngagementCoreRegistry {
         data.put("service", "business-core");
         data.put("port", 8130);
         data.put("status", "REQUIRED_BASELINE");
-        data.put("contract", "docs/contracts-business-core.md");
+        data.put("contract", "docs/api-reference.md");
         data.put("testCommand", "mvn -q -f backend/pom.xml test");
         return data;
     }
@@ -255,25 +255,25 @@ class EngagementCoreRegistry {
         data.put("service", "admission-core");
         data.put("port", 8131);
         data.put("status", "STABLE_BASELINE");
-        data.put("contract", "docs/contracts-admission-core.md");
+        data.put("contract", "docs/api-reference.md");
         data.put("testCommand", "mvn -q -f backend/pom.xml test");
         return data;
     }
 
     List<Map<String, Object>> legacyBaselines() {
         return List.of(
-                baseline("business-core-service", 8130, "docs/contracts-business-core.md", "mvn -q -f backend/pom.xml test"),
-                baseline("admission-core-service", 8131, "docs/contracts-admission-core.md", "mvn -q -f backend/pom.xml test"),
-                baseline("unified-backend-service", 8135, "docs/contracts-unified-backend.md", "mvn -f backend/pom.xml test")
+                baseline("business-core-service", 8130, "docs/api-reference.md", "mvn -q -f backend/pom.xml test"),
+                baseline("admission-core-service", 8131, "docs/api-reference.md", "mvn -q -f backend/pom.xml test"),
+                baseline("unified-backend-service", 8135, "docs/api-reference.md", "mvn -f backend/pom.xml test")
         );
     }
 
     List<Map<String, Object>> retiredLegacyServices() {
         return List.of(
-                retired("community-service", 8112, "backend/community-service", "docs/contracts-community.md"),
-                retired("activity-service", 8113, "backend/activity-service", "docs/contracts-activity.md"),
-                retired("calendar-service", 8114, "backend/calendar-service", "docs/contracts-calendar.md"),
-                retired("changelog-service", 8115, "backend/changelog-service", "docs/contracts-changelog.md")
+                retired("community-service", 8112, "backend/community-service", "docs/api-reference.md"),
+                retired("activity-service", 8113, "backend/activity-service", "docs/api-reference.md"),
+                retired("calendar-service", 8114, "backend/calendar-service", "docs/api-reference.md"),
+                retired("changelog-service", 8115, "backend/changelog-service", "docs/api-reference.md")
         );
     }
 

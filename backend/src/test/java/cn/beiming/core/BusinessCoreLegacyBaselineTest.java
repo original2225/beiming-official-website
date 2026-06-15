@@ -68,13 +68,8 @@ class BusinessCoreLegacyBaselineTest {
         assertThat(repositoryRoot.resolve(Path.of("backend", "profile-service"))).doesNotExist();
         assertThat(repositoryRoot.resolve(Path.of("backend", "resource-service"))).doesNotExist();
         assertThat(repositoryRoot.resolve(Path.of("backend", "server-status-service"))).doesNotExist();
-        assertPathExists(repositoryRoot.resolve(Path.of("docs", "contracts-auth.md")));
-        assertPathExists(repositoryRoot.resolve(Path.of("docs", "contracts-profile.md")));
-        assertPathExists(repositoryRoot.resolve(Path.of("docs", "contracts-notification.md")));
-        assertPathExists(repositoryRoot.resolve(Path.of("docs", "contracts-content.md")));
-        assertPathExists(repositoryRoot.resolve(Path.of("docs", "contracts-server-status.md")));
-        assertPathExists(repositoryRoot.resolve(Path.of("docs", "contracts-resource.md")));
-        assertPathExists(repositoryRoot.resolve(Path.of("docs", "contracts-admin.md")));
+        assertPathExists(repositoryRoot.resolve(Path.of("docs", "api-reference.md")));
+        assertPathExists(repositoryRoot.resolve(Path.of("docs", "system-design.md")));
         assertThat(repositoryRoot.resolve(Path.of("backend", "business-core-service", "pom.xml"))).doesNotExist();
         assertThat(assertPathExists(repositoryRoot.resolve(Path.of("backend", "pom.xml")))).content().doesNotContain(
                 "../auth-service",
@@ -90,7 +85,7 @@ class BusinessCoreLegacyBaselineTest {
     private Path repositoryRoot() {
         Path path = Path.of("").toAbsolutePath();
         while (path != null) {
-            if (Files.exists(path.resolve(Path.of("docs", "contracts-business-core.md")))
+            if (Files.exists(path.resolve(Path.of("docs", "api-reference.md")))
                     && Files.exists(path.resolve(Path.of("backend", "pom.xml")))) {
                 return path;
             }

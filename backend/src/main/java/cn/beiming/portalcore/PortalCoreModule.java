@@ -214,13 +214,13 @@ class PortalCoreRegistry {
 
     private final List<PortalCoreModuleRegistration> modules = List.of(
             new PortalCoreModuleRegistration("GUIDE", "guide", "/api/v1/guides", "backend/guide-service", 8127, 41,
-                    "docs/contracts-guide.md", ".local-docs/tests-guide.md", "RETIRED_NO_MAVEN_ENTRY",
+                    "docs/api-reference.md", ".local-docs/tests-guide.md", "RETIRED_NO_MAVEN_ENTRY",
                     List.of("REAL_PERSISTENCE_NOT_CONNECTED", "REAL_FULLTEXT_SEARCH_NOT_CONNECTED")),
             new PortalCoreModuleRegistration("MATERIAL", "material", "/api/v1/materials", "backend/material-service", 8126, 33,
-                    "docs/contracts-material.md", ".local-docs/tests-material.md", "RETIRED_NO_MAVEN_ENTRY",
+                    "docs/api-reference.md", ".local-docs/tests-material.md", "RETIRED_NO_MAVEN_ENTRY",
                     List.of("REAL_PERSISTENCE_NOT_CONNECTED", "REAL_OBJECT_STORAGE_NOT_CONNECTED", "REAL_FILE_SECURITY_SCANNER_NOT_CONNECTED")),
             new PortalCoreModuleRegistration("ONLINE_MAP", "online-map", "/api/v1/online-map", "backend/online-map-service", 8121, 34,
-                    "docs/contracts-online-map.md", ".local-docs/tests-online-map.md", "RETIRED_NO_MAVEN_ENTRY",
+                    "docs/api-reference.md", ".local-docs/tests-online-map.md", "RETIRED_NO_MAVEN_ENTRY",
                     List.of("REAL_PERSISTENCE_NOT_CONNECTED", "REAL_MAP_PROVIDER_HTTP_NOT_CONNECTED", "REAL_MARKER_SYNC_NOT_CONNECTED", "REAL_TILE_HOSTING_NOT_CONNECTED"))
     );
 

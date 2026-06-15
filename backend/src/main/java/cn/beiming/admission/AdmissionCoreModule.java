@@ -127,13 +127,13 @@ class AdmissionCoreRegistry {
     private static final String SECOND_BATCH_BASELINE_VERIFIED_AT = "2026-06-03T00:00:00+08:00";
 
     private final List<AdmissionModuleRegistration> modules = List.of(
-            new AdmissionModuleRegistration("ONBOARDING", "onboarding", "/api/v1/onboarding", "docs/contracts-onboarding.md", 8108, 15,
+            new AdmissionModuleRegistration("ONBOARDING", "onboarding", "/api/v1/onboarding", "docs/api-reference.md", 8108, 15,
                     List.of(), List.of("OnboardingExamHandoffSnapshot"), List.of("TestOnboardingAuthProvider", "TestOnboardingProfileClient", "TestOnboardingContentClient", "TestOnboardingNotificationClient")),
-            new AdmissionModuleRegistration("EXAM", "exam", "/api/v1/exams", "docs/contracts-exam.md", 8109, 28,
+            new AdmissionModuleRegistration("EXAM", "exam", "/api/v1/exams", "docs/api-reference.md", 8109, 28,
                     List.of("OnboardingExamHandoffSnapshot"), List.of("ExamWhitelistHandoffSnapshot"), List.of("TestExamAuthProvider", "TestExamOnboardingClient", "TestExamProfileClient", "TestExamContentClient", "TestExamNotificationClient")),
-            new AdmissionModuleRegistration("WHITELIST", "whitelist", "/api/v1/whitelist", "docs/contracts-whitelist.md", 8110, 20,
+            new AdmissionModuleRegistration("WHITELIST", "whitelist", "/api/v1/whitelist", "docs/api-reference.md", 8110, 20,
                     List.of("ExamWhitelistHandoffSnapshot"), List.of("WhitelistAttendanceHandoffSnapshot"), List.of("TestWhitelistAuthProvider", "TestWhitelistExamClient", "TestWhitelistProfileClient", "TestWhitelistNotificationClient")),
-            new AdmissionModuleRegistration("ATTENDANCE", "attendance", "/api/v1/attendance", "docs/contracts-attendance.md", 8111, 21,
+            new AdmissionModuleRegistration("ATTENDANCE", "attendance", "/api/v1/attendance", "docs/api-reference.md", 8111, 21,
                     List.of("WhitelistAttendanceHandoffSnapshot"), List.of(), List.of("TestAttendanceAuthProvider", "TestAttendanceWhitelistClient", "TestAttendanceProfileClient", "TestAttendanceNotificationClient"))
     );
 
@@ -166,15 +166,15 @@ class AdmissionCoreRegistry {
         data.put("service", "business-core");
         data.put("port", 8130);
         data.put("status", "REQUIRED_BASELINE");
-        data.put("contract", "docs/contracts-business-core.md");
+        data.put("contract", "docs/api-reference.md");
         data.put("testCommand", "mvn -q -f backend/pom.xml test");
         return data;
     }
 
     List<Map<String, Object>> legacyBaselines() {
         return List.of(
-                baseline("business-core-service", 8130, "docs/contracts-business-core.md", "mvn -q -f backend/pom.xml test"),
-                baseline("unified-backend-service", 8135, "docs/contracts-unified-backend.md", "mvn -f backend/pom.xml test")
+                baseline("business-core-service", 8130, "docs/api-reference.md", "mvn -q -f backend/pom.xml test"),
+                baseline("unified-backend-service", 8135, "docs/api-reference.md", "mvn -f backend/pom.xml test")
         );
     }
 

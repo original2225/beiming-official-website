@@ -30,7 +30,7 @@ mvn -f backend/pom.xml spring-boot:run
 
 ## 文档体系
 
-正式项目文档保存在 `docs/`，并随仓库提交。`docs/requirements.md` 是需求文档，`docs/system-design.md` 是系统设计文档，`docs/development-governance.md` 是开发治理文档，`docs/contracts-common.md` 是公共接口契约，`docs/contracts-<module>.md` 是各模块独立 API 契约，`docs/api-reference.md` 是接口总览。
+正式项目文档保存在 `docs/`，并随仓库提交。当前只保留 `docs/api-reference.md` 和 `docs/system-design.md`。`docs/api-reference.md` 是当前统一后端的总 API 文档，`docs/system-design.md` 是模块化单体的模块设计文档。
 
 本地测试记录、阶段手册、临时分析和个人交接资料保存在 `.local-docs/`，不提交到仓库。可复用的规则、接口和验收要求需要沉淀到 `docs/`。
 

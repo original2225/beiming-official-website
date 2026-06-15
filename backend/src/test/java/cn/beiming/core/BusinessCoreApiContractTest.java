@@ -71,7 +71,7 @@ class BusinessCoreApiContractTest {
                 .andExpect(jsonPath("$.data.retiredLegacyServices[?(@ == 'auth-service')]").exists())
                 .andExpect(jsonPath("$.data.retiredLegacyServices[?(@ == 'admin-service')]").exists())
                 .andExpect(jsonPath("$.data.moduleRoutes[0].legacyPort").value(8101))
-                .andExpect(jsonPath("$.data.moduleRoutes[0].contract").value("docs/contracts-auth.md"))
+                .andExpect(jsonPath("$.data.moduleRoutes[0].contract").value("docs/api-reference.md"))
                 .andExpect(jsonPath("$.data.moduleRoutes[0].status").value("READY"))
                 .andExpect(jsonPath("$.data.moduleRoutes[0].gaps").isEmpty())
                 .andExpect(jsonPath("$.data.productionGaps[?(@ == 'gateway route switch is not complete')]").doesNotExist())

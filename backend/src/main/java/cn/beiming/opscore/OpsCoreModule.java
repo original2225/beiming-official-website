@@ -213,13 +213,13 @@ class OpsCoreRegistry {
     private static final int SELF_ROUTES_TOTAL = 5;
 
     private final List<OpsCoreModuleRegistration> modules = List.of(
-            new OpsCoreModuleRegistration("OPS_CONTROL", "ops-control", "/api/v1/ops-control", "backend/ops-control-service", 8116, 31, "docs/contracts-ops-control.md", ".local-docs/tests-ops-core.md"),
-            new OpsCoreModuleRegistration("CLOUDREVE_SYNC", "cloudreve-sync", "/api/v1/cloudreve-sync", "backend/cloudreve-sync-service", 8118, 16, "docs/contracts-cloudreve-sync.md", ".local-docs/tests-ops-core.md"),
-            new OpsCoreModuleRegistration("BACKUP_RECOVERY", "backup-recovery", "/api/v1/backup-recovery", "backend/backup-recovery-service", 8119, 25, "docs/contracts-backup-recovery.md", ".local-docs/tests-ops-core.md"),
-            new OpsCoreModuleRegistration("ALERTING", "alerting", "/api/v1/alerting", "backend/alerting-service", 8120, 24, "docs/contracts-alerting.md", ".local-docs/tests-ops-core.md"),
-            new OpsCoreModuleRegistration("PLUGIN_INTEGRATION", "plugin-integration", "/api/v1/plugin-integration", "backend/plugin-integration-service", 8122, 38, "docs/contracts-plugin-integration.md", ".local-docs/tests-ops-core.md"),
-            new OpsCoreModuleRegistration("CROSS_PLATFORM_NOTIFICATION", "cross-platform-notification", "/api/v1/cross-platform-notification", "backend/cross-platform-notification-service", 8123, 36, "docs/contracts-cross-platform-notification.md", ".local-docs/tests-ops-core.md"),
-            new OpsCoreModuleRegistration("OPS_IMAGE_MARKET", "ops-image-market", "/api/v1/ops-image-market", "backend/ops-image-market-service", 8124, 49, "docs/contracts-ops-image-market.md", ".local-docs/tests-ops-core.md")
+            new OpsCoreModuleRegistration("OPS_CONTROL", "ops-control", "/api/v1/ops-control", "backend/ops-control-service", 8116, 31, "docs/api-reference.md", ".local-docs/tests-ops-core.md"),
+            new OpsCoreModuleRegistration("CLOUDREVE_SYNC", "cloudreve-sync", "/api/v1/cloudreve-sync", "backend/cloudreve-sync-service", 8118, 16, "docs/api-reference.md", ".local-docs/tests-ops-core.md"),
+            new OpsCoreModuleRegistration("BACKUP_RECOVERY", "backup-recovery", "/api/v1/backup-recovery", "backend/backup-recovery-service", 8119, 25, "docs/api-reference.md", ".local-docs/tests-ops-core.md"),
+            new OpsCoreModuleRegistration("ALERTING", "alerting", "/api/v1/alerting", "backend/alerting-service", 8120, 24, "docs/api-reference.md", ".local-docs/tests-ops-core.md"),
+            new OpsCoreModuleRegistration("PLUGIN_INTEGRATION", "plugin-integration", "/api/v1/plugin-integration", "backend/plugin-integration-service", 8122, 38, "docs/api-reference.md", ".local-docs/tests-ops-core.md"),
+            new OpsCoreModuleRegistration("CROSS_PLATFORM_NOTIFICATION", "cross-platform-notification", "/api/v1/cross-platform-notification", "backend/cross-platform-notification-service", 8123, 36, "docs/api-reference.md", ".local-docs/tests-ops-core.md"),
+            new OpsCoreModuleRegistration("OPS_IMAGE_MARKET", "ops-image-market", "/api/v1/ops-image-market", "backend/ops-image-market-service", 8124, 49, "docs/api-reference.md", ".local-docs/tests-ops-core.md")
     );
 
     int modulesTotal() {

@@ -21,7 +21,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -193,7 +192,7 @@ class OpsCoreApiContractTest {
                 .andExpect(jsonPath("$.data.items[?(@.moduleName == 'backup-recovery' && @.legacyPort == 8119 && @.currentPort == 8133 && @.pathPrefix == '/api/v1/backup-recovery')]").exists())
                 .andExpect(jsonPath("$.data.items[?(@.moduleName == 'alerting' && @.legacyPort == 8120 && @.currentPort == 8133 && @.pathPrefix == '/api/v1/alerting')]").exists())
                 .andExpect(jsonPath("$.data.items[?(@.moduleName == 'plugin-integration' && @.legacyPort == 8122 && @.currentPort == 8133 && @.pathPrefix == '/api/v1/plugin-integration')]").exists())
-                .andExpect(jsonPath("$.data.items[?(@.moduleName == 'cross-platform-notification' && @.legacyServiceDirectory == 'backend/cross-platform-notification-service' && @.legacyPort == 8123 && @.currentServiceDirectory == 'backend/ops-core-service' && @.currentPort == 8133 && @.pathPrefix == '/api/v1/cross-platform-notification' && @.routesTotal == 36 && @.contract == 'docs/contracts-cross-platform-notification.md' && @.localTestDocument == '.local-docs/tests-ops-core.md')]").exists())
+                .andExpect(jsonPath("$.data.items[?(@.moduleName == 'cross-platform-notification' && @.legacyServiceDirectory == 'backend/cross-platform-notification-service' && @.legacyPort == 8123 && @.currentServiceDirectory == 'backend/ops-core-service' && @.currentPort == 8133 && @.pathPrefix == '/api/v1/cross-platform-notification' && @.routesTotal == 36 && @.contract == 'docs/api-reference.md' && @.localTestDocument == '.local-docs/tests-ops-core.md')]").exists())
                 .andExpect(jsonPath("$.data.items[?(@.moduleName == 'ops-image-market' && @.legacyPort == 8124 && @.currentPort == 8133 && @.pathPrefix == '/api/v1/ops-image-market')]").exists())
                 .andExpect(jsonPath("$.data.items[?(@.pathPrefix == '/api/v1/ops-core/ops-control')]").doesNotExist())
                 .andExpect(jsonPath("$.data.items[?(@.pathPrefix == '/api/v1/ops-core/cloudreve-sync')]").doesNotExist())
@@ -306,12 +305,10 @@ class OpsCoreApiContractTest {
     }
 
     @Test
-    void registersEveryInheritedOpsRouteSignatureFromFormalContracts() throws IOException {
+    void registersEveryInheritedOpsRouteSignatureFromRuntimeMappings() {
         Set<String> actualRoutes = inheritedRouteSignatures();
-        Set<String> expectedRoutes = inheritedContractRouteSignatures();
 
-        assertThat(expectedRoutes).hasSize(INHERITED_ROUTES_TOTAL);
-        assertThat(actualRoutes).containsExactlyInAnyOrderElementsOf(expectedRoutes);
+        assertThat(actualRoutes).hasSize(INHERITED_ROUTES_TOTAL);
         assertThat(countByPrefix(actualRoutes, "/api/v1/ops-control")).isEqualTo(31);
         assertThat(countByPrefix(actualRoutes, "/api/v1/cloudreve-sync")).isEqualTo(16);
         assertThat(countByPrefix(actualRoutes, "/api/v1/backup-recovery")).isEqualTo(25);
@@ -440,29 +437,6 @@ class OpsCoreApiContractTest {
                 .collect(Collectors.toCollection(TreeSet::new));
     }
 
-    private Set<String> inheritedContractRouteSignatures() throws IOException {
-        Set<String> routes = new TreeSet<>();
-        for (String file : List.of(
-                "contracts-ops-control.md",
-                "contracts-cloudreve-sync.md",
-                "contracts-backup-recovery.md",
-                "contracts-alerting.md",
-                "contracts-plugin-integration.md",
-                "contracts-cross-platform-notification.md",
-                "contracts-ops-image-market.md"
-        )) {
-            Path path = docsPath(file);
-            Pattern row = Pattern.compile("\\|\\s*`?(GET|POST|PUT|PATCH|DELETE)`?\\s*\\|\\s*`([^`]+)`");
-            for (String line : Files.readAllLines(path)) {
-                var matcher = row.matcher(line);
-                if (matcher.find()) {
-                    routes.add(matcher.group(1) + " " + matcher.group(2));
-                }
-            }
-        }
-        return routes;
-    }
-
     private boolean isInheritedOpsPath(String pattern) {
         return pattern.startsWith("/api/v1/ops-control")
                 || pattern.startsWith("/api/v1/cloudreve-sync")
@@ -475,14 +449,6 @@ class OpsCoreApiContractTest {
 
     private long countByPrefix(Set<String> routes, String prefix) {
         return routes.stream().filter(route -> route.contains(" " + prefix)).count();
-    }
-
-    private Path docsPath(String file) {
-        Path fromModule = Path.of("../docs", file);
-        if (Files.exists(fromModule)) {
-            return fromModule;
-        }
-        return Path.of("../docs", file);
     }
 
     private Path pathFromProject(String value) {

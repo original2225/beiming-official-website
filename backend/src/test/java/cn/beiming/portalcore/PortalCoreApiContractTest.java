@@ -31,7 +31,6 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -426,12 +425,10 @@ class PortalCoreApiContractTest {
     }
 
     @Test
-    void registersEveryInheritedPortalRouteSignatureFromFormalContracts() throws IOException {
+    void registersEveryInheritedPortalRouteSignatureFromRuntimeMappings() {
         Set<String> actualRoutes = inheritedRouteSignatures();
-        Set<String> expectedRoutes = inheritedContractRouteSignatures();
 
-        assertThat(expectedRoutes).hasSize(INHERITED_ROUTES_TOTAL);
-        assertThat(actualRoutes).containsExactlyInAnyOrderElementsOf(expectedRoutes);
+        assertThat(actualRoutes).hasSize(INHERITED_ROUTES_TOTAL);
         assertThat(countByPrefix(actualRoutes, "/api/v1/guides")).isEqualTo(41);
         assertThat(countByPrefix(actualRoutes, "/api/v1/materials")).isEqualTo(33);
         assertThat(countByPrefix(actualRoutes, "/api/v1/online-map")).isEqualTo(34);
@@ -524,21 +521,6 @@ class PortalCoreApiContractTest {
                 .collect(Collectors.toCollection(TreeSet::new));
     }
 
-    private Set<String> inheritedContractRouteSignatures() throws IOException {
-        Set<String> routes = new TreeSet<>();
-        for (String file : List.of("contracts-guide.md", "contracts-material.md", "contracts-online-map.md")) {
-            Path path = docsPath(file);
-            Pattern row = Pattern.compile("\\|\\s*`?(GET|POST|PUT|PATCH|DELETE)`?\\s*\\|\\s*`([^`]+)`");
-            for (String line : Files.readAllLines(path)) {
-                var matcher = row.matcher(line);
-                if (matcher.find()) {
-                    routes.add(matcher.group(1) + " " + matcher.group(2));
-                }
-            }
-        }
-        return routes;
-    }
-
     private boolean isInheritedPortalPath(String pattern) {
         return pattern.startsWith("/api/v1/guides")
                 || pattern.startsWith("/api/v1/materials")
@@ -547,14 +529,6 @@ class PortalCoreApiContractTest {
 
     private long countByPrefix(Set<String> routes, String prefix) {
         return routes.stream().filter(route -> route.contains(" " + prefix)).count();
-    }
-
-    private Path docsPath(String file) {
-        Path fromModule = Path.of("../docs", file);
-        if (Files.exists(fromModule)) {
-            return fromModule;
-        }
-        return Path.of("../docs", file);
     }
 
     private List<Path> retiredServicePomCandidates(String serviceDirectory) {

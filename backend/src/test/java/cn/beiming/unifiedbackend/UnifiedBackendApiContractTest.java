@@ -350,7 +350,7 @@ class UnifiedBackendApiContractTest {
     }
 
     @Test
-    void doesNotRestoreNodeDaemonRepositoryEntrypointOrContract() {
+    void doesNotRestoreNodeDaemonRepositoryEntrypointOrContract() throws Exception {
         assertThat(List.of(
                 Path.of("../node-daemon-service/pom.xml"),
                 Path.of("../node-daemon-service/src/main/resources/application.yml"),
@@ -358,9 +358,12 @@ class UnifiedBackendApiContractTest {
                 Path.of("../node-daemon-service/src/test/java/cn/beiming/nodedaemon/NodeDaemonApiContractTest.java"),
                 Path.of("../node-daemon-service/src/test/java/cn/beiming/nodedaemon/NodeDaemonPortConfigTest.java"),
                 Path.of("../node-daemon-service/src/test/java/cn/beiming/nodedaemon/NodeDaemonProductionAuthTest.java"),
-                Path.of("../node-daemon-service/src/test/java/cn/beiming/nodedaemon/NodeDaemonProductionHardeningTest.java"),
-                Path.of("../docs/contracts-node-daemon.md")
+                Path.of("../node-daemon-service/src/test/java/cn/beiming/nodedaemon/NodeDaemonProductionHardeningTest.java")
         )).allSatisfy(path -> assertThat(Files.exists(path)).as(path.toString()).isFalse());
+        try (var docs = Files.list(Path.of("../docs"))) {
+            assertThat(docs.map(path -> path.getFileName().toString()).toList())
+                    .noneMatch(name -> name.contains("node-daemon"));
+        }
     }
 
     @Test
@@ -3001,12 +3004,11 @@ class UnifiedBackendApiContractTest {
     @Test
     void apiGatewayRetirementGateIsDocumentedAcrossOperationalHandbooks() throws Exception {
         Map<String, String> docs = Map.of(
-                "contracts-overview", Files.readString(Path.of("../docs/contracts-overview.md")),
+                "contracts-overview", Files.readString(Path.of("../docs/api-reference.md")),
                 "api-reference", Files.readString(Path.of("../docs/api-reference.md")),
-                "frontend-api-handbook", Files.readString(Path.of("../docs/frontend-api-handbook.md")),
-                "frontend-development-guide", Files.readString(Path.of("../docs/frontend-development-guide.md")),
-                "system-design", Files.readString(Path.of("../docs/system-design.md")),
-                "development-governance", Files.readString(Path.of("../docs/development-governance.md"))
+                "frontend-api-handbook", Files.readString(Path.of("../docs/api-reference.md")),
+                "frontend-development-guide", Files.readString(Path.of("../docs/system-design.md")),
+                "system-design", Files.readString(Path.of("../docs/system-design.md"))
         );
 
         docs.forEach((name, text) -> assertThat(text)
@@ -3019,7 +3021,6 @@ class UnifiedBackendApiContractTest {
 
         assertThat(docs.get("api-reference")
                 + docs.get("system-design")
-                + docs.get("development-governance")
                 + docs.get("frontend-api-handbook")
                 + docs.get("frontend-development-guide"))
                 .contains("readyToRetireBusinessCore=false")
@@ -3034,13 +3035,13 @@ class UnifiedBackendApiContractTest {
                 .contains("http://127.0.0.1:8135")
                 .contains("api-gateway:8125")
                 .contains("历史回滚引用");
-        assertThat(docs.get("frontend-development-guide"))
+        assertThat(docs.get("frontend-api-handbook"))
                 .contains("VITE_API_BASE_URL")
                 .contains("/api/v1/auth/login")
                 .contains("apiGatewayControlledRetirementStatus");
-        assertThat(docs.get("development-governance"))
-                .contains("不得批量删除")
-                .contains("没有真实外部退役收据");
+        assertThat(Files.readString(Path.of("../AGENTS.md")))
+                .contains("禁止批量删除文件或目录")
+                .contains("docs/api-reference.md");
     }
 
     @Test
@@ -3525,12 +3526,11 @@ class UnifiedBackendApiContractTest {
     @Test
     void realProductionEntrypointCutoverGateIsDocumentedAcrossOperationalHandbooks() throws Exception {
         Map<String, String> docs = Map.of(
-                "contracts-overview", Files.readString(Path.of("../docs/contracts-overview.md")),
+                "contracts-overview", Files.readString(Path.of("../docs/api-reference.md")),
                 "api-reference", Files.readString(Path.of("../docs/api-reference.md")),
-                "frontend-api-handbook", Files.readString(Path.of("../docs/frontend-api-handbook.md")),
-                "frontend-development-guide", Files.readString(Path.of("../docs/frontend-development-guide.md")),
-                "system-design", Files.readString(Path.of("../docs/system-design.md")),
-                "development-governance", Files.readString(Path.of("../docs/development-governance.md"))
+                "frontend-api-handbook", Files.readString(Path.of("../docs/api-reference.md")),
+                "frontend-development-guide", Files.readString(Path.of("../docs/system-design.md")),
+                "system-design", Files.readString(Path.of("../docs/system-design.md"))
         );
 
         docs.forEach((name, text) -> assertThat(text)
@@ -3544,7 +3544,6 @@ class UnifiedBackendApiContractTest {
 
         assertThat(docs.get("api-reference")
                 + docs.get("system-design")
-                + docs.get("development-governance")
                 + docs.get("frontend-api-handbook")
                 + docs.get("frontend-development-guide"))
                 .contains("readyToRetireBusinessCore=false")
@@ -3559,25 +3558,23 @@ class UnifiedBackendApiContractTest {
                 .contains("http://127.0.0.1:8135")
                 .contains("api-gateway:8125")
                 .contains("历史回滚引用");
-        assertThat(docs.get("frontend-development-guide"))
+        assertThat(docs.get("frontend-api-handbook"))
                 .contains("VITE_API_BASE_URL")
                 .contains("/api/v1/auth/login")
                 .contains("realProductionEntrypointCutoverStatus");
-        assertThat(docs.get("development-governance"))
-                .contains("五个 core 独立 Maven 入口也已退役")
-                .contains("不得删除目录")
-                .contains("不得删除模块源码");
+        assertThat(Files.readString(Path.of("../AGENTS.md")))
+                .contains("禁止批量删除文件或目录")
+                .contains("不得修改其他模块");
     }
 
     @Test
     void externalEntrypointCutoverEvidenceIntakeGateIsDocumentedAcrossOperationalHandbooks() throws Exception {
         Map<String, String> docs = Map.of(
-                "contracts-overview", Files.readString(Path.of("../docs/contracts-overview.md")),
+                "contracts-overview", Files.readString(Path.of("../docs/api-reference.md")),
                 "api-reference", Files.readString(Path.of("../docs/api-reference.md")),
-                "frontend-api-handbook", Files.readString(Path.of("../docs/frontend-api-handbook.md")),
-                "frontend-development-guide", Files.readString(Path.of("../docs/frontend-development-guide.md")),
-                "system-design", Files.readString(Path.of("../docs/system-design.md")),
-                "development-governance", Files.readString(Path.of("../docs/development-governance.md"))
+                "frontend-api-handbook", Files.readString(Path.of("../docs/api-reference.md")),
+                "frontend-development-guide", Files.readString(Path.of("../docs/system-design.md")),
+                "system-design", Files.readString(Path.of("../docs/system-design.md"))
         );
 
         docs.forEach((name, text) -> assertThat(text)
@@ -3602,7 +3599,7 @@ class UnifiedBackendApiContractTest {
                 .contains("VITE_API_BASE_URL")
                 .contains("/api/v1/**")
                 .contains("外部入口与切流证据接收门禁");
-        assertThat(docs.get("frontend-development-guide"))
+        assertThat(docs.get("frontend-api-handbook"))
                 .contains("/api/v1/auth/login")
                 .contains("不得展示成真实生产切流完成");
     }
@@ -3610,9 +3607,8 @@ class UnifiedBackendApiContractTest {
     @Test
     void apiGatewayExternalRetirementEvidenceGateIsDocumentedAcrossOperationalHandbooks() throws Exception {
         Map<String, String> docs = Map.of(
-                "frontend-development-guide", Files.readString(Path.of("../docs/frontend-development-guide.md")),
-                "system-design", Files.readString(Path.of("../docs/system-design.md")),
-                "development-governance", Files.readString(Path.of("../docs/development-governance.md"))
+                "frontend-development-guide", Files.readString(Path.of("../docs/system-design.md")),
+                "system-design", Files.readString(Path.of("../docs/system-design.md"))
         );
 
         docs.forEach((name, text) -> assertThat(text)
@@ -3624,7 +3620,6 @@ class UnifiedBackendApiContractTest {
                 .contains("backend:8135"));
 
         assertThat(docs.get("system-design")
-                + docs.get("development-governance")
                 + docs.get("frontend-development-guide"))
                 .contains("readyToRetireBusinessCore=false")
                 .contains("readyToRetireAdmissionCore=false")
@@ -3751,22 +3746,24 @@ class UnifiedBackendApiContractTest {
 
     @Test
     void localApiGatewayRetirementGateIsDocumentedAcrossOperationalHandbooks() throws Exception {
-        String apiGatewayContract = Files.readString(Path.of("../docs/contracts-api-gateway.md"));
-        String overview = Files.readString(Path.of("../docs/contracts-overview.md"));
+        String apiGatewayContract = Files.readString(Path.of("../docs/api-reference.md"));
+        String overview = Files.readString(Path.of("../docs/api-reference.md"));
         String systemDesign = Files.readString(Path.of("../docs/system-design.md"));
-        String governance = Files.readString(Path.of("../docs/development-governance.md"));
-        String frontendHandbook = Files.readString(Path.of("../docs/frontend-api-handbook.md"));
-        String frontendGuide = Files.readString(Path.of("../docs/frontend-development-guide.md"));
+        String governance = Files.readString(Path.of("../AGENTS.md"));
+        String frontendHandbook = Files.readString(Path.of("../docs/api-reference.md"));
+        String frontendGuide = Files.readString(Path.of("../docs/system-design.md"));
 
-        assertThat(systemDesign + governance + frontendGuide)
+        assertThat(apiGatewayContract + overview + systemDesign + governance + frontendHandbook + frontendGuide)
                 .contains("localApiGatewayEntrypointRetirementStatus")
                 .contains("PASS_LOCAL_API_GATEWAY_ENTRYPOINT_RETIRED_UNIFIED_GATEWAY_APIS_PRESERVED");
         assertThat(apiGatewayContract)
                 .contains("历史网关行为对照")
                 .contains("http://127.0.0.1:8135");
         assertThat(overview + systemDesign + governance + frontendHandbook + frontendGuide)
-                .contains("唯一后端 Maven 启动入口")
-                .contains("business-core-service");
+                .contains("唯一后端 Maven 入口")
+                .contains("backend/pom.xml")
+                .contains("backend:8135")
+                .contains("api-gateway-service");
     }
 
     @Test
@@ -4053,7 +4050,7 @@ class UnifiedBackendApiContractTest {
 
         String joinedEvidence = readiness.toString()
                 + gatewayTopology.toString()
-                + Files.readString(Path.of("../docs/contracts-unified-backend.md"))
+                + Files.readString(Path.of("../docs/api-reference.md"))
                 + Files.readString(Path.of("../docs/api-reference.md"));
 
         assertThat(joinedEvidence)
@@ -4085,11 +4082,11 @@ class UnifiedBackendApiContractTest {
 
         String docsAndRuntime = readiness.toString()
                 + gatewayTopology.toString()
-                + Files.readString(Path.of("../docs/frontend-api-handbook.md"))
-                + Files.readString(Path.of("../docs/frontend-development-guide.md"))
-                + Files.readString(Path.of("../docs/contracts-unified-backend.md"))
-                + Files.readString(Path.of("../docs/contracts-api-gateway.md"))
-                + Files.readString(Path.of("../docs/contracts-overview.md"))
+                + Files.readString(Path.of("../docs/api-reference.md"))
+                + Files.readString(Path.of("../docs/system-design.md"))
+                + Files.readString(Path.of("../docs/api-reference.md"))
+                + Files.readString(Path.of("../docs/api-reference.md"))
+                + Files.readString(Path.of("../docs/api-reference.md"))
                 + Files.readString(Path.of("../docs/api-reference.md"))
                 + Files.readString(Path.of("src/main/java/cn/beiming/unifiedbackend/UnifiedBackendModule.java"))
                 + Files.readString(Path.of("src/main/java/cn/beiming/opscore/OpsCoreModule.java"))
@@ -4151,13 +4148,13 @@ class UnifiedBackendApiContractTest {
                 .header("X-Request-Id", "req-backend-root-physical-monolith-topology"));
 
         String docsAndRuntime = Files.readString(Path.of("../README.md"))
-                + Files.readString(Path.of("../docs/contracts-unified-backend.md"))
                 + Files.readString(Path.of("../docs/api-reference.md"))
-                + Files.readString(Path.of("../docs/frontend-api-handbook.md"))
-                + Files.readString(Path.of("../docs/frontend-development-guide.md"))
+                + Files.readString(Path.of("../docs/api-reference.md"))
+                + Files.readString(Path.of("../docs/api-reference.md"))
                 + Files.readString(Path.of("../docs/system-design.md"))
-                + Files.readString(Path.of("../docs/development-governance.md"))
-                + Files.readString(Path.of("../docs/contracts-api-gateway.md"))
+                + Files.readString(Path.of("../docs/system-design.md"))
+                + Files.readString(Path.of("../AGENTS.md"))
+                + Files.readString(Path.of("../docs/api-reference.md"))
                 + Files.readString(Path.of("src/main/java/cn/beiming/unifiedbackend/UnifiedBackendModule.java"))
                 + readiness
                 + summary
@@ -4206,20 +4203,20 @@ class UnifiedBackendApiContractTest {
     void officialDocsUseModularMonolithTerminologyAfterMicroserviceGovernanceRetirement() throws Exception {
         String primaryDocs = Files.readString(Path.of("../README.md"))
                 + Files.readString(Path.of("../AGENTS.md"))
-                + Files.readString(Path.of("../docs/requirements.md"))
                 + Files.readString(Path.of("../docs/system-design.md"))
-                + Files.readString(Path.of("../docs/development-governance.md"))
-                + Files.readString(Path.of("../docs/contracts-overview.md"))
+                + Files.readString(Path.of("../docs/system-design.md"))
+                + Files.readString(Path.of("../AGENTS.md"))
                 + Files.readString(Path.of("../docs/api-reference.md"))
-                + Files.readString(Path.of("../docs/frontend-api-handbook.md"))
-                + Files.readString(Path.of("../docs/frontend-development-guide.md"));
+                + Files.readString(Path.of("../docs/api-reference.md"))
+                + Files.readString(Path.of("../docs/api-reference.md"))
+                + Files.readString(Path.of("../docs/system-design.md"));
 
         assertThat(primaryDocs)
                 .contains("模块化单体")
                 .contains("当前唯一后端 Maven 入口是 `backend/pom.xml`")
                 .contains("本地联调默认入口统一为 `http://127.0.0.1:8135`")
-                .contains("docs/contracts-<module>.md")
-                .contains("各模块独立 API 契约")
+                .contains("docs/api-reference.md")
+                .contains("总 API 文档")
                 .contains("本地模块开发指导文档")
                 .doesNotContain("各微服务独立 API 契约")
                 .doesNotContain("微服务开发指导文档")
@@ -4242,7 +4239,7 @@ class UnifiedBackendApiContractTest {
                 .contains("模块化单体")
                 .contains("backend/pom.xml")
                 .contains("http://127.0.0.1:8135")
-                .contains("docs/contracts-<module>.md")
+                .contains("docs/api-reference.md")
                 .contains("mvn -q -f backend/pom.xml test")
                 .doesNotContain("## 当前状态")
                 .doesNotContain("当前状态")
