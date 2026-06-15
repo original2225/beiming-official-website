@@ -106,6 +106,20 @@
 
 `guide` 负责指南、规则、指令和外部交流入口。`material` 负责素材投稿、展示、精选、审核和授权。`online-map` 负责在线地图 provider、世界、图层、marker、区域、嵌入配置和健康快照。
 
+## changelog 模块接口
+
+`changelog` 由 `engagement-core` 承载，路径前缀为 `/api/v1/changelog`，拥有版本更新、插件变更、规则调整、资源包更新、地图更新和维护记录。公开读取接口不要求认证；`/me/**` 要求登录用户；`/admin/**` 要求 `HELPER`、`ADMIN` 或 `OWNER`，其中发布、下架、归档、删除和日历同步要求 `ADMIN` 或 `OWNER`。所有写接口必须带 `idempotencyKey`，并写入审计。幂等键同一操作者、同一作用域、同一请求指纹时返回原结果；同键不同指纹返回 `409/49312`。
+
+公开接口包括 `GET /releases`、`GET /releases/{releaseIdOrSlug}`、`GET /versions/latest`、`GET /tags` 和 `GET /changes`。列表接口使用统一分页字段，支持 `keyword`、`type`、`visibility`、`impactLevel`、`minecraftVersion`、`tag`、`from`、`to` 和 `sort` 等过滤。公开详情只返回已发布且公开的版本，不返回内部备注、审核意见、提交时间、审核时间、下架时间和归档时间。安全版本的非公开变更项必须脱敏展示。
+
+用户收藏接口包括 `GET /me/bookmarks`、`POST /me/releases/{releaseId}/bookmark` 和 `POST /me/releases/{releaseId}/unbookmark`。收藏只能作用于公开可见版本，返回 `bookmark` 和当前用户视角的 `release` 摘要。重复收藏保持 `ACTIVE`，取消收藏返回 `CANCELED`，并同步版本 `bookmarkCount`。收藏写入失败返回 `500/54903`，不得留下不一致的收藏计数。
+
+后台版本接口包括 `GET /admin/releases`、`GET /admin/releases/{releaseId}`、`POST /admin/releases`、`PATCH /admin/releases/{releaseId}`、`POST /admin/releases/{releaseId}/submit`、`PATCH /admin/releases/{releaseId}/approve`、`PATCH /admin/releases/{releaseId}/reject`、`PATCH /admin/releases/{releaseId}/request-changes`、`PATCH /admin/releases/{releaseId}/publish`、`PATCH /admin/releases/{releaseId}/offline`、`PATCH /admin/releases/{releaseId}/archive` 和 `PATCH /admin/releases/{releaseId}/delete`。版本请求字段包括 `slug`、`versionName`、`title`、`summary`、`body`、`type`、`visibility`、`impactLevel`、`releasedAt`、`effectiveAt`、`minecraftVersion`、`pluginVersions`、`resourcePackVersions`、`mapVersion`、`groups`、`compatibilityNotes`、`knownIssues`、`rollbackNotes`、`securityPublicSummary`、`internalNote`、`relatedResourceIds`、`relatedServerInstanceIds`、`relatedContentId`、`reason` 和 `idempotencyKey`。响应字段包括版本基础字段、分组和变更项、关联资源快照、关联服务器快照、关联内容快照、日历引用、通知摘要、收藏计数、审核状态字段、创建更新时间和后台可见内部字段。状态流转为 `DRAFT`、`PENDING_REVIEW`、`APPROVED`、`PUBLISHED`、`OFFLINE`、`ARCHIVED`、`DELETED`，并允许 `REJECTED` 和 `NEEDS_CHANGES` 回到提交审核。删除必须带 `confirmText=DELETE_CHANGELOG_RELEASE`。
+
+日历同步接口为 `POST /admin/releases/{releaseId}/calendar-sync`，请求字段包括 `mode`、`reason` 和 `idempotencyKey`。`mode=UPSERT_SNAPSHOT` 时返回 `syncStatus=SYNCED`，并写入 `calendarEvent.eventId`、`calendarEvent.syncStatus` 和 `lastSyncedAt`；其他模式返回 `SKIPPED`。日历依赖不可用、超时或结构不兼容时分别返回 `502/49140`、`504/49141` 和 `502/49142`。通知依赖失败不阻断发布或下架，但必须在 `notificationSummary.failure` 中返回降级摘要。
+
+后台审计和运维接口包括 `GET /admin/audit-logs` 和 `GET /admin/ops/summary`。审计筛选支持 `actorUserId`、`action`、`targetType`、`targetId`、`releaseId`、`result`、`from`、`to` 和 `sort`。审计字段至少包括 `requestId`、`action`、`targetType`、`releaseId`、`targetId`、`actorUserId`、`actorRole`、`result`、`reason`、`paramsSummary`、`beforeState`、`afterState`、`failureReason` 和 `createdAt`。验收时，涉及数据库新增或更新的自动化测试必须通过真实 HTTP 请求进入后端，完成后使用独立 SQL 查询验证版本、收藏、日历同步、审计和请求日志证据，并在测试日志输出 `SQL evidence`。
+
 ## 受控生产入口字段
 
 统一后端 readiness 可以暴露生产入口、旧入口退役、外部入口和审计观测相关状态字段。当前这些字段只代表仓库内运行态和外部证据接收状态，不代表真实生产切流完成。

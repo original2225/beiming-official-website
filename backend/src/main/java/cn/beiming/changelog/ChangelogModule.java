@@ -8,6 +8,9 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
@@ -41,17 +44,28 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 
+@Configuration
+class ChangelogEvidenceConfiguration {
+    @Bean
+    @ConditionalOnMissingBean
+    ChangelogFlowEvidenceRecorder changelogFlowEvidenceRecorder() {
+        return new NoopChangelogFlowEvidenceRecorder();
+    }
+}
+
 @RestController
 @RequestMapping("/api/v1/changelog")
 class ChangelogController {
     private final ChangelogStore store;
     private final ChangelogAuth auth;
     private final ChangelogProperties properties;
+    private final ChangelogFlowEvidenceRecorder evidenceRecorder;
 
-    ChangelogController(ChangelogStore store, ChangelogAuth auth, ChangelogProperties properties) {
+    ChangelogController(ChangelogStore store, ChangelogAuth auth, ChangelogProperties properties, ChangelogFlowEvidenceRecorder evidenceRecorder) {
         this.store = store;
         this.auth = auth;
         this.properties = properties;
+        this.evidenceRecorder = evidenceRecorder;
     }
 
     @GetMapping("/releases")
@@ -254,7 +268,9 @@ class ChangelogController {
             ensureBookmarkWritable(request);
             ChangelogBookmarkRecord bookmark = store.bookmark(release, actor);
             store.audit("CHANGELOG_RELEASE_BOOKMARKED", release.releaseId, bookmark.bookmarkId, actor, request, body, "SUCCESS", null, null);
-            return created(request, Map.of("bookmark", bookmark.view(), "release", release.currentUserSummaryView(true)));
+            Map<String, Object> payload = Map.of("bookmark", bookmark.view(), "release", release.currentUserSummaryView(true));
+            evidenceRecorder.recordBookmarkWrite(request, "CHANGELOG_RELEASE_BOOKMARKED", payload, HttpStatus.CREATED.value());
+            return created(request, payload);
         });
     }
 
@@ -268,7 +284,9 @@ class ChangelogController {
             ensureBookmarkWritable(request);
             ChangelogBookmarkRecord bookmark = store.unbookmark(release, actor);
             store.audit("CHANGELOG_RELEASE_UNBOOKMARKED", release.releaseId, bookmark.bookmarkId, actor, request, body, "SUCCESS", null, null);
-            return ok(request, Map.of("bookmark", bookmark.view(), "release", release.currentUserSummaryView(false)));
+            Map<String, Object> payload = Map.of("bookmark", bookmark.view(), "release", release.currentUserSummaryView(false));
+            evidenceRecorder.recordBookmarkWrite(request, "CHANGELOG_RELEASE_UNBOOKMARKED", payload, HttpStatus.OK.value());
+            return ok(request, payload);
         });
     }
 
@@ -340,7 +358,9 @@ class ChangelogController {
             ensureAuditWritable(request);
             ChangelogReleaseRecord release = store.createRelease(body, actor);
             store.audit("CHANGELOG_RELEASE_CREATED", release.releaseId, release.releaseId, actor, request, body, "SUCCESS", null, release.status);
-            return created(request, release.adminView());
+            Map<String, Object> payload = release.adminView();
+            evidenceRecorder.recordReleaseWrite(request, "CHANGELOG_RELEASE_CREATED", payload, HttpStatus.CREATED.value());
+            return created(request, payload);
         });
     }
 
@@ -361,7 +381,9 @@ class ChangelogController {
             ensureAuditWritable(request);
             store.applyReleaseFields(release, body, actor);
             store.audit("CHANGELOG_RELEASE_UPDATED", release.releaseId, release.releaseId, actor, request, body, "SUCCESS", release.status, release.status);
-            return ok(request, release.adminView());
+            Map<String, Object> payload = release.adminView();
+            evidenceRecorder.recordReleaseWrite(request, "CHANGELOG_RELEASE_UPDATED", payload, HttpStatus.OK.value());
+            return ok(request, payload);
         });
     }
 
@@ -415,7 +437,9 @@ class ChangelogController {
             release.updatedAt = now();
             applyNotificationFailure(request, release);
             store.audit("CHANGELOG_RELEASE_PUBLISHED", release.releaseId, release.releaseId, actor, request, body, "SUCCESS", before, release.status);
-            return ok(request, release.adminView());
+            Map<String, Object> payload = release.adminView();
+            evidenceRecorder.recordReleaseWrite(request, "CHANGELOG_RELEASE_PUBLISHED", payload, HttpStatus.OK.value());
+            return ok(request, payload);
         });
     }
 
@@ -438,7 +462,9 @@ class ChangelogController {
             release.updatedAt = now();
             applyNotificationFailure(request, release);
             store.audit("CHANGELOG_RELEASE_OFFLINED", release.releaseId, release.releaseId, actor, request, body, "SUCCESS", before, release.status);
-            return ok(request, release.adminView());
+            Map<String, Object> payload = release.adminView();
+            evidenceRecorder.recordReleaseWrite(request, "CHANGELOG_RELEASE_OFFLINED", payload, HttpStatus.OK.value());
+            return ok(request, payload);
         });
     }
 
@@ -460,7 +486,9 @@ class ChangelogController {
             release.updatedBy = actor.userId;
             release.updatedAt = now();
             store.audit("CHANGELOG_RELEASE_ARCHIVED", release.releaseId, release.releaseId, actor, request, body, "SUCCESS", before, release.status);
-            return ok(request, release.adminView());
+            Map<String, Object> payload = release.adminView();
+            evidenceRecorder.recordReleaseWrite(request, "CHANGELOG_RELEASE_ARCHIVED", payload, HttpStatus.OK.value());
+            return ok(request, payload);
         });
     }
 
@@ -485,7 +513,9 @@ class ChangelogController {
             release.updatedBy = actor.userId;
             release.updatedAt = now();
             store.audit("CHANGELOG_RELEASE_DELETED", release.releaseId, release.releaseId, actor, request, body, "SUCCESS", before, release.status);
-            return ok(request, release.adminView());
+            Map<String, Object> payload = release.adminView();
+            evidenceRecorder.recordReleaseWrite(request, "CHANGELOG_RELEASE_DELETED", payload, HttpStatus.OK.value());
+            return ok(request, payload);
         });
     }
 
@@ -524,6 +554,7 @@ class ChangelogController {
             data.put("calendarEvent", release.calendarRef());
             data.put("items", List.of(release.summaryView()));
             data.put("lastSyncedAt", release.calendarSyncedAt);
+            evidenceRecorder.recordCalendarSyncWrite(request, "CHANGELOG_CALENDAR_SYNCED", data, HttpStatus.OK.value());
             return ok(request, data);
         });
     }
@@ -601,7 +632,9 @@ class ChangelogController {
                 release.reviewComment = text(body, "reviewComment", release.reviewComment);
             }
             store.audit(action, release.releaseId, release.releaseId, actor, request, body, "SUCCESS", before, to);
-            return ok(request, release.adminView());
+            Map<String, Object> payload = release.adminView();
+            evidenceRecorder.recordReleaseWrite(request, action, payload, HttpStatus.OK.value());
+            return ok(request, payload);
         });
     }
 
@@ -1279,6 +1312,28 @@ class ChangelogStore {
 }
 
 record ChangelogIdempotencyRecord(String fingerprint, HttpStatus status, Object data) {
+}
+
+interface ChangelogFlowEvidenceRecorder {
+    void recordReleaseWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordBookmarkWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordCalendarSyncWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+}
+
+class NoopChangelogFlowEvidenceRecorder implements ChangelogFlowEvidenceRecorder {
+    @Override
+    public void recordReleaseWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordBookmarkWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordCalendarSyncWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
 }
 
 class ChangelogReleaseRecord {
