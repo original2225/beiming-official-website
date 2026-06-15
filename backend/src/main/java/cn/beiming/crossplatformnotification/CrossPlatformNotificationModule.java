@@ -8,6 +8,9 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -50,6 +53,15 @@ import java.util.regex.Pattern;
 
 import static cn.beiming.crossplatformnotification.CpnSupport.*;
 
+@Configuration
+class CrossPlatformNotificationEvidenceConfiguration {
+    @Bean
+    @ConditionalOnMissingBean
+    CrossPlatformNotificationFlowEvidenceRecorder crossPlatformNotificationFlowEvidenceRecorder() {
+        return new NoopCrossPlatformNotificationFlowEvidenceRecorder();
+    }
+}
+
 @RestController
 @RequestMapping("/api/v1/cross-platform-notification")
 class CrossPlatformNotificationController {
@@ -57,11 +69,13 @@ class CrossPlatformNotificationController {
     private final CpnStore store;
     private final CpnAuth auth;
     private final CpnProperties properties;
+    private final CrossPlatformNotificationFlowEvidenceRecorder evidenceRecorder;
 
-    CrossPlatformNotificationController(CpnStore store, CpnAuth auth, CpnProperties properties) {
+    CrossPlatformNotificationController(CpnStore store, CpnAuth auth, CpnProperties properties, CrossPlatformNotificationFlowEvidenceRecorder evidenceRecorder) {
         this.store = store;
         this.auth = auth;
         this.properties = properties;
+        this.evidenceRecorder = evidenceRecorder;
     }
 
     @GetMapping("/health")
@@ -132,7 +146,9 @@ class CrossPlatformNotificationController {
             store.providers.put(providerId, provider);
             store.ensureCapability(provider);
             store.audit("EXTERNAL_PROVIDER_CREATED", "PROVIDER", providerId, actor, request, body, "HIGH", "SUCCESS", null, null, provider.status);
-            return new WriteResult(HttpStatus.CREATED, provider.view());
+            Map<String, Object> view = provider.view();
+            evidenceRecorder.recordProviderWrite(request, "EXTERNAL_PROVIDER_CREATED", view, HttpStatus.CREATED.value());
+            return new WriteResult(HttpStatus.CREATED, view);
         });
     }
 
@@ -159,7 +175,9 @@ class CrossPlatformNotificationController {
                 provider.endpointSummary = endpointSummary(body.get("endpointSummary"));
             }
             store.audit("EXTERNAL_PROVIDER_UPDATED", "PROVIDER", providerId, actor, request, body, providerPatchNeedsConfirm(body) ? "HIGH" : "MEDIUM", "SUCCESS", null, before, provider.status);
-            return new WriteResult(HttpStatus.OK, provider.view());
+            Map<String, Object> view = provider.view();
+            evidenceRecorder.recordProviderWrite(request, "EXTERNAL_PROVIDER_UPDATED", view, HttpStatus.OK.value());
+            return new WriteResult(HttpStatus.OK, view);
         });
     }
 
@@ -214,7 +232,9 @@ class CrossPlatformNotificationController {
                 provider.degradeReasons = List.of();
             }
             store.audit(action, "PROVIDER", providerId, actor, request, body, risk, "SUCCESS", null, before, provider.status);
-            return new WriteResult(HttpStatus.OK, provider.view());
+            Map<String, Object> view = provider.view();
+            evidenceRecorder.recordProviderWrite(request, action, view, HttpStatus.OK.value());
+            return new WriteResult(HttpStatus.OK, view);
         });
     }
 
@@ -294,7 +314,9 @@ class CrossPlatformNotificationController {
             CpnTemplateMapping mapping = CpnTemplateMapping.from(mappingId, body, provider.channel, actor.userId());
             store.mappings.put(mappingId, mapping);
             store.audit("EXTERNAL_TEMPLATE_MAPPING_CREATED", "TEMPLATE_MAPPING", mappingId, actor, request, body, "MEDIUM", "SUCCESS", null, null, mapping.status);
-            return new WriteResult(HttpStatus.CREATED, mapping.view());
+            Map<String, Object> view = mapping.view();
+            evidenceRecorder.recordTemplateMappingWrite(request, "EXTERNAL_TEMPLATE_MAPPING_CREATED", view, HttpStatus.CREATED.value());
+            return new WriteResult(HttpStatus.CREATED, view);
         });
     }
 
@@ -316,7 +338,9 @@ class CrossPlatformNotificationController {
             String before = mapping.status;
             mapping.patch(body, actor.userId());
             store.audit("EXTERNAL_TEMPLATE_MAPPING_UPDATED", "TEMPLATE_MAPPING", mappingId, actor, request, body, "MEDIUM", "SUCCESS", null, before, mapping.status);
-            return new WriteResult(HttpStatus.OK, mapping.view());
+            Map<String, Object> view = mapping.view();
+            evidenceRecorder.recordTemplateMappingWrite(request, "EXTERNAL_TEMPLATE_MAPPING_UPDATED", view, HttpStatus.OK.value());
+            return new WriteResult(HttpStatus.OK, view);
         });
     }
 
@@ -361,7 +385,9 @@ class CrossPlatformNotificationController {
             mapping.updatedBy = actor.userId();
             mapping.updatedAt = now();
             store.audit(action, "TEMPLATE_MAPPING", mappingId, actor, request, body, risk, "SUCCESS", null, before, mapping.status);
-            return new WriteResult(HttpStatus.OK, mapping.view());
+            Map<String, Object> view = mapping.view();
+            evidenceRecorder.recordTemplateMappingWrite(request, action, view, HttpStatus.OK.value());
+            return new WriteResult(HttpStatus.OK, view);
         });
     }
 
@@ -421,7 +447,9 @@ class CrossPlatformNotificationController {
             CpnRoutePolicy route = CpnRoutePolicy.from(routeId, body, receiver, actor.userId());
             store.routes.put(routeId, route);
             store.audit("EXTERNAL_ROUTE_CREATED", "ROUTE", routeId, actor, request, body, "HIGH", "SUCCESS", null, null, route.status);
-            return new WriteResult(HttpStatus.CREATED, route.view());
+            Map<String, Object> view = route.view();
+            evidenceRecorder.recordRouteWrite(request, "EXTERNAL_ROUTE_CREATED", view, HttpStatus.CREATED.value());
+            return new WriteResult(HttpStatus.CREATED, view);
         });
     }
 
@@ -450,7 +478,9 @@ class CrossPlatformNotificationController {
             String before = route.status;
             route.patch(body, actor.userId(), body.containsKey("receiverSummary") ? receiverSummary(body.get("receiverSummary"), provider.channel) : route.receiverSummary);
             store.audit("EXTERNAL_ROUTE_UPDATED", "ROUTE", routeId, actor, request, body, routePatchNeedsConfirm(body) ? "HIGH" : "MEDIUM", "SUCCESS", null, before, route.status);
-            return new WriteResult(HttpStatus.OK, route.view());
+            Map<String, Object> view = route.view();
+            evidenceRecorder.recordRouteWrite(request, "EXTERNAL_ROUTE_UPDATED", view, HttpStatus.OK.value());
+            return new WriteResult(HttpStatus.OK, view);
         });
     }
 
@@ -506,7 +536,9 @@ class CrossPlatformNotificationController {
             route.updatedBy = actor.userId();
             route.updatedAt = now();
             store.audit(action, "ROUTE", routeId, actor, request, body, risk, "SUCCESS", null, before, route.status);
-            return new WriteResult(HttpStatus.OK, route.view());
+            Map<String, Object> view = route.view();
+            evidenceRecorder.recordRouteWrite(request, action, view, HttpStatus.OK.value());
+            return new WriteResult(HttpStatus.OK, view);
         });
     }
 
@@ -539,7 +571,9 @@ class CrossPlatformNotificationController {
             provider.lastTestAt = now();
             route.lastTestDeliveryId = bundle.delivery().deliveryId;
             store.audit("EXTERNAL_ROUTE_TESTED", "ROUTE", routeId, actor, request, body, "HIGH", "SUCCESS", null, null, bundle.delivery().status);
-            return new WriteResult(HttpStatus.CREATED, map("delivery", bundle.delivery().view(), "attempt", bundle.attempt().view()));
+            Map<String, Object> view = map("delivery", bundle.delivery().view(), "attempt", bundle.attempt().view());
+            evidenceRecorder.recordDeliveryWrite(request, "EXTERNAL_ROUTE_TESTED", bundle.delivery().view(), HttpStatus.CREATED.value());
+            return new WriteResult(HttpStatus.CREATED, view);
         });
     }
 
@@ -559,7 +593,9 @@ class CrossPlatformNotificationController {
             store.failDeliveryIfRequested(request, properties.enabled());
             DeliveryBundle bundle = store.createDeliveryFromBody(actor, request, body, properties.enabled());
             store.audit("EXTERNAL_DELIVERY_CREATED", "DELIVERY", bundle.delivery().deliveryId, actor, request, body, "HIGH", "SUCCESS", null, null, bundle.delivery().status);
-            return new WriteResult(HttpStatus.CREATED, bundle.delivery().view());
+            Map<String, Object> view = bundle.delivery().view();
+            evidenceRecorder.recordDeliveryWrite(request, "EXTERNAL_DELIVERY_CREATED", view, HttpStatus.CREATED.value());
+            return new WriteResult(HttpStatus.CREATED, view);
         });
     }
 
@@ -621,7 +657,9 @@ class CrossPlatformNotificationController {
             String before = delivery.status;
             CpnAttempt attempt = store.addAttempt(delivery, request, properties.enabled());
             store.audit("EXTERNAL_DELIVERY_RETRIED", "DELIVERY", deliveryId, actor, request, body, "HIGH", "SUCCESS", null, before, delivery.status);
-            return new WriteResult(HttpStatus.OK, delivery.viewWithAttempt(attempt));
+            Map<String, Object> view = delivery.viewWithAttempt(attempt);
+            evidenceRecorder.recordDeliveryWrite(request, "EXTERNAL_DELIVERY_RETRIED", view, HttpStatus.OK.value());
+            return new WriteResult(HttpStatus.OK, view);
         });
     }
 
@@ -644,7 +682,9 @@ class CrossPlatformNotificationController {
             delivery.updatedBy = actor.userId();
             delivery.updatedAt = now();
             store.audit("EXTERNAL_DELIVERY_CANCELED", "DELIVERY", deliveryId, actor, request, body, delivery.riskLevel, "SUCCESS", null, before, delivery.status);
-            return new WriteResult(HttpStatus.OK, delivery.view());
+            Map<String, Object> view = delivery.view();
+            evidenceRecorder.recordDeliveryWrite(request, "EXTERNAL_DELIVERY_CANCELED", view, HttpStatus.OK.value());
+            return new WriteResult(HttpStatus.OK, view);
         });
     }
 
@@ -2615,5 +2655,33 @@ class CpnRequestIdFilter extends OncePerRequestFilter {
         request.setAttribute("requestId", requestId);
         response.setHeader("X-Request-Id", requestId);
         filterChain.doFilter(request, response);
+    }
+}
+
+interface CrossPlatformNotificationFlowEvidenceRecorder {
+    void recordProviderWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordTemplateMappingWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordRouteWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+
+    void recordDeliveryWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+}
+
+class NoopCrossPlatformNotificationFlowEvidenceRecorder implements CrossPlatformNotificationFlowEvidenceRecorder {
+    @Override
+    public void recordProviderWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordTemplateMappingWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordRouteWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void recordDeliveryWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
     }
 }
