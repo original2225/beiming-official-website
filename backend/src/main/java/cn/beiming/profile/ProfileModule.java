@@ -6,13 +6,16 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -30,6 +33,8 @@ import org.springframework.web.HttpRequestMethodNotSupportedException;
 
 import java.io.IOException;
 import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -254,6 +259,15 @@ class ProfileEvidenceConfig {
     ProfileFlowEvidenceRecorder profileFlowEvidenceRecorder() {
         return new NoopProfileFlowEvidenceRecorder();
     }
+
+    @Bean
+    ProfilePersistence profilePersistence(ObjectProvider<JdbcTemplate> jdbcTemplate, ObjectMapper objectMapper) {
+        JdbcTemplate available = jdbcTemplate.getIfAvailable();
+        if (available == null) {
+            return new NoopProfilePersistence();
+        }
+        return new ProfilePostgresPersistence(available, objectMapper);
+    }
 }
 
 interface ProfileFlowEvidenceRecorder {
@@ -269,6 +283,281 @@ class NoopProfileFlowEvidenceRecorder implements ProfileFlowEvidenceRecorder {
 
     @Override
     public void recordGroupWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+}
+
+interface ProfilePersistence {
+    void resetForTests();
+
+    void seedGroup(MemberGroup group);
+
+    void seedMember(MemberProfile profile);
+
+    Map<String, Object> replay(String actorUserId, String scope, String idempotencyKey, String fingerprint);
+
+    void persistMemberWrite(HttpServletRequest request, AuthUser actor, MemberProfile profile, String action, String reason, Set<String> changedFields, String beforeState, String afterState, String idempotencyKey, String fingerprint, Map<String, Object> payload, int responseCode);
+
+    void persistGroupWrite(HttpServletRequest request, AuthUser actor, MemberGroup group, String action, String reason, Set<String> changedFields, String beforeState, String afterState, String idempotencyKey, String fingerprint, Map<String, Object> payload, int responseCode);
+
+    void persistMilestonesReplace(HttpServletRequest request, AuthUser actor, MemberProfile profile, String reason, String beforeState, String afterState, int responseCode);
+
+    void persistWorksReplace(HttpServletRequest request, AuthUser actor, MemberProfile profile, String reason, String beforeState, String afterState, int responseCode);
+}
+
+class NoopProfilePersistence implements ProfilePersistence {
+    @Override
+    public void resetForTests() {
+    }
+
+    @Override
+    public void seedGroup(MemberGroup group) {
+    }
+
+    @Override
+    public void seedMember(MemberProfile profile) {
+    }
+
+    @Override
+    public Map<String, Object> replay(String actorUserId, String scope, String idempotencyKey, String fingerprint) {
+        return null;
+    }
+
+    @Override
+    public void persistMemberWrite(HttpServletRequest request, AuthUser actor, MemberProfile profile, String action, String reason, Set<String> changedFields, String beforeState, String afterState, String idempotencyKey, String fingerprint, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void persistGroupWrite(HttpServletRequest request, AuthUser actor, MemberGroup group, String action, String reason, Set<String> changedFields, String beforeState, String afterState, String idempotencyKey, String fingerprint, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void persistMilestonesReplace(HttpServletRequest request, AuthUser actor, MemberProfile profile, String reason, String beforeState, String afterState, int responseCode) {
+    }
+
+    @Override
+    public void persistWorksReplace(HttpServletRequest request, AuthUser actor, MemberProfile profile, String reason, String beforeState, String afterState, int responseCode) {
+    }
+}
+
+class ProfilePostgresPersistence implements ProfilePersistence {
+    private final JdbcTemplate jdbc;
+    private final ObjectMapper objectMapper;
+
+    ProfilePostgresPersistence(JdbcTemplate jdbc, ObjectMapper objectMapper) {
+        this.jdbc = jdbc;
+        this.objectMapper = objectMapper;
+    }
+
+    @Override
+    @Transactional
+    public void resetForTests() {
+        jdbc.update("DELETE FROM profile_member_work_snapshots");
+        jdbc.update("DELETE FROM profile_member_milestones");
+        jdbc.update("DELETE FROM profile_members");
+        jdbc.update("DELETE FROM profile_member_groups");
+        jdbc.update("DELETE FROM app_idempotency_records WHERE scope LIKE 'profile.%'");
+        jdbc.update("DELETE FROM app_audit_logs WHERE action LIKE 'PROFILE_%'");
+        jdbc.update("DELETE FROM app_request_logs WHERE path LIKE '/api/v1/profile%'");
+    }
+
+    @Override
+    @Transactional
+    public void seedGroup(MemberGroup group) {
+        upsertGroup(group);
+    }
+
+    @Override
+    @Transactional
+    public void seedMember(MemberProfile profile) {
+        upsertMember(profile);
+        replaceMilestones(profile);
+        replaceWorks(profile);
+    }
+
+    @Override
+    public Map<String, Object> replay(String actorUserId, String scope, String idempotencyKey, String fingerprint) {
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                SELECT request_fingerprint, response_body::text
+                FROM app_idempotency_records
+                WHERE actor_user_id = ? AND scope = ? AND idempotency_key = ?
+                """, actorUserId, scope, idempotencyKey);
+        if (rows.isEmpty()) {
+            return null;
+        }
+        String storedFingerprint = String.valueOf(rows.getFirst().get("request_fingerprint"));
+        if (!Objects.equals(storedFingerprint, fingerprint)) {
+            throw new ApiException(43002, HttpStatus.CONFLICT, "idempotency conflict");
+        }
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> envelope = objectMapper.readValue(String.valueOf(rows.getFirst().get("response_body")), Map.class);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> data = (Map<String, Object>) envelope.get("data");
+            return data;
+        } catch (IOException exception) {
+            throw new IllegalStateException("failed to parse profile idempotency response", exception);
+        }
+    }
+
+    @Override
+    @Transactional
+    public void persistMemberWrite(HttpServletRequest request, AuthUser actor, MemberProfile profile, String action, String reason, Set<String> changedFields, String beforeState, String afterState, String idempotencyKey, String fingerprint, Map<String, Object> payload, int responseCode) {
+        upsertMember(profile);
+        replaceMilestones(profile);
+        replaceWorks(profile);
+        insertAudit(request, actor, profile.memberId, "MEMBER_PROFILE", action, reason, changedFields, beforeState, afterState);
+        if (idempotencyKey != null) {
+            insertIdempotency(actor.userId, scopeFor(action), idempotencyKey, fingerprint, responseCode, payload);
+        }
+        insertRequestLog(request, actor.userId, responseCode);
+    }
+
+    @Override
+    @Transactional
+    public void persistGroupWrite(HttpServletRequest request, AuthUser actor, MemberGroup group, String action, String reason, Set<String> changedFields, String beforeState, String afterState, String idempotencyKey, String fingerprint, Map<String, Object> payload, int responseCode) {
+        upsertGroup(group);
+        insertAudit(request, actor, group.id, "MEMBER_GROUP", action, reason, changedFields, beforeState, afterState);
+        if (idempotencyKey != null) {
+            insertIdempotency(actor.userId, scopeFor(action), idempotencyKey, fingerprint, responseCode, payload);
+        }
+        insertRequestLog(request, actor.userId, responseCode);
+    }
+
+    @Override
+    @Transactional
+    public void persistMilestonesReplace(HttpServletRequest request, AuthUser actor, MemberProfile profile, String reason, String beforeState, String afterState, int responseCode) {
+        upsertMember(profile);
+        replaceMilestones(profile);
+        insertAudit(request, actor, profile.memberId, "MEMBER_PROFILE", "PROFILE_MEMBER_MILESTONES_REPLACED", reason, Set.of("items"), beforeState, afterState);
+        insertRequestLog(request, actor.userId, responseCode);
+    }
+
+    @Override
+    @Transactional
+    public void persistWorksReplace(HttpServletRequest request, AuthUser actor, MemberProfile profile, String reason, String beforeState, String afterState, int responseCode) {
+        upsertMember(profile);
+        replaceWorks(profile);
+        insertAudit(request, actor, profile.memberId, "MEMBER_PROFILE", "PROFILE_MEMBER_WORKS_REPLACED", reason, Set.of("items"), beforeState, afterState);
+        insertRequestLog(request, actor.userId, responseCode);
+    }
+
+    private void upsertGroup(MemberGroup group) {
+        jdbc.update("""
+                INSERT INTO profile_member_groups(id, group_id, name, name_normalized, description, color, sort_order, archived, created_at, updated_at, archived_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (group_id) DO UPDATE SET name = EXCLUDED.name, name_normalized = EXCLUDED.name_normalized, description = EXCLUDED.description, color = EXCLUDED.color, sort_order = EXCLUDED.sort_order, archived = EXCLUDED.archived, updated_at = EXCLUDED.updated_at, archived_at = EXCLUDED.archived_at
+                """,
+                UUID.randomUUID(), group.id, group.name, normalize(group.name), group.description, group.color, group.sortOrder, group.archived,
+                timestamp(group.createdAt), timestamp(group.updatedAt), timestamp(group.archivedAt));
+    }
+
+    private void upsertMember(MemberProfile profile) {
+        jdbc.update("""
+                INSERT INTO profile_members(id, member_id, user_id, display_name_snapshot, auth_user_status_snapshot, auth_roles_snapshot, avatar_url, minecraft_id, minecraft_uuid, skin_url, group_id, status, visibility, joined_at, bio, admin_note, created_at, updated_at, archived_at)
+                VALUES (?, ?, ?, ?, ?, CAST(? AS jsonb), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (member_id) DO UPDATE SET display_name_snapshot = EXCLUDED.display_name_snapshot, auth_user_status_snapshot = EXCLUDED.auth_user_status_snapshot, auth_roles_snapshot = EXCLUDED.auth_roles_snapshot, avatar_url = EXCLUDED.avatar_url, minecraft_id = EXCLUDED.minecraft_id, minecraft_uuid = EXCLUDED.minecraft_uuid, skin_url = EXCLUDED.skin_url, group_id = EXCLUDED.group_id, status = EXCLUDED.status, visibility = EXCLUDED.visibility, joined_at = EXCLUDED.joined_at, bio = EXCLUDED.bio, admin_note = EXCLUDED.admin_note, updated_at = EXCLUDED.updated_at, archived_at = EXCLUDED.archived_at
+                """,
+                UUID.randomUUID(), profile.memberId, profile.userId, profile.displayNameSnapshot, profile.authUserStatusSnapshot,
+                json(new ArrayList<>(profile.authRolesSnapshot)), profile.avatarUrl, profile.minecraftId, profile.minecraftUuid, profile.skinUrl,
+                profile.groupId, profile.status, profile.visibility, timestamp(profile.joinedAt), profile.bio, profile.adminNote,
+                timestamp(profile.createdAt), timestamp(profile.updatedAt), timestamp(profile.archivedAt));
+    }
+
+    private void replaceMilestones(MemberProfile profile) {
+        jdbc.update("DELETE FROM profile_member_milestones WHERE member_id = ?", profile.memberId);
+        for (MemberMilestone item : profile.milestones) {
+            jdbc.update("""
+                    INSERT INTO profile_member_milestones(id, milestone_id, member_id, type, title, description, happened_at, public_visible, sort_order, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    UUID.randomUUID(), item.id, profile.memberId, item.type, item.title, item.description, timestamp(item.happenedAt),
+                    item.publicVisible, item.sortOrder, timestamp(item.createdAt), timestamp(item.updatedAt));
+        }
+    }
+
+    private void replaceWorks(MemberProfile profile) {
+        jdbc.update("DELETE FROM profile_member_work_snapshots WHERE member_id = ?", profile.memberId);
+        for (MemberWork item : profile.works) {
+            jdbc.update("""
+                    INSERT INTO profile_member_work_snapshots(id, work_id, member_id, type, title, summary, cover_url, source_module, source_id, public_visible, sort_order, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    UUID.randomUUID(), item.id, profile.memberId, item.type, item.title, item.summary, item.coverUrl, item.sourceModule, item.sourceId,
+                    item.publicVisible, item.sortOrder, timestamp(item.createdAt), timestamp(item.updatedAt));
+        }
+    }
+
+    private void insertAudit(HttpServletRequest request, AuthUser actor, String targetId, String targetType, String action, String reason, Set<String> changedFields, String beforeState, String afterState) {
+        jdbc.update("""
+                INSERT INTO app_audit_logs(id, request_id, actor_user_id, actor_role, actor_permissions, source_ip, target_type, target_id, action, risk_level, reason, params_summary, before_state, after_state, result, failure_reason, created_at)
+                VALUES (?, ?, ?, ?, CAST(? AS jsonb), ?, ?, ?, ?, 'MEDIUM', ?, CAST(? AS jsonb), CAST(? AS jsonb), CAST(? AS jsonb), 'SUCCESS', NULL, now())
+                """,
+                UUID.randomUUID(), requestId(request), actor.userId, String.join(",", actor.roles), json(new ArrayList<>(actor.permissions)), sourceIp(request),
+                targetType, targetId, action, reason, json(Map.of("fields", changedFields.stream().sorted().toList())), nullableJson(beforeState), nullableJson(afterState));
+    }
+
+    private void insertIdempotency(String actorUserId, String scope, String idempotencyKey, String fingerprint, int responseCode, Map<String, Object> payload) {
+        jdbc.update("""
+                INSERT INTO app_idempotency_records(id, actor_user_id, scope, idempotency_key, request_fingerprint, response_code, response_body, created_at, expires_at)
+                VALUES (?, ?, ?, ?, ?, ?, CAST(? AS jsonb), now(), now() + interval '24 hours')
+                ON CONFLICT (actor_user_id, scope, idempotency_key) DO NOTHING
+                """,
+                UUID.randomUUID(), actorUserId, scope, idempotencyKey, fingerprint, responseCode, json(ProfileController.envelope(0, "success", payload)));
+    }
+
+    private void insertRequestLog(HttpServletRequest request, String actorUserId, int responseCode) {
+        jdbc.update("""
+                INSERT INTO app_request_logs(id, request_id, method, path, actor_user_id, source_ip, response_code, result, failure_reason, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'SUCCESS', NULL, now())
+                ON CONFLICT (request_id) DO NOTHING
+                """,
+                UUID.randomUUID(), requestId(request), request.getMethod(), request.getRequestURI(), actorUserId, sourceIp(request), responseCode);
+    }
+
+    private String scopeFor(String action) {
+        return switch (action) {
+            case "PROFILE_GROUP_CREATED" -> "profile.group.create";
+            case "PROFILE_GROUP_UPDATED" -> "profile.group.patch";
+            case "PROFILE_GROUP_ARCHIVED" -> "profile.group.archive";
+            case "PROFILE_MEMBER_ACTIVATED" -> "profile.member.activate";
+            case "PROFILE_MEMBER_UPDATED" -> "profile.member.patch";
+            case "PROFILE_MEMBER_STATUS_CHANGED" -> "profile.member.status";
+            default -> "profile.write";
+        };
+    }
+
+    private String requestId(HttpServletRequest request) {
+        String value = request.getHeader("X-Request-Id");
+        return value == null || value.isBlank() ? RequestIdFilter.currentRequestId() : value;
+    }
+
+    private String sourceIp(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            return forwarded.split(",")[0].trim();
+        }
+        String remote = request.getRemoteAddr();
+        return remote == null || remote.isBlank() ? null : remote;
+    }
+
+    private String normalize(String value) {
+        return value.toLowerCase(Locale.ROOT);
+    }
+
+    private String nullableJson(String value) {
+        return value == null ? null : json(Map.of("value", value));
+    }
+
+    private OffsetDateTime timestamp(Instant value) {
+        return value == null ? null : OffsetDateTime.ofInstant(value, ZoneOffset.UTC);
+    }
+
+    private String json(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("failed to serialize profile PostgreSQL jsonb value", exception);
+        }
     }
 }
 
@@ -506,6 +795,7 @@ class ProfileStore {
     private static final Set<String> MILESTONE_TYPES = Set.of("JOINED", "PROJECT", "EVENT", "AWARD", "MANAGEMENT", "OTHER");
     private static final Set<String> WORK_TYPES = Set.of("BUILD", "REDSTONE", "FARM", "ARTICLE", "IMAGE", "VIDEO", "OTHER");
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ProfilePersistence persistence;
     private final Map<String, MemberProfile> profilesById = new ConcurrentHashMap<>();
     private final Map<String, String> memberIdByUserId = new ConcurrentHashMap<>();
     private final Map<String, MemberGroup> groupsById = new ConcurrentHashMap<>();
@@ -513,6 +803,10 @@ class ProfileStore {
     private final Map<String, IdempotencyRecord> idempotency = new ConcurrentHashMap<>();
     private boolean failNextPublicRead;
     private boolean failNextAudit;
+
+    ProfileStore(ProfilePersistence persistence) {
+        this.persistence = persistence;
+    }
 
     synchronized void reset() {
         profilesById.clear();
@@ -522,6 +816,7 @@ class ProfileStore {
         idempotency.clear();
         failNextPublicRead = false;
         failNextAudit = false;
+        persistence.resetForTests();
     }
 
     synchronized void seedTestData(ProfileAuthContextProvider auth) {
@@ -539,11 +834,14 @@ class ProfileStore {
         milestoneProfile.works.add(new MemberWork("work_seed_1", "BUILD", "Seed Work", "Seed work", "/covers/seed.png", "content", "content-seed", true, 1, now(), now()));
         MemberProfile workProfile = seedProfile("member_with_work_snapshots", "Work Member", "ACTIVE", "PUBLIC", builder.id, "WorkMc", "efefefefefefefefefefefefefefefef", "Work bio", "work note");
         workProfile.works.add(new MemberWork("work_seed_2", "BUILD", "Old Work", "Old", "/covers/old.png", "content", "content-old", true, 1, now(), now()));
+        persistence.seedMember(milestoneProfile);
+        persistence.seedMember(workProfile);
     }
 
     private MemberGroup seedGroup(String id, String name, String description, String color, int sortOrder, boolean archived) {
         MemberGroup group = new MemberGroup(id, name, description, color, sortOrder, archived, now(), now(), archived ? now() : null);
         groupsById.put(id, group);
+        persistence.seedGroup(group);
         return group;
     }
 
@@ -551,6 +849,7 @@ class ProfileStore {
         MemberProfile profile = new MemberProfile("mem_" + userId, userId, displayName, "ACTIVE", new LinkedHashSet<>(List.of("USER")), null, minecraftId, minecraftUuid, null, groupId, status, visibility, Instant.parse("2026-05-01T00:00:00Z"), bio, adminNote, now(), now(), "ARCHIVED".equals(status) ? now() : null);
         profilesById.put(profile.memberId, profile);
         memberIdByUserId.put(userId, profile.memberId);
+        persistence.seedMember(profile);
         return profile;
     }
 
@@ -615,9 +914,13 @@ class ProfileStore {
         if (body.containsKey("bio")) next.bio = bio;
         if (visibility != null) next.visibility = visibility;
         next.updatedAt = now();
-        audit("PROFILE_SELF_UPDATED", actor, request, profile.memberId, reason, Set.of("avatarUrl", "skinUrl", "bio", "visibility"), state(profile), state(next));
+        String beforeState = state(profile);
+        String afterState = state(next);
+        audit("PROFILE_SELF_UPDATED", actor, request, profile.memberId, reason, Set.of("avatarUrl", "skinUrl", "bio", "visibility"), beforeState, afterState);
         profilesById.put(profile.memberId, next);
-        return currentView(next);
+        Map<String, Object> payload = currentView(next);
+        persistence.persistMemberWrite(request, actor, next, "PROFILE_SELF_UPDATED", reason, Set.of("avatarUrl", "skinUrl", "bio", "visibility"), beforeState, afterState, null, null, payload, 200);
+        return payload;
     }
 
     synchronized Map<String, Object> adminMembers(int page, int pageSize, String keyword, String groupId, String status, String visibility, String sort) {
@@ -657,6 +960,12 @@ class ProfileStore {
             }
             return record.payload;
         }
+        if (idempotencyKey != null) {
+            Map<String, Object> replay = persistence.replay(actor.userId, "profile.member.activate", idempotencyKey, signature);
+            if (replay != null) {
+                return replay;
+            }
+        }
         if (memberIdByUserId.containsKey(userId)) {
             throw new ApiException(43210, HttpStatus.CONFLICT, "profile exists");
         }
@@ -675,13 +984,15 @@ class ProfileStore {
         validateUrlNullable(profile.avatarUrl, "avatarUrl");
         validateUrlNullable(profile.skinUrl, "skinUrl");
         validateLengthNullable(profile.bio, 1000, "bio");
-        audit("PROFILE_MEMBER_ACTIVATED", actor, request, profile.memberId, reason, Set.of("userId", "groupId", "joinedAt", "visibility"), null, state(profile));
+        String afterState = state(profile);
+        audit("PROFILE_MEMBER_ACTIVATED", actor, request, profile.memberId, reason, Set.of("userId", "groupId", "joinedAt", "visibility"), null, afterState);
         profilesById.put(profile.memberId, profile);
         memberIdByUserId.put(userId, profile.memberId);
         Map<String, Object> payload = adminProfile(profile);
         if (idempotencyKey != null) {
             idempotency.put(idemKey, new IdempotencyRecord(signature, payload));
         }
+        persistence.persistMemberWrite(request, actor, profile, "PROFILE_MEMBER_ACTIVATED", reason, Set.of("userId", "groupId", "joinedAt", "visibility"), null, afterState, idempotencyKey, signature, payload, 201);
         return payload;
     }
 
@@ -708,9 +1019,14 @@ class ProfileStore {
         validateProfilePatch(next);
         ensureMinecraftUnique(memberId, next.minecraftId, next.minecraftUuid);
         next.updatedAt = now();
-        audit("PROFILE_MEMBER_UPDATED", actor, request, memberId, reason, changedFields(body), state(current), state(next));
+        Set<String> changedFields = changedFields(body);
+        String beforeState = state(current);
+        String afterState = state(next);
+        audit("PROFILE_MEMBER_UPDATED", actor, request, memberId, reason, changedFields, beforeState, afterState);
         profilesById.put(memberId, next);
-        return adminProfile(next);
+        Map<String, Object> payload = adminProfile(next);
+        persistence.persistMemberWrite(request, actor, next, "PROFILE_MEMBER_UPDATED", reason, changedFields, beforeState, afterState, optionalString(body, "idempotencyKey"), signature(body), payload, 200);
+        return payload;
     }
 
     synchronized Map<String, Object> updateStatus(AuthUser actor, HttpServletRequest request, String memberId, Map<String, Object> body) {
@@ -731,7 +1047,9 @@ class ProfileStore {
         }
         audit("PROFILE_MEMBER_STATUS_CHANGED", actor, request, memberId, reason, Set.of("status"), current.status, status);
         profilesById.put(memberId, next);
-        return adminProfile(next);
+        Map<String, Object> payload = adminProfile(next);
+        persistence.persistMemberWrite(request, actor, next, "PROFILE_MEMBER_STATUS_CHANGED", reason, Set.of("status"), current.status, status, optionalString(body, "idempotencyKey"), signature(body), payload, 200);
+        return payload;
     }
 
     synchronized List<Map<String, Object>> groups(boolean includeArchived) {
@@ -756,6 +1074,12 @@ class ProfileStore {
             }
             return record.payload;
         }
+        if (idempotencyKey != null) {
+            Map<String, Object> replay = persistence.replay(actor.userId, "profile.group.create", idempotencyKey, signature);
+            if (replay != null) {
+                return replay;
+            }
+        }
         ensureGroupNameAvailable(name, null);
         MemberGroup group = new MemberGroup("grp_" + UUID.randomUUID(), name, optionalString(body, "description"), optionalString(body, "color"), intOrDefault(body, "sortOrder", 100), false, now(), now(), null);
         audit("PROFILE_GROUP_CREATED", actor, request, group.id, reason, Set.of("name", "description", "color", "sortOrder"), null, group.name);
@@ -764,6 +1088,7 @@ class ProfileStore {
         if (idempotencyKey != null) {
             idempotency.put(idemKey, new IdempotencyRecord(signature, payload));
         }
+        persistence.persistGroupWrite(request, actor, group, "PROFILE_GROUP_CREATED", reason, Set.of("name", "description", "color", "sortOrder"), null, group.name, idempotencyKey, signature, payload, 201);
         return payload;
     }
 
@@ -778,9 +1103,12 @@ class ProfileStore {
         validateGroupFields(next.name, next.description, next.color);
         ensureGroupNameAvailable(next.name, groupId);
         next.updatedAt = now();
-        audit("PROFILE_GROUP_UPDATED", actor, request, groupId, reason, changedFields(body), group.name, next.name);
+        Set<String> changedFields = changedFields(body);
+        audit("PROFILE_GROUP_UPDATED", actor, request, groupId, reason, changedFields, group.name, next.name);
         groupsById.put(groupId, next);
-        return groupMap(next);
+        Map<String, Object> payload = groupMap(next);
+        persistence.persistGroupWrite(request, actor, next, "PROFILE_GROUP_UPDATED", reason, changedFields, group.name, next.name, optionalString(body, "idempotencyKey"), signature(body), payload, 200);
+        return payload;
     }
 
     synchronized Map<String, Object> archiveGroup(AuthUser actor, HttpServletRequest request, String groupId, Map<String, Object> body) {
@@ -799,7 +1127,9 @@ class ProfileStore {
         next.updatedAt = now();
         audit("PROFILE_GROUP_ARCHIVED", actor, request, groupId, reason, Set.of("archived"), group.name, "archived");
         groupsById.put(groupId, next);
-        return groupMap(next);
+        Map<String, Object> payload = groupMap(next);
+        persistence.persistGroupWrite(request, actor, next, "PROFILE_GROUP_ARCHIVED", reason, Set.of("archived"), group.name, "archived", optionalString(body, "idempotencyKey"), signature(body), payload, 200);
+        return payload;
     }
 
     synchronized Map<String, Object> replaceMilestones(AuthUser actor, HttpServletRequest request, String memberId, Map<String, Object> body) {
@@ -809,9 +1139,13 @@ class ProfileStore {
         MemberProfile next = profile.copy();
         next.milestones = nextItems;
         next.updatedAt = now();
-        audit("PROFILE_MEMBER_MILESTONES_REPLACED", actor, request, memberId, reason, Set.of("items"), String.valueOf(profile.milestones.size()), String.valueOf(nextItems.size()));
+        String beforeState = String.valueOf(profile.milestones.size());
+        String afterState = String.valueOf(nextItems.size());
+        audit("PROFILE_MEMBER_MILESTONES_REPLACED", actor, request, memberId, reason, Set.of("items"), beforeState, afterState);
         profilesById.put(memberId, next);
-        return adminProfile(next);
+        Map<String, Object> payload = adminProfile(next);
+        persistence.persistMilestonesReplace(request, actor, next, reason, beforeState, afterState, 200);
+        return payload;
     }
 
     synchronized Map<String, Object> replaceWorks(AuthUser actor, HttpServletRequest request, String memberId, Map<String, Object> body) {
@@ -821,9 +1155,13 @@ class ProfileStore {
         MemberProfile next = profile.copy();
         next.works = nextItems;
         next.updatedAt = now();
-        audit("PROFILE_MEMBER_WORKS_REPLACED", actor, request, memberId, reason, Set.of("items"), String.valueOf(profile.works.size()), String.valueOf(nextItems.size()));
+        String beforeState = String.valueOf(profile.works.size());
+        String afterState = String.valueOf(nextItems.size());
+        audit("PROFILE_MEMBER_WORKS_REPLACED", actor, request, memberId, reason, Set.of("items"), beforeState, afterState);
         profilesById.put(memberId, next);
-        return adminProfile(next);
+        Map<String, Object> payload = adminProfile(next);
+        persistence.persistWorksReplace(request, actor, next, reason, beforeState, afterState, 200);
+        return payload;
     }
 
     synchronized Map<String, Object> auditLogs(String memberId, int page, int pageSize) {
