@@ -172,7 +172,7 @@ class AdminPostgreSqlPersistenceIntegrationTest {
         assertThat(settingValue(settings, "dashboard.refreshSeconds")).isEqualTo(57);
         assertThat(settings.at("/data/layout/navigationModuleOrder").toString()).contains("AUTH", "RESOURCE");
         assertThat(ops.at("/data/service").asText()).isEqualTo("admin");
-        assertThat(ops.at("/data/storageMode").asText()).isEqualTo("POSTGRESQL_WITH_IN_MEMORY_RESPONSE_MODEL");
+        assertThat(ops.at("/data/storageMode").asText()).isEqualTo("POSTGRESQL_PRIMARY");
         assertThat(ops.at("/data/postgresTablesReady/admin_settings").asBoolean()).isTrue();
         assertThat(ops.at("/data/postgresCounts/settingsTotal").asLong()).isGreaterThanOrEqualTo(3L);
         try (Connection connection = openConnection()) {

@@ -225,7 +225,8 @@ class AdminStore {
         settings.put("navigation.showPlaceholders", new Setting("navigation.showPlaceholders", "NAVIGATION", "BOOLEAN", true, false, false, "Show not implemented module placeholders."));
         seedTodos();
         seedAudits();
-        persistence.persistSnapshot(snapshotSettings(), layoutSnapshot(new AuthUser("system", Set.of("OWNER"), Set.of("NODE_READ"), "SYSTEM")), moduleIndexSnapshot(), todoSeeds, metricSnapshot(), auditSeeds);
+        persistence.persistSnapshot(snapshotSettings(), memoryLayoutSnapshot(new AuthUser("system", Set.of("OWNER"), Set.of("NODE_READ"), "SYSTEM")), moduleIndexSnapshot(), todoSeeds, metricSnapshot(), auditSeeds);
+        loadPrimaryStateFromPersistence();
     }
 
     Map<String, Object> overview(AuthUser actor, Map<String, String> query, HttpServletRequest request) {
@@ -287,22 +288,24 @@ class AdminStore {
             throw new AdminException(400, 40003, "invalid sort");
         }
         String keyword = query.getOrDefault("keyword", "").toLowerCase();
+        List<Map<String, Object>> sourceRows = primaryModules(request);
         List<Map<String, Object>> rows = new ArrayList<>();
-        for (ModuleConfig config : moduleConfigs.values()) {
-            if (!includeNotImplemented && NOT_IMPLEMENTED.contains(config.key)) {
+        for (Map<String, Object> candidate : sourceRows) {
+            String moduleKey = candidate.get("moduleKey").toString();
+            if (!includeNotImplemented && NOT_IMPLEMENTED.contains(moduleKey)) {
                 continue;
             }
-            if (!includeDisabled && (!config.enabled || hiddenModules().contains(config.key))) {
+            if (!includeDisabled && Boolean.FALSE.equals(candidate.get("enabled"))) {
                 continue;
             }
-            if (!canAccessModule(actor, config.key)) {
+            if (!canAccessModule(actor, moduleKey)) {
                 continue;
             }
-            Map<String, Object> row = moduleEntry(actor, config.key, request);
+            Map<String, Object> row = moduleEntry(actor, candidate, request);
             if (status != null && !status.equals(row.get("status"))) {
                 continue;
             }
-            if (!keyword.isBlank() && !(config.key.toLowerCase().contains(keyword) || row.get("name").toString().toLowerCase().contains(keyword) || row.get("description").toString().toLowerCase().contains(keyword))) {
+            if (!keyword.isBlank() && !(moduleKey.toLowerCase().contains(keyword) || row.get("name").toString().toLowerCase().contains(keyword) || row.get("description").toString().toLowerCase().contains(keyword))) {
                 continue;
             }
             rows.add(row);
@@ -320,15 +323,18 @@ class AdminStore {
         if (!MODULE_KEYS.contains(moduleKey)) {
             throw new AdminException(400, 40001, "invalid module key");
         }
-        ModuleConfig config = moduleConfigs.get(moduleKey);
-        if (config == null) {
+        Map<String, Object> row = primaryModules(request).stream()
+                .filter(module -> moduleKey.equals(module.get("moduleKey")))
+                .findFirst()
+                .orElse(null);
+        if (row == null) {
             throw new AdminException(404, 43700, "module not found");
         }
-        if ((!config.enabled || hiddenModules().contains(moduleKey)) && !actor.hasRole("OWNER")) {
+        if (Boolean.FALSE.equals(row.get("enabled")) && !actor.hasRole("OWNER")) {
             throw new AdminException(409, 43713, "module disabled");
         }
         requireModuleAccess(actor, moduleKey);
-        return moduleEntry(actor, moduleKey, request);
+        return moduleEntry(actor, row, request);
     }
 
     Map<String, Object> todos(AuthUser actor, Map<String, String> query, HttpServletRequest request) {
@@ -361,32 +367,7 @@ class AdminStore {
             throw new AdminException(400, 40001, "invalid source module");
         }
         boolean includeDegraded = bool(query, "includeDegraded", true);
-        List<Map<String, Object>> metrics = new ArrayList<>();
-        addMetric(metrics, "auth.usersTotal", "Users", "AUTH", 18, "/admin/auth/users", request);
-        addMetric(metrics, "profile.membersTotal", "Members", "PROFILE", 8, "/admin/profile", request);
-        addMetric(metrics, "notification.failedDeliveries", "Failed deliveries", "NOTIFICATION", 1, "/admin/notifications", request);
-        addMetric(metrics, "content.pendingReview", "Pending content", "CONTENT", 2, "/admin/content", request);
-        addMetric(metrics, "serverStatus.openOutages", "Open outages", "SERVER_STATUS", 1, "/admin/server-status", request);
-        addMetric(metrics, "resource.pendingReview", "Pending resources", "RESOURCE", 2, "/admin/resources", request);
-        addMetric(metrics, "admin.settingsTotal", "Settings", "ADMIN", settings.size(), "/admin", request);
-        addMetric(metrics, "onboarding.activeApplications", "Onboarding applications", "ONBOARDING", 3, "/admin/onboarding", request);
-        addMetric(metrics, "exam.pendingManualReview", "Pending exams", "EXAM", 2, "/admin/exams", request);
-        addMetric(metrics, "whitelist.pendingReview", "Pending whitelist", "WHITELIST", 2, "/admin/whitelist", request);
-        addMetric(metrics, "attendance.removalCandidates", "Removal candidates", "ATTENDANCE", 1, "/admin/attendance", request);
-        addMetric(metrics, "community.openReports", "Open community reports", "COMMUNITY", 3, "/admin/community", request);
-        addMetric(metrics, "activity.pendingResults", "Pending activity results", "ACTIVITY", 1, "/admin/activity", request);
-        addMetric(metrics, "calendar.pendingEvents", "Pending calendar events", "CALENDAR", 1, "/admin/calendar", request);
-        addMetric(metrics, "changelog.pendingRelease", "Pending changelog", "CHANGELOG", 1, "/admin/changelog", request);
-        addMetric(metrics, "opsControl.pendingTasks", "Ops tasks", "OPS_CONTROL", 1, "/admin/ops-control", request);
-        addMetric(metrics, "cloudreveSync.providers", "Cloudreve providers", "CLOUDREVE_SYNC", 1, "/admin/cloudreve-sync", request);
-        addMetric(metrics, "backupRecovery.activePolicies", "Backup policies", "BACKUP_RECOVERY", 2, "/admin/backup-recovery", request);
-        addMetric(metrics, "alerting.openAlerts", "Open alerts", "ALERTING", 1, "/admin/alerting", request);
-        addMetric(metrics, "onlineMap.providers", "Map providers", "ONLINE_MAP", 1, "/admin/online-map", request);
-        addMetric(metrics, "pluginIntegration.providers", "Plugin providers", "PLUGIN_INTEGRATION", 1, "/admin/plugin-integration", request);
-        addMetric(metrics, "crossPlatformNotification.pendingDeliveries", "Cross-platform deliveries", "CROSS_PLATFORM_NOTIFICATION", 1, "/admin/cross-platform-notification", request);
-        addMetric(metrics, "opsImageMarket.pendingReview", "Image market reviews", "OPS_IMAGE_MARKET", 1, "/admin/ops-image-market", request);
-        addMetric(metrics, "material.pendingReview", "Pending materials", "MATERIAL", 2, "/admin/materials", request);
-        addMetric(metrics, "guide.pendingReview", "Pending guides", "GUIDE", 2, "/admin/guides", request);
+        List<Map<String, Object>> metrics = primaryMetrics(request);
         return metrics.stream()
                 .filter(metric -> source == null || source.equals(metric.get("sourceModule")))
                 .filter(metric -> canAccessModule(actor, metric.get("sourceModule").toString()))
@@ -467,7 +448,7 @@ class AdminStore {
         applySettings(body, actor);
         auditSeeds.add(0, audit("audit-admin-" + UUID.randomUUID(), "ADMIN", "ADMIN_SETTINGS_UPDATED", actor.userId(), "ADMIN_SETTING", "settings", "MEDIUM", "SUCCESS"));
         Map<String, Object> response = settingsSnapshot(actor, null, actor.hasRole("OWNER"), Map.of("replayed", false));
-        persistence.persistSettingsWrite(request, actor, body, response, key, fingerprint, 200, snapshotSettings(), layoutSnapshot(actor), moduleIndexSnapshot(), todoSeeds, metricSnapshot(), auditSeeds);
+        persistence.persistSettingsWrite(request, actor, body, response, key, fingerprint, 200, snapshotSettings(), memoryLayoutSnapshot(actor), moduleIndexSnapshot(), todoSeeds, metricSnapshot(), auditSeeds);
         idempotency.put(idemKey, new IdempotencyRecord(fingerprint, response));
         return response;
     }
@@ -507,6 +488,77 @@ class AdminStore {
                 .toList();
     }
 
+    private void loadPrimaryStateFromPersistence() {
+        if (!persistence.primaryReadMode()) {
+            return;
+        }
+        List<Map<String, Object>> persistedSettings = persistence.readSettings();
+        if (!persistedSettings.isEmpty()) {
+            settings.clear();
+            for (Map<String, Object> item : persistedSettings) {
+                Setting setting = new Setting(text(item, "key"), text(item, "scope"), text(item, "valueType"), item.get("value"),
+                        Boolean.TRUE.equals(item.get("sensitive")), Boolean.TRUE.equals(item.get("highImpact")), text(item, "description"));
+                setting.updatedBy = textOrDefault(item, "updatedBy", "system");
+                setting.updatedAt = textOrDefault(item, "updatedAt", NOW);
+                settings.put(setting.key, setting);
+            }
+        }
+        Map<String, Object> persistedLayout = persistence.readLayout();
+        if (!persistedLayout.isEmpty()) {
+            layout.clear();
+            layout.putAll(persistedLayout);
+        }
+    }
+
+    private List<Map<String, Object>> primarySettings() {
+        if (persistence.primaryReadMode()) {
+            return persistence.readSettings();
+        }
+        return snapshotSettings();
+    }
+
+    private List<Map<String, Object>> primaryModules(HttpServletRequest request) {
+        if (persistence.primaryReadMode()) {
+            return persistence.readModules();
+        }
+        return moduleConfigs.keySet().stream()
+                .sorted()
+                .map(key -> moduleEntry(new AuthUser("system", Set.of("OWNER"), Set.of("NODE_READ"), "SYSTEM"), key, request))
+                .toList();
+    }
+
+    private List<Map<String, Object>> primaryTodos() {
+        if (persistence.primaryReadMode()) {
+            return persistence.readTodos();
+        }
+        return todoSeeds;
+    }
+
+    private List<Map<String, Object>> primaryAudits() {
+        if (persistence.primaryReadMode()) {
+            return persistence.readAudits();
+        }
+        return auditSeeds;
+    }
+
+    private List<Map<String, Object>> primaryMetrics(HttpServletRequest request) {
+        List<Map<String, Object>> rows = persistence.primaryReadMode() ? persistence.readMetrics() : defaultMetrics(request);
+        if (degradedModules(request).isEmpty()) {
+            return rows;
+        }
+        Set<String> degradedModules = new HashSet<>(degradedModules(request));
+        List<Map<String, Object>> adjusted = new ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            Map<String, Object> copy = new LinkedHashMap<>(row);
+            if (degradedModules.contains(Objects.toString(copy.get("sourceModule"), ""))) {
+                copy.put("value", 0);
+                copy.put("degraded", true);
+            }
+            adjusted.add(copy);
+        }
+        return adjusted;
+    }
+
     private List<Map<String, Object>> moduleIndexSnapshot() {
         AuthUser owner = new AuthUser("system", Set.of("OWNER"), Set.of("NODE_READ"), "SYSTEM");
         return moduleConfigs.keySet().stream()
@@ -516,8 +568,37 @@ class AdminStore {
     }
 
     private List<Map<String, Object>> metricSnapshot() {
-        AuthUser owner = new AuthUser("system", Set.of("OWNER"), Set.of("NODE_READ"), "SYSTEM");
-        return metrics(owner, Map.of(), currentRequest());
+        return defaultMetrics(currentRequest());
+    }
+
+    private List<Map<String, Object>> defaultMetrics(HttpServletRequest request) {
+        List<Map<String, Object>> metrics = new ArrayList<>();
+        addMetric(metrics, "auth.usersTotal", "Users", "AUTH", 18, "/admin/auth/users", request);
+        addMetric(metrics, "profile.membersTotal", "Members", "PROFILE", 8, "/admin/profile", request);
+        addMetric(metrics, "notification.failedDeliveries", "Failed deliveries", "NOTIFICATION", 1, "/admin/notifications", request);
+        addMetric(metrics, "content.pendingReview", "Pending content", "CONTENT", 2, "/admin/content", request);
+        addMetric(metrics, "serverStatus.openOutages", "Open outages", "SERVER_STATUS", 1, "/admin/server-status", request);
+        addMetric(metrics, "resource.pendingReview", "Pending resources", "RESOURCE", 2, "/admin/resources", request);
+        addMetric(metrics, "admin.settingsTotal", "Settings", "ADMIN", settings.size(), "/admin", request);
+        addMetric(metrics, "onboarding.activeApplications", "Onboarding applications", "ONBOARDING", 3, "/admin/onboarding", request);
+        addMetric(metrics, "exam.pendingManualReview", "Pending exams", "EXAM", 2, "/admin/exams", request);
+        addMetric(metrics, "whitelist.pendingReview", "Pending whitelist", "WHITELIST", 2, "/admin/whitelist", request);
+        addMetric(metrics, "attendance.removalCandidates", "Removal candidates", "ATTENDANCE", 1, "/admin/attendance", request);
+        addMetric(metrics, "community.openReports", "Open community reports", "COMMUNITY", 3, "/admin/community", request);
+        addMetric(metrics, "activity.pendingResults", "Pending activity results", "ACTIVITY", 1, "/admin/activity", request);
+        addMetric(metrics, "calendar.pendingEvents", "Pending calendar events", "CALENDAR", 1, "/admin/calendar", request);
+        addMetric(metrics, "changelog.pendingRelease", "Pending changelog", "CHANGELOG", 1, "/admin/changelog", request);
+        addMetric(metrics, "opsControl.pendingTasks", "Ops tasks", "OPS_CONTROL", 1, "/admin/ops-control", request);
+        addMetric(metrics, "cloudreveSync.providers", "Cloudreve providers", "CLOUDREVE_SYNC", 1, "/admin/cloudreve-sync", request);
+        addMetric(metrics, "backupRecovery.activePolicies", "Backup policies", "BACKUP_RECOVERY", 2, "/admin/backup-recovery", request);
+        addMetric(metrics, "alerting.openAlerts", "Open alerts", "ALERTING", 1, "/admin/alerting", request);
+        addMetric(metrics, "onlineMap.providers", "Map providers", "ONLINE_MAP", 1, "/admin/online-map", request);
+        addMetric(metrics, "pluginIntegration.providers", "Plugin providers", "PLUGIN_INTEGRATION", 1, "/admin/plugin-integration", request);
+        addMetric(metrics, "crossPlatformNotification.pendingDeliveries", "Cross-platform deliveries", "CROSS_PLATFORM_NOTIFICATION", 1, "/admin/cross-platform-notification", request);
+        addMetric(metrics, "opsImageMarket.pendingReview", "Image market reviews", "OPS_IMAGE_MARKET", 1, "/admin/ops-image-market", request);
+        addMetric(metrics, "material.pendingReview", "Pending materials", "MATERIAL", 2, "/admin/materials", request);
+        addMetric(metrics, "guide.pendingReview", "Pending guides", "GUIDE", 2, "/admin/guides", request);
+        return metrics;
     }
 
     private Map<String, Object> moduleEntry(AuthUser actor, String moduleKey, HttpServletRequest request) {
@@ -540,6 +621,29 @@ class AdminStore {
         row.put("capabilities", capabilities(actor, moduleKey, health));
         row.put("health", health);
         row.put("updatedAt", NOW);
+        return row;
+    }
+
+    private Map<String, Object> moduleEntry(AuthUser actor, Map<String, Object> source, HttpServletRequest request) {
+        String moduleKey = text(source, "moduleKey");
+        Map<String, Object> health = health(moduleKey, request);
+        Map<String, Object> sourceHealth = source.get("health") instanceof Map<?, ?> map ? stringObjectMap(map) : Map.of();
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("moduleKey", moduleKey);
+        row.put("name", moduleName(moduleKey));
+        row.put("description", moduleName(moduleKey) + " management entry.");
+        row.put("status", Boolean.FALSE.equals(source.get("enabled")) ? "DISABLED" : health.get("status"));
+        row.put("implemented", source.get("implemented"));
+        row.put("enabled", source.get("enabled"));
+        row.put("requiredRoles", requiredRoles(moduleKey));
+        row.put("requiredPermissions", requiredPermissions(moduleKey));
+        row.put("frontendRoute", source.get("frontendRoute"));
+        row.put("targetApiBase", source.get("targetApiBase"));
+        row.put("sortOrder", source.get("sortOrder"));
+        row.put("badgeCount", source.get("badgeCount"));
+        row.put("capabilities", capabilities(actor, moduleKey, health));
+        row.put("health", sourceHealth.isEmpty() ? health : mergeHealth(sourceHealth, health));
+        row.put("updatedAt", source.getOrDefault("updatedAt", NOW));
         return row;
     }
 
@@ -593,6 +697,21 @@ class AdminStore {
         return row;
     }
 
+    private Map<String, Object> mergeHealth(Map<String, Object> persisted, Map<String, Object> runtime) {
+        Map<String, Object> merged = new LinkedHashMap<>(persisted);
+        merged.put("status", runtime.get("status"));
+        merged.put("degraded", runtime.get("degraded"));
+        merged.put("degradeReason", runtime.get("degradeReason"));
+        merged.put("latencyMs", runtime.get("latencyMs"));
+        return merged;
+    }
+
+    private Map<String, Object> stringObjectMap(Map<?, ?> source) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        source.forEach((key, value) -> result.put(Objects.toString(key), value));
+        return result;
+    }
+
     private List<Map<String, Object>> filteredTodos(AuthUser actor, Map<String, String> query, HttpServletRequest request) {
         String source = query.get("sourceModule");
         if (source != null && !IMPLEMENTED.contains(source)) {
@@ -611,7 +730,7 @@ class AdminStore {
             throw new AdminException(400, 40001, "invalid todo status");
         }
         String keyword = query.getOrDefault("keyword", "").toLowerCase();
-        List<Map<String, Object>> rows = new ArrayList<>(todoSeeds);
+        List<Map<String, Object>> rows = new ArrayList<>(primaryTodos());
         for (String degraded : degradedModules(request)) {
             rows.add(todo("todo-" + degraded.toLowerCase() + "-unavailable", degraded, degraded + "_UNAVAILABLE", degraded.toLowerCase() + "-unavailable", "HEALTH", "HIGH", "SOURCE_UNAVAILABLE", moduleName(degraded) + " unavailable", moduleName(degraded) + " adapter degraded.", frontendRoute(degraded), targetApiOrNull(degraded)));
         }
@@ -626,7 +745,7 @@ class AdminStore {
     }
 
     private List<Map<String, Object>> auditRows(Map<String, String> query, HttpServletRequest request) {
-        List<Map<String, Object>> rows = new ArrayList<>(auditSeeds);
+        List<Map<String, Object>> rows = new ArrayList<>(primaryAudits());
         for (String degraded : degradedModules(request)) {
             rows.add(audit("audit-" + degraded.toLowerCase() + "-degraded", degraded, "MODULE_ADAPTER_DEGRADED", "admin", "MODULE", degraded, "LOW", "FAILED"));
         }
@@ -643,16 +762,17 @@ class AdminStore {
     }
 
     private Map<String, Object> settingsSnapshot(AuthUser actor, String scope, boolean includeHighImpact, Map<String, Object> idem) {
-        List<Map<String, Object>> items = settings.values().stream()
-                .filter(setting -> scope == null || scope.equals(setting.scope))
-                .filter(setting -> includeHighImpact || !setting.highImpact)
-                .sorted(Comparator.comparing(setting -> setting.key))
-                .map(Setting::toMap)
+        boolean writeResponse = idem != null;
+        List<Map<String, Object>> sourceSettings = writeResponse ? snapshotSettings() : primarySettings();
+        List<Map<String, Object>> items = sourceSettings.stream()
+                .filter(setting -> scope == null || scope.equals(setting.get("scope")))
+                .filter(setting -> includeHighImpact || !Boolean.TRUE.equals(setting.get("highImpact")))
+                .sorted(Comparator.comparing(setting -> setting.get("key").toString()))
                 .toList();
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("items", items);
-        data.put("layout", layoutSnapshot(actor));
-        data.put("modules", modules(actor, Map.of("includeNotImplemented", "true"), currentRequest()));
+        data.put("layout", writeResponse ? memoryLayoutSnapshot(actor) : layoutSnapshot(actor));
+        data.put("modules", writeResponse ? moduleIndexSnapshot() : modules(actor, Map.of("includeNotImplemented", "true"), currentRequest()));
         data.put("updatedAt", NOW);
         if (idem != null) {
             data.put("idempotency", idem);
@@ -661,7 +781,15 @@ class AdminStore {
     }
 
     private Map<String, Object> layoutSnapshot(AuthUser actor) {
-        Map<String, Object> snapshot = new LinkedHashMap<>(layout);
+        Map<String, Object> snapshot = persistence.primaryReadMode() ? new LinkedHashMap<>(persistence.readLayout()) : new LinkedHashMap<>(layout);
+        return visibleLayout(snapshot, actor);
+    }
+
+    private Map<String, Object> memoryLayoutSnapshot(AuthUser actor) {
+        return visibleLayout(new LinkedHashMap<>(layout), actor);
+    }
+
+    private Map<String, Object> visibleLayout(Map<String, Object> snapshot, AuthUser actor) {
         Object quickActions = snapshot.get("quickActions");
         if (quickActions instanceof List<?> list) {
             snapshot.put("quickActions", list.stream()
@@ -892,6 +1020,16 @@ class AdminStore {
             throw new AdminException(400, 40001, "invalid string");
         }
         return text;
+    }
+
+    private String text(Map<String, Object> source, String key) {
+        Object value = source.get(key);
+        return value == null ? null : value.toString();
+    }
+
+    private String textOrDefault(Map<String, Object> source, String key, String defaultValue) {
+        String value = text(source, key);
+        return value == null || value.isBlank() || "null".equals(value) ? defaultValue : value;
     }
 
     private List<String> moduleKeyList(Object value) {
@@ -1450,6 +1588,20 @@ record IdempotencyRecord(String fingerprint, Map<String, Object> response) {
 interface AdminPersistence {
     Map<String, Object> replay(String actorUserId, String scope, String idempotencyKey, String fingerprint);
 
+    boolean primaryReadMode();
+
+    List<Map<String, Object>> readSettings();
+
+    Map<String, Object> readLayout();
+
+    List<Map<String, Object>> readModules();
+
+    List<Map<String, Object>> readTodos();
+
+    List<Map<String, Object>> readMetrics();
+
+    List<Map<String, Object>> readAudits();
+
     void persistSnapshot(List<Map<String, Object>> settings,
                          Map<String, Object> layout,
                          List<Map<String, Object>> modules,
@@ -1482,6 +1634,41 @@ class NoopAdminPersistence implements AdminPersistence {
     @Override
     public Map<String, Object> replay(String actorUserId, String scope, String idempotencyKey, String fingerprint) {
         return null;
+    }
+
+    @Override
+    public boolean primaryReadMode() {
+        return false;
+    }
+
+    @Override
+    public List<Map<String, Object>> readSettings() {
+        return List.of();
+    }
+
+    @Override
+    public Map<String, Object> readLayout() {
+        return Map.of();
+    }
+
+    @Override
+    public List<Map<String, Object>> readModules() {
+        return List.of();
+    }
+
+    @Override
+    public List<Map<String, Object>> readTodos() {
+        return List.of();
+    }
+
+    @Override
+    public List<Map<String, Object>> readMetrics() {
+        return List.of();
+    }
+
+    @Override
+    public List<Map<String, Object>> readAudits() {
+        return List.of();
     }
 
     @Override
@@ -1547,9 +1734,153 @@ class AdminPostgresPersistence implements AdminPersistence {
     }
 
     @Override
+    public boolean primaryReadMode() {
+        return true;
+    }
+
+    @Override
+    public List<Map<String, Object>> readSettings() {
+        return jdbc.queryForList("""
+                SELECT setting_key, scope, value_type, setting_value, sensitive, high_impact, description, updated_by, updated_at
+                FROM admin_settings
+                ORDER BY setting_key
+                """).stream().map(row -> {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("key", row.get("setting_key"));
+            item.put("scope", row.get("scope"));
+            item.put("valueType", row.get("value_type"));
+            item.put("value", typedValue(Objects.toString(row.get("value_type"), ""), Objects.toString(row.get("setting_value"), "")));
+            item.put("description", row.get("description"));
+            item.put("sensitive", row.get("sensitive"));
+            item.put("highImpact", row.get("high_impact"));
+            item.put("updatedBy", row.get("updated_by"));
+            item.put("updatedAt", instantString(row.get("updated_at")));
+            return item;
+        }).toList();
+    }
+
+    @Override
+    public Map<String, Object> readLayout() {
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                SELECT dashboard_cards::text, navigation_module_order::text, hidden_modules::text, quick_actions::text
+                FROM admin_layouts
+                WHERE layout_key = 'default'
+                """);
+        if (rows.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Object> row = rows.getFirst();
+        Map<String, Object> layout = new LinkedHashMap<>();
+        layout.put("dashboardCards", jsonValue(row.get("dashboard_cards")));
+        layout.put("navigationModuleOrder", jsonValue(row.get("navigation_module_order")));
+        layout.put("hiddenModules", jsonValue(row.get("hidden_modules")));
+        layout.put("quickActions", jsonValue(row.get("quick_actions")));
+        return layout;
+    }
+
+    @Override
+    public List<Map<String, Object>> readModules() {
+        return jdbc.queryForList("""
+                SELECT module_key, status, implemented, enabled, sort_order, badge_count, target_api_base, frontend_route, health_summary::text, updated_at
+                FROM admin_module_indexes
+                ORDER BY module_key
+                """).stream().map(row -> {
+            Map<String, Object> module = new LinkedHashMap<>();
+            module.put("moduleKey", row.get("module_key"));
+            module.put("status", row.get("status"));
+            module.put("implemented", row.get("implemented"));
+            module.put("enabled", row.get("enabled"));
+            module.put("sortOrder", row.get("sort_order"));
+            module.put("badgeCount", row.get("badge_count"));
+            module.put("targetApiBase", row.get("target_api_base"));
+            module.put("frontendRoute", row.get("frontend_route"));
+            module.put("health", jsonMap(row.get("health_summary")));
+            module.put("updatedAt", instantString(row.get("updated_at")));
+            return module;
+        }).toList();
+    }
+
+    @Override
+    public List<Map<String, Object>> readTodos() {
+        return jdbc.queryForList("""
+                SELECT todo_id, source_module, source_type, source_id, type, severity, status, title, summary, target_route, target_api, read_only, indexed_at, created_at, updated_at
+                FROM admin_todo_indexes
+                ORDER BY created_at DESC, todo_id
+                """).stream().map(row -> {
+            Map<String, Object> todo = new LinkedHashMap<>();
+            todo.put("todoId", row.get("todo_id"));
+            todo.put("sourceModule", row.get("source_module"));
+            todo.put("sourceType", row.get("source_type"));
+            todo.put("sourceId", row.get("source_id"));
+            todo.put("type", row.get("type"));
+            todo.put("severity", row.get("severity"));
+            todo.put("status", row.get("status"));
+            todo.put("title", row.get("title"));
+            todo.put("summary", row.get("summary"));
+            todo.put("targetRoute", row.get("target_route"));
+            todo.put("targetApi", row.get("target_api"));
+            todo.put("readOnly", row.get("read_only"));
+            todo.put("createdAt", instantString(row.get("created_at")));
+            todo.put("updatedAt", instantString(row.get("updated_at")));
+            todo.put("indexedAt", instantString(row.get("indexed_at")));
+            return todo;
+        }).toList();
+    }
+
+    @Override
+    public List<Map<String, Object>> readMetrics() {
+        return jdbc.queryForList("""
+                SELECT metric_key, label, source_module, metric_value, unit, trend::text, target_route, degraded, updated_at
+                FROM admin_metric_snapshots
+                ORDER BY metric_key
+                """).stream().map(row -> {
+            Map<String, Object> metric = new LinkedHashMap<>();
+            metric.put("metricKey", row.get("metric_key"));
+            metric.put("label", row.get("label"));
+            metric.put("sourceModule", row.get("source_module"));
+            metric.put("value", numberValue(row.get("metric_value")));
+            metric.put("unit", row.get("unit"));
+            metric.put("trend", jsonNullableValue(row.get("trend")));
+            metric.put("targetRoute", row.get("target_route"));
+            metric.put("degraded", row.get("degraded"));
+            metric.put("updatedAt", instantString(row.get("updated_at")));
+            return metric;
+        }).toList();
+    }
+
+    @Override
+    public List<Map<String, Object>> readAudits() {
+        return jdbc.queryForList("""
+                SELECT audit_index_id, source_module, source_audit_id, request_id, actor_user_id, actor_display_name, actor_role, target_type, target_id, action, risk_level, result, reason_summary, failure_reason, target_route, indexed_at, created_at
+                FROM admin_audit_indexes
+                ORDER BY created_at DESC, audit_index_id
+                """).stream().map(row -> {
+            Map<String, Object> audit = new LinkedHashMap<>();
+            audit.put("id", row.get("audit_index_id"));
+            audit.put("sourceModule", row.get("source_module"));
+            audit.put("sourceAuditId", row.get("source_audit_id"));
+            audit.put("requestId", row.get("request_id"));
+            audit.put("actorUserId", row.get("actor_user_id"));
+            audit.put("actorDisplayName", row.get("actor_display_name"));
+            audit.put("actorRole", row.get("actor_role"));
+            audit.put("targetType", row.get("target_type"));
+            audit.put("targetId", row.get("target_id"));
+            audit.put("action", row.get("action"));
+            audit.put("riskLevel", row.get("risk_level"));
+            audit.put("result", row.get("result"));
+            audit.put("reasonSummary", row.get("reason_summary"));
+            audit.put("failureReason", row.get("failure_reason"));
+            audit.put("targetRoute", row.get("target_route"));
+            audit.put("indexedAt", instantString(row.get("indexed_at")));
+            audit.put("createdAt", instantString(row.get("created_at")));
+            return audit;
+        }).toList();
+    }
+
+    @Override
     @Transactional
     public void persistSnapshot(List<Map<String, Object>> settings, Map<String, Object> layout, List<Map<String, Object>> modules, List<Map<String, Object>> todos, List<Map<String, Object>> metrics, List<Map<String, Object>> audits) {
-        replaceSnapshot(settings, layout, modules, todos, metrics, audits);
+        seedSnapshotIfEmpty(settings, layout, modules, todos, metrics, audits);
     }
 
     @Override
@@ -1564,7 +1895,7 @@ class AdminPostgresPersistence implements AdminPersistence {
 
     @Override
     public String storageMode() {
-        return "POSTGRESQL_WITH_IN_MEMORY_RESPONSE_MODEL";
+        return "POSTGRESQL_PRIMARY";
     }
 
     @Override
@@ -1605,6 +1936,27 @@ class AdminPostgresPersistence implements AdminPersistence {
         for (Map<String, Object> todo : todos) insertTodo(todo);
         for (Map<String, Object> metric : metrics) insertMetric(metric);
         for (Map<String, Object> audit : audits) insertAuditIndex(audit);
+    }
+
+    private void seedSnapshotIfEmpty(List<Map<String, Object>> settings, Map<String, Object> layout, List<Map<String, Object>> modules, List<Map<String, Object>> todos, List<Map<String, Object>> metrics, List<Map<String, Object>> audits) {
+        if (count("admin_settings") == 0) {
+            for (Map<String, Object> setting : settings) insertSetting(setting);
+        }
+        if (count("admin_layouts") == 0) {
+            insertLayout(layout);
+        }
+        if (count("admin_module_indexes") == 0) {
+            for (Map<String, Object> module : modules) insertModule(module);
+        }
+        if (count("admin_todo_indexes") == 0) {
+            for (Map<String, Object> todo : todos) insertTodo(todo);
+        }
+        if (count("admin_metric_snapshots") == 0) {
+            for (Map<String, Object> metric : metrics) insertMetric(metric);
+        }
+        if (count("admin_audit_indexes") == 0) {
+            for (Map<String, Object> audit : audits) insertAuditIndex(audit);
+        }
     }
 
     private void insertSetting(Map<String, Object> setting) {
@@ -1731,6 +2083,67 @@ class AdminPostgresPersistence implements AdminPersistence {
 
     private long countWhere(String table, String where) {
         return jdbc.queryForObject("SELECT COUNT(*) FROM " + table + " WHERE " + where, Long.class);
+    }
+
+    private Object typedValue(String valueType, String value) {
+        return switch (valueType) {
+            case "INTEGER" -> Integer.parseInt(value);
+            case "BOOLEAN" -> Boolean.parseBoolean(value);
+            case "JSON" -> jsonValue(value);
+            default -> value;
+        };
+    }
+
+    private Object numberValue(Object value) {
+        if (value instanceof java.math.BigDecimal decimal) {
+            return decimal.stripTrailingZeros().scale() <= 0 ? decimal.intValueExact() : decimal.doubleValue();
+        }
+        return value;
+    }
+
+    private Object jsonNullableValue(Object value) {
+        if (value == null) {
+            return null;
+        }
+        return jsonValue(value);
+    }
+
+    private Object jsonValue(Object value) {
+        if (value == null) {
+            return null;
+        }
+        try {
+            return objectMapper.readValue(value.toString(), Object.class);
+        } catch (Exception exception) {
+            throw new IllegalStateException("failed to parse admin json", exception);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> jsonMap(Object value) {
+        Object parsed = jsonValue(value);
+        if (parsed instanceof Map<?, ?> map) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            map.forEach((key, entry) -> result.put(Objects.toString(key), entry));
+            return result;
+        }
+        return Map.of();
+    }
+
+    private String instantString(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof OffsetDateTime dateTime) {
+            return dateTime.toInstant().toString();
+        }
+        if (value instanceof java.sql.Timestamp timestamp) {
+            return timestamp.toInstant().toString();
+        }
+        if (value instanceof java.time.LocalDateTime dateTime) {
+            return dateTime.toInstant(ZoneOffset.UTC).toString();
+        }
+        return value.toString();
     }
 
     private String requestId(HttpServletRequest request) {
