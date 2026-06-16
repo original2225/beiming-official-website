@@ -1,5 +1,6 @@
 package cn.beiming.community;
 
+import cn.beiming.engagement.persistence.CommunityPersistence;
 import cn.beiming.engagement.TrustedGatewayAuth;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -45,8 +46,8 @@ import java.util.concurrent.ConcurrentHashMap;
 @Configuration
 class CommunityModule {
     @Bean
-    CommunityStore communityStore(CommunityTestControls testControls) {
-        return new CommunityStore(testControls);
+    CommunityStore communityStore(CommunityTestControls testControls, CommunityPersistence persistence) {
+        return new CommunityStore(testControls, persistence);
     }
 
     @Bean
@@ -660,10 +661,12 @@ class CommunityStore {
     private final Set<String> postViewFingerprints = ConcurrentHashMap.newKeySet();
     private final List<Map<String, Object>> audits = java.util.Collections.synchronizedList(new ArrayList<>());
     private final CommunityTestControls testControls;
+    private final CommunityPersistence persistence;
     private int idSeq = 1000;
 
-    CommunityStore(CommunityTestControls testControls) {
+    CommunityStore(CommunityTestControls testControls, CommunityPersistence persistence) {
         this.testControls = testControls;
+        this.persistence = persistence;
         seedBoard();
     }
 
@@ -787,6 +790,7 @@ class CommunityStore {
         audit(actor, "COMMUNITY_BOARD", board.boardId, "COMMUNITY_BOARD_CREATED", "MEDIUM", null, board.status, "create board");
         Map<String, Object> value = boardView(board);
         remember(actor.userId(), "createBoard", body, value);
+        persist(request, actor, "community.board.create", "COMMUNITY_BOARD_CREATED", "COMMUNITY_BOARD", board.boardId, "MEDIUM", null, board.status, "create board", withSnapshotType("BOARD", value), body, value, 201);
         return new MutationResult(true, value);
     }
 
@@ -805,7 +809,9 @@ class CommunityStore {
         if (body.containsKey("sortOrder")) board.sortOrder = intBody(body, "sortOrder", board.sortOrder);
         board.updatedAt = NOW;
         audit(actor, "COMMUNITY_BOARD", board.boardId, "COMMUNITY_BOARD_UPDATED", "MEDIUM", null, board.status, "update board");
-        return boardView(board);
+        Map<String, Object> value = boardView(board);
+        persist(request, actor, "community.board.update", "COMMUNITY_BOARD_UPDATED", "COMMUNITY_BOARD", board.boardId, "MEDIUM", null, board.status, "update board", withSnapshotType("BOARD", value), body, value, 200);
+        return value;
     }
 
     synchronized Map<String, Object> archiveBoard(CommunityUser actor, String boardId, Map<String, Object> body, HttpServletRequest request) {
@@ -817,7 +823,9 @@ class CommunityStore {
         board.archivedAt = NOW;
         board.updatedAt = NOW;
         audit(actor, "COMMUNITY_BOARD", board.boardId, "COMMUNITY_BOARD_ARCHIVED", "MEDIUM", null, board.status, "archive board");
-        return boardView(board);
+        Map<String, Object> value = boardView(board);
+        persist(request, actor, "community.board.archive", "COMMUNITY_BOARD_ARCHIVED", "COMMUNITY_BOARD", board.boardId, "MEDIUM", null, board.status, "archive board", withSnapshotType("BOARD", value), body, value, 200);
+        return value;
     }
 
     synchronized MutationResult createPost(CommunityUser actor, Map<String, Object> body, HttpServletRequest request) {
@@ -849,6 +857,7 @@ class CommunityStore {
         audit(actor, "COMMUNITY_POST", post.postId, "COMMUNITY_POST_CREATED", "LOW", null, post.status, "create post");
         Map<String, Object> value = postView(post, true);
         remember(actor.userId(), "createPost", body, value);
+        persist(request, actor, "community.post.create", "COMMUNITY_POST_CREATED", "COMMUNITY_POST", post.postId, "LOW", null, post.status, "create post", withSnapshotType("POST", value), body, value, 201);
         return new MutationResult(true, value);
     }
 
@@ -863,7 +872,9 @@ class CommunityStore {
         if (body.containsKey("tags")) post.tags = looseStringList(body, "tags", 0, 8, 24);
         post.updatedAt = NOW;
         audit(actor, "COMMUNITY_POST", post.postId, "COMMUNITY_POST_UPDATED", "LOW", null, post.status, "update post");
-        return postView(post, true);
+        Map<String, Object> value = postView(post, true);
+        persist(request, actor, "community.post.update", "COMMUNITY_POST_UPDATED", "COMMUNITY_POST", post.postId, "LOW", null, post.status, "update post", withSnapshotType("POST", value), body, value, 200);
+        return value;
     }
 
     synchronized Map<String, Object> submitPost(CommunityUser actor, String postId, Map<String, Object> body, HttpServletRequest request) {
@@ -876,7 +887,9 @@ class CommunityStore {
         post.submittedAt = NOW;
         post.updatedAt = NOW;
         audit(actor, "COMMUNITY_POST", post.postId, "COMMUNITY_POST_SUBMITTED", "LOW", null, post.status, "submit post");
-        return postView(post, true);
+        Map<String, Object> value = postView(post, true);
+        persist(request, actor, "community.post.submit", "COMMUNITY_POST_SUBMITTED", "COMMUNITY_POST", post.postId, "LOW", null, post.status, "submit post", withSnapshotType("POST", value), body, value, 200);
+        return value;
     }
 
     synchronized Map<String, Object> withdrawPost(CommunityUser actor, String postId, Map<String, Object> body, HttpServletRequest request) {
@@ -888,7 +901,9 @@ class CommunityStore {
         post.status = "DRAFT";
         post.updatedAt = NOW;
         audit(actor, "COMMUNITY_POST", post.postId, "COMMUNITY_POST_WITHDRAWN", "LOW", null, post.status, "withdraw post");
-        return postView(post, true);
+        Map<String, Object> value = postView(post, true);
+        persist(request, actor, "community.post.withdraw", "COMMUNITY_POST_WITHDRAWN", "COMMUNITY_POST", post.postId, "LOW", null, post.status, "withdraw post", withSnapshotType("POST", value), body, value, 200);
+        return value;
     }
 
     Map<String, Object> adminPosts(Map<String, String> query) {
@@ -924,7 +939,12 @@ class CommunityStore {
         post.notificationFailure = notificationFailure(request);
         audit(actor, "COMMUNITY_POST", post.postId, "COMMUNITY_POST_" + targetStatus, "MEDIUM", null, post.status, "review post");
         auditNotificationFailure(actor, "COMMUNITY_POST", post.postId, post.notificationFailure);
-        return postView(post, true);
+        Map<String, Object> value = postView(post, true);
+        persist(request, actor, "community.post.review", "COMMUNITY_POST_" + targetStatus, "COMMUNITY_POST", post.postId, "MEDIUM", null, post.status, "review post", withSnapshotType("POST", value), body, value, 200);
+        if (post.notificationFailure != null) {
+            persist(request, actor, null, "COMMUNITY_NOTIFICATION_FAILED", "COMMUNITY_POST", post.postId, "LOW", null, "FAILED", "notification failed", withSnapshotType("POST", value), Map.of(), value, 200);
+        }
+        return value;
     }
 
     synchronized Map<String, Object> offlinePost(CommunityUser actor, String postId, Map<String, Object> body, HttpServletRequest request) {
@@ -941,7 +961,12 @@ class CommunityStore {
         post.notificationFailure = notificationFailure(request);
         audit(actor, "COMMUNITY_POST", post.postId, "COMMUNITY_POST_OFFLINE", "MEDIUM", null, post.status, "offline post");
         auditNotificationFailure(actor, "COMMUNITY_POST", post.postId, post.notificationFailure);
-        return postView(post, true);
+        Map<String, Object> value = postView(post, true);
+        persist(request, actor, "community.post.offline", "COMMUNITY_POST_OFFLINE", "COMMUNITY_POST", post.postId, "MEDIUM", null, post.status, "offline post", withSnapshotType("POST", value), body, value, 200);
+        if (post.notificationFailure != null) {
+            persist(request, actor, null, "COMMUNITY_NOTIFICATION_FAILED", "COMMUNITY_POST", post.postId, "LOW", null, "FAILED", "notification failed", withSnapshotType("POST", value), Map.of(), value, 200);
+        }
+        return value;
     }
 
     synchronized Map<String, Object> archivePost(CommunityUser actor, String postId, Map<String, Object> body, HttpServletRequest request) {
@@ -952,7 +977,9 @@ class CommunityStore {
         post.archivedAt = NOW;
         post.updatedAt = NOW;
         audit(actor, "COMMUNITY_POST", post.postId, "COMMUNITY_POST_ARCHIVED", "MEDIUM", null, post.status, "archive post");
-        return postView(post, true);
+        Map<String, Object> value = postView(post, true);
+        persist(request, actor, "community.post.archive", "COMMUNITY_POST_ARCHIVED", "COMMUNITY_POST", post.postId, "MEDIUM", null, post.status, "archive post", withSnapshotType("POST", value), body, value, 200);
+        return value;
     }
 
     synchronized Map<String, Object> deletePost(CommunityUser actor, String postId, Map<String, Object> body, HttpServletRequest request) {
@@ -964,7 +991,9 @@ class CommunityStore {
         post.deletedAt = NOW;
         post.updatedAt = NOW;
         audit(actor, "COMMUNITY_POST", post.postId, "COMMUNITY_POST_DELETED", "HIGH", null, post.status, "delete post");
-        return postView(post, true);
+        Map<String, Object> value = postView(post, true);
+        persist(request, actor, "community.post.delete", "COMMUNITY_POST_DELETED", "COMMUNITY_POST", post.postId, "HIGH", null, post.status, "delete post", withSnapshotType("POST", value), body, value, 200);
+        return value;
     }
 
     synchronized Map<String, Object> createComment(CommunityUser actor, String postId, Map<String, Object> body, HttpServletRequest request) {
@@ -990,7 +1019,9 @@ class CommunityStore {
         comment.submittedAt = NOW;
         comments.put(comment.commentId, comment);
         audit(actor, "COMMUNITY_COMMENT", comment.commentId, "COMMUNITY_COMMENT_CREATED", "LOW", null, comment.status, "create comment");
-        return commentView(comment, true);
+        Map<String, Object> value = commentView(comment, true);
+        persist(request, actor, "community.comment.create", "COMMUNITY_COMMENT_CREATED", "COMMUNITY_COMMENT", comment.commentId, "LOW", null, comment.status, "create comment", withSnapshotType("COMMENT", value), body, value, 201);
+        return value;
     }
 
     synchronized Map<String, Object> updateComment(CommunityUser actor, String commentId, Map<String, Object> body, HttpServletRequest request) {
@@ -1002,7 +1033,9 @@ class CommunityStore {
         comment.status = "PENDING_REVIEW";
         comment.updatedAt = NOW;
         audit(actor, "COMMUNITY_COMMENT", comment.commentId, "COMMUNITY_COMMENT_UPDATED", "LOW", null, comment.status, "update comment");
-        return commentView(comment, true);
+        Map<String, Object> value = commentView(comment, true);
+        persist(request, actor, "community.comment.update", "COMMUNITY_COMMENT_UPDATED", "COMMUNITY_COMMENT", comment.commentId, "LOW", null, comment.status, "update comment", withSnapshotType("COMMENT", value), body, value, 200);
+        return value;
     }
 
     synchronized Map<String, Object> archiveComment(CommunityUser actor, String commentId, Map<String, Object> body, HttpServletRequest request) {
@@ -1014,7 +1047,9 @@ class CommunityStore {
         comment.deletedAt = NOW;
         comment.updatedAt = NOW;
         audit(actor, "COMMUNITY_COMMENT", comment.commentId, "COMMUNITY_COMMENT_ARCHIVED", "LOW", null, comment.status, "archive comment");
-        return commentView(comment, true);
+        Map<String, Object> value = commentView(comment, true);
+        persist(request, actor, "community.comment.archive", "COMMUNITY_COMMENT_ARCHIVED", "COMMUNITY_COMMENT", comment.commentId, "LOW", null, comment.status, "archive comment", withSnapshotType("COMMENT", value), body, value, 200);
+        return value;
     }
 
     Map<String, Object> adminComments(Map<String, String> query) {
@@ -1040,7 +1075,9 @@ class CommunityStore {
         comment.reviewedAt = NOW;
         comment.updatedAt = NOW;
         audit(actor, "COMMUNITY_COMMENT", comment.commentId, "COMMUNITY_COMMENT_" + status, "MEDIUM", null, status, "review comment");
-        return commentView(comment, true);
+        Map<String, Object> value = commentView(comment, true);
+        persist(request, actor, "community.comment.review", "COMMUNITY_COMMENT_" + status, "COMMUNITY_COMMENT", comment.commentId, "MEDIUM", null, status, "review comment", withSnapshotType("COMMENT", value), body, value, 200);
+        return value;
     }
 
     synchronized Map<String, Object> offlineComment(CommunityUser actor, String commentId, Map<String, Object> body, HttpServletRequest request) {
@@ -1052,7 +1089,9 @@ class CommunityStore {
         comment.status = "OFFLINE";
         comment.updatedAt = NOW;
         audit(actor, "COMMUNITY_COMMENT", comment.commentId, "COMMUNITY_COMMENT_OFFLINE", "MEDIUM", null, comment.status, "offline comment");
-        return commentView(comment, true);
+        Map<String, Object> value = commentView(comment, true);
+        persist(request, actor, "community.comment.offline", "COMMUNITY_COMMENT_OFFLINE", "COMMUNITY_COMMENT", comment.commentId, "MEDIUM", null, comment.status, "offline comment", withSnapshotType("COMMENT", value), body, value, 200);
+        return value;
     }
 
     synchronized Map<String, Object> setPostLike(CommunityUser actor, String postId, boolean enabled, Map<String, Object> body, HttpServletRequest request) {
@@ -1063,7 +1102,10 @@ class CommunityStore {
         if (enabled) postLikes.add(key); else postLikes.remove(key);
         post.likeCount = countPrefix(postLikes, ":POST:" + postId);
         audit(actor, "COMMUNITY_POST", post.postId, enabled ? "COMMUNITY_POST_LIKED" : "COMMUNITY_POST_UNLIKED", "LOW", null, post.status, "post reaction");
-        return linkedMap("postId", postId, "likeCount", post.likeCount);
+        Map<String, Object> value = linkedMap("postId", postId, "likeCount", post.likeCount);
+        persist(request, actor, "community.reaction.post", enabled ? "COMMUNITY_POST_LIKED" : "COMMUNITY_POST_UNLIKED", "COMMUNITY_POST", post.postId, "LOW", null, post.status, "post reaction", reactionSnapshot("POST", postId, actor, enabled), body, value, 200);
+        persist(request, actor, null, "COMMUNITY_POST_REACTION_COUNTED", "COMMUNITY_POST", post.postId, "LOW", null, post.status, "post reaction count", withSnapshotType("POST", postView(post, true)), Map.of(), value, 200);
+        return value;
     }
 
     synchronized Map<String, Object> setCommentLike(CommunityUser actor, String commentId, boolean enabled, Map<String, Object> body, HttpServletRequest request) {
@@ -1075,7 +1117,10 @@ class CommunityStore {
         if (enabled) commentLikes.add(key); else commentLikes.remove(key);
         comment.likeCount = countPrefix(commentLikes, ":COMMENT:" + commentId);
         audit(actor, "COMMUNITY_COMMENT", comment.commentId, enabled ? "COMMUNITY_COMMENT_LIKED" : "COMMUNITY_COMMENT_UNLIKED", "LOW", null, comment.status, "comment reaction");
-        return linkedMap("commentId", commentId, "likeCount", comment.likeCount);
+        Map<String, Object> value = linkedMap("commentId", commentId, "likeCount", comment.likeCount);
+        persist(request, actor, "community.reaction.comment", enabled ? "COMMUNITY_COMMENT_LIKED" : "COMMUNITY_COMMENT_UNLIKED", "COMMUNITY_COMMENT", comment.commentId, "LOW", null, comment.status, "comment reaction", reactionSnapshot("COMMENT", commentId, actor, enabled), body, value, 200);
+        persist(request, actor, null, "COMMUNITY_COMMENT_REACTION_COUNTED", "COMMUNITY_COMMENT", comment.commentId, "LOW", null, comment.status, "comment reaction count", withSnapshotType("COMMENT", commentView(comment, true)), Map.of(), value, 200);
+        return value;
     }
 
     synchronized Map<String, Object> setFavorite(CommunityUser actor, String postId, boolean enabled, Map<String, Object> body, HttpServletRequest request) {
@@ -1085,7 +1130,10 @@ class CommunityStore {
         if (enabled) favorites.add(key); else favorites.remove(key);
         post.favoriteCount = countPrefix(favorites, ":POST:" + postId);
         audit(actor, "COMMUNITY_POST", post.postId, enabled ? "COMMUNITY_POST_FAVORITED" : "COMMUNITY_POST_UNFAVORITED", "LOW", null, post.status, "favorite post");
-        return linkedMap("postId", postId, "favoriteCount", post.favoriteCount);
+        Map<String, Object> value = linkedMap("postId", postId, "favoriteCount", post.favoriteCount);
+        persist(request, actor, "community.favorite.post", enabled ? "COMMUNITY_POST_FAVORITED" : "COMMUNITY_POST_UNFAVORITED", "COMMUNITY_POST", post.postId, "LOW", null, post.status, "favorite post", favoriteSnapshot(postId, actor, enabled), body, value, 200);
+        persist(request, actor, null, "COMMUNITY_POST_FAVORITE_COUNTED", "COMMUNITY_POST", post.postId, "LOW", null, post.status, "favorite count", withSnapshotType("POST", postView(post, true)), Map.of(), value, 200);
+        return value;
     }
 
     synchronized Map<String, Object> createPoll(CommunityUser actor, Map<String, Object> body, HttpServletRequest request) {
@@ -1111,7 +1159,9 @@ class CommunityStore {
         poll.updatedAt = NOW;
         polls.put(poll.pollId, poll);
         audit(actor, "COMMUNITY_POLL", poll.pollId, "COMMUNITY_POLL_CREATED", "MEDIUM", null, poll.status, "create poll");
-        return pollView(poll);
+        Map<String, Object> value = pollView(poll);
+        persist(request, actor, "community.poll.create", "COMMUNITY_POLL_CREATED", "COMMUNITY_POLL", poll.pollId, "MEDIUM", null, poll.status, "create poll", withSnapshotType("POLL", value), body, value, 201);
+        return value;
     }
 
     synchronized Map<String, Object> updatePoll(CommunityUser actor, String pollId, Map<String, Object> body, HttpServletRequest request) {
@@ -1123,7 +1173,9 @@ class CommunityStore {
         if (body.containsKey("description")) poll.description = optionalString(body, "description", 500);
         poll.updatedAt = NOW;
         audit(actor, "COMMUNITY_POLL", poll.pollId, "COMMUNITY_POLL_UPDATED", "MEDIUM", null, poll.status, "update poll");
-        return pollView(poll);
+        Map<String, Object> value = pollView(poll);
+        persist(request, actor, "community.poll.update", "COMMUNITY_POLL_UPDATED", "COMMUNITY_POLL", poll.pollId, "MEDIUM", null, poll.status, "update poll", withSnapshotType("POLL", value), body, value, 200);
+        return value;
     }
 
     synchronized Map<String, Object> pollStatus(CommunityUser actor, String pollId, String status, Map<String, Object> body, HttpServletRequest request) {
@@ -1135,7 +1187,9 @@ class CommunityStore {
         poll.status = status;
         poll.updatedAt = NOW;
         audit(actor, "COMMUNITY_POLL", poll.pollId, "COMMUNITY_POLL_" + status, "MEDIUM", null, poll.status, "poll status");
-        return pollView(poll);
+        Map<String, Object> value = pollView(poll);
+        persist(request, actor, "community.poll.status", "COMMUNITY_POLL_" + status, "COMMUNITY_POLL", poll.pollId, "MEDIUM", null, poll.status, "poll status", withSnapshotType("POLL", value), body, value, 200);
+        return value;
     }
 
     synchronized Map<String, Object> vote(CommunityUser actor, String pollId, Map<String, Object> body, HttpServletRequest request) {
@@ -1155,7 +1209,10 @@ class CommunityStore {
         }
         poll.voteCount++;
         audit(actor, "COMMUNITY_POLL", poll.pollId, "COMMUNITY_POLL_VOTED", "LOW", null, poll.status, "vote");
-        return pollView(poll);
+        Map<String, Object> value = pollView(poll);
+        persist(request, actor, "community.poll.vote", "COMMUNITY_POLL_VOTED", "COMMUNITY_POLL", poll.pollId, "LOW", null, poll.status, "vote", pollVoteSnapshot(pollId, actor, optionIds), body, value, 200);
+        persist(request, actor, null, "COMMUNITY_POLL_COUNTED", "COMMUNITY_POLL", poll.pollId, "LOW", null, poll.status, "poll count", withSnapshotType("POLL", value), Map.of(), value, 200);
+        return value;
     }
 
     synchronized Map<String, Object> createReport(CommunityUser actor, String targetType, String targetId, Map<String, Object> body, HttpServletRequest request) {
@@ -1181,7 +1238,9 @@ class CommunityStore {
         report.updatedAt = NOW;
         reports.put(report.reportId, report);
         audit(actor, "COMMUNITY_REPORT", report.reportId, "COMMUNITY_REPORT_CREATED", "LOW", null, report.status, "create report");
-        return reportView(report, false);
+        Map<String, Object> value = reportView(report, false);
+        persist(request, actor, "community.report.create", "COMMUNITY_REPORT_CREATED", "COMMUNITY_REPORT", report.reportId, "LOW", null, report.status, "create report", withSnapshotType("REPORT", reportView(report, true)), body, value, 201);
+        return value;
     }
 
     Map<String, Object> myReports(CommunityUser actor, Map<String, String> query) {
@@ -1225,7 +1284,9 @@ class CommunityStore {
         report.status = "UNDER_REVIEW";
         report.updatedAt = NOW;
         audit(actor, "COMMUNITY_REPORT", report.reportId, "COMMUNITY_REPORT_ASSIGNED", "MEDIUM", null, report.status, "assign report");
-        return reportView(report, true);
+        Map<String, Object> value = reportView(report, true);
+        persist(request, actor, "community.report.assign", "COMMUNITY_REPORT_ASSIGNED", "COMMUNITY_REPORT", report.reportId, "MEDIUM", null, report.status, "assign report", withSnapshotType("REPORT", value), body, value, 200);
+        return value;
     }
 
     synchronized Map<String, Object> finishReport(CommunityUser actor, String reportId, String status, Map<String, Object> body, HttpServletRequest request) {
@@ -1244,7 +1305,9 @@ class CommunityStore {
         report.updatedAt = NOW;
         report.resolvedAt = NOW;
         audit(actor, "COMMUNITY_REPORT", report.reportId, "COMMUNITY_REPORT_" + status, "MEDIUM", null, report.status, "finish report");
-        return reportView(report, true);
+        Map<String, Object> value = reportView(report, true);
+        persist(request, actor, "community.report.finish", "COMMUNITY_REPORT_" + status, "COMMUNITY_REPORT", report.reportId, "MEDIUM", null, report.status, "finish report", withSnapshotType("REPORT", value), body, value, 200);
+        return value;
     }
 
     synchronized Map<String, Object> createTicket(CommunityUser actor, Map<String, Object> body, HttpServletRequest request) {
@@ -1266,7 +1329,9 @@ class CommunityStore {
         ticket.messages.add(ticketMessage(ticket.ticketId, "USER_REPLY", validateRequiredString(body, "body", 1, 10000), actor, attachments(body)));
         tickets.put(ticket.ticketId, ticket);
         audit(actor, "COMMUNITY_TICKET", ticket.ticketId, "COMMUNITY_TICKET_CREATED", "LOW", null, ticket.status, "create ticket");
-        return ticketView(ticket, false);
+        Map<String, Object> value = ticketView(ticket, false);
+        persist(request, actor, "community.ticket.create", "COMMUNITY_TICKET_CREATED", "COMMUNITY_TICKET", ticket.ticketId, "LOW", null, ticket.status, "create ticket", withSnapshotType("TICKET", value), body, value, 201);
+        return value;
     }
 
     Map<String, Object> myTickets(CommunityUser actor, Map<String, String> query) {
@@ -1298,7 +1363,9 @@ class CommunityStore {
         ticket.updatedAt = NOW;
         ticket.lastReplyAt = NOW;
         audit(actor, "COMMUNITY_TICKET", ticket.ticketId, "COMMUNITY_TICKET_USER_REPLIED", "LOW", null, ticket.status, "append ticket");
-        return ticketView(ticket, false);
+        Map<String, Object> value = ticketView(ticket, false);
+        persist(request, actor, "community.ticket.user-reply", "COMMUNITY_TICKET_USER_REPLIED", "COMMUNITY_TICKET", ticket.ticketId, "LOW", null, ticket.status, "append ticket", withSnapshotType("TICKET", value), body, value, 200);
+        return value;
     }
 
     synchronized Map<String, Object> closeTicket(CommunityUser actor, String ticketId, Map<String, Object> body, HttpServletRequest request) {
@@ -1310,7 +1377,9 @@ class CommunityStore {
         ticket.closedAt = NOW;
         ticket.updatedAt = NOW;
         audit(actor, "COMMUNITY_TICKET", ticket.ticketId, "COMMUNITY_TICKET_CLOSED", "LOW", null, ticket.status, "close ticket");
-        return ticketView(ticket, false);
+        Map<String, Object> value = ticketView(ticket, false);
+        persist(request, actor, "community.ticket.close", "COMMUNITY_TICKET_CLOSED", "COMMUNITY_TICKET", ticket.ticketId, "LOW", null, ticket.status, "close ticket", withSnapshotType("TICKET", value), body, value, 200);
+        return value;
     }
 
     Map<String, Object> adminTickets(Map<String, String> query) {
@@ -1340,7 +1409,9 @@ class CommunityStore {
         ticket.status = "WAITING_STAFF";
         ticket.updatedAt = NOW;
         audit(actor, "COMMUNITY_TICKET", ticket.ticketId, "COMMUNITY_TICKET_ASSIGNED", "MEDIUM", null, ticket.status, "assign ticket");
-        return ticketView(ticket, true);
+        Map<String, Object> value = ticketView(ticket, true);
+        persist(request, actor, "community.ticket.assign", "COMMUNITY_TICKET_ASSIGNED", "COMMUNITY_TICKET", ticket.ticketId, "MEDIUM", null, ticket.status, "assign ticket", withSnapshotType("TICKET", value), body, value, 200);
+        return value;
     }
 
     synchronized Map<String, Object> replyTicket(CommunityUser actor, String ticketId, Map<String, Object> body, HttpServletRequest request) {
@@ -1355,7 +1426,9 @@ class CommunityStore {
         ticket.updatedAt = NOW;
         ticket.lastReplyAt = NOW;
         audit(actor, "COMMUNITY_TICKET", ticket.ticketId, "COMMUNITY_TICKET_STAFF_REPLIED", "MEDIUM", null, ticket.status, "reply ticket");
-        return ticketView(ticket, true);
+        Map<String, Object> value = ticketView(ticket, true);
+        persist(request, actor, "community.ticket.staff-reply", "COMMUNITY_TICKET_STAFF_REPLIED", "COMMUNITY_TICKET", ticket.ticketId, "MEDIUM", null, ticket.status, "reply ticket", withSnapshotType("TICKET", value), body, value, 201);
+        return value;
     }
 
     synchronized Map<String, Object> ticketStatus(CommunityUser actor, String ticketId, Map<String, Object> body, HttpServletRequest request) {
@@ -1369,7 +1442,9 @@ class CommunityStore {
         if ("CLOSED".equals(status)) ticket.closedAt = NOW;
         ticket.updatedAt = NOW;
         audit(actor, "COMMUNITY_TICKET", ticket.ticketId, "COMMUNITY_TICKET_STATUS_CHANGED", "MEDIUM", null, ticket.status, "ticket status");
-        return ticketView(ticket, true);
+        Map<String, Object> value = ticketView(ticket, true);
+        persist(request, actor, "community.ticket.status", "COMMUNITY_TICKET_STATUS_CHANGED", "COMMUNITY_TICKET", ticket.ticketId, "MEDIUM", null, ticket.status, "ticket status", withSnapshotType("TICKET", value), body, value, 200);
+        return value;
     }
 
     synchronized Map<String, Object> createPenalty(CommunityUser actor, Map<String, Object> body, HttpServletRequest request) {
@@ -1393,7 +1468,9 @@ class CommunityStore {
         penalty.updatedAt = NOW;
         penalties.put(penalty.penaltyId, penalty);
         audit(actor, "COMMUNITY_PENALTY", penalty.penaltyId, "COMMUNITY_PENALTY_CREATED", "HIGH", null, penalty.status, "create penalty");
-        return penaltyView(penalty);
+        Map<String, Object> value = penaltyView(penalty);
+        persist(request, actor, "community.penalty.create", "COMMUNITY_PENALTY_CREATED", "COMMUNITY_PENALTY", penalty.penaltyId, "HIGH", null, penalty.status, "create penalty", withSnapshotType("PENALTY", value), body, value, 201);
+        return value;
     }
 
     synchronized Map<String, Object> updatePenalty(CommunityUser actor, String penaltyId, Map<String, Object> body, HttpServletRequest request) {
@@ -1405,7 +1482,9 @@ class CommunityStore {
         if (body.containsKey("expiresAt")) penalty.expiresAt = string(body.get("expiresAt"));
         penalty.updatedAt = NOW;
         audit(actor, "COMMUNITY_PENALTY", penalty.penaltyId, "COMMUNITY_PENALTY_UPDATED", "HIGH", null, penalty.status, "update penalty");
-        return penaltyView(penalty);
+        Map<String, Object> value = penaltyView(penalty);
+        persist(request, actor, "community.penalty.update", "COMMUNITY_PENALTY_UPDATED", "COMMUNITY_PENALTY", penalty.penaltyId, "HIGH", null, penalty.status, "update penalty", withSnapshotType("PENALTY", value), body, value, 200);
+        return value;
     }
 
     synchronized Map<String, Object> revokePenalty(CommunityUser actor, String penaltyId, Map<String, Object> body, HttpServletRequest request) {
@@ -1422,7 +1501,9 @@ class CommunityStore {
         penalty.revokeReason = string(body.get("publicReason"));
         penalty.updatedAt = NOW;
         audit(actor, "COMMUNITY_PENALTY", penalty.penaltyId, "COMMUNITY_PENALTY_REVOKED", "HIGH", null, penalty.status, "revoke penalty");
-        return penaltyView(penalty);
+        Map<String, Object> value = penaltyView(penalty);
+        persist(request, actor, "community.penalty.revoke", "COMMUNITY_PENALTY_REVOKED", "COMMUNITY_PENALTY", penalty.penaltyId, "HIGH", null, penalty.status, "revoke penalty", withSnapshotType("PENALTY", value), body, value, 200);
+        return value;
     }
 
     Map<String, Object> auditLogs(Map<String, String> query) {
@@ -1441,7 +1522,7 @@ class CommunityStore {
     }
 
     Map<String, Object> opsSummary(CommunityUser actor) {
-        return linkedMap(
+        Map<String, Object> summary = linkedMap(
                 "service", "community",
                 "port", 8132,
                 "legacyPort", 8112,
@@ -1467,6 +1548,8 @@ class CommunityStore {
                 "lastAuditAt", audits.isEmpty() ? null : audits.get(audits.size() - 1).get("createdAt"),
                 "productionGaps", List.of("P1_IN_MEMORY_STORAGE", "P1_AUTH_STUB", "P1_PROFILE_STUB", "P1_NOTIFICATION_STUB", "P1_CONTENT_STUB", "P1_RESOURCE_STUB", "ATTENDANCE_CONTRIBUTION_NOT_CONNECTED", "TEST_CONTROLS_DISABLED_OUTSIDE_TEST")
         );
+        summary.putAll(persistence.counts());
+        return summary;
     }
 
     private List<Map<String, Object>> publicPostRows(Map<String, String> query, int page, int pageSize) {
@@ -1948,6 +2031,29 @@ class CommunityStore {
                 "failureReason", null,
                 "createdAt", NOW
         ));
+    }
+
+    private void persist(HttpServletRequest request, CommunityUser actor, String scope, String action, String targetType, String targetId, String risk, String beforeState, String afterState, String reason, Map<String, Object> snapshot, Map<String, Object> body, Map<String, Object> responseBody, int responseCode) {
+        persistence.persistWrite(request, actor.userId(), actor.roles().stream().findFirst().orElse("USER"), scope, action, targetType, targetId, risk,
+                beforeState, afterState, reason, idempotencyKey(body), canonical(body), snapshot, responseBody, responseCode);
+    }
+
+    private Map<String, Object> withSnapshotType(String type, Map<String, Object> value) {
+        Map<String, Object> snapshot = new LinkedHashMap<>(value);
+        snapshot.put("snapshotType", type);
+        return snapshot;
+    }
+
+    private Map<String, Object> reactionSnapshot(String targetType, String targetId, CommunityUser actor, boolean active) {
+        return linkedMap("snapshotType", "REACTION", "targetType", targetType, "targetId", targetId, "actorUserId", actor.userId(), "active", active);
+    }
+
+    private Map<String, Object> favoriteSnapshot(String postId, CommunityUser actor, boolean active) {
+        return linkedMap("snapshotType", "FAVORITE", "postId", postId, "actorUserId", actor.userId(), "active", active);
+    }
+
+    private Map<String, Object> pollVoteSnapshot(String pollId, CommunityUser actor, List<String> optionIds) {
+        return linkedMap("snapshotType", "POLL_VOTE", "pollId", pollId, "actorUserId", actor.userId(), "optionIds", optionIds);
     }
 
     private void failBeforeWrite(HttpServletRequest request) {
