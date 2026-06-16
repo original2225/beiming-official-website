@@ -1,6 +1,7 @@
 package cn.beiming.whitelist;
 
 import cn.beiming.admission.AdmissionTrustedActor;
+import cn.beiming.admission.persistence.WhitelistPersistence;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -46,8 +47,8 @@ import java.util.concurrent.ConcurrentHashMap;
 @Configuration
 class WhitelistModule {
     @Bean
-    WhitelistStore whitelistStore(WhitelistTestControls testControls) {
-        return new WhitelistStore(testControls);
+    WhitelistStore whitelistStore(WhitelistTestControls testControls, WhitelistPersistence whitelistPersistence) {
+        return new WhitelistStore(testControls, whitelistPersistence);
     }
 
     @Bean
@@ -294,11 +295,13 @@ class WhitelistStore {
     private final Set<String> consumedHandoffs = ConcurrentHashMap.newKeySet();
     private final List<Map<String, Object>> audits = Collections.synchronizedList(new ArrayList<>());
     private final WhitelistTestControls testControls;
+    private final WhitelistPersistence persistence;
     private int idSeq = 1000;
     private int attendanceHandoffReads;
 
-    WhitelistStore(WhitelistTestControls testControls) {
+    WhitelistStore(WhitelistTestControls testControls, WhitelistPersistence persistence) {
         this.testControls = testControls;
+        this.persistence = persistence;
     }
 
     synchronized MutationResult createApplication(WhitelistUser user, Map<String, Object> body, HttpServletRequest request) {
@@ -354,6 +357,7 @@ class WhitelistStore {
         auditNotificationFailure(user, app);
         Map<String, Object> value = view(app, false);
         remember(user.userId(), "create", body, value);
+        persistence.persistApplicationWrite(request, user.userId(), actorRole(user), "whitelist.create-application", "WHITELIST_APPLICATION_CREATED", null, app.status, "create application", idempotencyKey(body), canonical(body), whitelistPersistenceView(app), value, 201);
         return new MutationResult(true, value);
     }
 
@@ -399,6 +403,7 @@ class WhitelistStore {
         audit(user, app.applicationId, "WHITELIST_MATERIALS_UPDATED", "LOW", before, app.status, "materials updated");
         Map<String, Object> value = view(app, false);
         remember(user.userId(), "materials:" + applicationId, body, value);
+        persistence.persistApplicationWrite(request, user.userId(), actorRole(user), "whitelist.update-materials", "WHITELIST_MATERIALS_UPDATED", before, app.status, "materials updated", idempotencyKey(body), canonical(body), whitelistPersistenceView(app), value, 200);
         return value;
     }
 
@@ -417,6 +422,7 @@ class WhitelistStore {
         audit(user, app.applicationId, "WHITELIST_APPLICATION_SUBMITTED", "LOW", before, app.status, "submit");
         Map<String, Object> value = view(app, false);
         remember(user.userId(), "submit:" + applicationId, body, value);
+        persistence.persistApplicationWrite(request, user.userId(), actorRole(user), "whitelist.submit", "WHITELIST_APPLICATION_SUBMITTED", before, app.status, "submit", idempotencyKey(body), canonical(body), whitelistPersistenceView(app), value, 200);
         return value;
     }
 
@@ -441,6 +447,7 @@ class WhitelistStore {
         auditNotificationFailure(user, app);
         Map<String, Object> value = view(app, false);
         remember(user.userId(), "supplement:" + applicationId, body, value);
+        persistence.persistApplicationWrite(request, user.userId(), actorRole(user), "whitelist.supplement", "WHITELIST_SUPPLEMENT_SUBMITTED", before, app.status, "supplement", idempotencyKey(body), canonical(body), whitelistPersistenceView(app), value, 200);
         return value;
     }
 
@@ -463,6 +470,7 @@ class WhitelistStore {
         auditNotificationFailure(user, app);
         Map<String, Object> value = view(app, false);
         remember(user.userId(), "withdraw:" + applicationId, body, value);
+        persistence.persistApplicationWrite(request, user.userId(), actorRole(user), "whitelist.withdraw", "WHITELIST_APPLICATION_WITHDRAWN", before, app.status, "withdraw", idempotencyKey(body), canonical(body), whitelistPersistenceView(app), value, 200);
         return value;
     }
 
@@ -517,6 +525,7 @@ class WhitelistStore {
         audit(actor, app.applicationId, "WHITELIST_REVIEW_ASSIGNED", "LOW", before, app.status, "assign");
         Map<String, Object> value = view(app, true);
         remember(actor.userId(), "assign:" + applicationId, body, value);
+        persistence.persistApplicationWrite(request, actor.userId(), actorRole(actor), "whitelist.assign", "WHITELIST_REVIEW_ASSIGNED", before, app.status, "assign", idempotencyKey(body), canonical(body), whitelistPersistenceView(app), value, 200);
         return value;
     }
 
@@ -544,6 +553,7 @@ class WhitelistStore {
         auditNotificationFailure(actor, app);
         Map<String, Object> value = view(app, true);
         remember(actor.userId(), "requestSupplement:" + applicationId, body, value);
+        persistence.persistApplicationWrite(request, actor.userId(), actorRole(actor), "whitelist.request-supplement", "WHITELIST_SUPPLEMENT_REQUESTED", before, app.status, "request supplement", idempotencyKey(body), canonical(body), whitelistPersistenceView(app), value, 200);
         return value;
     }
 
@@ -591,6 +601,7 @@ class WhitelistStore {
         auditNotificationFailure(actor, app);
         Map<String, Object> value = view(app, true);
         remember(actor.userId(), "approve:" + applicationId, body, value);
+        persistence.persistApplicationWrite(request, actor.userId(), actorRole(actor), "whitelist.approve", "WHITELIST_APPROVED", before, app.status, "approve", idempotencyKey(body), canonical(body), whitelistPersistenceView(app), value, 200);
         return value;
     }
 
@@ -619,6 +630,7 @@ class WhitelistStore {
         auditNotificationFailure(actor, app);
         Map<String, Object> value = view(app, true);
         remember(actor.userId(), "reject:" + applicationId, body, value);
+        persistence.persistApplicationWrite(request, actor.userId(), actorRole(actor), "whitelist.reject", "WHITELIST_REJECTED", before, app.status, "reject", idempotencyKey(body), canonical(body), whitelistPersistenceView(app), value, 200);
         return value;
     }
 
@@ -649,6 +661,7 @@ class WhitelistStore {
         auditNotificationFailure(actor, app);
         Map<String, Object> value = view(app, true);
         remember(actor.userId(), "remove:" + applicationId, body, value);
+        persistence.persistApplicationWrite(request, actor.userId(), actorRole(actor), "whitelist.remove", "WHITELIST_REMOVED", before, app.status, "remove", idempotencyKey(body), canonical(body), whitelistPersistenceView(app), value, 200);
         return value;
     }
 
@@ -674,6 +687,7 @@ class WhitelistStore {
         auditNotificationFailure(actor, app);
         Map<String, Object> value = view(app, true);
         remember(actor.userId(), "reopen:" + applicationId, body, value);
+        persistence.persistApplicationWrite(request, actor.userId(), actorRole(actor), "whitelist.reopen", "WHITELIST_REOPENED", before, app.status, "reopen", idempotencyKey(body), canonical(body), whitelistPersistenceView(app), value, 200);
         return value;
     }
 
@@ -715,7 +729,9 @@ class WhitelistStore {
         long removed = applications.values().stream().filter(app -> "REMOVED".equals(app.status)).count();
         long blocked = applications.values().stream().filter(app -> "APPROVAL_BLOCKED".equals(app.status)).count();
         long handoffs = applications.values().stream().filter(app -> app.attendanceHandoff != null).count();
-        return linkedMap("service", "whitelist", "port", 8131, "legacyPort", 8110, "storageMode", "IN_MEMORY", "authMode", "TEST_STUB", "examMode", "TEST_STUB", "profileMode", "TEST_STUB", "notificationMode", "TEST_STUB", "testControlsEnabled", testControls.enabled(), "applicationsTotal", applications.size(), "pendingReviewTotal", pending, "approvedTotal", approved, "rejectedTotal", rejected, "removedTotal", removed, "approvalBlockedTotal", blocked, "attendanceHandoffsTotal", handoffs, "auditsTotal", audits.size(), "idempotencyRecordsTotal", idempotency.size(), "lastAuditAt", audits.isEmpty() ? null : NOW, "productionGaps", List.of("P0_IN_MEMORY_STORAGE", "P0_AUTH_STUB", "P0_EXAM_STUB", "P0_PROFILE_STUB", "P0_NOTIFICATION_STUB", "ATTENDANCE_NOT_IMPLEMENTED", "REAL_SERVER_WHITELIST_NOT_CONNECTED"));
+        Map<String, Object> counts = persistence.counts();
+        String storageMode = Objects.toString(counts.getOrDefault("storageMode", "IN_MEMORY"));
+        return linkedMap("service", "whitelist", "port", 8131, "legacyPort", 8110, "storageMode", storageMode, "authMode", "TEST_STUB", "examMode", "TEST_STUB", "profileMode", "TEST_STUB", "notificationMode", "TEST_STUB", "testControlsEnabled", testControls.enabled(), "applicationsTotal", counts.getOrDefault("applicationsTotal", applications.size()), "pendingReviewTotal", pending, "approvedTotal", counts.getOrDefault("approvedTotal", approved), "rejectedTotal", rejected, "removedTotal", removed, "approvalBlockedTotal", blocked, "attendanceHandoffsTotal", counts.getOrDefault("attendanceHandoffsTotal", handoffs), "auditsTotal", counts.getOrDefault("auditsTotal", audits.size()), "idempotencyRecordsTotal", counts.getOrDefault("idempotencyRecordsTotal", idempotency.size()), "lastAuditAt", audits.isEmpty() ? null : NOW, "productionGaps", "POSTGRESQL_PRIMARY".equals(storageMode) ? List.of("P0_AUTH_STUB", "P0_EXAM_STUB", "P0_PROFILE_STUB", "P0_NOTIFICATION_STUB", "ATTENDANCE_NOT_IMPLEMENTED", "REAL_SERVER_WHITELIST_NOT_CONNECTED") : List.of("P0_IN_MEMORY_STORAGE", "P0_AUTH_STUB", "P0_EXAM_STUB", "P0_PROFILE_STUB", "P0_NOTIFICATION_STUB", "ATTENDANCE_NOT_IMPLEMENTED", "REAL_SERVER_WHITELIST_NOT_CONNECTED"));
     }
 
     private Handoff handoff(String sessionId, WhitelistUser user) {
@@ -805,6 +821,10 @@ class WhitelistStore {
         return linkedMap("handoffId", "att-" + app.applicationId, "applicationId", app.applicationId, "userId", app.userId, "memberId", "member-" + app.userId, "minecraftBindingSnapshot", app.minecraftBindingSnapshot, "reviewDirection", app.reviewDirection, "attemptType", app.attemptType, "approvedAt", NOW, "scoreSummary", app.scoreSummary, "initializationStatus", "WAITING_MODULE", "handoffVersion", 1, "generatedAt", NOW, "consumedAt", null);
     }
 
+    private Map<String, Object> whitelistPersistenceView(WhitelistApplicationRecord app) {
+        return view(app, true);
+    }
+
     private List<Map<String, Object>> normalizeMaterials(Object value, boolean requireNotEmpty) {
         if (value == null) {
             if (requireNotEmpty) throw new WhitelistException(400, 40001, "invalid materials");
@@ -828,6 +848,10 @@ class WhitelistStore {
 
     private void audit(WhitelistUser actor, String applicationId, String action, String risk, String before, String after, String reason) {
         audits.add(linkedMap("id", "audit-" + (++idSeq), "requestId", WhitelistController.requestId(), "actorUserId", actor.userId(), "actorRole", actor.roles().iterator().next(), "actorPermissions", List.of(), "sourceIp", "127.0.0.1", "targetType", "WHITELIST_APPLICATION", "targetId", applicationId, "action", action, "riskLevel", risk, "reason", reason, "paramsSummary", "summary", "beforeState", before, "afterState", after, "result", "SUCCESS", "failureReason", null, "createdAt", NOW));
+    }
+
+    private String actorRole(WhitelistUser actor) {
+        return actor.roles().stream().findFirst().orElse("USER");
     }
 
     private void auditNotificationFailure(WhitelistUser actor, WhitelistApplicationRecord app) {
