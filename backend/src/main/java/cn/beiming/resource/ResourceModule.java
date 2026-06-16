@@ -5,11 +5,14 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -26,7 +29,11 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -41,10 +48,19 @@ import java.util.concurrent.ConcurrentHashMap;
 @Configuration
 class ResourceModule {
     @Bean
-    ResourceStore resourceStore() {
-        ResourceStore store = new ResourceStore();
+    ResourceStore resourceStore(ResourcePersistence resourcePersistence) {
+        ResourceStore store = new ResourceStore(resourcePersistence);
         store.seed();
         return store;
+    }
+
+    @Bean
+    ResourcePersistence resourcePersistence(ObjectProvider<JdbcTemplate> jdbcTemplate, ObjectMapper objectMapper) {
+        JdbcTemplate available = jdbcTemplate.getIfAvailable();
+        if (available == null) {
+            return new NoopResourcePersistence();
+        }
+        return new ResourcePostgresPersistence(available, objectMapper);
     }
 
     @Bean
@@ -56,6 +72,249 @@ class ResourceModule {
     @ConditionalOnMissingBean
     ResourceFlowEvidenceRecorder resourceFlowEvidenceRecorder() {
         return new NoopResourceFlowEvidenceRecorder();
+    }
+}
+
+interface ResourcePersistence {
+    Map<String, Object> replay(String actorUserId, String scope, String idempotencyKey, String fingerprint);
+
+    void persistSnapshot(Iterable<Map<String, Object>> resources,
+                         Iterable<Map<String, Object>> categories,
+                         Iterable<List<Map<String, Object>>> versions,
+                         Iterable<Map<String, Object>> downloadRecords);
+
+    void persistWrite(HttpServletRequest request,
+                      AuthUser actor,
+                      String targetId,
+                      String action,
+                      Object reason,
+                      String idempotencyScope,
+                      String idempotencyKey,
+                      String fingerprint,
+                      Map<String, Object> payload,
+                      int responseCode,
+                      Iterable<Map<String, Object>> resources,
+                      Iterable<Map<String, Object>> categories,
+                      Iterable<List<Map<String, Object>>> versions,
+                      Iterable<Map<String, Object>> downloadRecords);
+}
+
+class NoopResourcePersistence implements ResourcePersistence {
+    @Override
+    public Map<String, Object> replay(String actorUserId, String scope, String idempotencyKey, String fingerprint) {
+        return null;
+    }
+
+    @Override
+    public void persistSnapshot(Iterable<Map<String, Object>> resources, Iterable<Map<String, Object>> categories, Iterable<List<Map<String, Object>>> versions, Iterable<Map<String, Object>> downloadRecords) {
+    }
+
+    @Override
+    public void persistWrite(HttpServletRequest request, AuthUser actor, String targetId, String action, Object reason, String idempotencyScope, String idempotencyKey, String fingerprint, Map<String, Object> payload, int responseCode, Iterable<Map<String, Object>> resources, Iterable<Map<String, Object>> categories, Iterable<List<Map<String, Object>>> versions, Iterable<Map<String, Object>> downloadRecords) {
+    }
+}
+
+class ResourcePostgresPersistence implements ResourcePersistence {
+    private final JdbcTemplate jdbc;
+    private final ObjectMapper objectMapper;
+
+    ResourcePostgresPersistence(JdbcTemplate jdbc, ObjectMapper objectMapper) {
+        this.jdbc = jdbc;
+        this.objectMapper = objectMapper;
+    }
+
+    @Override
+    public Map<String, Object> replay(String actorUserId, String scope, String idempotencyKey, String fingerprint) {
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                SELECT request_fingerprint, response_body::text
+                FROM app_idempotency_records
+                WHERE actor_user_id = ? AND scope = ? AND idempotency_key = ?
+                """, actorUserId, scope, idempotencyKey);
+        if (rows.isEmpty()) {
+            return null;
+        }
+        Map<String, Object> row = rows.getFirst();
+        if (!Objects.equals(String.valueOf(row.get("request_fingerprint")), fingerprint)) {
+            throw new ApiException(409, 43612, "idempotency conflict");
+        }
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> envelope = objectMapper.readValue(String.valueOf(row.get("response_body")), Map.class);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> data = (Map<String, Object>) envelope.get("data");
+            return data;
+        } catch (Exception exception) {
+            throw new IllegalStateException("failed to parse resource idempotency response", exception);
+        }
+    }
+
+    @Override
+    @Transactional
+    public void persistSnapshot(Iterable<Map<String, Object>> resources, Iterable<Map<String, Object>> categories, Iterable<List<Map<String, Object>>> versions, Iterable<Map<String, Object>> downloadRecords) {
+        replaceRows(resources, categories, versions, downloadRecords);
+    }
+
+    @Override
+    @Transactional
+    public void persistWrite(HttpServletRequest request, AuthUser actor, String targetId, String action, Object reason, String idempotencyScope, String idempotencyKey, String fingerprint, Map<String, Object> payload, int responseCode, Iterable<Map<String, Object>> resources, Iterable<Map<String, Object>> categories, Iterable<List<Map<String, Object>>> versions, Iterable<Map<String, Object>> downloadRecords) {
+        replaceRows(resources, categories, versions, downloadRecords);
+        insertAudit(request, actor, targetId, action, reason);
+        if (idempotencyKey != null) {
+            insertIdempotency(actorId(actor), idempotencyScope, idempotencyKey, fingerprint, responseCode, payload);
+        }
+        insertRequestLog(request, actorId(actor), responseCode);
+    }
+
+    private void replaceRows(Iterable<Map<String, Object>> resources, Iterable<Map<String, Object>> categories, Iterable<List<Map<String, Object>>> versions, Iterable<Map<String, Object>> downloadRecords) {
+        jdbc.update("DELETE FROM resource_download_records");
+        jdbc.update("DELETE FROM resource_download_entries");
+        jdbc.update("DELETE FROM resource_versions");
+        jdbc.update("DELETE FROM resource_items");
+        jdbc.update("DELETE FROM resource_categories");
+        for (Map<String, Object> category : categories) insertCategory(category);
+        for (Map<String, Object> item : resources) insertItem(item);
+        for (List<Map<String, Object>> versionList : versions) {
+            for (Map<String, Object> version : versionList) insertVersion(version);
+        }
+        for (Map<String, Object> record : downloadRecords) insertDownloadRecord(record);
+    }
+
+    private void insertCategory(Map<String, Object> category) {
+        jdbc.update("""
+                INSERT INTO resource_categories(id, category_id, name, slug, description, icon, sort_order, enabled, archived, created_at, updated_at, archived_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, UUID.randomUUID(), text(category, "categoryId"), text(category, "name"), text(category, "slug"), text(category, "description"),
+                text(category, "icon"), intValue(category.get("sortOrder"), 100), boolValue(category.get("enabled")), boolValue(category.get("archived")),
+                timestamp(text(category, "createdAt")), timestamp(text(category, "updatedAt")), timestamp(text(category, "archivedAt")));
+    }
+
+    private void insertItem(Map<String, Object> item) {
+        jdbc.update("""
+                INSERT INTO resource_items(id, resource_id, status, type, visibility, slug, title, summary, description, cover_url, category_id, tags, maintainer_member_id, maintainer_snapshot, admin_note, review_opinion, notification_status, submitted_at, reviewed_at, published_at, visible_from, visible_until, created_by, updated_by, created_at, updated_at, deleted_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS jsonb), ?, CAST(? AS jsonb), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, UUID.randomUUID(), text(item, "resourceId"), text(item, "status"), text(item, "type"), text(item, "visibility"), text(item, "slug"),
+                text(item, "title"), text(item, "summary"), text(item, "description"), text(item, "coverUrl"), text(item, "categoryId"), json(item.get("tags")),
+                text(item, "maintainerMemberId"), jsonOrNull(item.get("maintainerSnapshot")), text(item, "adminNote"), text(item, "reviewOpinion"),
+                text(item, "notificationStatus"), timestamp(text(item, "submittedAt")), timestamp(text(item, "reviewedAt")), timestamp(text(item, "publishedAt")),
+                timestamp(text(item, "visibleFrom")), timestamp(text(item, "visibleUntil")), text(item, "createdBy"), text(item, "updatedBy"),
+                timestamp(text(item, "createdAt")), timestamp(text(item, "updatedAt")), timestamp(text(item, "deletedAt")));
+    }
+
+    private void insertVersion(Map<String, Object> version) {
+        jdbc.update("""
+                INSERT INTO resource_versions(id, version_id, resource_id, status, version_name, title, changelog, minecraft_versions, loader, file_size_bytes, checksum_sha256, released_at, created_by, updated_by, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, CAST(? AS jsonb), ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (version_id) DO NOTHING
+                """, UUID.randomUUID(), text(version, "versionId"), text(version, "resourceId"), text(version, "status"), text(version, "versionName"),
+                text(version, "title"), text(version, "changelog"), json(version.get("minecraftVersions")), text(version, "loader"),
+                longValue(version.get("fileSizeBytes")), text(version, "checksumSha256"), timestamp(text(version, "releasedAt")), text(version, "createdBy"),
+                text(version, "updatedBy"), timestamp(text(version, "createdAt")), timestamp(text(version, "updatedAt")));
+        Object entryValue = version.get("downloadEntry");
+        if (entryValue instanceof Map<?, ?> rawEntry) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> entry = (Map<String, Object>) rawEntry;
+            insertDownloadEntry(version, entry);
+        }
+    }
+
+    private void insertDownloadEntry(Map<String, Object> version, Map<String, Object> entry) {
+        jdbc.update("""
+                INSERT INTO resource_download_entries(id, download_entry_id, resource_id, version_id, provider, status, display_name, share_url, last_checked_at, expires_at, admin_note, cloud_mode, password_required, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, UUID.randomUUID(), text(entry, "downloadEntryId"), text(version, "resourceId"), text(version, "versionId"), text(entry, "provider"),
+                text(entry, "status"), text(entry, "displayName"), text(entry, "shareUrl"), timestamp(text(entry, "lastCheckedAt")), timestamp(text(entry, "expiresAt")),
+                text(entry, "adminNote"), text(entry, "cloudMode"), boolValue(entry.get("passwordRequired")), timestamp(text(version, "createdAt")), timestamp(text(version, "updatedAt")));
+    }
+
+    private void insertDownloadRecord(Map<String, Object> record) {
+        jdbc.update("""
+                INSERT INTO resource_download_records(id, ticket_id, resource_id, version_id, download_entry_id, actor_user_id, anonymous, client_label, provider, result, degraded, request_id, created_at, ticket_summary)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS jsonb))
+                """, UUID.randomUUID(), text(record, "ticketId"), text(record, "resourceId"), text(record, "versionId"), text(record, "downloadEntryId"),
+                text(record, "actorUserId"), boolValue(record.get("anonymous")), text(record, "clientLabel"), text(record, "provider"), text(record, "result"),
+                boolValue(record.get("degraded")), text(record, "requestId"), timestamp(text(record, "createdAt")), json(record));
+    }
+
+    private void insertAudit(HttpServletRequest request, AuthUser actor, String targetId, String action, Object reason) {
+        jdbc.update("""
+                INSERT INTO app_audit_logs(id, request_id, actor_user_id, actor_role, actor_permissions, source_ip, target_type, target_id, action, risk_level, reason, params_summary, before_state, after_state, result, failure_reason, created_at)
+                VALUES (?, ?, ?, ?, CAST(? AS jsonb), ?, 'RESOURCE', ?, ?, 'MEDIUM', ?, CAST(? AS jsonb), CAST(? AS jsonb), CAST(? AS jsonb), 'SUCCESS', NULL, now())
+                """, UUID.randomUUID(), requestId(request), actorId(actor), actorRole(actor), json(List.of()), sourceIp(request), targetId, action,
+                reason == null ? null : String.valueOf(reason), json(Map.of("action", action)), json(Map.of("status", "UNKNOWN")), json(Map.of("status", "UPDATED")));
+    }
+
+    private void insertIdempotency(String actorUserId, String scope, String idempotencyKey, String fingerprint, int responseCode, Map<String, Object> payload) {
+        jdbc.update("""
+                INSERT INTO app_idempotency_records(id, actor_user_id, scope, idempotency_key, request_fingerprint, response_code, response_body, created_at, expires_at)
+                VALUES (?, ?, ?, ?, ?, ?, CAST(? AS jsonb), now(), now() + interval '24 hours')
+                ON CONFLICT (actor_user_id, scope, idempotency_key) DO NOTHING
+                """, UUID.randomUUID(), actorUserId, scope, idempotencyKey, fingerprint, responseCode, json(ResourceController.envelope(0, "success", payload)));
+    }
+
+    private void insertRequestLog(HttpServletRequest request, String actorUserId, int responseCode) {
+        jdbc.update("""
+                INSERT INTO app_request_logs(id, request_id, method, path, actor_user_id, source_ip, response_code, result, failure_reason, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'SUCCESS', NULL, now())
+                ON CONFLICT (request_id) DO NOTHING
+                """, UUID.randomUUID(), requestId(request), request.getMethod(), request.getRequestURI(), actorUserId, sourceIp(request), responseCode);
+    }
+
+    private String actorId(AuthUser actor) {
+        return actor == null ? "anonymous" : actor.id();
+    }
+
+    private String actorRole(AuthUser actor) {
+        return actor == null || actor.roles().isEmpty() ? "ANONYMOUS" : actor.roles().iterator().next();
+    }
+
+    private String requestId(HttpServletRequest request) {
+        String value = request.getHeader("X-Request-Id");
+        return value == null || value.isBlank() ? ResourceController.currentRequestId() : value;
+    }
+
+    private String sourceIp(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) return forwarded.split(",")[0].trim();
+        String remote = request.getRemoteAddr();
+        return remote == null || remote.isBlank() ? "unknown" : remote;
+    }
+
+    private OffsetDateTime timestamp(String value) {
+        return value == null || value.isBlank() ? null : OffsetDateTime.ofInstant(Instant.parse(value), ZoneOffset.UTC);
+    }
+
+    private String text(Map<String, Object> map, String key) {
+        Object value = map.get(key);
+        return value == null ? null : value.toString();
+    }
+
+    private boolean boolValue(Object value) {
+        if (value instanceof Boolean b) return b;
+        return value != null && Boolean.parseBoolean(value.toString());
+    }
+
+    private int intValue(Object value, int fallback) {
+        if (value == null) return fallback;
+        if (value instanceof Number number) return number.intValue();
+        return Integer.parseInt(value.toString());
+    }
+
+    private Long longValue(Object value) {
+        if (value == null) return null;
+        if (value instanceof Number number) return number.longValue();
+        return Long.parseLong(value.toString());
+    }
+
+    private String jsonOrNull(Object value) {
+        return value == null ? null : json(value);
+    }
+
+    private String json(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value == null ? Map.of() : value);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("failed to serialize resource PostgreSQL jsonb value", exception);
+        }
     }
 }
 
@@ -331,10 +590,14 @@ class ResourceController {
         return envelope(data);
     }
 
-    private static Map<String, Object> envelope(Object data) {
+    static Map<String, Object> envelope(Object data) {
+        return envelope(0, "success", data);
+    }
+
+    static Map<String, Object> envelope(int code, String message, Object data) {
         Map<String, Object> response = new LinkedHashMap<>();
-        response.put("code", 0);
-        response.put("message", "success");
+        response.put("code", code);
+        response.put("message", message);
         response.put("data", data);
         response.put("requestId", currentRequestId());
         return response;
@@ -354,9 +617,21 @@ class ResourceStore {
     private final Map<String, Map<String, Object>> idem = new ConcurrentHashMap<>();
     private final List<Map<String, Object>> audits = new ArrayList<>();
     private final List<Map<String, Object>> downloadRecords = new ArrayList<>();
+    private final ResourcePersistence persistence;
     private int idSeq = 1000;
 
+    ResourceStore(ResourcePersistence persistence) {
+        this.persistence = persistence;
+    }
+
     void seed() {
+        resources.clear();
+        categories.clear();
+        versions.clear();
+        idem.clear();
+        audits.clear();
+        downloadRecords.clear();
+        idSeq = 1000;
         addCategory("cat-client", "Client", "client", true, false);
         addCategory("cat-map", "Maps", "maps", true, false);
         addCategory("cat-free", "Free", "free", true, false);
@@ -406,6 +681,7 @@ class ResourceStore {
         Map<String, Object> expired = addSeedResource("res-visible-expired", "visible-expired-pack", "CLIENT_PACK", "PUBLIC", "PUBLISHED", "cat-client", List.of("p0"));
         expired.put("visibleUntil", "2020-01-01T00:00:00Z");
         audit(null, "res-public-client", "RESOURCE_PUBLISHED", "SUCCESS", null, resource("res-public-client"), "seed");
+        persistence.persistSnapshot(resources.values(), categories.values(), versions.values(), downloadRecords);
     }
 
     private void seedDownloadCase(String id, String slug, String versionId, String entryStatus, String cloudMode) {
@@ -508,7 +784,7 @@ class ResourceStore {
         }
         String key = str(body.get("idempotencyKey"));
         if (key != null) {
-            Map<String, Object> cached = idempotent("download:" + key, body, null);
+            Map<String, Object> cached = idempotent(actorId(user), "resource.download.create", key, "download:" + key, body, null);
             if (cached != null) {
                 return cached;
             }
@@ -542,8 +818,9 @@ class ResourceStore {
         recordDownload(user, ticket, str(body.get("clientLabel")), degraded ? "DEGRADED" : "SUCCESS");
         audit(user, resourceId, "RESOURCE_DOWNLOADED", degraded ? "DEGRADED" : "SUCCESS", null, ticket, "download");
         if (key != null) {
-            idempotent("download:" + key, body, ticket);
+            idempotent(actorId(user), "resource.download.create", key, "download:" + key, body, ticket);
         }
+        persistWrite(request, user, resourceId, "RESOURCE_DOWNLOADED", "download", "resource.download.create", key, body, ticket, 200);
         return ticket;
     }
 
@@ -568,7 +845,7 @@ class ResourceStore {
         validateResourceBody(body, true);
         String key = str(body.get("idempotencyKey"));
         if (key != null) {
-            Map<String, Object> cached = idempotent("item:" + actor.id() + ":" + key, body, null);
+            Map<String, Object> cached = idempotent(actor.id(), "resource.item.create", key, "item:" + actor.id() + ":" + key, body, null);
             if (cached != null) {
                 return cached;
             }
@@ -590,8 +867,9 @@ class ResourceStore {
         audit(actor, id, "RESOURCE_CREATED", "SUCCESS", null, item, str(body.get("reason")));
         Map<String, Object> result = adminItemMap(item);
         if (key != null) {
-            idempotent("item:" + actor.id() + ":" + key, body, result);
+            idempotent(actor.id(), "resource.item.create", key, "item:" + actor.id() + ":" + key, body, result);
         }
+        persistWrite(request, actor, id, "RESOURCE_CREATED", body.get("reason"), "resource.item.create", key, body, result, 201);
         return result;
     }
 
@@ -617,7 +895,9 @@ class ResourceStore {
         item.put("updatedBy", actor.id());
         item.put("updatedAt", now());
         audit(actor, resourceId, "RESOURCE_UPDATED", "SUCCESS", before, item, str(body.get("reason")));
-        return adminItemMap(item);
+        Map<String, Object> result = adminItemMap(item);
+        persistWrite(request, actor, resourceId, "RESOURCE_UPDATED", body.get("reason"), null, null, body, result, 200);
+        return result;
     }
 
     Map<String, Object> transition(AuthUser actor, String resourceId, Map<String, Object> body, HttpServletRequest request, String action) {
@@ -669,7 +949,9 @@ class ResourceStore {
             item.put("notificationStatus", "FAILED");
         }
         audit(actor, resourceId, "RESOURCE_" + action.toUpperCase().replace("-", "_"), "SUCCESS", before, item, str(body.get("reason")));
-        return adminItemMap(item);
+        Map<String, Object> result = adminItemMap(item);
+        persistWrite(request, actor, resourceId, "RESOURCE_" + action.toUpperCase().replace("-", "_"), body.get("reason"), null, null, body, result, 200);
+        return result;
     }
 
     List<Map<String, Object>> adminVersions(String resourceId) {
@@ -687,7 +969,7 @@ class ResourceStore {
         validateVersionBody(body, true);
         String key = str(body.get("idempotencyKey"));
         if (key != null) {
-            Map<String, Object> cached = idempotent("version:" + resourceId + ":" + key, body, null);
+            Map<String, Object> cached = idempotent(actor.id(), "resource.version.create", key, "version:" + resourceId + ":" + key, body, null);
             if (cached != null) return cached;
         }
         String versionName = str(body.get("versionName"));
@@ -702,7 +984,8 @@ class ResourceStore {
         addVersion(resourceId, version);
         audit(actor, resourceId, "RESOURCE_VERSION_CREATED", "SUCCESS", null, version, str(body.get("reason")));
         Map<String, Object> result = adminVersion(version);
-        if (key != null) idempotent("version:" + resourceId + ":" + key, body, result);
+        if (key != null) idempotent(actor.id(), "resource.version.create", key, "version:" + resourceId + ":" + key, body, result);
+        persistWrite(request, actor, resourceId, "RESOURCE_VERSION_CREATED", body.get("reason"), "resource.version.create", key, body, result, 201);
         return result;
     }
 
@@ -725,7 +1008,9 @@ class ResourceStore {
         version.put("updatedBy", actor.id());
         version.put("updatedAt", now());
         audit(actor, resourceId, "RESOURCE_VERSION_UPDATED", "SUCCESS", before, version, str(body.get("reason")));
-        return adminVersion(version);
+        Map<String, Object> result = adminVersion(version);
+        persistWrite(request, actor, resourceId, "RESOURCE_VERSION_UPDATED", body.get("reason"), null, null, body, result, 200);
+        return result;
     }
 
     Map<String, Object> versionState(AuthUser actor, String resourceId, String versionId, Map<String, Object> body, HttpServletRequest request, boolean enable) {
@@ -743,7 +1028,9 @@ class ResourceStore {
         version.put("updatedBy", actor.id());
         version.put("updatedAt", now());
         audit(actor, resourceId, enable ? "RESOURCE_VERSION_ENABLED" : "RESOURCE_VERSION_DISABLED", "SUCCESS", before, version, str(body.get("reason")));
-        return adminVersion(version);
+        Map<String, Object> result = adminVersion(version);
+        persistWrite(request, actor, resourceId, enable ? "RESOURCE_VERSION_ENABLED" : "RESOURCE_VERSION_DISABLED", body.get("reason"), null, null, body, result, 200);
+        return result;
     }
 
     List<Map<String, Object>> adminCategories(Map<String, String> query) {
@@ -764,7 +1051,7 @@ class ResourceStore {
         validateCategoryBody(body, true);
         String key = str(body.get("idempotencyKey"));
         if (key != null) {
-            Map<String, Object> cached = idempotent("category:" + key, body, null);
+            Map<String, Object> cached = idempotent(actor.id(), "resource.category.create", key, "category:" + key, body, null);
             if (cached != null) return cached;
         }
         String slug = str(body.get("slug"));
@@ -778,7 +1065,8 @@ class ResourceStore {
         category.put("sortOrder", intValue(body.getOrDefault("sortOrder", 100), 100));
         audit(actor, id, "RESOURCE_CATEGORY_CREATED", "SUCCESS", null, category, str(body.get("reason")));
         Map<String, Object> result = categoryPublic(category);
-        if (key != null) idempotent("category:" + key, body, result);
+        if (key != null) idempotent(actor.id(), "resource.category.create", key, "category:" + key, body, result);
+        persistWrite(request, actor, id, "RESOURCE_CATEGORY_CREATED", body.get("reason"), "resource.category.create", key, body, result, 201);
         return result;
     }
 
@@ -802,7 +1090,9 @@ class ResourceStore {
         if (body.containsKey("enabled")) category.put("enabled", bool(body.get("enabled")));
         category.put("updatedAt", now());
         audit(actor, categoryId, "RESOURCE_CATEGORY_UPDATED", "SUCCESS", before, category, str(body.get("reason")));
-        return categoryPublic(category);
+        Map<String, Object> result = categoryPublic(category);
+        persistWrite(request, actor, categoryId, "RESOURCE_CATEGORY_UPDATED", body.get("reason"), null, null, body, result, 200);
+        return result;
     }
 
     Map<String, Object> archiveCategory(AuthUser actor, String categoryId, Map<String, Object> body, HttpServletRequest request) {
@@ -815,7 +1105,9 @@ class ResourceStore {
         category.put("archived", true);
         category.put("archivedAt", now());
         audit(actor, categoryId, "RESOURCE_CATEGORY_ARCHIVED", "SUCCESS", before, category, str(body.get("reason")));
-        return categoryPublic(category);
+        Map<String, Object> result = categoryPublic(category);
+        persistWrite(request, actor, categoryId, "RESOURCE_CATEGORY_ARCHIVED", body.get("reason"), null, null, body, result, 200);
+        return result;
     }
 
     Map<String, Object> auditLogs(String resourceId, Map<String, String> query) {
@@ -834,7 +1126,7 @@ class ResourceStore {
     Map<String, Object> opsSummary() {
         return mapOf(
                 "service", "resource",
-                "storageMode", "IN_MEMORY",
+                "storageMode", persistence instanceof ResourcePostgresPersistence ? "POSTGRESQL_WITH_IN_MEMORY_RESPONSE_MODEL" : "IN_MEMORY",
                 "authMode", "TEST_STUB",
                 "profileMode", "TEST_STUB",
                 "notificationMode", "TEST_STUB",
@@ -849,6 +1141,7 @@ class ResourceStore {
                 "idempotencyRecordsTotal", idem.size(),
                 "lastAuditAt", audits.isEmpty() ? null : audits.get(audits.size() - 1).get("createdAt"),
                 "lastDownloadAt", downloadRecords.isEmpty() ? null : downloadRecords.get(downloadRecords.size() - 1).get("createdAt"),
+                "postgresTablesReady", persistence instanceof ResourcePostgresPersistence,
                 "warnings", List.of("P0_IN_MEMORY_STORAGE", "P0_AUTH_STUB"),
                 "productionGaps", List.of("PERSISTENCE_NOT_ENABLED", "AUTH_ADAPTER_STUB", "PROFILE_ADAPTER_STUB", "NOTIFICATION_ADAPTER_STUB", "CLOUDREVE_API_NOT_ENABLED"));
     }
@@ -1155,17 +1448,30 @@ class ResourceStore {
         }
     }
 
-    private Map<String, Object> idempotent(String key, Map<String, Object> body, Map<String, Object> value) {
+    private Map<String, Object> idempotent(String actorUserId, String scope, String key, String memoryKey, Map<String, Object> body, Map<String, Object> value) {
         String fingerprint = stable(body);
-        Map<String, Object> existing = idem.get(key);
+        if (key != null && scope != null) {
+            Map<String, Object> replayed = persistence.replay(actorUserId, scope, key, fingerprint);
+            if (replayed != null) return replayed;
+        }
+        Map<String, Object> existing = idem.get(memoryKey);
         if (existing != null) {
             if (!fingerprint.equals(existing.get("fingerprint"))) throw new ApiException(409, 43612, "idempotency conflict");
             @SuppressWarnings("unchecked")
             Map<String, Object> result = (Map<String, Object>) existing.get("value");
             return result;
         }
-        if (value != null) idem.put(key, mapOf("fingerprint", fingerprint, "value", value));
+        if (value != null) idem.put(memoryKey, mapOf("fingerprint", fingerprint, "value", value));
         return null;
+    }
+
+    private void persistWrite(HttpServletRequest request, AuthUser actor, String targetId, String action, Object reason, String idempotencyScope, String idempotencyKey, Map<String, Object> body, Map<String, Object> payload, int responseCode) {
+        String fingerprint = idempotencyKey == null ? null : stable(body);
+        persistence.persistWrite(request, actor, targetId, action, reason, idempotencyScope, idempotencyKey, fingerprint, payload, responseCode, resources.values(), categories.values(), versions.values(), downloadRecords);
+    }
+
+    private String actorId(AuthUser actor) {
+        return actor == null ? "anonymous" : actor.id();
     }
 
     private String stable(Object value) {
