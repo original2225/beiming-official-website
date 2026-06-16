@@ -1,6 +1,7 @@
 package cn.beiming.exam;
 
 import cn.beiming.admission.AdmissionTrustedActor;
+import cn.beiming.admission.persistence.ExamPersistence;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -45,8 +46,8 @@ import java.util.concurrent.ConcurrentHashMap;
 @Configuration
 class ExamModule {
     @Bean
-    ExamStore examStore(ExamTestControls testControls) {
-        ExamStore store = new ExamStore(testControls);
+    ExamStore examStore(ExamTestControls testControls, ExamPersistence examPersistence) {
+        ExamStore store = new ExamStore(testControls, examPersistence);
         store.seed();
         return store;
     }
@@ -365,11 +366,13 @@ class ExamStore {
     private final Set<String> whitelistHandoffGenerated = ConcurrentHashMap.newKeySet();
     private final List<Map<String, Object>> audits = new ArrayList<>();
     private final ExamTestControls testControls;
+    private final ExamPersistence persistence;
     private int idSeq = 3000;
     private int whitelistHandoffSnapshotsTotal;
 
-    ExamStore(ExamTestControls testControls) {
+    ExamStore(ExamTestControls testControls, ExamPersistence persistence) {
         this.testControls = testControls;
+        this.persistence = persistence;
     }
 
     void seed() {
@@ -388,6 +391,7 @@ class ExamStore {
                 rule("TRUE_FALSE", 1, 10, List.of("general"))
         )));
         audits.add(auditRow("audit-seed-1", "admin", "EXAM", "seed", "EXAM_SEEDED", "SUCCESS", "LOW", null, null, null));
+        persistence.seed(questions.values().stream().map(question -> questionView(question, true)).toList(), templates.values().stream().map(this::templateView).toList(), audits);
     }
 
     synchronized MutationResult createSession(ExamUser user, Map<String, Object> body, HttpServletRequest request) {
@@ -448,6 +452,7 @@ class ExamStore {
         audit(user, "EXAM_SESSION", session.sessionId, "EXAM_SESSION_CREATED", "LOW", null, session.status, null);
         Map<String, Object> view = sessionView(session, false);
         remember(user.userId(), "CREATE_SESSION", body, view);
+        persistence.persistSessionWrite(request, user.userId(), actorRole(user), "exam.create-session", "EXAM_SESSION_CREATED", "LOW", null, session.status, null, idempotencyKey(body), canonical(body), sessionPersistenceView(session), view, 201);
         return new MutationResult(true, view);
     }
 
@@ -499,6 +504,7 @@ class ExamStore {
         session.updatedAt = NOW;
         Map<String, Object> sheet = mapOf("sessionId", session.sessionId, "answers", session.answers, "draft", true, "savedAt", NOW, "submittedAt", null);
         remember(user.userId(), "SAVE:" + sessionId, body, sheet);
+        persistence.persistAnswerWrite(request, user.userId(), actorRole(user), "exam.save-answers", "EXAM_ANSWERS_SAVED", idempotencyKey(body), canonical(body), answerPersistenceView(session, sheet), sheet, 200);
         return sheet;
     }
 
@@ -521,6 +527,7 @@ class ExamStore {
         audit(user, "EXAM_SESSION", session.sessionId, "EXAM_SUBMITTED", "MEDIUM", "IN_PROGRESS", session.status, null);
         Map<String, Object> view = sessionView(session, false);
         remember(user.userId(), "SUBMIT:" + sessionId, body, view);
+        persistence.persistSessionWrite(request, user.userId(), actorRole(user), "exam.submit", "EXAM_SUBMITTED", "MEDIUM", "IN_PROGRESS", session.status, null, idempotencyKey(body), canonical(body), sessionPersistenceView(session), view, 200);
         return view;
     }
 
@@ -542,6 +549,7 @@ class ExamStore {
         audit(user, "EXAM_SESSION", session.sessionId, "EXAM_SUPPLEMENT_SUBMITTED", "MEDIUM", before, session.status, null);
         Map<String, Object> view = sessionView(session, false);
         remember(user.userId(), "SUPPLEMENT:" + sessionId, body, view);
+        persistence.persistSessionWrite(request, user.userId(), actorRole(user), "exam.supplement", "EXAM_SUPPLEMENT_SUBMITTED", "MEDIUM", before, session.status, null, idempotencyKey(body), canonical(body), sessionPersistenceView(session), view, 200);
         return view;
     }
 
@@ -610,6 +618,7 @@ class ExamStore {
         audit(actor, "EXAM_SESSION", session.sessionId, passed ? "EXAM_MANUAL_PASSED" : "EXAM_MANUAL_FAILED", "MEDIUM", before, session.status, string(body.get("reason")));
         Map<String, Object> view = sessionView(session, true);
         remember(actor.userId(), "REVIEW:" + sessionId, body, view);
+        persistence.persistReviewWrite(request, actor.userId(), actorRole(actor), "exam.manual-review", passed ? "EXAM_MANUAL_PASSED" : "EXAM_MANUAL_FAILED", before, session.status, string(body.get("reason")), idempotencyKey(body), canonical(body), sessionPersistenceView(session), view, 200);
         return view;
     }
 
@@ -646,6 +655,7 @@ class ExamStore {
         audit(actor, "EXAM_SESSION", session.sessionId, "EXAM_RESULT_CORRECTED", "MEDIUM", beforeStatus, session.status, string(body.get("reason")));
         Map<String, Object> view = sessionView(session, true);
         remember(actor.userId(), "CORRECTION:" + sessionId, body, view);
+        persistence.persistReviewWrite(request, actor.userId(), actorRole(actor), "exam.result-correction", "EXAM_RESULT_CORRECTED", beforeStatus, session.status, string(body.get("reason")), idempotencyKey(body), canonical(body), sessionPersistenceView(session), view, 200);
         return view;
     }
 
@@ -682,6 +692,7 @@ class ExamStore {
         audit(actor, "EXAM_SESSION", session.sessionId, "EXAM_SUPPLEMENT_REQUESTED", "MEDIUM", before, session.status, string(body.get("reason")));
         Map<String, Object> view = sessionView(session, true);
         remember(actor.userId(), "REQ_SUPP:" + sessionId, body, view);
+        persistence.persistSessionWrite(request, actor.userId(), actorRole(actor), "exam.request-supplement", "EXAM_SUPPLEMENT_REQUESTED", "MEDIUM", before, session.status, string(body.get("reason")), idempotencyKey(body), canonical(body), sessionPersistenceView(session), view, 200);
         return view;
     }
 
@@ -704,6 +715,7 @@ class ExamStore {
         audit(actor, "EXAM_SESSION", session.sessionId, "EXAM_CANCELLED", "MEDIUM", before, session.status, string(body.get("reason")));
         Map<String, Object> view = sessionView(session, true);
         remember(actor.userId(), "CANCEL:" + sessionId, body, view);
+        persistence.persistSessionWrite(request, actor.userId(), actorRole(actor), "exam.cancel", "EXAM_CANCELLED", "MEDIUM", before, session.status, string(body.get("reason")), idempotencyKey(body), canonical(body), sessionPersistenceView(session), view, 200);
         return view;
     }
 
@@ -712,7 +724,9 @@ class ExamStore {
         if (!Set.of("AUTO_PASSED", "MANUAL_PASSED").contains(session.status)) throw new ExamException(409, 43924, "not passed");
         whitelistHandoffSnapshotsTotal++;
         whitelistHandoffGenerated.add(sessionId);
-        return mapOf("sessionId", session.sessionId, "applicationId", session.applicationId, "handoffVersion", 1, "onboardingHandoffVersion", session.onboardingHandoffVersion, "userId", session.userId, "minecraftBindingSnapshot", session.minecraftBinding, "reviewDirection", session.reviewDirection, "attemptType", session.attemptType, "result", "PASSED", "scoreSummary", scoreSummary(session), "passedAt", session.passedAt == null ? NOW : session.passedAt, "reviewerSnapshot", reviewerSnapshot(session), "generatedAt", NOW);
+        Map<String, Object> snapshot = mapOf("sessionId", session.sessionId, "applicationId", session.applicationId, "handoffVersion", 1, "onboardingHandoffVersion", session.onboardingHandoffVersion, "userId", session.userId, "minecraftBindingSnapshot", session.minecraftBinding, "reviewDirection", session.reviewDirection, "attemptType", session.attemptType, "result", "PASSED", "scoreSummary", scoreSummary(session), "passedAt", session.passedAt == null ? NOW : session.passedAt, "reviewerSnapshot", reviewerSnapshot(session), "generatedAt", NOW);
+        persistence.persistHandoff(request, actor.userId(), snapshot);
+        return snapshot;
     }
 
     synchronized Map<String, Object> questions(ExamUser actor, Map<String, String> query, HttpServletRequest request) {
@@ -761,6 +775,7 @@ class ExamStore {
         audit(actor, "EXAM_QUESTION", question.questionId, "EXAM_QUESTION_CREATED", "MEDIUM", null, question.status, string(body.get("reason")));
         Map<String, Object> view = questionView(question, true);
         remember(actor.userId(), "CREATE_QUESTION", body, view);
+        persistence.persistQuestionWrite(request, actor.userId(), actorRole(actor), "exam.create-question", "EXAM_QUESTION_CREATED", null, question.status, string(body.get("reason")), idempotencyKey(body), canonical(body), view, view, 201);
         return view;
     }
 
@@ -782,6 +797,7 @@ class ExamStore {
         audit(actor, "EXAM_QUESTION", questionId, "EXAM_QUESTION_UPDATED", "MEDIUM", old.status, updated.status, string(body.get("reason")));
         Map<String, Object> view = questionView(updated, true);
         remember(actor.userId(), "UPDATE_QUESTION:" + questionId, body, view);
+        persistence.persistQuestionWrite(request, actor.userId(), actorRole(actor), "exam.update-question", "EXAM_QUESTION_UPDATED", old.status, updated.status, string(body.get("reason")), idempotencyKey(body), canonical(body), view, view, 200);
         return view;
     }
 
@@ -799,6 +815,7 @@ class ExamStore {
         audit(actor, "EXAM_QUESTION", questionId, "EXAM_QUESTION_ARCHIVED", "MEDIUM", before, question.status, string(body.get("reason")));
         Map<String, Object> view = questionView(question, true);
         remember(actor.userId(), "ARCHIVE_QUESTION:" + questionId, body, view);
+        persistence.persistQuestionWrite(request, actor.userId(), actorRole(actor), "exam.archive-question", "EXAM_QUESTION_ARCHIVED", before, question.status, string(body.get("reason")), idempotencyKey(body), canonical(body), view, view, 200);
         return view;
     }
 
@@ -830,6 +847,7 @@ class ExamStore {
         audit(actor, "EXAM_TEMPLATE", template.templateId, "EXAM_TEMPLATE_CREATED", "MEDIUM", null, template.status, string(body.get("reason")));
         Map<String, Object> view = templateView(template);
         remember(actor.userId(), "CREATE_TEMPLATE", body, view);
+        persistence.persistTemplateWrite(request, actor.userId(), actorRole(actor), "exam.create-template", "EXAM_TEMPLATE_CREATED", null, template.status, string(body.get("reason")), idempotencyKey(body), canonical(body), view, view, 201);
         return view;
     }
 
@@ -851,6 +869,7 @@ class ExamStore {
         audit(actor, "EXAM_TEMPLATE", templateId, "EXAM_TEMPLATE_UPDATED", "MEDIUM", null, template.status, string(body.get("reason")));
         Map<String, Object> view = templateView(template);
         remember(actor.userId(), "UPDATE_TEMPLATE:" + templateId, body, view);
+        persistence.persistTemplateWrite(request, actor.userId(), actorRole(actor), "exam.update-template", "EXAM_TEMPLATE_UPDATED", null, template.status, string(body.get("reason")), idempotencyKey(body), canonical(body), view, view, 200);
         return view;
     }
 
@@ -877,6 +896,7 @@ class ExamStore {
         audit(actor, "EXAM_TEMPLATE", templateId, "EXAM_TEMPLATE_PUBLISHED", "MEDIUM", before, template.status, string(body.get("reason")));
         Map<String, Object> view = templateView(template);
         remember(actor.userId(), "PUBLISH_TEMPLATE:" + templateId, body, view);
+        persistence.persistTemplateWrite(request, actor.userId(), actorRole(actor), "exam.publish-template", "EXAM_TEMPLATE_PUBLISHED", before, template.status, string(body.get("reason")), idempotencyKey(body), canonical(body), view, view, 200);
         return view;
     }
 
@@ -893,6 +913,7 @@ class ExamStore {
         audit(actor, "EXAM_TEMPLATE", templateId, "EXAM_TEMPLATE_ARCHIVED", "MEDIUM", before, template.status, string(body.get("reason")));
         Map<String, Object> view = templateView(template);
         remember(actor.userId(), "ARCHIVE_TEMPLATE:" + templateId, body, view);
+        persistence.persistTemplateWrite(request, actor.userId(), actorRole(actor), "exam.archive-template", "EXAM_TEMPLATE_ARCHIVED", before, template.status, string(body.get("reason")), idempotencyKey(body), canonical(body), view, view, 200);
         return view;
     }
 
@@ -921,7 +942,9 @@ class ExamStore {
         long passed = sessions.values().stream().filter(s -> "PASSED".equals(s.result)).count();
         long failed = sessions.values().stream().filter(s -> "FAILED".equals(s.result)).count();
         long published = templates.values().stream().filter(t -> "PUBLISHED".equals(t.status)).count();
-        return mapOf("service", "exam", "port", 8131, "legacyPort", 8109, "storageMode", "IN_MEMORY", "authMode", "TEST_STUB", "onboardingMode", "TEST_STUB", "profileMode", "TEST_STUB", "contentMode", "TEST_STUB", "notificationMode", "TEST_STUB", "testControlsEnabled", testControls.enabled(), "sessionsTotal", sessions.size(), "pendingManualReviewTotal", (int) pending, "passedTotal", (int) passed, "failedTotal", (int) failed, "questionsTotal", questions.size(), "publishedTemplatesTotal", (int) published, "whitelistHandoffSnapshotsTotal", whitelistHandoffSnapshotsTotal, "auditsTotal", audits.size(), "idempotencyRecordsTotal", idempotency.size(), "lastAuditAt", audits.isEmpty() ? null : audits.getLast().get("createdAt"), "productionGaps", List.of("P0_IN_MEMORY_STORAGE", "P0_AUTH_STUB", "P0_ONBOARDING_STUB", "P0_PROFILE_STUB", "P0_CONTENT_STUB", "P0_NOTIFICATION_STUB", "WHITELIST_NOT_IMPLEMENTED"));
+        Map<String, Object> counts = persistence.counts();
+        String storageMode = Objects.toString(counts.getOrDefault("storageMode", "IN_MEMORY"));
+        return mapOf("service", "exam", "port", 8131, "legacyPort", 8109, "storageMode", storageMode, "authMode", "TEST_STUB", "onboardingMode", "TEST_STUB", "profileMode", "TEST_STUB", "contentMode", "TEST_STUB", "notificationMode", "TEST_STUB", "testControlsEnabled", testControls.enabled(), "sessionsTotal", counts.getOrDefault("sessionsTotal", sessions.size()), "pendingManualReviewTotal", (int) pending, "passedTotal", (int) passed, "failedTotal", (int) failed, "questionsTotal", counts.getOrDefault("questionsTotal", questions.size()), "publishedTemplatesTotal", counts.getOrDefault("publishedTemplatesTotal", (int) published), "whitelistHandoffSnapshotsTotal", counts.getOrDefault("whitelistHandoffSnapshotsTotal", whitelistHandoffSnapshotsTotal), "auditsTotal", counts.getOrDefault("auditsTotal", audits.size()), "idempotencyRecordsTotal", counts.getOrDefault("idempotencyRecordsTotal", idempotency.size()), "lastAuditAt", audits.isEmpty() ? null : audits.getLast().get("createdAt"), "productionGaps", "POSTGRESQL_PRIMARY".equals(storageMode) ? List.of("P0_AUTH_STUB", "P0_ONBOARDING_STUB", "P0_PROFILE_STUB", "P0_CONTENT_STUB", "P0_NOTIFICATION_STUB", "WHITELIST_NOT_IMPLEMENTED") : List.of("P0_IN_MEMORY_STORAGE", "P0_AUTH_STUB", "P0_ONBOARDING_STUB", "P0_PROFILE_STUB", "P0_CONTENT_STUB", "P0_NOTIFICATION_STUB", "WHITELIST_NOT_IMPLEMENTED"));
     }
 
     private Handoff handoff(ExamUser user, String applicationId, HttpServletRequest request) {
@@ -1137,6 +1160,18 @@ class ExamStore {
         return mapOf("templateId", template.templateId, "version", template.version, "name", template.name, "reviewDirection", template.reviewDirection, "difficulty", template.difficulty, "status", template.status, "timeLimitMinutes", template.timeLimitMinutes, "passScore", template.passScore, "objectivePassScore", template.objectivePassScore, "questionRules", template.questionRules, "contentRuleVersion", template.contentRuleVersion, "retakeCooldownHours", template.retakeCooldownHours, "createdAt", template.createdAt, "updatedAt", template.updatedAt, "publishedAt", template.publishedAt);
     }
 
+    private Map<String, Object> sessionPersistenceView(ExamSessionRecord session) {
+        Map<String, Object> view = sessionView(session, true);
+        view.put("questions", session.questions.stream().map(question -> questionView(question, true)).toList());
+        return view;
+    }
+
+    private Map<String, Object> answerPersistenceView(ExamSessionRecord session, Map<String, Object> sheet) {
+        Map<String, Object> view = new LinkedHashMap<>(sheet);
+        view.put("status", session.status);
+        return view;
+    }
+
     private Map<String, Object> publishPreviewView(PaperTemplateRecord template, HttpServletRequest request) {
         boolean contentUnavailable = template.contentRuleVersion != null && "CONTENT:UNAVAILABLE".equals(testHeader(request, "X-Test-Dependency-Mode"));
         List<String> warnings = new ArrayList<>();
@@ -1285,6 +1320,10 @@ class ExamStore {
 
     private void audit(ExamUser actor, String targetType, String targetId, String action, String risk, String before, String after, String reason) {
         audits.add(auditRow("audit-" + (++idSeq), actor.userId(), targetType, targetId, action, "SUCCESS", risk, before, after, reason));
+    }
+
+    private String actorRole(ExamUser actor) {
+        return actor.roles().stream().findFirst().orElse("USER");
     }
 
     private Map<String, Object> auditRow(String id, String actorId, String targetType, String targetId, String action, String result, String risk, String before, String after, String reason) {
