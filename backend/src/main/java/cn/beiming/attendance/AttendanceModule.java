@@ -1,6 +1,7 @@
 package cn.beiming.attendance;
 
 import cn.beiming.admission.AdmissionTrustedActor;
+import cn.beiming.admission.persistence.AttendancePersistence;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -44,8 +45,8 @@ import java.util.concurrent.ConcurrentHashMap;
 @Configuration
 class AttendanceModule {
     @Bean
-    AttendanceStore attendanceStore(AttendanceTestControls testControls) {
-        return new AttendanceStore(testControls);
+    AttendanceStore attendanceStore(AttendanceTestControls testControls, AttendancePersistence persistence) {
+        return new AttendanceStore(testControls, persistence);
     }
 
     @Bean
@@ -301,10 +302,12 @@ class AttendanceStore {
     private final Map<String, IdempotencyRecord> idempotency = new ConcurrentHashMap<>();
     private final List<Map<String, Object>> audits = java.util.Collections.synchronizedList(new ArrayList<>());
     private final AttendanceTestControls testControls;
+    private final AttendancePersistence persistence;
     private int idSeq = 1000;
 
-    AttendanceStore(AttendanceTestControls testControls) {
+    AttendanceStore(AttendanceTestControls testControls, AttendancePersistence persistence) {
         this.testControls = testControls;
+        this.persistence = persistence;
     }
 
     synchronized MutationResult initialize(AttendanceUser actor, Map<String, Object> body, HttpServletRequest request) {
@@ -357,6 +360,7 @@ class AttendanceStore {
         audit(actor, "ATTENDANCE_ACCOUNT", account.accountId, "ATTENDANCE_INITIALIZED", "MEDIUM", null, account.status, "initialize attendance");
         auditNotificationFailure(actor, account.accountId, account.notificationFailure);
         Map<String, Object> value = initializationView(account, ledger, handoffView(handoff));
+        persistence.persistInitialization(request, actor.userId(), actorRole(actor), idempotencyKey(body), canonical(body), accountView(account, true, request), ledgerView(ledger, true), handoffView(handoff), value, 201);
         remember(actor.userId(), "initialize", body, value);
         return new MutationResult(true, value);
     }
@@ -475,6 +479,7 @@ class AttendanceStore {
         audit(actor, "ATTENDANCE_ACCOUNT", account.accountId, "ATTENDANCE_SCORE_ADJUSTED", "MEDIUM", beforeStatus, account.status, ledger.reason);
         auditNotificationFailure(actor, account.accountId, ledger.notificationFailure);
         Map<String, Object> value = linkedMap("ledger", ledgerView(ledger, true), "account", accountView(account, true, request), "candidate", candidate == null ? null : candidateView(candidate, true));
+        persistence.persistAccountLedgerWrite(request, actor.userId(), actorRole(actor), "attendance.adjustment.create", "ATTENDANCE_SCORE_ADJUSTED", "ATTENDANCE_ACCOUNT", account.accountId, "MEDIUM", beforeStatus, account.status, ledger.reason, idempotencyKey(body), canonical(body), accountView(account, true, request), ledgerView(ledger, true), candidate == null ? null : candidateView(candidate, true), value, 200);
         remember(actor.userId(), "adjust:" + accountId, body, value);
         return value;
     }
@@ -503,6 +508,8 @@ class AttendanceStore {
         applyBalance(account, after, delta, reversal.ledgerId);
         audit(actor, "ATTENDANCE_LEDGER", ledgerId, "ATTENDANCE_LEDGER_REVERSED", "MEDIUM", "POSTED", "REVERSED", reversal.reason);
         Map<String, Object> value = linkedMap("reversal", ledgerView(reversal, true), "original", ledgerView(original, true), "account", accountView(account, true, request));
+        persistence.persistAccountLedgerWrite(request, actor.userId(), actorRole(actor), "attendance.ledger.reverse", "ATTENDANCE_LEDGER_REVERSED", "ATTENDANCE_LEDGER", ledgerId, "MEDIUM", "POSTED", "REVERSED", reversal.reason, idempotencyKey(body), canonical(body), accountView(account, true, request), ledgerView(reversal, true), null, value, 200);
+        persistence.persistAccountLedgerWrite(request, actor.userId(), actorRole(actor), null, "ATTENDANCE_LEDGER_REVERSED_ORIGINAL", "ATTENDANCE_LEDGER", ledgerId, "LOW", "POSTED", "REVERSED", reversal.reason, null, canonical(body), accountView(account, true, request), ledgerView(original, true), null, value, 200);
         remember(actor.userId(), "reverse:" + ledgerId, body, value);
         return value;
     }
@@ -562,6 +569,7 @@ class AttendanceStore {
         sourceContribution.put(sourceKey, contribution.contributionId);
         audit(actor, "ATTENDANCE_CONTRIBUTION", contribution.contributionId, "ATTENDANCE_CONTRIBUTION_CREATED", "MEDIUM", null, contribution.type, validateRequiredString(body, "reason", 1, 500));
         Map<String, Object> value = linkedMap("contribution", contributionView(contribution, true), "ledger", ledger == null ? null : ledgerView(ledger, true), "account", accountView(account, true, request));
+        persistence.persistContributionWrite(request, actor.userId(), actorRole(actor), "attendance.contribution.create", "ATTENDANCE_CONTRIBUTION_CREATED", validateRequiredString(body, "reason", 1, 500), idempotencyKey(body), canonical(body), accountView(account, true, request), contributionView(contribution, true), ledger == null ? null : ledgerView(ledger, true), value, 201);
         remember(actor.userId(), "contribution:create", body, value);
         return value;
     }
@@ -585,6 +593,7 @@ class AttendanceStore {
         contribution.correctionOfContributionId = contributionId;
         audit(actor, "ATTENDANCE_CONTRIBUTION", contributionId, "ATTENDANCE_CONTRIBUTION_CORRECTED", "MEDIUM", null, contribution.type, validateRequiredString(body, "reason", 1, 500));
         Map<String, Object> value = contributionView(contribution, true);
+        persistence.persistContributionCorrection(request, actor.userId(), actorRole(actor), idempotencyKey(body), canonical(body), value, value, 200);
         remember(actor.userId(), "contribution:correct:" + contributionId, body, value);
         return value;
     }
@@ -616,6 +625,9 @@ class AttendanceStore {
         run.startedAt = NOW;
         run.completedAt = NOW;
         run.idempotencyKey = idempotencyKey(body);
+        List<Map<String, Object>> persistedAccounts = new ArrayList<>();
+        List<Map<String, Object>> persistedLedgers = new ArrayList<>();
+        List<Map<String, Object>> persistedCandidates = new ArrayList<>();
         for (MonthlyItem item : items) {
             if (!item.deduct()) continue;
             AttendanceAccountRecord account = requireAccount(item.accountId());
@@ -624,11 +636,15 @@ class AttendanceStore {
             AttendanceLedgerRecord ledger = ledger(account, "MONTHLY_DEDUCTION", -deduction, before, after, "attendance", run.runId, cycleKey, run.reason, "月度考勤扣分", actor.userId(), idempotencyKey(body), null, request);
             ledgers.put(ledger.ledgerId, ledger);
             applyBalance(account, after, -deduction, ledger.ledgerId);
-            ensureCandidateIfNeeded(account, cycleKey, actor, "月度扣分后进入复核", "积分归零");
+            RemovalCandidateRecord candidate = ensureCandidateIfNeeded(account, cycleKey, actor, "月度扣分后进入复核", "积分归零");
+            persistedAccounts.add(accountView(account, true, request));
+            persistedLedgers.add(ledgerView(ledger, true));
+            if (candidate != null) persistedCandidates.add(candidateView(candidate, true));
         }
         monthlyRuns.put(run.runId, run);
         audit(actor, "ATTENDANCE_MONTHLY_RUN", run.runId, "ATTENDANCE_MONTHLY_RUN_EXECUTED", "HIGH", "PENDING", run.status, run.reason);
         Map<String, Object> value = monthlyRunView(run, items);
+        persistence.persistMonthlyRun(request, actor.userId(), actorRole(actor), idempotencyKey(body), canonical(body), value, persistedAccounts, persistedLedgers, persistedCandidates, value, 201);
         remember(actor.userId(), "monthly", body, value);
         return new MutationResult(true, value);
     }
@@ -674,6 +690,7 @@ class AttendanceStore {
         account.status = "REMOVAL_CANDIDATE";
         audit(actor, "ATTENDANCE_REMOVAL_CANDIDATE", candidateId, "ATTENDANCE_REMOVAL_CANDIDATE_CONFIRMED", "HIGH", "OPEN", "CONFIRMED", validateRequiredString(body, "reason", 1, 500));
         Map<String, Object> value = linkedMap("candidate", candidateView(candidate, true), "account", accountView(account, true, request));
+        persistence.persistCandidateWrite(request, actor.userId(), actorRole(actor), "attendance.candidate.confirm", "ATTENDANCE_REMOVAL_CANDIDATE_CONFIRMED", "HIGH", "OPEN", "CONFIRMED", validateRequiredString(body, "reason", 1, 500), idempotencyKey(body), canonical(body), accountView(account, true, request), candidateView(candidate, true), value, 200);
         remember(actor.userId(), "candidate:confirm:" + candidateId, body, value);
         return value;
     }
@@ -694,6 +711,7 @@ class AttendanceStore {
         candidate.updatedAt = NOW;
         audit(actor, "ATTENDANCE_REMOVAL_CANDIDATE", candidateId, "ATTENDANCE_REMOVAL_CANDIDATE_DISMISSED", "MEDIUM", "OPEN", "DISMISSED", candidate.dismissReason);
         Map<String, Object> value = linkedMap("candidate", candidateView(candidate, true), "account", accountView(requireAccount(candidate.accountId), true, request));
+        persistence.persistCandidateWrite(request, actor.userId(), actorRole(actor), "attendance.candidate.dismiss", "ATTENDANCE_REMOVAL_CANDIDATE_DISMISSED", "MEDIUM", "OPEN", "DISMISSED", candidate.dismissReason, idempotencyKey(body), canonical(body), accountView(requireAccount(candidate.accountId), true, request), candidateView(candidate, true), value, 200);
         remember(actor.userId(), "candidate:dismiss:" + candidateId, body, value);
         return value;
     }
@@ -713,6 +731,7 @@ class AttendanceStore {
         List<Map<String, Object>> entries = leaderboardEntries(filters, request);
         Map<String, Object> value = linkedMap("rebuiltAt", NOW, "entriesTotal", entries.size(), "items", entries.subList(0, Math.min(20, entries.size())));
         audit(actor, "ATTENDANCE_LEADERBOARD", "current", "ATTENDANCE_LEADERBOARD_REBUILT", "MEDIUM", null, "REBUILT", validateRequiredString(body, "reason", 1, 500));
+        persistence.persistLeaderboardRebuild(request, actor.userId(), actorRole(actor), idempotencyKey(body), canonical(body), value, value, 200);
         remember(actor.userId(), "leaderboard", body, value);
         return value;
     }
@@ -954,6 +973,10 @@ class AttendanceStore {
         audits.add(linkedMap("id", "att-audit-" + (++idSeq), "requestId", AttendanceController.requestId(), "actorUserId", actor.userId(), "actorRole", actor.roles().iterator().next(), "actorPermissions", List.of(), "sourceIp", "127.0.0.1", "targetType", targetType, "targetId", targetId, "action", action, "riskLevel", risk, "reason", reason, "paramsSummary", "summary", "beforeState", before, "afterState", after, "result", "SUCCESS", "failureReason", null, "createdAt", NOW));
     }
 
+    private String actorRole(AttendanceUser actor) {
+        return actor.roles().stream().findFirst().orElse("USER");
+    }
+
     private void auditNotificationFailure(AttendanceUser actor, String targetId, Map<String, Object> failure) {
         if (failure != null) {
             audit(actor, "ATTENDANCE_NOTIFICATION", targetId, "ATTENDANCE_NOTIFICATION_FAILED", "LOW", null, "FAILED", Objects.toString(failure.get("failureType")) + ":" + Objects.toString(failure.get("failureCode")));
@@ -1113,7 +1136,28 @@ class AttendanceStore {
         if (key == null) return null;
         IdempotencyRecord existing = idempotency.get(actorId + ":" + operation + ":" + key);
         if (existing != null && !existing.fingerprint().equals(canonical(body))) throw new AttendanceException(409, 45017, "idempotency conflict");
+        if (existing == null) {
+            try {
+                Map<String, Object> postgresReplay = persistence.replay(actorId, persistenceScope(operation), key, canonical(body));
+                if (postgresReplay != null) return new IdempotencyRecord(canonical(body), postgresReplay);
+            } catch (IllegalStateException exception) {
+                throw new AttendanceException(409, 45017, "idempotency conflict");
+            }
+        }
         return existing;
+    }
+
+    private String persistenceScope(String operation) {
+        if ("initialize".equals(operation)) return "attendance.initialization.create";
+        if (operation.startsWith("adjust:")) return "attendance.adjustment.create";
+        if (operation.startsWith("reverse:")) return "attendance.ledger.reverse";
+        if ("contribution:create".equals(operation)) return "attendance.contribution.create";
+        if (operation.startsWith("contribution:correct:")) return "attendance.contribution.correct";
+        if ("monthly".equals(operation)) return "attendance.monthly-run.execute";
+        if (operation.startsWith("candidate:confirm:")) return "attendance.candidate.confirm";
+        if (operation.startsWith("candidate:dismiss:")) return "attendance.candidate.dismiss";
+        if ("leaderboard".equals(operation)) return "attendance.leaderboard.rebuild";
+        return "attendance." + operation;
     }
 
     private void remember(String actorId, String operation, Map<String, Object> body, Map<String, Object> value) {
