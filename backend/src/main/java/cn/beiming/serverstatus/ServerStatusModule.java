@@ -1,15 +1,20 @@
 package cn.beiming.serverstatus;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,6 +32,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -44,8 +51,8 @@ import java.util.concurrent.TimeUnit;
 @Configuration
 class ServerStatusModule {
     @Bean
-    ServerStatusStore serverStatusStore() {
-        return new ServerStatusStore();
+    ServerStatusStore serverStatusStore(ServerStatusPersistence persistence) {
+        return new ServerStatusStore(persistence);
     }
 
     @Bean("serverStatusTestAuthContextProvider")
@@ -62,6 +69,15 @@ class ServerStatusModule {
     @ConditionalOnMissingBean
     ServerStatusFlowEvidenceRecorder serverStatusFlowEvidenceRecorder() {
         return new NoopServerStatusFlowEvidenceRecorder();
+    }
+
+    @Bean
+    ServerStatusPersistence serverStatusPersistence(ObjectProvider<JdbcTemplate> jdbcTemplate, ObjectMapper objectMapper) {
+        JdbcTemplate available = jdbcTemplate.getIfAvailable();
+        if (available == null) {
+            return new NoopServerStatusPersistence();
+        }
+        return new ServerStatusPostgresPersistence(available, objectMapper);
     }
 }
 
@@ -122,7 +138,7 @@ class ServerStatusController {
                                                      HttpServletRequest request,
                                                      @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        Map<String, Object> payload = store.createSource(actor, body);
+        Map<String, Object> payload = store.createSource(request, actor, body);
         ResponseEntity<Map<String, Object>> response = ResponseEntity.status(HttpStatus.CREATED).body(okData(payload));
         evidenceRecorder.recordSourceWrite(request, "SERVER_STATUS_SOURCE_CREATED", payload, response.getStatusCode().value());
         return response;
@@ -131,25 +147,28 @@ class ServerStatusController {
     @PatchMapping("/admin/sources/{sourceId}")
     Map<String, Object> patchSource(@RequestHeader(value = "Authorization", required = false) String authorization,
                                     @PathVariable String sourceId,
+                                    HttpServletRequest request,
                                     @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ok(store.patchSource(actor, sourceId, body));
+        return ok(store.patchSource(request, actor, sourceId, body));
     }
 
     @PatchMapping("/admin/sources/{sourceId}/disable")
     Map<String, Object> disableSource(@RequestHeader(value = "Authorization", required = false) String authorization,
                                       @PathVariable String sourceId,
+                                      HttpServletRequest request,
                                       @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ok(store.disableSource(actor, sourceId, body));
+        return ok(store.disableSource(request, actor, sourceId, body));
     }
 
     @PatchMapping("/admin/sources/{sourceId}/enable")
     Map<String, Object> enableSource(@RequestHeader(value = "Authorization", required = false) String authorization,
                                      @PathVariable String sourceId,
+                                     HttpServletRequest request,
                                      @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ok(store.enableSource(actor, sourceId, body));
+        return ok(store.enableSource(request, actor, sourceId, body));
     }
 
     @PostMapping("/admin/sources/{sourceId}/refresh")
@@ -158,7 +177,7 @@ class ServerStatusController {
                                       @PathVariable String sourceId,
                                       @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        Map<String, Object> payload = store.refreshSource(actor, collector, sourceId, body);
+        Map<String, Object> payload = store.refreshSource(request, actor, collector, sourceId, body);
         evidenceRecorder.recordSnapshotWrite(request, "SERVER_STATUS_SOURCE_REFRESHED", payload, HttpStatus.OK.value());
         return ok(payload);
     }
@@ -175,7 +194,7 @@ class ServerStatusController {
                                                    HttpServletRequest request,
                                                    @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        Map<String, Object> payload = store.createLine(actor, body);
+        Map<String, Object> payload = store.createLine(request, actor, body);
         ResponseEntity<Map<String, Object>> response = ResponseEntity.status(HttpStatus.CREATED).body(okData(payload));
         evidenceRecorder.recordLineWrite(request, "SERVER_STATUS_LINE_CREATED", payload, response.getStatusCode().value());
         return response;
@@ -184,25 +203,28 @@ class ServerStatusController {
     @PatchMapping("/admin/lines/{lineId}")
     Map<String, Object> patchLine(@RequestHeader(value = "Authorization", required = false) String authorization,
                                   @PathVariable String lineId,
+                                  HttpServletRequest request,
                                   @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ok(store.patchLine(actor, lineId, body));
+        return ok(store.patchLine(request, actor, lineId, body));
     }
 
     @PatchMapping("/admin/lines/{lineId}/disable")
     Map<String, Object> disableLine(@RequestHeader(value = "Authorization", required = false) String authorization,
                                     @PathVariable String lineId,
+                                    HttpServletRequest request,
                                     @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ok(store.disableLine(actor, lineId, body));
+        return ok(store.disableLine(request, actor, lineId, body));
     }
 
     @PatchMapping("/admin/lines/{lineId}/enable")
     Map<String, Object> enableLine(@RequestHeader(value = "Authorization", required = false) String authorization,
                                    @PathVariable String lineId,
+                                   HttpServletRequest request,
                                    @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ok(store.enableLine(actor, lineId, body));
+        return ok(store.enableLine(request, actor, lineId, body));
     }
 
     @GetMapping("/admin/outages")
@@ -217,7 +239,7 @@ class ServerStatusController {
                                                      HttpServletRequest request,
                                                      @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        Map<String, Object> payload = store.createOutage(actor, body);
+        Map<String, Object> payload = store.createOutage(request, actor, body);
         ResponseEntity<Map<String, Object>> response = ResponseEntity.status(HttpStatus.CREATED).body(okData(payload));
         evidenceRecorder.recordOutageWrite(request, "SERVER_STATUS_OUTAGE_CREATED", payload, response.getStatusCode().value());
         return response;
@@ -226,33 +248,37 @@ class ServerStatusController {
     @PatchMapping("/admin/outages/{outageId}")
     Map<String, Object> patchOutage(@RequestHeader(value = "Authorization", required = false) String authorization,
                                     @PathVariable String outageId,
+                                    HttpServletRequest request,
                                     @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ok(store.patchOutage(actor, outageId, body));
+        return ok(store.patchOutage(request, actor, outageId, body));
     }
 
     @PatchMapping("/admin/outages/{outageId}/acknowledge")
     Map<String, Object> acknowledgeOutage(@RequestHeader(value = "Authorization", required = false) String authorization,
                                           @PathVariable String outageId,
+                                          HttpServletRequest request,
                                           @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ok(store.acknowledgeOutage(actor, outageId, body));
+        return ok(store.acknowledgeOutage(request, actor, outageId, body));
     }
 
     @PatchMapping("/admin/outages/{outageId}/resolve")
     Map<String, Object> resolveOutage(@RequestHeader(value = "Authorization", required = false) String authorization,
                                       @PathVariable String outageId,
+                                      HttpServletRequest request,
                                       @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ok(store.resolveOutage(actor, outageId, body));
+        return ok(store.resolveOutage(request, actor, outageId, body));
     }
 
     @PatchMapping("/admin/outages/{outageId}/archive")
     Map<String, Object> archiveOutage(@RequestHeader(value = "Authorization", required = false) String authorization,
                                       @PathVariable String outageId,
+                                      HttpServletRequest request,
                                       @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ok(store.archiveOutage(actor, outageId, body));
+        return ok(store.archiveOutage(request, actor, outageId, body));
     }
 
     @GetMapping("/admin/audit-logs")
@@ -321,6 +347,225 @@ class NoopServerStatusFlowEvidenceRecorder implements ServerStatusFlowEvidenceRe
     }
 }
 
+interface ServerStatusPersistence {
+    void resetForTests();
+
+    Map<String, Object> replay(String actorUserId, String scope, String idempotencyKey, String fingerprint);
+
+    void persistSnapshot(List<StatusSourceRecord> sources,
+                         List<LineRecord> lines,
+                         List<SnapshotRecord> snapshots,
+                         List<OutageRecord> outages,
+                         List<RefreshRecord> refreshRecords);
+
+    void persistWrite(HttpServletRequest request,
+                      AuthUser actor,
+                      String targetType,
+                      String targetId,
+                      String action,
+                      Object reason,
+                      String idempotencyScope,
+                      String idempotencyKey,
+                      String fingerprint,
+                      Map<String, Object> payload,
+                      int responseCode,
+                      List<StatusSourceRecord> sources,
+                      List<LineRecord> lines,
+                      List<SnapshotRecord> snapshots,
+                      List<OutageRecord> outages,
+                      List<RefreshRecord> refreshRecords);
+}
+
+class NoopServerStatusPersistence implements ServerStatusPersistence {
+    @Override
+    public void resetForTests() {
+    }
+
+    @Override
+    public Map<String, Object> replay(String actorUserId, String scope, String idempotencyKey, String fingerprint) {
+        return null;
+    }
+
+    @Override
+    public void persistSnapshot(List<StatusSourceRecord> sources, List<LineRecord> lines, List<SnapshotRecord> snapshots, List<OutageRecord> outages, List<RefreshRecord> refreshRecords) {
+    }
+
+    @Override
+    public void persistWrite(HttpServletRequest request, AuthUser actor, String targetType, String targetId, String action, Object reason, String idempotencyScope, String idempotencyKey, String fingerprint, Map<String, Object> payload, int responseCode, List<StatusSourceRecord> sources, List<LineRecord> lines, List<SnapshotRecord> snapshots, List<OutageRecord> outages, List<RefreshRecord> refreshRecords) {
+    }
+}
+
+class ServerStatusPostgresPersistence implements ServerStatusPersistence {
+    private final JdbcTemplate jdbc;
+    private final ObjectMapper objectMapper;
+
+    ServerStatusPostgresPersistence(JdbcTemplate jdbc, ObjectMapper objectMapper) {
+        this.jdbc = jdbc;
+        this.objectMapper = objectMapper;
+    }
+
+    @Override
+    @Transactional
+    public void resetForTests() {
+        jdbc.update("DELETE FROM server_status_refresh_records");
+        jdbc.update("DELETE FROM server_status_snapshots");
+        jdbc.update("DELETE FROM server_status_outages");
+        jdbc.update("DELETE FROM server_status_lines");
+        jdbc.update("DELETE FROM server_status_sources");
+        jdbc.update("DELETE FROM app_idempotency_records WHERE scope LIKE 'server-status.%'");
+        jdbc.update("DELETE FROM app_audit_logs WHERE action LIKE 'SERVER_STATUS_%'");
+        jdbc.update("DELETE FROM app_request_logs WHERE path LIKE '/api/v1/server-status%'");
+    }
+
+    @Override
+    public Map<String, Object> replay(String actorUserId, String scope, String idempotencyKey, String fingerprint) {
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                SELECT request_fingerprint, response_body::text
+                FROM app_idempotency_records
+                WHERE actor_user_id = ? AND scope = ? AND idempotency_key = ?
+                """, actorUserId, scope, idempotencyKey);
+        if (rows.isEmpty()) {
+            return null;
+        }
+        Map<String, Object> row = rows.getFirst();
+        if (!Objects.equals(String.valueOf(row.get("request_fingerprint")), fingerprint)) {
+            throw new ServerStatusException(43002, HttpStatus.CONFLICT, "idempotency key conflict");
+        }
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> envelope = objectMapper.readValue(String.valueOf(row.get("response_body")), Map.class);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> data = (Map<String, Object>) envelope.get("data");
+            return data;
+        } catch (Exception exception) {
+            throw new IllegalStateException("failed to parse server-status idempotency response", exception);
+        }
+    }
+
+    @Override
+    @Transactional
+    public void persistSnapshot(List<StatusSourceRecord> sources, List<LineRecord> lines, List<SnapshotRecord> snapshots, List<OutageRecord> outages, List<RefreshRecord> refreshRecords) {
+        replaceRows(sources, lines, snapshots, outages, refreshRecords);
+    }
+
+    @Override
+    @Transactional
+    public void persistWrite(HttpServletRequest request, AuthUser actor, String targetType, String targetId, String action, Object reason, String idempotencyScope, String idempotencyKey, String fingerprint, Map<String, Object> payload, int responseCode, List<StatusSourceRecord> sources, List<LineRecord> lines, List<SnapshotRecord> snapshots, List<OutageRecord> outages, List<RefreshRecord> refreshRecords) {
+        replaceRows(sources, lines, snapshots, outages, refreshRecords);
+        insertAudit(request, actor, targetType, targetId, action, reason);
+        if (idempotencyKey != null) {
+            insertIdempotency(actor.userId, idempotencyScope, idempotencyKey, fingerprint, responseCode, payload);
+        }
+        insertRequestLog(request, actor.userId, responseCode);
+    }
+
+    private void replaceRows(List<StatusSourceRecord> sources, List<LineRecord> lines, List<SnapshotRecord> snapshots, List<OutageRecord> outages, List<RefreshRecord> refreshRecords) {
+        jdbc.update("DELETE FROM server_status_refresh_records");
+        jdbc.update("DELETE FROM server_status_snapshots");
+        jdbc.update("DELETE FROM server_status_outages");
+        jdbc.update("DELETE FROM server_status_lines");
+        jdbc.update("DELETE FROM server_status_sources");
+        for (StatusSourceRecord source : sources) insertSource(source);
+        for (LineRecord line : lines) insertLine(line);
+        for (SnapshotRecord snapshot : snapshots) insertSnapshot(snapshot);
+        for (OutageRecord outage : outages) insertOutage(outage);
+        for (RefreshRecord refreshRecord : refreshRecords) insertRefreshRecord(refreshRecord);
+    }
+
+    private void insertSource(StatusSourceRecord source) {
+        jdbc.update("""
+                INSERT INTO server_status_sources(id, source_id, instance_id, display_name, instance_name, instance_kind, source_type, config_status, public_visible, primary_source, target, timeout_ms, sort_order, started_at, admin_note, created_by, updated_by, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, UUID.randomUUID(), source.sourceId, source.instanceId, source.displayName, source.instanceName, source.instanceKind, source.sourceType,
+                source.configStatus, source.publicVisible, source.primary, source.target, source.timeoutMs, source.sortOrder, timestamp(source.startedAt),
+                source.adminNote, source.createdBy, source.updatedBy, timestamp(source.createdAt), timestamp(source.updatedAt));
+    }
+
+    private void insertLine(LineRecord line) {
+        jdbc.update("""
+                INSERT INTO server_status_lines(id, line_id, name, entry_address, check_target, description, config_status, current_status, public_visible, primary_line, sort_order, latency_ms, packet_loss_percent, admin_note, created_by, updated_by, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, UUID.randomUUID(), line.lineId, line.name, line.entryAddress, line.checkTarget, line.description, line.configStatus, line.currentStatus,
+                line.publicVisible, line.primary, line.sortOrder, line.latencyMs, line.packetLossPercent, line.adminNote, line.createdBy, line.updatedBy,
+                timestamp(line.createdAt), timestamp(line.updatedAt));
+    }
+
+    private void insertSnapshot(SnapshotRecord snapshot) {
+        jdbc.update("""
+                INSERT INTO server_status_snapshots(id, snapshot_id, source_id, instance_id, line_id, source, status, line_status, version, motd, online_players, max_players, latency_ms, line_latency_ms, checked_at, degraded, raw_summary)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS jsonb))
+                """, UUID.randomUUID(), snapshot.snapshotId, snapshot.sourceId, snapshot.instanceId, snapshot.lineId, snapshot.source, snapshot.status,
+                snapshot.lineStatus, snapshot.version, snapshot.motd, snapshot.onlinePlayers, snapshot.maxPlayers, snapshot.latencyMs, snapshot.lineLatencyMs,
+                timestamp(snapshot.checkedAt), snapshot.degraded, "{}");
+    }
+
+    private void insertOutage(OutageRecord outage) {
+        jdbc.update("""
+                INSERT INTO server_status_outages(id, outage_id, title, public_message, status, severity, instance_id, line_id, started_at, resolved_at, acknowledged_by, resolved_by, archived_by, acknowledged_at, archived_at, internal_reason, admin_note, public_visible, created_by, updated_by, created_at, updated_at, deleted_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, UUID.randomUUID(), outage.outageId, outage.title, outage.publicMessage, outage.status, outage.severity, outage.instanceId, outage.lineId,
+                timestamp(outage.startedAt), timestamp(outage.resolvedAt), outage.acknowledgedBy, outage.resolvedBy, outage.archivedBy,
+                timestamp(outage.acknowledgedAt), timestamp(outage.archivedAt), outage.internalReason, outage.adminNote, outage.publicVisible,
+                outage.createdBy, outage.updatedBy, timestamp(outage.createdAt), timestamp(outage.updatedAt), timestamp(outage.deletedAt));
+    }
+
+    private void insertRefreshRecord(RefreshRecord refreshRecord) {
+        jdbc.update("""
+                INSERT INTO server_status_refresh_records(id, refresh_id, source_id, snapshot_id, status, idempotency_key, reason, requested_by, started_at, completed_at, failure_reason, result_summary)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS jsonb))
+                """, UUID.randomUUID(), refreshRecord.refreshId, refreshRecord.sourceId, refreshRecord.snapshotId, refreshRecord.status, refreshRecord.idempotencyKey,
+                refreshRecord.reason, refreshRecord.requestedBy, timestamp(refreshRecord.startedAt), timestamp(refreshRecord.completedAt), refreshRecord.failureReason, "{}");
+    }
+
+    private void insertAudit(HttpServletRequest request, AuthUser actor, String targetType, String targetId, String action, Object reason) {
+        jdbc.update("""
+                INSERT INTO app_audit_logs(id, request_id, actor_user_id, actor_role, actor_permissions, source_ip, target_type, target_id, action, risk_level, reason, params_summary, before_state, after_state, result, failure_reason, created_at)
+                VALUES (?, ?, ?, ?, CAST(? AS jsonb), ?, ?, ?, ?, 'MEDIUM', ?, CAST(? AS jsonb), CAST(? AS jsonb), CAST(? AS jsonb), 'SUCCESS', NULL, now())
+                """, UUID.randomUUID(), requestId(request), actor.userId, actor.roles.iterator().next(), json(List.of()), sourceIp(request), targetType, targetId, action,
+                reason == null ? null : String.valueOf(reason), json(Map.of("action", action)), json(Map.of("status", "UNKNOWN")), json(Map.of("status", "UPDATED")));
+    }
+
+    private void insertIdempotency(String actorUserId, String scope, String idempotencyKey, String fingerprint, int responseCode, Map<String, Object> payload) {
+        jdbc.update("""
+                INSERT INTO app_idempotency_records(id, actor_user_id, scope, idempotency_key, request_fingerprint, response_code, response_body, created_at, expires_at)
+                VALUES (?, ?, ?, ?, ?, ?, CAST(? AS jsonb), now(), now() + interval '24 hours')
+                ON CONFLICT (actor_user_id, scope, idempotency_key) DO NOTHING
+                """, UUID.randomUUID(), actorUserId, scope, idempotencyKey, fingerprint, responseCode, json(ServerStatusController.envelope(0, "success", payload)));
+    }
+
+    private void insertRequestLog(HttpServletRequest request, String actorUserId, int responseCode) {
+        jdbc.update("""
+                INSERT INTO app_request_logs(id, request_id, method, path, actor_user_id, source_ip, response_code, result, failure_reason, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'SUCCESS', NULL, now())
+                ON CONFLICT (request_id) DO NOTHING
+                """, UUID.randomUUID(), requestId(request), request.getMethod(), request.getRequestURI(), actorUserId, sourceIp(request), responseCode);
+    }
+
+    private OffsetDateTime timestamp(Instant value) {
+        return value == null ? null : OffsetDateTime.ofInstant(value, ZoneOffset.UTC);
+    }
+
+    private String requestId(HttpServletRequest request) {
+        String value = request.getHeader("X-Request-Id");
+        return value == null || value.isBlank() ? RequestIdFilter.currentRequestId() : value;
+    }
+
+    private String sourceIp(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) return forwarded.split(",")[0].trim();
+        String remote = request.getRemoteAddr();
+        return remote == null || remote.isBlank() ? "unknown" : remote;
+    }
+
+    private String json(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("failed to serialize server-status PostgreSQL jsonb value", exception);
+        }
+    }
+}
+
 class ServerStatusStore {
     private static final Duration CREATE_IDEMPOTENCY_TTL = Duration.ofHours(24);
     private static final Duration REFRESH_IDEMPOTENCY_TTL = Duration.ofMinutes(10);
@@ -331,12 +576,18 @@ class ServerStatusStore {
     private final Map<String, SnapshotRecord> snapshots = new LinkedHashMap<>();
     private final Map<String, OutageRecord> outages = new LinkedHashMap<>();
     private final List<AuditRecord> audits = new ArrayList<>();
+    private final List<RefreshRecord> refreshRecords = new ArrayList<>();
     private final Map<String, IdempotencyRecord> idempotency = new ConcurrentHashMap<>();
     private final Set<String> activeRefreshes = ConcurrentHashMap.newKeySet();
     private final Map<String, Instant> lastManualRefreshAt = new ConcurrentHashMap<>();
     private boolean failNextAudit;
     private boolean failNextSnapshotWrite;
     private int sequence = 100;
+    private final ServerStatusPersistence persistence;
+
+    ServerStatusStore(ServerStatusPersistence persistence) {
+        this.persistence = persistence;
+    }
 
     void reset() {
         sources.clear();
@@ -344,12 +595,14 @@ class ServerStatusStore {
         snapshots.clear();
         outages.clear();
         audits.clear();
+        refreshRecords.clear();
         idempotency.clear();
         activeRefreshes.clear();
         lastManualRefreshAt.clear();
         failNextAudit = false;
         failNextSnapshotWrite = false;
         sequence = 100;
+        persistence.resetForTests();
     }
 
     void seedTestData() {
@@ -379,6 +632,7 @@ class ServerStatusStore {
         outages.put("outage-archived", new OutageRecord("outage-archived", "Archived outage", "Archived public message", "ARCHIVED", "LOW", "inst-survival", "line-main", Instant.parse("2026-05-19T01:00:00Z"), Instant.parse("2026-05-19T02:00:00Z"), "seed", "seed", "seed", null, Instant.parse("2026-05-19T03:00:00Z"), "internal", "private", true, "seed", "seed", base, base, Instant.parse("2026-05-19T03:00:00Z")));
 
         audits.add(new AuditRecord("audit-seed", "req_seed", "seed", "OWNER", "SOURCE", "src-survival", "SERVER_STATUS_SOURCE_CREATED", "seed", "SUCCESS", base));
+        persistSnapshot();
     }
 
     Map<String, Object> overview(TestStatusCollector collector) {
@@ -492,9 +746,11 @@ class ServerStatusStore {
         return page(items.stream().map(this::adminSourceView).toList(), page);
     }
 
-    Map<String, Object> createSource(AuthUser actor, Map<String, Object> body) {
+    Map<String, Object> createSource(HttpServletRequest request, AuthUser actor, Map<String, Object> body) {
         String idempotencyKey = optionalString(body, "idempotencyKey");
         if (idempotencyKey != null) {
+            Map<String, Object> persisted = persistence.replay(actor.userId, "server-status.source.create", idempotencyKey, fingerprint(body));
+            if (persisted != null) return persisted;
             IdempotencyRecord existing = idempotencyRecord("source:" + actor.userId + ":" + idempotencyKey);
             if (existing != null) return existing.same(body);
         }
@@ -515,11 +771,12 @@ class ServerStatusStore {
         writeAudit(actor, "SOURCE", id, "SERVER_STATUS_SOURCE_CREATED", reason);
         sources.put(id, source);
         Map<String, Object> result = adminSourceView(source);
+        persistWrite(request, actor, "SOURCE", id, "SERVER_STATUS_SOURCE_CREATED", reason, "server-status.source.create", idempotencyKey, fingerprint(body), result, 201);
         if (idempotencyKey != null) idempotency.put("source:" + actor.userId + ":" + idempotencyKey, new IdempotencyRecord(body, result, now().plus(CREATE_IDEMPOTENCY_TTL)));
         return result;
     }
 
-    Map<String, Object> patchSource(AuthUser actor, String sourceId, Map<String, Object> body) {
+    Map<String, Object> patchSource(HttpServletRequest request, AuthUser actor, String sourceId, Map<String, Object> body) {
         StatusSourceRecord source = requireSource(sourceId);
         StatusSourceRecord backup = copy(source);
         try {
@@ -540,14 +797,16 @@ class ServerStatusStore {
             source.updatedBy = actor.userId;
             source.updatedAt = now();
             writeAudit(actor, "SOURCE", sourceId, "SERVER_STATUS_SOURCE_UPDATED", reason);
-            return adminSourceView(source);
+            Map<String, Object> result = adminSourceView(source);
+            persistWrite(request, actor, "SOURCE", sourceId, "SERVER_STATUS_SOURCE_UPDATED", reason, null, null, fingerprint(body), result, 200);
+            return result;
         } catch (RuntimeException exception) {
             sources.put(sourceId, backup);
             throw exception;
         }
     }
 
-    Map<String, Object> disableSource(AuthUser actor, String sourceId, Map<String, Object> body) {
+    Map<String, Object> disableSource(HttpServletRequest request, AuthUser actor, String sourceId, Map<String, Object> body) {
         StatusSourceRecord source = requireSource(sourceId);
         StatusSourceRecord backup = copy(source);
         try {
@@ -559,14 +818,16 @@ class ServerStatusStore {
                 source.updatedAt = now();
                 writeAudit(actor, "SOURCE", sourceId, "SERVER_STATUS_SOURCE_DISABLED", reason);
             }
-            return adminSourceView(source);
+            Map<String, Object> result = adminSourceView(source);
+            persistWrite(request, actor, "SOURCE", sourceId, "SERVER_STATUS_SOURCE_DISABLED", reason, null, null, fingerprint(body), result, 200);
+            return result;
         } catch (RuntimeException exception) {
             sources.put(sourceId, backup);
             throw exception;
         }
     }
 
-    Map<String, Object> enableSource(AuthUser actor, String sourceId, Map<String, Object> body) {
+    Map<String, Object> enableSource(HttpServletRequest request, AuthUser actor, String sourceId, Map<String, Object> body) {
         StatusSourceRecord source = requireSource(sourceId);
         StatusSourceRecord backup = copy(source);
         try {
@@ -578,19 +839,23 @@ class ServerStatusStore {
                 source.updatedAt = now();
                 writeAudit(actor, "SOURCE", sourceId, "SERVER_STATUS_SOURCE_ENABLED", reason);
             }
-            return adminSourceView(source);
+            Map<String, Object> result = adminSourceView(source);
+            persistWrite(request, actor, "SOURCE", sourceId, "SERVER_STATUS_SOURCE_ENABLED", reason, null, null, fingerprint(body), result, 200);
+            return result;
         } catch (RuntimeException exception) {
             sources.put(sourceId, backup);
             throw exception;
         }
     }
 
-    Map<String, Object> refreshSource(AuthUser actor, TestStatusCollector collector, String sourceId, Map<String, Object> body) {
+    Map<String, Object> refreshSource(HttpServletRequest request, AuthUser actor, TestStatusCollector collector, String sourceId, Map<String, Object> body) {
         StatusSourceRecord source = requireSource(sourceId);
         String reason = requiredReason(body);
         if (!"ENABLED".equals(source.configStatus)) throw error(43510, HttpStatus.CONFLICT, "source state conflict");
         String idempotencyKey = optionalString(body, "idempotencyKey");
         if (idempotencyKey != null) {
+            Map<String, Object> persisted = persistence.replay(actor.userId, "server-status.source.refresh", idempotencyKey, fingerprint(body));
+            if (persisted != null) return persisted;
             IdempotencyRecord existing = idempotencyRecord("refresh:" + actor.userId + ":" + idempotencyKey);
             if (existing != null) return existing.same(body);
         }
@@ -609,7 +874,9 @@ class ServerStatusStore {
             snapshots.put(snapshot.snapshotId, snapshot);
             source.updatedAt = now();
             lastManualRefreshAt.put(sourceId, now());
+            refreshRecords.add(new RefreshRecord("refresh-" + (++sequence), sourceId, snapshot.snapshotId, "SUCCEEDED", idempotencyKey, reason, actor.userId, now(), now(), null));
             Map<String, Object> result = snapshotView(snapshot);
+            persistWrite(request, actor, "SOURCE", sourceId, "SERVER_STATUS_SOURCE_REFRESHED", reason, "server-status.source.refresh", idempotencyKey, fingerprint(body), result, 200);
             if (idempotencyKey != null) idempotency.put("refresh:" + actor.userId + ":" + idempotencyKey, new IdempotencyRecord(body, result, now().plus(REFRESH_IDEMPOTENCY_TTL)));
             return result;
         } finally {
@@ -631,9 +898,11 @@ class ServerStatusStore {
         return page(items.stream().map(this::adminLineView).toList(), page);
     }
 
-    Map<String, Object> createLine(AuthUser actor, Map<String, Object> body) {
+    Map<String, Object> createLine(HttpServletRequest request, AuthUser actor, Map<String, Object> body) {
         String idempotencyKey = optionalString(body, "idempotencyKey");
         if (idempotencyKey != null) {
+            Map<String, Object> persisted = persistence.replay(actor.userId, "server-status.line.create", idempotencyKey, fingerprint(body));
+            if (persisted != null) return persisted;
             IdempotencyRecord existing = idempotencyRecord("line:" + actor.userId + ":" + idempotencyKey);
             if (existing != null) return existing.same(body);
         }
@@ -652,11 +921,12 @@ class ServerStatusStore {
         writeAudit(actor, "LINE", id, "SERVER_STATUS_LINE_CREATED", reason);
         lines.put(id, line);
         Map<String, Object> result = adminLineView(line);
+        persistWrite(request, actor, "LINE", id, "SERVER_STATUS_LINE_CREATED", reason, "server-status.line.create", idempotencyKey, fingerprint(body), result, 201);
         if (idempotencyKey != null) idempotency.put("line:" + actor.userId + ":" + idempotencyKey, new IdempotencyRecord(body, result, now().plus(CREATE_IDEMPOTENCY_TTL)));
         return result;
     }
 
-    Map<String, Object> patchLine(AuthUser actor, String lineId, Map<String, Object> body) {
+    Map<String, Object> patchLine(HttpServletRequest request, AuthUser actor, String lineId, Map<String, Object> body) {
         LineRecord line = requireLine(lineId);
         LineRecord backup = copy(line);
         try {
@@ -675,14 +945,16 @@ class ServerStatusStore {
             line.updatedBy = actor.userId;
             line.updatedAt = now();
             writeAudit(actor, "LINE", lineId, "SERVER_STATUS_LINE_UPDATED", reason);
-            return adminLineView(line);
+            Map<String, Object> result = adminLineView(line);
+            persistWrite(request, actor, "LINE", lineId, "SERVER_STATUS_LINE_UPDATED", reason, null, null, fingerprint(body), result, 200);
+            return result;
         } catch (RuntimeException exception) {
             lines.put(lineId, backup);
             throw exception;
         }
     }
 
-    Map<String, Object> disableLine(AuthUser actor, String lineId, Map<String, Object> body) {
+    Map<String, Object> disableLine(HttpServletRequest request, AuthUser actor, String lineId, Map<String, Object> body) {
         LineRecord line = requireLine(lineId);
         LineRecord backup = copy(line);
         try {
@@ -694,14 +966,16 @@ class ServerStatusStore {
                 line.updatedAt = now();
                 writeAudit(actor, "LINE", lineId, "SERVER_STATUS_LINE_DISABLED", reason);
             }
-            return adminLineView(line);
+            Map<String, Object> result = adminLineView(line);
+            persistWrite(request, actor, "LINE", lineId, "SERVER_STATUS_LINE_DISABLED", reason, null, null, fingerprint(body), result, 200);
+            return result;
         } catch (RuntimeException exception) {
             lines.put(lineId, backup);
             throw exception;
         }
     }
 
-    Map<String, Object> enableLine(AuthUser actor, String lineId, Map<String, Object> body) {
+    Map<String, Object> enableLine(HttpServletRequest request, AuthUser actor, String lineId, Map<String, Object> body) {
         LineRecord line = requireLine(lineId);
         LineRecord backup = copy(line);
         try {
@@ -713,7 +987,9 @@ class ServerStatusStore {
                 line.updatedAt = now();
                 writeAudit(actor, "LINE", lineId, "SERVER_STATUS_LINE_ENABLED", reason);
             }
-            return adminLineView(line);
+            Map<String, Object> result = adminLineView(line);
+            persistWrite(request, actor, "LINE", lineId, "SERVER_STATUS_LINE_ENABLED", reason, null, null, fingerprint(body), result, 200);
+            return result;
         } catch (RuntimeException exception) {
             lines.put(lineId, backup);
             throw exception;
@@ -735,9 +1011,11 @@ class ServerStatusStore {
         return page(items.stream().map(this::adminOutageView).toList(), page);
     }
 
-    Map<String, Object> createOutage(AuthUser actor, Map<String, Object> body) {
+    Map<String, Object> createOutage(HttpServletRequest request, AuthUser actor, Map<String, Object> body) {
         String idempotencyKey = optionalString(body, "idempotencyKey");
         if (idempotencyKey != null) {
+            Map<String, Object> persisted = persistence.replay(actor.userId, "server-status.outage.create", idempotencyKey, fingerprint(body));
+            if (persisted != null) return persisted;
             IdempotencyRecord existing = idempotencyRecord("outage:" + actor.userId + ":" + idempotencyKey);
             if (existing != null) return existing.same(body);
         }
@@ -758,11 +1036,12 @@ class ServerStatusStore {
         writeAudit(actor, "OUTAGE", id, "SERVER_STATUS_OUTAGE_CREATED", reason);
         outages.put(id, outage);
         Map<String, Object> result = adminOutageView(outage);
+        persistWrite(request, actor, "OUTAGE", id, "SERVER_STATUS_OUTAGE_CREATED", reason, "server-status.outage.create", idempotencyKey, fingerprint(body), result, 201);
         if (idempotencyKey != null) idempotency.put("outage:" + actor.userId + ":" + idempotencyKey, new IdempotencyRecord(body, result, now().plus(CREATE_IDEMPOTENCY_TTL)));
         return result;
     }
 
-    Map<String, Object> patchOutage(AuthUser actor, String outageId, Map<String, Object> body) {
+    Map<String, Object> patchOutage(HttpServletRequest request, AuthUser actor, String outageId, Map<String, Object> body) {
         OutageRecord outage = requireOutage(outageId);
         OutageRecord backup = copy(outage);
         try {
@@ -784,14 +1063,16 @@ class ServerStatusStore {
             outage.updatedBy = actor.userId;
             outage.updatedAt = now();
             writeAudit(actor, "OUTAGE", outageId, "SERVER_STATUS_OUTAGE_UPDATED", reason);
-            return adminOutageView(outage);
+            Map<String, Object> result = adminOutageView(outage);
+            persistWrite(request, actor, "OUTAGE", outageId, "SERVER_STATUS_OUTAGE_UPDATED", reason, null, null, fingerprint(body), result, 200);
+            return result;
         } catch (RuntimeException exception) {
             outages.put(outageId, backup);
             throw exception;
         }
     }
 
-    Map<String, Object> acknowledgeOutage(AuthUser actor, String outageId, Map<String, Object> body) {
+    Map<String, Object> acknowledgeOutage(HttpServletRequest request, AuthUser actor, String outageId, Map<String, Object> body) {
         OutageRecord outage = requireOutage(outageId);
         OutageRecord backup = copy(outage);
         try {
@@ -804,14 +1085,16 @@ class ServerStatusStore {
                 outage.updatedAt = now();
                 writeAudit(actor, "OUTAGE", outageId, "SERVER_STATUS_OUTAGE_ACKNOWLEDGED", reason);
             }
-            return adminOutageView(outage);
+            Map<String, Object> result = adminOutageView(outage);
+            persistWrite(request, actor, "OUTAGE", outageId, "SERVER_STATUS_OUTAGE_ACKNOWLEDGED", reason, null, null, fingerprint(body), result, 200);
+            return result;
         } catch (RuntimeException exception) {
             outages.put(outageId, backup);
             throw exception;
         }
     }
 
-    Map<String, Object> resolveOutage(AuthUser actor, String outageId, Map<String, Object> body) {
+    Map<String, Object> resolveOutage(HttpServletRequest request, AuthUser actor, String outageId, Map<String, Object> body) {
         OutageRecord outage = requireOutage(outageId);
         OutageRecord backup = copy(outage);
         try {
@@ -827,14 +1110,16 @@ class ServerStatusStore {
                 outage.updatedAt = now();
                 writeAudit(actor, "OUTAGE", outageId, "SERVER_STATUS_OUTAGE_RESOLVED", reason);
             }
-            return adminOutageView(outage);
+            Map<String, Object> result = adminOutageView(outage);
+            persistWrite(request, actor, "OUTAGE", outageId, "SERVER_STATUS_OUTAGE_RESOLVED", reason, null, null, fingerprint(body), result, 200);
+            return result;
         } catch (RuntimeException exception) {
             outages.put(outageId, backup);
             throw exception;
         }
     }
 
-    Map<String, Object> archiveOutage(AuthUser actor, String outageId, Map<String, Object> body) {
+    Map<String, Object> archiveOutage(HttpServletRequest request, AuthUser actor, String outageId, Map<String, Object> body) {
         OutageRecord outage = requireOutage(outageId);
         OutageRecord backup = copy(outage);
         try {
@@ -847,7 +1132,9 @@ class ServerStatusStore {
                 outage.updatedAt = now();
                 writeAudit(actor, "OUTAGE", outageId, "SERVER_STATUS_OUTAGE_ARCHIVED", reason);
             }
-            return adminOutageView(outage);
+            Map<String, Object> result = adminOutageView(outage);
+            persistWrite(request, actor, "OUTAGE", outageId, "SERVER_STATUS_OUTAGE_ARCHIVED", reason, null, null, fingerprint(body), result, 200);
+            return result;
         } catch (RuntimeException exception) {
             outages.put(outageId, backup);
             throw exception;
@@ -872,10 +1159,11 @@ class ServerStatusStore {
     }
 
     Map<String, Object> opsSummary() {
-        return mapOf("service", "server-status", "storageMode", "IN_MEMORY", "collectorMode", "TEST_STUB", "authMode", "TEST_STUB",
+        return mapOf("service", "server-status", "storageMode", persistence instanceof ServerStatusPostgresPersistence ? "POSTGRESQL_WITH_IN_MEMORY_RESPONSE_MODEL" : "IN_MEMORY", "collectorMode", "TEST_STUB", "authMode", "TEST_STUB",
                 "sourcesTotal", sources.size(), "instancesTotal", sources.size(), "linesTotal", lines.size(), "snapshotsTotal", snapshots.size(),
                 "outagesTotal", outages.size(), "auditsTotal", audits.size(), "lastSnapshotAt", string(latestSnapshotTime()),
-                "lastAuditAt", audits.isEmpty() ? null : string(audits.getLast().createdAt), "warnings", List.of("P0_IN_MEMORY_STORAGE", "P0_TEST_COLLECTOR"));
+                "lastAuditAt", audits.isEmpty() ? null : string(audits.getLast().createdAt), "warnings", List.of("P0_IN_MEMORY_STORAGE", "P0_TEST_COLLECTOR"),
+                "postgresTablesReady", persistence instanceof ServerStatusPostgresPersistence, "persistenceGaps", List.of());
     }
 
     private StatusSourceRecord copy(StatusSourceRecord source) {
@@ -1039,6 +1327,15 @@ class ServerStatusStore {
             throw error(51501, HttpStatus.INTERNAL_SERVER_ERROR, "audit write failed");
         }
         audits.add(new AuditRecord("audit-" + (++sequence), RequestIdFilter.currentRequestId(), actor.userId, actor.roles.iterator().next(), targetType, targetId, action, reason, "SUCCESS", now()));
+    }
+
+    private void persistSnapshot() {
+        persistence.persistSnapshot(new ArrayList<>(sources.values()), new ArrayList<>(lines.values()), new ArrayList<>(snapshots.values()), new ArrayList<>(outages.values()), new ArrayList<>(refreshRecords));
+    }
+
+    private void persistWrite(HttpServletRequest request, AuthUser actor, String targetType, String targetId, String action, Object reason, String idempotencyScope, String idempotencyKey, String fingerprint, Map<String, Object> payload, int responseCode) {
+        persistence.persistWrite(request, actor, targetType, targetId, action, reason, idempotencyScope, idempotencyKey, fingerprint, payload, responseCode,
+                new ArrayList<>(sources.values()), new ArrayList<>(lines.values()), new ArrayList<>(snapshots.values()), new ArrayList<>(outages.values()), new ArrayList<>(refreshRecords));
     }
 
     private StatusSourceRecord requireSource(String sourceId) {
@@ -1284,6 +1581,10 @@ class ServerStatusStore {
 
     private String slug(String text) {
         return text.toLowerCase().replaceAll("[^a-z0-9]+", "-").replaceAll("(^-|-$)", "");
+    }
+
+    private String fingerprint(Map<String, Object> body) {
+        return IdempotencyRecord.canonical(body);
     }
 
     private ServerStatusException error(int code, HttpStatus status, String message) {
@@ -1543,7 +1844,7 @@ class IdempotencyRecord {
         return new LinkedHashMap<>(result);
     }
 
-    private static String canonical(Object value) {
+    static String canonical(Object value) {
         if (value instanceof Map<?, ?> map) {
             return map.entrySet().stream()
                     .sorted(Comparator.comparing(entry -> String.valueOf(entry.getKey())))
@@ -1729,6 +2030,32 @@ class OutageRecord {
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
         this.deletedAt = deletedAt;
+    }
+}
+
+class RefreshRecord {
+    final String refreshId;
+    final String sourceId;
+    final String snapshotId;
+    final String status;
+    final String idempotencyKey;
+    final String reason;
+    final String requestedBy;
+    final Instant startedAt;
+    final Instant completedAt;
+    final String failureReason;
+
+    RefreshRecord(String refreshId, String sourceId, String snapshotId, String status, String idempotencyKey, String reason, String requestedBy, Instant startedAt, Instant completedAt, String failureReason) {
+        this.refreshId = refreshId;
+        this.sourceId = sourceId;
+        this.snapshotId = snapshotId;
+        this.status = status;
+        this.idempotencyKey = idempotencyKey;
+        this.reason = reason;
+        this.requestedBy = requestedBy;
+        this.startedAt = startedAt;
+        this.completedAt = completedAt;
+        this.failureReason = failureReason;
     }
 }
 
