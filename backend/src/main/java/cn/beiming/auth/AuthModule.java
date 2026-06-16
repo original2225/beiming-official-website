@@ -39,6 +39,8 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -522,12 +524,12 @@ class AuthPostgresPersistence implements AuthPersistence {
     public void seedUser(UserAccount user) {
         jdbc.update("""
                 INSERT INTO auth_users(id, user_id, username, username_normalized, display_name, display_name_normalized, password_hash, roles, permissions, status, created_at, updated_at, last_login_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, CAST(? AS jsonb), CAST(? AS jsonb), ?, ?, ?, ?)
                 ON CONFLICT (user_id) DO NOTHING
                 """,
                 UUID.randomUUID(), user.id, user.username, normalize(user.username), user.displayName, normalize(user.displayName),
                 user.passwordHash, json(new ArrayList<>(user.roles)), json(new ArrayList<>(user.permissions)), user.status,
-                user.createdAt, user.updatedAt, user.lastLoginAt);
+                timestamp(user.createdAt), timestamp(user.updatedAt), timestamp(user.lastLoginAt));
     }
 
     @Override
@@ -535,12 +537,12 @@ class AuthPostgresPersistence implements AuthPersistence {
     public void seedInvitation(String rawCode, InvitationRecord invitation) {
         jdbc.update("""
                 INSERT INTO auth_invitations(id, invitation_id, code_prefix, code_hash, type, bound_roles, bound_permissions, max_uses, used_count, expires_at, created_by, created_at, disabled_at)
-                VALUES (?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, CAST(? AS jsonb), CAST(? AS jsonb), ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (invitation_id) DO NOTHING
                 """,
                 UUID.randomUUID(), invitation.id, invitation.codePrefix, invitation.codeHash, invitation.type,
                 json(new ArrayList<>(invitation.boundRoles)), json(new ArrayList<>(invitation.boundPermissions)),
-                invitation.maxUses, invitation.usedCount, invitation.expiresAt, invitation.createdBy, invitation.createdAt, invitation.disabledAt);
+                invitation.maxUses, invitation.usedCount, timestamp(invitation.expiresAt), invitation.createdBy, timestamp(invitation.createdAt), timestamp(invitation.disabledAt));
     }
 
     @Override
@@ -551,7 +553,7 @@ class AuthPostgresPersistence implements AuthPersistence {
                 VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT (user_id) DO UPDATE SET minecraft_id = EXCLUDED.minecraft_id, minecraft_uuid = EXCLUDED.minecraft_uuid, verified_at = EXCLUDED.verified_at, source = EXCLUDED.source
                 """,
-                UUID.randomUUID(), userId, binding.minecraftId, binding.minecraftUuid, binding.verifiedAt, binding.source);
+                UUID.randomUUID(), userId, binding.minecraftId, binding.minecraftUuid, timestamp(binding.verifiedAt), binding.source);
     }
 
     @Override
@@ -569,7 +571,7 @@ class AuthPostgresPersistence implements AuthPersistence {
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (usage_id) DO NOTHING
                 """,
-                UUID.randomUUID(), "use_" + RequestIdFilter.currentRequestId(), invitation.id, user.id, user.username, sourceIp(request), requestId(request), Instant.now());
+                UUID.randomUUID(), "use_" + RequestIdFilter.currentRequestId(), invitation.id, user.id, user.username, sourceIp(request), requestId(request), timestamp(Instant.now()));
         insertSession(session);
         insertAudit(request, null, "ANONYMOUS", List.of(), user.id, "AUTH_USER", "AUTH_REGISTER_SUCCESS", null, null, null, "SUCCESS", null);
         if (idempotencyKey != null) {
@@ -593,7 +595,7 @@ class AuthPostgresPersistence implements AuthPersistence {
     @Override
     @Transactional
     public void persistLogout(HttpServletRequest request, UserAccount user, SessionRecord session, int responseCode) {
-        jdbc.update("UPDATE auth_sessions SET revoked = true, revoked_at = now(), last_seen_at = ? WHERE token_hash = ?", Instant.now(), digest(session.token));
+        jdbc.update("UPDATE auth_sessions SET revoked = true, revoked_at = now(), last_seen_at = ? WHERE token_hash = ?", timestamp(Instant.now()), digest(session.token));
         insertAudit(request, user.id, String.join(",", user.roles), new ArrayList<>(user.permissions), user.id, "AUTH_SESSION", "AUTH_LOGOUT_SUCCESS", null, null, null, "SUCCESS", null);
         insertRequestLog(request, user.id, responseCode, "SUCCESS", null);
     }
@@ -607,23 +609,23 @@ class AuthPostgresPersistence implements AuthPersistence {
     private void upsertUser(UserAccount user) {
         jdbc.update("""
                 INSERT INTO auth_users(id, user_id, username, username_normalized, display_name, display_name_normalized, password_hash, roles, permissions, status, created_at, updated_at, last_login_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, CAST(? AS jsonb), CAST(? AS jsonb), ?, ?, ?, ?)
                 ON CONFLICT (user_id) DO UPDATE SET display_name = EXCLUDED.display_name, display_name_normalized = EXCLUDED.display_name_normalized, password_hash = EXCLUDED.password_hash, roles = EXCLUDED.roles, permissions = EXCLUDED.permissions, status = EXCLUDED.status, updated_at = EXCLUDED.updated_at, last_login_at = EXCLUDED.last_login_at
                 """,
                 UUID.randomUUID(), user.id, user.username, normalize(user.username), user.displayName, normalize(user.displayName),
                 user.passwordHash, json(new ArrayList<>(user.roles)), json(new ArrayList<>(user.permissions)), user.status,
-                user.createdAt, user.updatedAt, user.lastLoginAt);
+                timestamp(user.createdAt), timestamp(user.updatedAt), timestamp(user.lastLoginAt));
     }
 
     private void upsertInvitation(InvitationRecord invitation) {
         jdbc.update("""
                 INSERT INTO auth_invitations(id, invitation_id, code_prefix, code_hash, type, bound_roles, bound_permissions, max_uses, used_count, expires_at, created_by, created_at, disabled_at)
-                VALUES (?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, CAST(? AS jsonb), CAST(? AS jsonb), ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (invitation_id) DO UPDATE SET used_count = EXCLUDED.used_count, disabled_at = EXCLUDED.disabled_at
                 """,
                 UUID.randomUUID(), invitation.id, invitation.codePrefix, invitation.codeHash, invitation.type,
                 json(new ArrayList<>(invitation.boundRoles)), json(new ArrayList<>(invitation.boundPermissions)),
-                invitation.maxUses, invitation.usedCount, invitation.expiresAt, invitation.createdBy, invitation.createdAt, invitation.disabledAt);
+                invitation.maxUses, invitation.usedCount, timestamp(invitation.expiresAt), invitation.createdBy, timestamp(invitation.createdAt), timestamp(invitation.disabledAt));
     }
 
     private void insertSession(SessionRecord session) {
@@ -632,13 +634,13 @@ class AuthPostgresPersistence implements AuthPersistence {
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (session_id) DO UPDATE SET last_seen_at = EXCLUDED.last_seen_at, expires_at = EXCLUDED.expires_at, revoked = EXCLUDED.revoked, revoked_at = EXCLUDED.revoked_at
                 """,
-                UUID.randomUUID(), session.id, digest(session.token), session.userId, session.createdAt, session.lastSeenAt, session.expiresAt, session.revoked, session.revoked ? Instant.now() : null);
+                UUID.randomUUID(), session.id, digest(session.token), session.userId, timestamp(session.createdAt), timestamp(session.lastSeenAt), timestamp(session.expiresAt), session.revoked, session.revoked ? timestamp(Instant.now()) : null);
     }
 
     private void insertAudit(HttpServletRequest request, String actorUserId, String actorRole, List<String> permissions, String targetId, String targetType, String action, String reason, String beforeState, String afterState, String result, String failureReason) {
         jdbc.update("""
                 INSERT INTO app_audit_logs(id, request_id, actor_user_id, actor_role, actor_permissions, source_ip, target_type, target_id, action, risk_level, reason, params_summary, before_state, after_state, result, failure_reason, created_at)
-                VALUES (?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, 'LOW', ?, '{}'::jsonb, ?::jsonb, ?::jsonb, ?, ?, now())
+                VALUES (?, ?, ?, ?, CAST(? AS jsonb), ?, ?, ?, ?, 'LOW', ?, '{}'::jsonb, CAST(? AS jsonb), CAST(? AS jsonb), ?, ?, now())
                 """,
                 UUID.randomUUID(), requestId(request), actorUserId, actorRole == null ? "ANONYMOUS" : actorRole, json(permissions), sourceIp(request),
                 targetType, targetId == null ? "unknown" : targetId, action, reason, nullableJson(beforeState), nullableJson(afterState), result, failureReason);
@@ -647,7 +649,7 @@ class AuthPostgresPersistence implements AuthPersistence {
     private void insertIdempotency(String actorUserId, String scope, String idempotencyKey, String fingerprint, int responseCode, Map<String, Object> payload) {
         jdbc.update("""
                 INSERT INTO app_idempotency_records(id, actor_user_id, scope, idempotency_key, request_fingerprint, response_code, response_body, created_at, expires_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?::jsonb, now(), now() + interval '24 hours')
+                VALUES (?, ?, ?, ?, ?, ?, CAST(? AS jsonb), now(), now() + interval '24 hours')
                 ON CONFLICT (actor_user_id, scope, idempotency_key) DO NOTHING
                 """,
                 UUID.randomUUID(), actorUserId, scope, idempotencyKey, fingerprint, responseCode, json(AuthController.envelope(0, "success", payload)));
@@ -692,6 +694,10 @@ class AuthPostgresPersistence implements AuthPersistence {
             return null;
         }
         return json(Map.of("value", value));
+    }
+
+    private OffsetDateTime timestamp(Instant value) {
+        return value == null ? null : OffsetDateTime.ofInstant(value, ZoneOffset.UTC);
     }
 
     private String json(Object value) {

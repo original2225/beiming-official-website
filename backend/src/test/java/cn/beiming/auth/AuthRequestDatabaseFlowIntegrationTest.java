@@ -44,6 +44,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 class AuthRequestDatabaseFlowIntegrationTest {
     private static final String FLOW_ID = "auth-register-" + UUID.randomUUID();
 
+    static {
+        System.setProperty("api.version", System.getProperty("api.version", "1.40"));
+    }
+
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine")
             .withDatabaseName("beiming_auth_flow")
