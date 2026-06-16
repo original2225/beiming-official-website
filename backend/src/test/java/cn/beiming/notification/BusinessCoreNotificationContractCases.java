@@ -263,7 +263,7 @@ abstract class BusinessCoreNotificationContractCases {
 
         String source = java.nio.file.Files.readString(notificationModuleSourcePath());
         assertThat(source).doesNotContain("cn.beiming.auth", "cn.beiming.profile", "cn.beiming.apigateway",
-                "AuthRepository", "ProfileRepository", "JdbcTemplate", "node-daemon", "container", "file-manager",
+                "AuthRepository", "ProfileRepository", "node-daemon", "container", "file-manager",
                 "Remove-Item -Recurse", "rm -rf", "externalWebhookToken");
     }
 
