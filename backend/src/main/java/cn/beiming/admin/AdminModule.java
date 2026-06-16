@@ -4,12 +4,16 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -26,6 +30,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -43,10 +49,19 @@ import java.util.concurrent.ConcurrentHashMap;
 @Configuration
 class AdminModule {
     @Bean
-    AdminStore adminStore(@Value("${beiming.admin.test-mode:false}") boolean testMode) {
-        AdminStore store = new AdminStore(testMode);
+    AdminStore adminStore(@Value("${beiming.admin.test-mode:false}") boolean testMode, AdminPersistence adminPersistence) {
+        AdminStore store = new AdminStore(testMode, adminPersistence);
         store.seed();
         return store;
+    }
+
+    @Bean
+    AdminPersistence adminPersistence(ObjectProvider<JdbcTemplate> jdbcTemplate, ObjectMapper objectMapper) {
+        JdbcTemplate available = jdbcTemplate.getIfAvailable();
+        if (available == null) {
+            return new NoopAdminPersistence();
+        }
+        return new AdminPostgresPersistence(available, objectMapper);
     }
 
     @Bean
@@ -162,7 +177,7 @@ class AdminController {
 }
 
 class AdminStore {
-    private static final String NOW = "2026-05-22T12:00:00Z";
+    static final String NOW = "2026-05-22T12:00:00Z";
     private static final List<String> MODULE_KEYS = List.of(
             "AUTH", "PROFILE", "NOTIFICATION", "CONTENT", "SERVER_STATUS", "RESOURCE", "ADMIN",
             "ONBOARDING", "EXAM", "WHITELIST", "ATTENDANCE", "COMMUNITY", "ACTIVITY", "CALENDAR",
@@ -182,12 +197,20 @@ class AdminStore {
     private final Map<String, Setting> settings = new ConcurrentHashMap<>();
     private final Map<String, IdempotencyRecord> idempotency = new ConcurrentHashMap<>();
     private final boolean testMode;
+    private final AdminPersistence persistence;
 
-    AdminStore(boolean testMode) {
+    AdminStore(boolean testMode, AdminPersistence persistence) {
         this.testMode = testMode;
+        this.persistence = persistence;
     }
 
     void seed() {
+        moduleConfigs.clear();
+        todoSeeds.clear();
+        auditSeeds.clear();
+        layout.clear();
+        settings.clear();
+        idempotency.clear();
         int order = 10;
         for (String key : MODULE_KEYS) {
             moduleConfigs.put(key, new ModuleConfig(key, order, true));
@@ -202,6 +225,7 @@ class AdminStore {
         settings.put("navigation.showPlaceholders", new Setting("navigation.showPlaceholders", "NAVIGATION", "BOOLEAN", true, false, false, "Show not implemented module placeholders."));
         seedTodos();
         seedAudits();
+        persistence.persistSnapshot(snapshotSettings(), layoutSnapshot(new AuthUser("system", Set.of("OWNER"), Set.of("NODE_READ"), "SYSTEM")), moduleIndexSnapshot(), todoSeeds, metricSnapshot(), auditSeeds);
     }
 
     Map<String, Object> overview(AuthUser actor, Map<String, String> query, HttpServletRequest request) {
@@ -415,6 +439,12 @@ class AdminStore {
         }
         String fingerprint = canonical(body);
         String idemKey = actor.userId() + ":" + key;
+        Map<String, Object> persistedReplay = persistence.replay(actor.userId(), "admin.settings.patch", key, fingerprint);
+        if (persistedReplay != null) {
+            Map<String, Object> replay = new LinkedHashMap<>(persistedReplay);
+            replay.put("idempotency", Map.of("replayed", true));
+            return replay;
+        }
         IdempotencyRecord existing = idempotency.get(idemKey);
         if (existing != null) {
             if (!existing.fingerprint().equals(fingerprint)) {
@@ -437,6 +467,7 @@ class AdminStore {
         applySettings(body, actor);
         auditSeeds.add(0, audit("audit-admin-" + UUID.randomUUID(), "ADMIN", "ADMIN_SETTINGS_UPDATED", actor.userId(), "ADMIN_SETTING", "settings", "MEDIUM", "SUCCESS"));
         Map<String, Object> response = settingsSnapshot(actor, null, actor.hasRole("OWNER"), Map.of("replayed", false));
+        persistence.persistSettingsWrite(request, actor, body, response, key, fingerprint, 200, snapshotSettings(), layoutSnapshot(actor), moduleIndexSnapshot(), todoSeeds, metricSnapshot(), auditSeeds);
         idempotency.put(idemKey, new IdempotencyRecord(fingerprint, response));
         return response;
     }
@@ -447,7 +478,7 @@ class AdminStore {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("service", "admin");
         data.put("port", 8107);
-        data.put("storageMode", "IN_MEMORY");
+        data.put("storageMode", persistence.storageMode());
         data.put("authMode", actor.authMode());
         data.put("moduleAdapterMode", "TEST_STUB");
         data.put("testMode", testMode);
@@ -464,7 +495,29 @@ class AdminStore {
         data.put("productionGaps", List.of("persistent storage not enabled", "real auth adapter not enabled", "real module HTTP adapters not enabled", "real audit index sync not enabled", "scheduled aggregation not enabled", "EXTERNAL_EXECUTOR_NOT_CONNECTED"));
         data.put("moduleHealth", health);
         data.put("platformDependencies", platformDependencies(request));
+        data.put("postgresTablesReady", persistence.postgresTablesReady());
+        data.put("postgresCounts", persistence.postgresCounts());
         return data;
+    }
+
+    private List<Map<String, Object>> snapshotSettings() {
+        return settings.values().stream()
+                .sorted(Comparator.comparing(setting -> setting.key))
+                .map(Setting::toMap)
+                .toList();
+    }
+
+    private List<Map<String, Object>> moduleIndexSnapshot() {
+        AuthUser owner = new AuthUser("system", Set.of("OWNER"), Set.of("NODE_READ"), "SYSTEM");
+        return moduleConfigs.keySet().stream()
+                .sorted()
+                .map(key -> moduleEntry(owner, key, currentRequest()))
+                .toList();
+    }
+
+    private List<Map<String, Object>> metricSnapshot() {
+        AuthUser owner = new AuthUser("system", Set.of("OWNER"), Set.of("NODE_READ"), "SYSTEM");
+        return metrics(owner, Map.of(), currentRequest());
     }
 
     private Map<String, Object> moduleEntry(AuthUser actor, String moduleKey, HttpServletRequest request) {
@@ -1392,6 +1445,354 @@ class Setting {
 }
 
 record IdempotencyRecord(String fingerprint, Map<String, Object> response) {
+}
+
+interface AdminPersistence {
+    Map<String, Object> replay(String actorUserId, String scope, String idempotencyKey, String fingerprint);
+
+    void persistSnapshot(List<Map<String, Object>> settings,
+                         Map<String, Object> layout,
+                         List<Map<String, Object>> modules,
+                         List<Map<String, Object>> todos,
+                         List<Map<String, Object>> metrics,
+                         List<Map<String, Object>> audits);
+
+    void persistSettingsWrite(HttpServletRequest request,
+                              AuthUser actor,
+                              Map<String, Object> requestBody,
+                              Map<String, Object> payload,
+                              String idempotencyKey,
+                              String fingerprint,
+                              int responseCode,
+                              List<Map<String, Object>> settings,
+                              Map<String, Object> layout,
+                              List<Map<String, Object>> modules,
+                              List<Map<String, Object>> todos,
+                              List<Map<String, Object>> metrics,
+                              List<Map<String, Object>> audits);
+
+    String storageMode();
+
+    Map<String, Object> postgresTablesReady();
+
+    Map<String, Object> postgresCounts();
+}
+
+class NoopAdminPersistence implements AdminPersistence {
+    @Override
+    public Map<String, Object> replay(String actorUserId, String scope, String idempotencyKey, String fingerprint) {
+        return null;
+    }
+
+    @Override
+    public void persistSnapshot(List<Map<String, Object>> settings, Map<String, Object> layout, List<Map<String, Object>> modules, List<Map<String, Object>> todos, List<Map<String, Object>> metrics, List<Map<String, Object>> audits) {
+    }
+
+    @Override
+    public void persistSettingsWrite(HttpServletRequest request, AuthUser actor, Map<String, Object> requestBody, Map<String, Object> payload, String idempotencyKey, String fingerprint, int responseCode, List<Map<String, Object>> settings, Map<String, Object> layout, List<Map<String, Object>> modules, List<Map<String, Object>> todos, List<Map<String, Object>> metrics, List<Map<String, Object>> audits) {
+    }
+
+    @Override
+    public String storageMode() {
+        return "IN_MEMORY";
+    }
+
+    @Override
+    public Map<String, Object> postgresTablesReady() {
+        return Map.of();
+    }
+
+    @Override
+    public Map<String, Object> postgresCounts() {
+        return Map.of();
+    }
+}
+
+class AdminPostgresPersistence implements AdminPersistence {
+    private static final List<String> TABLES = List.of(
+            "admin_settings", "admin_layouts", "admin_module_indexes", "admin_todo_indexes",
+            "admin_metric_snapshots", "admin_audit_indexes", "admin_setting_change_records",
+            "app_audit_logs", "app_idempotency_records", "app_request_logs");
+    private final JdbcTemplate jdbc;
+    private final ObjectMapper objectMapper;
+
+    AdminPostgresPersistence(JdbcTemplate jdbc, ObjectMapper objectMapper) {
+        this.jdbc = jdbc;
+        this.objectMapper = objectMapper;
+    }
+
+    @Override
+    public Map<String, Object> replay(String actorUserId, String scope, String idempotencyKey, String fingerprint) {
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                SELECT request_fingerprint, response_body::text
+                FROM app_idempotency_records
+                WHERE actor_user_id = ? AND scope = ? AND idempotency_key = ?
+                """, actorUserId, scope, idempotencyKey);
+        if (rows.isEmpty()) {
+            return null;
+        }
+        Map<String, Object> row = rows.getFirst();
+        if (!Objects.equals(String.valueOf(row.get("request_fingerprint")), fingerprint)) {
+            throw new AdminException(409, 43712, "idempotency conflict");
+        }
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> envelope = objectMapper.readValue(String.valueOf(row.get("response_body")), Map.class);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> data = (Map<String, Object>) envelope.get("data");
+            return data;
+        } catch (Exception exception) {
+            throw new IllegalStateException("failed to parse admin idempotency response", exception);
+        }
+    }
+
+    @Override
+    @Transactional
+    public void persistSnapshot(List<Map<String, Object>> settings, Map<String, Object> layout, List<Map<String, Object>> modules, List<Map<String, Object>> todos, List<Map<String, Object>> metrics, List<Map<String, Object>> audits) {
+        replaceSnapshot(settings, layout, modules, todos, metrics, audits);
+    }
+
+    @Override
+    @Transactional
+    public void persistSettingsWrite(HttpServletRequest request, AuthUser actor, Map<String, Object> requestBody, Map<String, Object> payload, String idempotencyKey, String fingerprint, int responseCode, List<Map<String, Object>> settings, Map<String, Object> layout, List<Map<String, Object>> modules, List<Map<String, Object>> todos, List<Map<String, Object>> metrics, List<Map<String, Object>> audits) {
+        replaceSnapshot(settings, layout, modules, todos, metrics, audits);
+        insertSettingChange(request, actor, requestBody, idempotencyKey);
+        insertAudit(request, actor, requestBody);
+        insertIdempotency(actor.userId(), "admin.settings.patch", idempotencyKey, fingerprint, responseCode, payload);
+        insertRequestLog(request, actor.userId(), responseCode);
+    }
+
+    @Override
+    public String storageMode() {
+        return "POSTGRESQL_WITH_IN_MEMORY_RESPONSE_MODEL";
+    }
+
+    @Override
+    public Map<String, Object> postgresTablesReady() {
+        Map<String, Object> ready = new LinkedHashMap<>();
+        for (String table : TABLES) {
+            ready.put(table, tableExists(table));
+        }
+        return ready;
+    }
+
+    @Override
+    public Map<String, Object> postgresCounts() {
+        Map<String, Object> counts = new LinkedHashMap<>();
+        counts.put("settingsTotal", count("admin_settings"));
+        counts.put("layoutsTotal", count("admin_layouts"));
+        counts.put("moduleIndexesTotal", count("admin_module_indexes"));
+        counts.put("todoIndexesTotal", count("admin_todo_indexes"));
+        counts.put("metricSnapshotsTotal", count("admin_metric_snapshots"));
+        counts.put("auditIndexesTotal", count("admin_audit_indexes"));
+        counts.put("settingChangeRecordsTotal", count("admin_setting_change_records"));
+        counts.put("auditsTotal", countWhere("app_audit_logs", "action = 'ADMIN_SETTINGS_UPDATED'"));
+        counts.put("idempotencyRecordsTotal", countWhere("app_idempotency_records", "scope = 'admin.settings.patch'"));
+        counts.put("requestLogsTotal", countWhere("app_request_logs", "path LIKE '/api/v1/admin%'"));
+        return counts;
+    }
+
+    private void replaceSnapshot(List<Map<String, Object>> settings, Map<String, Object> layout, List<Map<String, Object>> modules, List<Map<String, Object>> todos, List<Map<String, Object>> metrics, List<Map<String, Object>> audits) {
+        jdbc.update("DELETE FROM admin_metric_snapshots");
+        jdbc.update("DELETE FROM admin_todo_indexes");
+        jdbc.update("DELETE FROM admin_module_indexes");
+        jdbc.update("DELETE FROM admin_layouts");
+        jdbc.update("DELETE FROM admin_settings");
+        jdbc.update("DELETE FROM admin_audit_indexes");
+        for (Map<String, Object> setting : settings) insertSetting(setting);
+        insertLayout(layout);
+        for (Map<String, Object> module : modules) insertModule(module);
+        for (Map<String, Object> todo : todos) insertTodo(todo);
+        for (Map<String, Object> metric : metrics) insertMetric(metric);
+        for (Map<String, Object> audit : audits) insertAuditIndex(audit);
+    }
+
+    private void insertSetting(Map<String, Object> setting) {
+        jdbc.update("""
+                INSERT INTO admin_settings(id, setting_key, scope, value_type, setting_value, sensitive, high_impact, description, updated_by, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, UUID.randomUUID(), text(setting, "key"), text(setting, "scope"), text(setting, "valueType"), Objects.toString(setting.get("value"), ""),
+                bool(setting.get("sensitive")), bool(setting.get("highImpact")), text(setting, "description"), textOrDefault(setting, "updatedBy", "system"),
+                timestamp(AdminStore.NOW), timestamp(text(setting, "updatedAt")));
+    }
+
+    private void insertLayout(Map<String, Object> layout) {
+        jdbc.update("""
+                INSERT INTO admin_layouts(id, layout_key, dashboard_cards, navigation_module_order, hidden_modules, quick_actions, updated_by, created_at, updated_at)
+                VALUES (?, 'default', CAST(? AS jsonb), CAST(? AS jsonb), CAST(? AS jsonb), CAST(? AS jsonb), 'system', ?, ?)
+                """, UUID.randomUUID(), json(layout.get("dashboardCards")), json(layout.get("navigationModuleOrder")),
+                json(layout.get("hiddenModules")), json(layout.get("quickActions")), timestamp(AdminStore.NOW), timestamp(AdminStore.NOW));
+    }
+
+    private void insertModule(Map<String, Object> module) {
+        jdbc.update("""
+                INSERT INTO admin_module_indexes(id, module_key, status, implemented, enabled, sort_order, badge_count, target_api_base, frontend_route, health_summary, indexed_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS jsonb), ?, ?)
+                """, UUID.randomUUID(), text(module, "moduleKey"), text(module, "status"), bool(module.get("implemented")), bool(module.get("enabled")),
+                intValue(module.get("sortOrder")), intValue(module.get("badgeCount")), text(module, "targetApiBase"), text(module, "frontendRoute"),
+                json(module.get("health")), timestamp(AdminStore.NOW), timestamp(text(module, "updatedAt")));
+    }
+
+    private void insertTodo(Map<String, Object> todo) {
+        jdbc.update("""
+                INSERT INTO admin_todo_indexes(id, todo_id, source_module, source_type, source_id, type, severity, status, title, summary, target_route, target_api, read_only, indexed_at, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, UUID.randomUUID(), text(todo, "todoId"), text(todo, "sourceModule"), text(todo, "sourceType"), text(todo, "sourceId"), text(todo, "type"),
+                text(todo, "severity"), text(todo, "status"), text(todo, "title"), text(todo, "summary"), text(todo, "targetRoute"), text(todo, "targetApi"),
+                bool(todo.get("readOnly")), timestamp(text(todo, "indexedAt")), timestamp(text(todo, "createdAt")), timestamp(text(todo, "updatedAt")));
+    }
+
+    private void insertMetric(Map<String, Object> metric) {
+        jdbc.update("""
+                INSERT INTO admin_metric_snapshots(id, metric_key, label, source_module, metric_value, unit, trend, target_route, degraded, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, CAST(? AS jsonb), ?, ?, ?)
+                """, UUID.randomUUID(), text(metric, "metricKey"), text(metric, "label"), text(metric, "sourceModule"), number(metric.get("value")),
+                text(metric, "unit"), jsonOrNull(metric.get("trend")), text(metric, "targetRoute"), bool(metric.get("degraded")), timestamp(text(metric, "updatedAt")));
+    }
+
+    private void insertAuditIndex(Map<String, Object> audit) {
+        jdbc.update("""
+                INSERT INTO admin_audit_indexes(id, audit_index_id, source_module, source_audit_id, request_id, actor_user_id, actor_display_name, actor_role, target_type, target_id, action, risk_level, result, reason_summary, failure_reason, target_route, indexed_at, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (audit_index_id) DO NOTHING
+                """, UUID.randomUUID(), text(audit, "id"), text(audit, "sourceModule"), text(audit, "sourceAuditId"), text(audit, "requestId"),
+                text(audit, "actorUserId"), text(audit, "actorDisplayName"), text(audit, "actorRole"), text(audit, "targetType"), text(audit, "targetId"),
+                text(audit, "action"), text(audit, "riskLevel"), text(audit, "result"), text(audit, "reasonSummary"), text(audit, "failureReason"),
+                text(audit, "targetRoute"), timestamp(text(audit, "indexedAt")), timestamp(text(audit, "createdAt")));
+    }
+
+    private void insertSettingChange(HttpServletRequest request, AuthUser actor, Map<String, Object> requestBody, String idempotencyKey) {
+        jdbc.update("""
+                INSERT INTO admin_setting_change_records(id, change_id, idempotency_key, actor_user_id, request_id, reason, changed_settings, layout_patch, result, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, CAST(? AS jsonb), CAST(? AS jsonb), 'SUCCESS', now())
+                """, UUID.randomUUID(), "change-" + UUID.randomUUID(), idempotencyKey, actor.userId(), requestId(request),
+                Objects.toString(requestBody.get("reason"), ""), json(requestBody.getOrDefault("items", List.of())), json(requestBody.getOrDefault("layout", Map.of())));
+    }
+
+    private void insertAudit(HttpServletRequest request, AuthUser actor, Map<String, Object> requestBody) {
+        jdbc.update("""
+                INSERT INTO app_audit_logs(id, request_id, actor_user_id, actor_role, actor_permissions, source_ip, target_type, target_id, action, risk_level, reason, params_summary, before_state, after_state, result, failure_reason, created_at)
+                VALUES (?, ?, ?, ?, CAST(? AS jsonb), ?, 'ADMIN_SETTING', 'settings', 'ADMIN_SETTINGS_UPDATED', 'MEDIUM', ?, CAST(? AS jsonb), CAST(? AS jsonb), CAST(? AS jsonb), 'SUCCESS', NULL, now())
+                """, UUID.randomUUID(), requestId(request), actor.userId(), actor.roles().iterator().next(), json(actor.permissions()), sourceIp(request),
+                Objects.toString(requestBody.get("reason"), ""), json(maskedSummary(requestBody)), json(Map.of("status", "UNKNOWN")), json(Map.of("status", "UPDATED")));
+        Map<String, Object> audit = new LinkedHashMap<>();
+        audit.put("id", "audit-admin-" + UUID.randomUUID());
+        audit.put("sourceModule", "ADMIN");
+        audit.put("sourceAuditId", "source-audit-admin-" + UUID.randomUUID());
+        audit.put("requestId", requestId(request));
+        audit.put("actorUserId", actor.userId());
+        audit.put("actorDisplayName", actor.userId());
+        audit.put("actorRole", actor.roles().iterator().next());
+        audit.put("targetType", "ADMIN_SETTING");
+        audit.put("targetId", "settings");
+        audit.put("action", "ADMIN_SETTINGS_UPDATED");
+        audit.put("riskLevel", "MEDIUM");
+        audit.put("result", "SUCCESS");
+        audit.put("reasonSummary", "sanitized reason");
+        audit.put("failureReason", null);
+        audit.put("targetRoute", "/admin");
+        audit.put("indexedAt", AdminStore.NOW);
+        audit.put("createdAt", AdminStore.NOW);
+        insertAuditIndex(audit);
+    }
+
+    private void insertIdempotency(String actorUserId, String scope, String idempotencyKey, String fingerprint, int responseCode, Map<String, Object> payload) {
+        jdbc.update("""
+                INSERT INTO app_idempotency_records(id, actor_user_id, scope, idempotency_key, request_fingerprint, response_code, response_body, created_at, expires_at)
+                VALUES (?, ?, ?, ?, ?, ?, CAST(? AS jsonb), now(), now() + interval '24 hours')
+                ON CONFLICT (actor_user_id, scope, idempotency_key) DO NOTHING
+                """, UUID.randomUUID(), actorUserId, scope, idempotencyKey, fingerprint, responseCode, json(AdminResponses.ok(payload)));
+    }
+
+    private void insertRequestLog(HttpServletRequest request, String actorUserId, int responseCode) {
+        jdbc.update("""
+                INSERT INTO app_request_logs(id, request_id, method, path, actor_user_id, source_ip, response_code, result, failure_reason, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'SUCCESS', NULL, now())
+                ON CONFLICT (request_id) DO NOTHING
+                """, UUID.randomUUID(), requestId(request), request.getMethod(), request.getRequestURI(), actorUserId, sourceIp(request), responseCode);
+    }
+
+    private Map<String, Object> maskedSummary(Map<String, Object> requestBody) {
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("itemsCount", requestBody.get("items") instanceof List<?> items ? items.size() : 0);
+        summary.put("layoutChanged", requestBody.containsKey("layout"));
+        summary.put("idempotencyKey", "***");
+        return summary;
+    }
+
+    private boolean tableExists(String table) {
+        Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name = ?", Integer.class, table);
+        return count != null && count == 1;
+    }
+
+    private long count(String table) {
+        return jdbc.queryForObject("SELECT COUNT(*) FROM " + table, Long.class);
+    }
+
+    private long countWhere(String table, String where) {
+        return jdbc.queryForObject("SELECT COUNT(*) FROM " + table + " WHERE " + where, Long.class);
+    }
+
+    private String requestId(HttpServletRequest request) {
+        Object value = request.getAttribute("requestId");
+        if (value != null) {
+            return value.toString();
+        }
+        String header = request.getHeader("X-Request-Id");
+        return header == null || header.isBlank() ? "req-" + UUID.randomUUID() : header;
+    }
+
+    private String sourceIp(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            return forwarded.split(",")[0].trim();
+        }
+        return request.getRemoteAddr();
+    }
+
+    private OffsetDateTime timestamp(String value) {
+        if (value == null || value.isBlank() || "null".equals(value)) {
+            return null;
+        }
+        return OffsetDateTime.ofInstant(Instant.parse(value), ZoneOffset.UTC);
+    }
+
+    private Number number(Object value) {
+        return value instanceof Number number ? number : 0;
+    }
+
+    private int intValue(Object value) {
+        return value instanceof Number number ? number.intValue() : 0;
+    }
+
+    private boolean bool(Object value) {
+        return value instanceof Boolean bool ? bool : false;
+    }
+
+    private String text(Map<String, Object> source, String key) {
+        Object value = source.get(key);
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private String textOrDefault(Map<String, Object> source, String key, String defaultValue) {
+        String value = text(source, key);
+        return value == null || value.isBlank() || "null".equals(value) ? defaultValue : value;
+    }
+
+    private String json(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value == null ? Map.of() : value);
+        } catch (Exception exception) {
+            throw new IllegalStateException("failed to serialize admin json", exception);
+        }
+    }
+
+    private String jsonOrNull(Object value) {
+        if (value == null) {
+            return null;
+        }
+        return json(value);
+    }
 }
 
 interface AdminFlowEvidenceRecorder {
