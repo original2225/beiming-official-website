@@ -112,6 +112,33 @@ PostgreSQL 是正式持久化数据库。所有涉及新增、更新、状态流
 
 `guide` 负责指南、规则、指令和外部交流入口。`material` 负责素材投稿、展示、精选、审核和授权。`online-map` 负责在线地图 provider、世界、图层、marker、区域、嵌入配置和健康快照。
 
+
+## profile 模块接口
+
+`profile` 由 `business-core` 承载，路径前缀为 `/api/v1/profile`，负责成员公开档案、成员组、成员状态、Minecraft 身份快照、成员里程碑和作品快照。公开读取接口不要求登录；当前用户接口要求 `Authorization: Bearer <token>` 或可信网关身份头；后台读取接口要求 `HELPER`、`ADMIN` 或 `OWNER`；后台写接口要求 `ADMIN` 或 `OWNER`；审计读取接口要求 `ADMIN` 或 `OWNER`。`profile` 只能使用认证上下文、可信网关头和 auth 用户快照字段，不得直接读取 auth 数据库表。
+
+成员状态包括 `PENDING_ACTIVATION`、`ACTIVE`、`INACTIVE`、`SUSPENDED`、`REMOVED` 和 `ARCHIVED`。公开列表和公开详情只展示 `visibility=PUBLIC` 且状态为 `ACTIVE`、`INACTIVE` 或 `SUSPENDED` 的成员。可见性包括 `PUBLIC` 和 `PRIVATE`。状态流转规则为：`PENDING_ACTIVATION` 可转 `ACTIVE`、`REMOVED`、`ARCHIVED`；`ACTIVE` 可转 `INACTIVE`、`SUSPENDED`、`REMOVED`、`ARCHIVED`；`INACTIVE` 可转 `ACTIVE`、`SUSPENDED`、`REMOVED`、`ARCHIVED`；`SUSPENDED` 可转 `ACTIVE`、`INACTIVE`、`REMOVED`、`ARCHIVED`；`REMOVED` 只能转 `ARCHIVED`；`ARCHIVED` 为终态。
+
+公开成员接口包括 `GET /members` 和 `GET /members/{memberId}`。`GET /members` 支持 `page`、`pageSize`、`keyword`、`groupId`、`status` 和 `sort`，`sort` 可为 `joinedAt_desc`、`joinedAt_asc`、`updatedAt_desc` 和 `displayName_asc`，响应字段包括 `memberId`、`displayName`、`avatarUrl`、`minecraftId`、`minecraftUuid`、`skinUrl`、`group`、`status`、`joinedAt`、`bio` 摘要、`featuredWorkCount`、`milestoneCount` 和 `updatedAt`。`GET /members/{memberId}` 额外返回完整 `bio`、公开 `milestones`、公开 `workSnapshots`、`activitySummary`、`contributionSummary` 和 `createdAt`。成员不存在返回 `404/43200`，非公开档案返回 `409/43213`。
+
+当前用户接口包括 `GET /me` 和 `PATCH /me`。`GET /me` 返回当前登录用户的成员档案，不返回 `adminNote`。`PATCH /me` 允许修改 `avatarUrl`、`skinUrl`、`bio` 和 `visibility`，必须带 `reason`，成功返回更新后的当前用户档案；禁止修改 `status`、`groupId`、`joinedAt`、`adminNote`、`userId`、`minecraftId`、`minecraftUuid` 和 `displayNameSnapshot`。已移除或已归档成员自助修改返回 `409/43212`。成功写入必须记录 `PROFILE_SELF_UPDATED` 审计。
+
+后台成员接口包括 `GET /admin/members`、`GET /admin/members/{memberId}`、`POST /admin/members/activate`、`PATCH /admin/members/{memberId}`、`PATCH /admin/members/{memberId}/status`、`PUT /admin/members/{memberId}/milestones`、`PUT /admin/members/{memberId}/work-snapshots` 和 `GET /admin/members/{memberId}/audit-logs`。后台成员列表支持 `page`、`pageSize`、`keyword`、`groupId`、`status`、`visibility` 和 `sort`，`sort` 可为 `createdAt_desc`、`updatedAt_desc`、`joinedAt_desc` 和 `displayName_asc`。后台成员详情返回 `memberId`、`userId`、`displayNameSnapshot`、`authUserStatusSnapshot`、`authRolesSnapshot`、头像、Minecraft 快照、成员组、状态、可见性、加入时间、公开简介、`adminNote`、里程碑、作品快照和时间字段。
+
+`POST /admin/members/activate` 请求字段包括 `userId`、`groupId`、`avatarUrl`、`skinUrl`、`visibility`、`joinedAt`、`bio`、`reason` 和 `idempotencyKey`，成功返回 `201` 和后台成员详情，并记录 `PROFILE_MEMBER_ACTIVATED`。用户已有成员档案返回 `409/43210`，成员组不存在返回 `404/43201`，Minecraft 身份冲突返回 `409/43211`，auth 用户状态不允许激活返回 `409/43215`。`PATCH /admin/members/{memberId}` 允许修改 `displayNameSnapshot`、`avatarUrl`、`minecraftId`、`minecraftUuid`、`skinUrl`、`groupId`、`joinedAt`、`bio`、`visibility` 和 `adminNote`，必须带 `reason`，成功记录 `PROFILE_MEMBER_UPDATED`。`PATCH /admin/members/{memberId}/status` 请求字段为 `status` 和 `reason`，成功记录 `PROFILE_MEMBER_STATUS_CHANGED`。
+
+`PUT /admin/members/{memberId}/milestones` 请求字段为 `items` 和 `reason`，`items` 最多 50 条，字段包括 `id`、`type`、`title`、`description`、`happenedAt`、`publicVisible` 和 `sortOrder`，成功替换该成员全部里程碑并记录 `PROFILE_MEMBER_MILESTONES_REPLACED`。里程碑类型包括 `JOINED`、`PROJECT`、`EVENT`、`AWARD`、`MANAGEMENT` 和 `OTHER`。`PUT /admin/members/{memberId}/work-snapshots` 请求字段为 `items` 和 `reason`，`items` 最多 30 条，字段包括 `id`、`type`、`title`、`summary`、`coverUrl`、`sourceModule`、`sourceId`、`publicVisible` 和 `sortOrder`，成功替换该成员全部作品快照并记录 `PROFILE_MEMBER_WORKS_REPLACED`。作品类型包括 `BUILD`、`REDSTONE`、`FARM`、`ARTICLE`、`IMAGE`、`VIDEO` 和 `OTHER`。
+
+成员组接口包括 `GET /admin/groups`、`POST /admin/groups`、`PATCH /admin/groups/{groupId}` 和 `PATCH /admin/groups/{groupId}/archive`。`GET /admin/groups` 支持 `includeArchived`。成员组字段包括 `id`、`name`、`description`、`color`、`sortOrder`、`archived`、`createdAt`、`updatedAt` 和 `archivedAt`。`POST /admin/groups` 请求字段包括 `name`、`description`、`color`、`sortOrder`、`reason` 和 `idempotencyKey`，成功返回 `201` 并记录 `PROFILE_GROUP_CREATED`。`PATCH /admin/groups/{groupId}` 允许修改 `name`、`description`、`color` 和 `sortOrder`，必须带 `reason`，成功记录 `PROFILE_GROUP_UPDATED`。`PATCH /admin/groups/{groupId}/archive` 必须带 `reason`，成功记录 `PROFILE_GROUP_ARCHIVED`；仍被非归档成员使用的成员组不能归档，返回 `409/43214`。
+
+写接口幂等使用请求体内 `idempotencyKey`。同一操作者、同一作用域、同一幂等键和同一请求指纹必须返回原响应；同键不同指纹返回 `409/43002`。当前必须覆盖成员组创建的幂等重放和冲突；成员激活、成员修改、状态修改、成员组修改、成员组归档、里程碑替换和作品快照替换按同一规则落库。请求字段顺序不同但语义相同时应视为同一指纹。
+
+审计接口为 `GET /admin/members/{memberId}/audit-logs`，支持 `page` 和 `pageSize`。审计字段至少包括 `id`、`requestId`、`actorUserId`、`actorRole`、`actorPermissions`、`sourceIp`、`targetType`、`targetId`、`action`、`riskLevel`、`reason`、`paramsSummary`、`beforeState`、`afterState`、`result`、`failureReason` 和 `createdAt`。审计记录不得泄露 `Authorization`、Cookie、原始 token 或敏感请求体。审计写入失败必须阻断对应写操作并返回 `500/51201`。
+
+错误码保持现有语义：字段校验失败返回 `400/40001`，分页非法返回 `400/40002`，未登录返回 `401/41000`，会话无效返回 `401/41001`，token 格式错误返回 `401/41003`，角色不足返回 `403/42001`，普通冲突返回 `409/43001`，幂等冲突返回 `409/43002`，成员不存在返回 `404/43200`，成员组不存在返回 `404/43201`，Minecraft 身份冲突返回 `409/43211`，终态成员状态冲突返回 `409/43212`，档案不可公开展示返回 `409/43213`，成员组使用中返回 `409/43214`，auth 用户状态不允许激活返回 `409/43215`，认证依赖不可用、超时或结构不兼容分别返回 `502/46200`、`504/46201` 和 `502/46202`，模块内部错误返回 `500/51200`。
+
+PostgreSQL 是 `profile` 正式持久化验收依据。成功写接口必须经 `SpringBootTest` 的 `RANDOM_PORT` 通过真实 HTTP 请求进入后端，覆盖请求接收、认证上下文解析、业务校验、内存响应模型更新、PostgreSQL 写入和响应返回。每个成功写接口必须用独立 SQL 查询验证 `profile_members`、`profile_member_groups`、`profile_member_milestones` 或 `profile_member_work_snapshots` 对应业务表，以及 `app_audit_logs` 和 `app_request_logs`；带 `idempotencyKey` 的接口还必须验证 `app_idempotency_records`。业务表写入、审计、幂等记录和请求日志必须在同一事务内提交，并在测试日志输出 `SQL evidence`。
+
 ## ops-image-market 模块接口
 
 `ops-image-market` 由 `ops-core` 承载，路径前缀为 `/api/v1/ops-image-market`，负责镜像 provider、镜像目录、镜像版本、安全扫描摘要、兼容配置、部署模板、拉取计划、节点缓存快照和审计。除 `GET /health` 外均要求登录；读取接口要求 `HELPER`、`ADMIN` 或 `OWNER` 且具备 `NODE_READ`；写接口要求 `ADMIN` 或 `OWNER` 且具备 `NODE_WRITE`；provider 注册、provider 高风险更新、provider 启用、provider 归档、镜像或版本阻断、高风险拉取计划创建和拉取计划审批还要求 `HIGH_RISK_APPROVE` 或 `OWNER`。所有写接口支持 `idempotencyKey`，同一操作者、同一作用域、同一请求指纹返回原结果；同键不同指纹返回 `409/49712`。
