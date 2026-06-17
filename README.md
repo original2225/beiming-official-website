@@ -26,6 +26,16 @@ mvn -q -f backend/pom.xml test
 mvn -f backend/pom.xml spring-boot:run
 ```
 
+后端也可以用 Docker Desktop 接入的 WSL 环境启动。先复制本地环境样例并只在本机填写密码。
+
+```bash
+cp compose.local.env.example compose.local.env
+mvn -q -f backend/pom.xml -DskipTests package
+docker compose up --build
+```
+
+启动后统一后端入口仍是 `http://127.0.0.1:8135`，健康检查路径为 `http://127.0.0.1:8135/api/v1/unified-backend/health`。Compose 只启动 PostgreSQL 和统一后端，不恢复旧网关或历史 core 入口。迁到 Arch Linux 容器时沿用同一镜像入口和环境变量，把 `compose.local.env` 换成服务器侧的外部密钥配置即可，真实密码不写进仓库。
+
 前端开发和接口联调以正式契约为准。需要调整 API 基地址时，应通过前端环境配置指向 `http://127.0.0.1:8135`，不能在页面代码中写死业务结果或权限状态。
 
 ## 文档体系
