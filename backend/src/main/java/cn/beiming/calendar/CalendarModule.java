@@ -1,6 +1,7 @@
 package cn.beiming.calendar;
 
 import cn.beiming.engagement.TrustedGatewayAuth;
+import cn.beiming.engagement.persistence.CalendarPersistence;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import jakarta.servlet.FilterChain;
@@ -49,8 +50,8 @@ import java.util.function.Supplier;
 class CalendarEvidenceConfiguration {
     @Bean
     @ConditionalOnMissingBean
-    CalendarFlowEvidenceRecorder calendarFlowEvidenceRecorder() {
-        return new NoopCalendarFlowEvidenceRecorder();
+    CalendarFlowEvidenceRecorder calendarFlowEvidenceRecorder(CalendarPersistence persistence) {
+        return new PersistentCalendarFlowEvidenceRecorder(persistence);
     }
 }
 
@@ -61,12 +62,15 @@ class CalendarController {
     private final CalendarAuth auth;
     private final CalendarProperties properties;
     private final CalendarFlowEvidenceRecorder evidenceRecorder;
+    private final CalendarPersistence persistence;
 
-    CalendarController(CalendarStore store, CalendarAuth auth, CalendarProperties properties, CalendarFlowEvidenceRecorder evidenceRecorder) {
+    CalendarController(CalendarStore store, CalendarAuth auth, CalendarProperties properties,
+                       CalendarFlowEvidenceRecorder evidenceRecorder, CalendarPersistence persistence) {
         this.store = store;
         this.auth = auth;
         this.properties = properties;
         this.evidenceRecorder = evidenceRecorder;
+        this.persistence = persistence;
     }
 
     @GetMapping("/events")
@@ -464,10 +468,13 @@ class CalendarController {
             requireReason(body);
             Instant from = parseRequiredInstant(body.get("from"));
             Instant to = parseRequiredInstant(body.get("to"));
+            request.setAttribute("calendar.syncFrom", from.toString());
+            request.setAttribute("calendar.syncTo", to.toString());
             if (!to.isAfter(from)) {
                 throw new ApiException(HttpStatus.CONFLICT, 49911, "calendar time range conflict");
             }
             String mode = Objects.toString(body.getOrDefault("mode", "UPSERT_SNAPSHOT"));
+            request.setAttribute("calendar.syncMode", mode);
             if (!List.of("UPSERT_SNAPSHOT", "DRY_RUN").contains(mode)) {
                 throw new ApiException(HttpStatus.BAD_REQUEST, 40001, "invalid sync mode");
             }
@@ -552,7 +559,7 @@ class CalendarController {
     ResponseEntity<Map<String, Object>> ops(HttpServletRequest request) {
         Actor actor = auth.requireStaff(request);
         store.audit("CALENDAR_OPS_READ", "calendar", "ops", actor.userId, "SUCCESS");
-        return ok(request, store.ops(properties.enabled(), actor));
+        return ok(request, store.ops(properties.enabled(), actor, persistence.counts()));
     }
 
     private ResponseEntity<Map<String, Object>> transitionStaff(HttpServletRequest request,
@@ -591,13 +598,31 @@ class CalendarController {
                                                            Map<String, Object> body,
                                                            Supplier<ResponseEntity<Map<String, Object>>> operation) {
         String key = Objects.toString(body == null ? null : body.get("idempotencyKey"), "");
+        request.setAttribute("calendar.actorUserId", actor.userId);
+        request.setAttribute("calendar.actorRole", actor.role);
+        request.setAttribute("calendar.idempotencyKey", key.isBlank() ? null : key);
+        request.setAttribute("calendar.fingerprint", store.fingerprint(body));
+        request.setAttribute("calendar.reason", Objects.toString(body == null ? null : body.get("reason"), null));
+        request.setAttribute("calendar.scope", scopeFor(request));
         if (!key.isBlank()) {
             if (key.length() < 8 || key.length() > 80) {
                 throw new ApiException(HttpStatus.BAD_REQUEST, 40001, "invalid idempotencyKey");
             }
-            String scope = actor.userId + ":" + request.getMethod() + ":" + request.getRequestURI() + ":" + key;
-            String fingerprint = store.fingerprint(body);
-            CalendarIdempotencyRecord existing = store.idempotency.get(scope);
+            String storageKey = actor.userId + ":" + request.getMethod() + ":" + request.getRequestURI() + ":" + key;
+            String scope = Objects.toString(request.getAttribute("calendar.scope"), null);
+            String fingerprint = request.getAttribute("calendar.fingerprint").toString();
+            Map<String, Object> replay;
+            try {
+                replay = persistence.replay(actor.userId, scope, key, fingerprint);
+            } catch (IllegalStateException exception) {
+                throw new ApiException(HttpStatus.CONFLICT, 49914, "calendar idempotency conflict");
+            }
+            if (replay != null) {
+                CalendarIdempotencyRecord existing = store.idempotency.get(storageKey);
+                HttpStatus status = existing == null ? HttpStatus.OK : existing.status();
+                return envelope(request, status, replay);
+            }
+            CalendarIdempotencyRecord existing = store.idempotency.get(storageKey);
             if (existing != null) {
                 if (!existing.fingerprint().equals(fingerprint)) {
                     throw new ApiException(HttpStatus.CONFLICT, 49914, "calendar idempotency conflict");
@@ -605,10 +630,23 @@ class CalendarController {
                 return envelope(request, existing.status(), existing.data());
             }
             ResponseEntity<Map<String, Object>> response = operation.get();
-            store.idempotency.put(scope, new CalendarIdempotencyRecord(fingerprint, (HttpStatus) response.getStatusCode(), response.getBody().get("data")));
+            store.idempotency.put(storageKey, new CalendarIdempotencyRecord(fingerprint, (HttpStatus) response.getStatusCode(), response.getBody().get("data")));
             return response;
         }
         return operation.get();
+    }
+
+    private String scopeFor(HttpServletRequest request) {
+        String method = request.getMethod();
+        String path = request.getRequestURI();
+        if ("POST".equals(method) && "/api/v1/calendar/admin/events".equals(path)) return "calendar.event.create";
+        if ("PATCH".equals(method) && path.matches("/api/v1/calendar/admin/events/[^/]+")) return "calendar.event.update";
+        if ("POST".equals(method) && path.matches("/api/v1/calendar/admin/events/[^/]+/submit")) return "calendar.event.transition";
+        if ("PATCH".equals(method) && path.matches("/api/v1/calendar/admin/events/[^/]+/(approve|reject|publish|offline|archive|delete)")) return "calendar.event.transition";
+        if ("POST".equals(method) && path.matches("/api/v1/calendar/me/events/[^/]+/watch")) return "calendar.watch.create";
+        if ("POST".equals(method) && path.matches("/api/v1/calendar/me/events/[^/]+/unwatch")) return "calendar.watch.cancel";
+        if ("POST".equals(method) && "/api/v1/calendar/admin/sync/activity".equals(path)) return "calendar.activity-sync.run";
+        return "calendar.write";
     }
 
     private void validateEventBody(Map<String, Object> body, boolean create, CalendarEventRecord existing) {
@@ -1028,26 +1066,26 @@ class CalendarStore {
         return event == null ? "MANUAL" : event.sourceType;
     }
 
-    Map<String, Object> ops(boolean testControlsEnabled, Actor actor) {
+    Map<String, Object> ops(boolean testControlsEnabled, Actor actor, Map<String, Object> counts) {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("service", "calendar");
         data.put("port", 8132);
         data.put("legacyPort", 8114);
-        data.put("storageMode", "IN_MEMORY");
+        data.put("storageMode", counts.getOrDefault("storageMode", "IN_MEMORY"));
         data.put("authMode", actor.authMode);
         data.put("actorUserId", actor.userId);
         data.put("activityMode", "TEST_STUB");
         data.put("notificationMode", "SKIPPED");
         data.put("changelogMode", "NOT_CONNECTED");
         data.put("testControlsEnabled", testControlsEnabled);
-        data.put("eventsTotal", events.size());
-        data.put("publishedEventsTotal", events.values().stream().filter(CalendarEventRecord::isPublicVisible).count());
-        data.put("watchesTotal", watches.size());
-        data.put("activitySourceEventsTotal", events.values().stream().filter(event -> "ACTIVITY".equals(event.sourceType)).count());
-        data.put("manualEventsTotal", events.values().stream().filter(event -> "MANUAL".equals(event.sourceType)).count());
-        data.put("auditsTotal", audits.size());
-        data.put("idempotencyRecordsTotal", idempotency.size());
-        data.put("lastActivitySyncAt", lastActivitySyncAt);
+        data.put("eventsTotal", counts.getOrDefault("eventsTotal", events.size()));
+        data.put("publishedEventsTotal", counts.getOrDefault("publishedEventsTotal", events.values().stream().filter(CalendarEventRecord::isPublicVisible).count()));
+        data.put("watchesTotal", counts.getOrDefault("watchesTotal", watches.size()));
+        data.put("activitySourceEventsTotal", counts.getOrDefault("activitySourceEventsTotal", events.values().stream().filter(event -> "ACTIVITY".equals(event.sourceType)).count()));
+        data.put("manualEventsTotal", counts.getOrDefault("manualEventsTotal", events.values().stream().filter(event -> "MANUAL".equals(event.sourceType)).count()));
+        data.put("auditsTotal", counts.getOrDefault("auditsTotal", audits.size()));
+        data.put("idempotencyRecordsTotal", counts.getOrDefault("idempotencyRecordsTotal", idempotency.size()));
+        data.put("lastActivitySyncAt", counts.getOrDefault("lastActivitySyncAt", lastActivitySyncAt));
         data.put("lastAuditAt", audits.isEmpty() ? null : audits.get(audits.size() - 1).createdAt);
         data.put("productionGaps", List.of("P1_IN_MEMORY_STORAGE", "P1_AUTH_STUB", "P1_ACTIVITY_STUB",
                 "NOTIFICATION_DELIVERY_NOT_CONNECTED", "CHANGELOG_NOT_CONNECTED", "TEST_CONTROLS_DISABLED_OUTSIDE_TEST"));
@@ -1389,6 +1427,82 @@ class NoopCalendarFlowEvidenceRecorder implements CalendarFlowEvidenceRecorder {
 
     @Override
     public void recordActivitySyncWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+}
+
+class PersistentCalendarFlowEvidenceRecorder implements CalendarFlowEvidenceRecorder {
+    private final CalendarPersistence persistence;
+
+    PersistentCalendarFlowEvidenceRecorder(CalendarPersistence persistence) {
+        this.persistence = persistence;
+    }
+
+    @Override
+    public void recordEventWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+        persist(request, action, payload, responseCode, "CALENDAR_EVENT");
+    }
+
+    @Override
+    public void recordWatchWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+        persist(request, action, payload, responseCode, "CALENDAR_WATCH");
+    }
+
+    @Override
+    public void recordActivitySyncWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+        persist(request, action, payload, responseCode, "CALENDAR_SYNC");
+    }
+
+    private void persist(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode, String targetType) {
+        String actorUserId = Objects.toString(request.getAttribute("calendar.actorUserId"), null);
+        String actorRole = Objects.toString(request.getAttribute("calendar.actorRole"), null);
+        String scope = Objects.toString(request.getAttribute("calendar.scope"), null);
+        String idempotencyKey = Objects.toString(request.getAttribute("calendar.idempotencyKey"), null);
+        String fingerprint = Objects.toString(request.getAttribute("calendar.fingerprint"), null);
+        String reason = Objects.toString(request.getAttribute("calendar.reason"), null);
+        Map<String, Object> snapshot = snapshotFor(action, payload);
+        persistence.persistWrite(request, actorUserId, actorRole, scope, action, targetType, targetId(action, payload), "LOW",
+                beforeStatus(payload), afterStatus(payload), reason, idempotencyKey, fingerprint, snapshot, payload, responseCode);
+    }
+
+    private Map<String, Object> snapshotFor(String action, Map<String, Object> payload) {
+        Map<String, Object> snapshot = new LinkedHashMap<>(payload);
+        snapshot.put("snapshotType", switch (action) {
+            case "CALENDAR_EVENT_WATCHED", "CALENDAR_EVENT_UNWATCHED" -> "WATCH";
+            case "CALENDAR_ACTIVITY_SYNCED" -> "ACTIVITY_SYNC";
+            default -> "EVENT";
+        });
+        return snapshot;
+    }
+
+    private String targetId(String action, Map<String, Object> payload) {
+        if (payload.containsKey("eventId")) {
+            return Objects.toString(payload.get("eventId"), null);
+        }
+        Object watch = payload.get("watch");
+        if (watch instanceof Map<?, ?> watchMap && watchMap.get("watchId") != null) {
+            return watchMap.get("watchId").toString();
+        }
+        if ("CALENDAR_ACTIVITY_SYNCED".equals(action)) {
+            return "activity";
+        }
+        return null;
+    }
+
+    private String beforeStatus(Map<String, Object> payload) {
+        return Objects.toString(payload.get("beforeStatus"), null);
+    }
+
+    private String afterStatus(Map<String, Object> payload) {
+        Object status = payload.get("status");
+        if (status != null) {
+            return status.toString();
+        }
+        Object watch = payload.get("watch");
+        if (watch instanceof Map<?, ?> watchMap && watchMap.get("status") != null) {
+            return watchMap.get("status").toString();
+        }
+        Object syncStatus = payload.get("syncStatus");
+        return syncStatus == null ? null : syncStatus.toString();
     }
 }
 
