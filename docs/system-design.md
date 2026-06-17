@@ -122,6 +122,8 @@ PostgreSQL 是统一后端正式持久化数据库。Flyway 负责管理数据�
 
 数据库集成测试必须使用 Testcontainers PostgreSQL。涉及新增、更新、状态流转、审计、幂等或请求日志的自动化测试，必须通过 `SpringBootTest` 的 `RANDOM_PORT` 发起真实 HTTP 请求进入后端，再使用独立 SQL 查询 PostgreSQL 验证业务表、`app_audit_logs`、`app_idempotency_records` 和 `app_request_logs`，并输出 `SQL evidence`。
 
+从容器化部署基线建立后，数据库相关开发默认运行在真实容器链路上。本地使用 Docker Desktop WSL，服务器使用 Arch Linux 容器环境。`beiming-backend` 与 `beiming-postgres` 均为 `healthy` 后才能开始数据库验收；验证必须从统一后端入口进入，再落到容器 PostgreSQL。H2、MockMvc、本机未容器化数据库和只启动本机 Spring 进程都不能作为数据库开发完成依据，只能作为轻量补充检查。
+
 每个 HTTP 写请求是事务边界。业务表写入、审计写入、幂等记录和请求日志必须在同一个事务内提交。审计写入失败必须阻断对应写操作，幂等记录写入失败也必须回滚业务写入。同一操作者、同一作用域、同一幂等键、同一请求指纹返回原结果；同键不同指纹返回对应模块 API 契约定义的冲突错误。
 
 内容类、审核类和资源类数据默认支持软删除、归档、状态流转和操作记录。常用状态包括草稿、待审核、已通过、已拒绝、需修改、已下架和已归档。
