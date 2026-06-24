@@ -9,10 +9,11 @@ import { DetailPanel } from '../../components/data-display/DetailPanel'
 import { useRequest } from '../../hooks/useRequest'
 import { getActivityDetail } from '../../api/modules/public'
 import { ROUTES } from '../../constants/routes'
+import type { ActivityDetailView } from '../../types/view-models'
 
 export function ActivityDetailPage() {
   const { id } = useParams<{ id: string }>()
-  const { data, loading, error, run } = useRequest<any>()
+  const { data, loading, error, run } = useRequest<ActivityDetailView>()
 
   useEffect(() => { if (id) run(() => getActivityDetail(id)) }, [run, id])
 

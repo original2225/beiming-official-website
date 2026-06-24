@@ -15,12 +15,13 @@ import { getBoard, getPosts } from '../../api/modules/community'
 import { ROUTES } from '../../constants/routes'
 import type { PostSummary } from '../../types/domain'
 import type { PageResult } from '../../types/api'
+import type { BoardDetailView } from '../../types/view-models'
 
 export function PostListPage() {
   const { boardId } = useParams<{ boardId: string }>()
   const { page, pageSize, goTo } = usePagination()
   const { data, loading, run } = useRequest<PageResult<PostSummary>>()
-  const { data: board, run: runBoard } = useRequest<any>()
+  const { data: board, run: runBoard } = useRequest<BoardDetailView>()
 
   useEffect(() => { if (boardId) { run(() => getPosts({ boardId, page, pageSize })); runBoard(() => getBoard(boardId)) } }, [run, runBoard, boardId, page, pageSize])
 

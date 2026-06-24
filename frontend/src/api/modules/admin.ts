@@ -4,18 +4,25 @@
  */
 
 import { get, post, put, patch } from '../client'
+import type {
+  AdminContentPage,
+  AdminOverviewView,
+  AdminTodoPage,
+  AdminUserPage,
+  MetricsView,
+} from '../../types/view-models'
 
 // ── admin 聚合 ──
-export const getAdminOverview = () => get<unknown>('/api/v1/admin/overview')
+export const getAdminOverview = () => get<AdminOverviewView>('/api/v1/admin/overview')
 export const getAdminModules = () => get<unknown>('/api/v1/admin/modules')
-export const getAdminTodos = () => get<unknown>('/api/v1/admin/todos')
-export const getAdminMetrics = () => get<unknown>('/api/v1/admin/metrics/summary')
+export const getAdminTodos = () => get<AdminTodoPage>('/api/v1/admin/todos')
+export const getAdminMetrics = () => get<MetricsView>('/api/v1/admin/metrics/summary')
 export const getAdminAuditLogs = (params?: Record<string, string | number | boolean | undefined>) => get<unknown>('/api/v1/admin/audit-logs', { params })
 export const getAdminSettings = () => get<unknown>('/api/v1/admin/settings')
 export const updateAdminSettings = (body: unknown) => patch<unknown>('/api/v1/admin/settings', body)
 
 // ── auth 后台 ──
-export const getAdminUsers = (params?: Record<string, string | number | boolean | undefined>) => get<unknown>('/api/v1/auth/admin/users', { params })
+export const getAdminUsers = (params?: Record<string, string | number | boolean | undefined>) => get<AdminUserPage>('/api/v1/auth/admin/users', { params })
 export const getAdminUser = (userId: string) => get<unknown>(`/api/v1/auth/admin/users/${userId}`)
 export const updateAdminUser = (userId: string, body: unknown) => patch<unknown>(`/api/v1/auth/admin/users/${userId}`, body)
 export const updateUserRoles = (userId: string, body: unknown) => put<unknown>(`/api/v1/auth/admin/users/${userId}/roles`, body)
@@ -24,7 +31,7 @@ export const createInvitation = (body: unknown) => post<unknown>('/api/v1/auth/a
 export const disableInvitation = (invitationId: string) => patch<unknown>(`/api/v1/auth/admin/invitations/${invitationId}/disable`)
 
 // ── content 后台 ──
-export const getAdminContent = (params?: Record<string, string | number | boolean | undefined>) => get<unknown>('/api/v1/content/admin/items', { params })
+export const getAdminContent = (params?: Record<string, string | number | boolean | undefined>) => get<AdminContentPage>('/api/v1/content/admin/items', { params })
 export const createContent = (body: unknown) => post<unknown>('/api/v1/content/admin/items', body)
 export const updateContent = (contentId: string, body: unknown) => patch<unknown>(`/api/v1/content/admin/items/${contentId}`, body)
 export const publishContent = (contentId: string) => patch<unknown>(`/api/v1/content/admin/items/${contentId}/publish`)

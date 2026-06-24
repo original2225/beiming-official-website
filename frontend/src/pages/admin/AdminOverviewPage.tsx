@@ -8,10 +8,11 @@ import { LoadingState } from '../../components/feedback/LoadingState'
 import { DetailPanel } from '../../components/data-display/DetailPanel'
 import { useRequest } from '../../hooks/useRequest'
 import { getAdminOverview, getAdminMetrics } from '../../api/modules/admin'
+import type { AdminOverviewView, MetricsView } from '../../types/view-models'
 
 export function AdminOverviewPage() {
-  const { data: overview, loading, run } = useRequest<any>()
-  const { data: metrics, run: runMetrics } = useRequest<any>()
+  const { data: overview, loading, run } = useRequest<AdminOverviewView>()
+  const { data: metrics, run: runMetrics } = useRequest<MetricsView>()
 
   useEffect(() => { run(() => getAdminOverview()) }, [run])
   useEffect(() => { runMetrics(() => getAdminMetrics()) }, [runMetrics])
@@ -23,7 +24,7 @@ export function AdminOverviewPage() {
 
       {metrics && (
         <div className="grid grid-cols-3 gap-4 mb-6">
-          {Object.entries(metrics as Record<string, any>).map(([k, v]) => (
+          {Object.entries(metrics).map(([k, v]) => (
             <div key={k} className="panel-mc p-4 text-center">
               <p className="font-minecraft text-2xl text-mc-gold">{String(v)}</p>
               <p className="text-xs text-text-muted mt-1">{k}</p>

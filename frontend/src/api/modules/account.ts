@@ -8,6 +8,15 @@ import * as ep from '../endpoints'
 import type { PageResult } from '../../types/api'
 import type { CurrentUser } from '../../types/common'
 import type { NotificationSummary } from '../../types/domain'
+import type {
+  AttendanceAccountView,
+  ExamSessionPage,
+  NextActionView,
+  OnboardingProgressView,
+  ProfileView,
+  RankingView,
+  WhitelistApplicationPage,
+} from '../../types/view-models'
 
 // ── auth ──
 export const register = (body: unknown) => post<unknown>(ep.auth.register(), body)
@@ -24,7 +33,7 @@ export const bindMinecraft = (body: unknown) => put<unknown>(ep.auth.minecraftBi
 export const unbindMinecraft = () => del<unknown>(ep.auth.minecraftBinding())
 
 // ── profile ──
-export const getMyProfile = () => get<unknown>(ep.profile.me())
+export const getMyProfile = () => get<ProfileView>(ep.profile.me())
 export const updateMyProfile = (body: unknown) => patch<unknown>(ep.profile.me(), body)
 
 // ── notification ──
@@ -36,16 +45,16 @@ export const markAllNotificationsRead = () => patch<unknown>(ep.notification.meR
 export const archiveNotification = (notificationId: string) => patch<unknown>(ep.notification.meArchive(notificationId))
 
 // ── onboarding ──
-export const getOnboardingProgress = () => get<unknown>(ep.onboarding.meProgress())
+export const getOnboardingProgress = () => get<OnboardingProgressView>(ep.onboarding.meProgress())
 export const startOnboarding = () => post<unknown>(ep.onboarding.meStart())
 export const confirmProfile = (body: unknown) => patch<unknown>(ep.onboarding.meProfileConfirmation(), body)
 export const confirmRules = (body: unknown) => patch<unknown>(ep.onboarding.meRulesConfirmation(), body)
 export const chooseDirection = (body: unknown) => patch<unknown>(ep.onboarding.meDirection(), body)
 export const advanceOnboarding = () => post<unknown>(ep.onboarding.meAdvance())
-export const getNextAction = () => get<unknown>(ep.onboarding.meNextAction())
+export const getNextAction = () => get<NextActionView>(ep.onboarding.meNextAction())
 
 // ── exam ──
-export const getMyExamSessions = () => get<unknown>(ep.exam.meSessions())
+export const getMyExamSessions = () => get<ExamSessionPage>(ep.exam.meSessions())
 export const getCurrentExamSession = () => get<unknown>(ep.exam.meCurrentSession())
 export const createExamSession = () => post<unknown>(ep.exam.meSessions())
 export const getExamPaper = (sessionId: string) => get<unknown>(ep.exam.meSessionPaper(sessionId))
@@ -55,7 +64,7 @@ export const supplementExam = (sessionId: string, body: unknown) => patch<unknow
 export const getExamResult = (sessionId: string) => get<unknown>(ep.exam.meSessionResult(sessionId))
 
 // ── whitelist ──
-export const getMyWhitelistApplications = () => get<unknown>(ep.whitelist.meApplications())
+export const getMyWhitelistApplications = () => get<WhitelistApplicationPage>(ep.whitelist.meApplications())
 export const getCurrentWhitelistApplication = () => get<unknown>(ep.whitelist.meCurrentApplication())
 export const createWhitelistApplication = (body: unknown) => post<unknown>(ep.whitelist.meApplications(), body)
 export const getWhitelistApplication = (applicationId: string) => get<unknown>(ep.whitelist.meApplication(applicationId))
@@ -67,7 +76,7 @@ export const getWhitelistResult = (applicationId: string) => get<unknown>(ep.whi
 
 // ── attendance ──
 export const getLeaderboard = () => get<unknown>(ep.attendance.leaderboard())
-export const getMyAttendanceAccount = () => get<unknown>(ep.attendance.meAccount())
+export const getMyAttendanceAccount = () => get<AttendanceAccountView>(ep.attendance.meAccount())
 export const getMyAttendanceLedger = (params?: Record<string, string | number | boolean | undefined>) => get<unknown>(ep.attendance.meLedger(), { params })
 export const getMyContributions = () => get<unknown>(ep.attendance.meContributions())
-export const getMyRanking = () => get<unknown>(ep.attendance.meRanking())
+export const getMyRanking = () => get<RankingView>(ep.attendance.meRanking())

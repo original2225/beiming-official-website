@@ -8,10 +8,11 @@ import { TimeDisplay } from '../../components/data-display/TimeDisplay'
 import { useRequest } from '../../hooks/useRequest'
 import { getGuideDetail } from '../../api/modules/public'
 import { ROUTES } from '../../constants/routes'
+import type { GuideDetailView } from '../../types/view-models'
 
 export function GuideDetailPage() {
   const { id } = useParams<{ id: string }>()
-  const { data, loading, error, run } = useRequest<any>()
+  const { data, loading, error, run } = useRequest<GuideDetailView>()
 
   useEffect(() => { if (id) run(() => getGuideDetail(id)) }, [run, id])
 

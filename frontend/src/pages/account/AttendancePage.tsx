@@ -8,10 +8,11 @@ import { LoadingState } from '../../components/feedback/LoadingState'
 import { DetailPanel } from '../../components/data-display/DetailPanel'
 import { useRequest } from '../../hooks/useRequest'
 import { getMyAttendanceAccount, getMyRanking } from '../../api/modules/account'
+import type { AttendanceAccountView, RankingView } from '../../types/view-models'
 
 export function AttendancePage() {
-  const { data: account, loading, run } = useRequest<any>()
-  const { data: ranking, run: runRank } = useRequest<any>()
+  const { data: account, loading, run } = useRequest<AttendanceAccountView>()
+  const { data: ranking, run: runRank } = useRequest<RankingView>()
 
   useEffect(() => { run(() => getMyAttendanceAccount()) }, [run])
   useEffect(() => { runRank(() => getMyRanking()) }, [runRank])

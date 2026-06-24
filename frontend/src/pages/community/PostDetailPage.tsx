@@ -13,17 +13,19 @@ import { useRequest } from '../../hooks/useRequest'
 import { useAuth } from '../../hooks/useAuth'
 import { getPost, getComments, createComment, likePost, unlikePost, favoritePost, unfavoritePost } from '../../api/modules/community'
 import { ROUTES } from '../../constants/routes'
+import type { CommentView, PostDetailView } from '../../types/view-models'
+import type { PageResult } from '../../types/api'
 
 export function PostDetailPage() {
   const { postId } = useParams<{ postId: string }>()
   const { isAuthenticated } = useAuth()
-  const { data: post, loading, run } = useRequest<any>()
-  const { data: comments, run: runComments } = useRequest<any[]>()
+  const { data: post, loading, run } = useRequest<PostDetailView>()
+  const { data: comments, run: runComments } = useRequest<CommentView[]>()
   const [comment, setComment] = useState('')
   const [liked, setLiked] = useState(false)
   const [favorited, setFavorited] = useState(false)
 
-  useEffect(() => { if (postId) { run(() => getPost(postId)); runComments(() => getComments(postId, {}).then((d: any) => d?.items ?? [])) } }, [run, runComments, postId])
+  useEffect(() => { if (postId) { run(() => getPost(postId)); runComments(() => getComments(postId, {}).then((d) => (d as PageResult<CommentView> | null)?.items ?? [])) } }, [run, runComments, postId])
 
   const handleLike = async () => {
     try { if (liked) { await unlikePost(postId!) } else { await likePost(postId!) }; setLiked(!liked) } catch { /* ignore */ }
@@ -35,7 +37,7 @@ export function PostDetailPage() {
 
   const handleComment = async () => {
     if (!comment.trim()) return
-    try { await createComment(postId!, { body: comment }); setComment(''); runComments(() => getComments(postId!, {}).then((d: any) => d?.items ?? [])) } catch { /* ignore */ }
+    try { await createComment(postId!, { body: comment }); setComment(''); runComments(() => getComments(postId!, {}).then((d) => (d as PageResult<CommentView> | null)?.items ?? [])) } catch { /* ignore */ }
   }
 
   return (
@@ -67,7 +69,7 @@ export function PostDetailPage() {
             </div>
           )}
           {!comments?.length && <EmptyState text="暂无评论" />}
-          {comments?.map((c: any) => (
+          {comments?.map((c: CommentView) => (
             <div key={c.commentId} className="panel-mc p-3 mb-1">
               <div className="flex items-center gap-2 text-xs text-text-muted mb-1"><span>{c.authorName}</span><TimeDisplay iso={c.createdAt} /></div>
               <p className="text-sm text-text-secondary">{c.body}</p>

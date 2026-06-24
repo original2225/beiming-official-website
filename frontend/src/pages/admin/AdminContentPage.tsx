@@ -14,10 +14,11 @@ import { Pagination } from '../../components/data-display/Pagination'
 import { useRequest } from '../../hooks/useRequest'
 import { usePagination } from '../../hooks/usePagination'
 import { getAdminContent } from '../../api/modules/admin'
+import type { AdminContentPage as AdminContentPageResult, AdminContentView } from '../../types/view-models'
 
 export function AdminContentPage() {
   const { page, pageSize, goTo } = usePagination()
-  const { data, loading, run } = useRequest<any>()
+  const { data, loading, run } = useRequest<AdminContentPageResult>()
   const [query, setQuery] = useState('')
 
   useEffect(() => { run(() => getAdminContent({ page, pageSize, ...(query ? { query } : {}) })) }, [run, page, pageSize, query])
@@ -33,10 +34,10 @@ export function AdminContentPage() {
       {data?.items && (
         <DataTable
           columns={[
-            { key: 'title', header: '标题', render: (c: any) => <span className="text-sm">{c.title}</span> },
-            { key: 'status', header: '状态', render: (c: any) => <StatusBadge status={c.status ?? 'DRAFT'} /> },
-            { key: 'category', header: '分类', render: (c: any) => <span className="text-xs text-text-muted">{c.category ?? '—'}</span> },
-            { key: 'updatedAt', header: '更新时间', render: (c: any) => <TimeDisplay iso={c.updatedAt ?? c.createdAt} /> },
+            { key: 'title', header: '标题', render: (c: AdminContentView) => <span className="text-sm">{c.title}</span> },
+            { key: 'status', header: '状态', render: (c: AdminContentView) => <StatusBadge status={c.status ?? 'DRAFT'} /> },
+            { key: 'category', header: '分类', render: (c: AdminContentView) => <span className="text-xs text-text-muted">{c.category ?? '—'}</span> },
+            { key: 'updatedAt', header: '更新时间', render: (c: AdminContentView) => <TimeDisplay iso={c.updatedAt ?? c.createdAt} /> },
           ]}
           data={data.items}
           rowKey={(c) => c.contentId}

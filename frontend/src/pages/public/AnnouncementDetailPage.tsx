@@ -8,10 +8,11 @@ import { TimeDisplay } from '../../components/data-display/TimeDisplay'
 import { useRequest } from '../../hooks/useRequest'
 import { getContentDetail } from '../../api/modules/public'
 import { ROUTES } from '../../constants/routes'
+import type { ContentDetailView } from '../../types/view-models'
 
 export function AnnouncementDetailPage() {
   const { id } = useParams<{ id: string }>()
-  const { data, loading, error, run } = useRequest<any>()
+  const { data, loading, error, run } = useRequest<ContentDetailView>()
 
   useEffect(() => { if (id) run(() => getContentDetail(id)) }, [run, id])
 

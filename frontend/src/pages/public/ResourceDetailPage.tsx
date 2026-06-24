@@ -7,10 +7,11 @@ import { ErrorState } from '../../components/feedback/ErrorState'
 import { useRequest } from '../../hooks/useRequest'
 import { getResourceDetail } from '../../api/modules/public'
 import { ROUTES } from '../../constants/routes'
+import type { ResourceDetailView } from '../../types/view-models'
 
 export function ResourceDetailPage() {
   const { id } = useParams<{ id: string }>()
-  const { data, loading, error, run } = useRequest<any>()
+  const { data, loading, error, run } = useRequest<ResourceDetailView>()
 
   useEffect(() => { if (id) run(() => getResourceDetail(id)) }, [run, id])
 

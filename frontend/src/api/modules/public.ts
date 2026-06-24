@@ -7,11 +7,12 @@ import { get, post } from '../client'
 import * as ep from '../endpoints'
 import type { PageResult } from '../../types/api'
 import type { ContentSummary, ServerStatusSummary, ResourceSummary, GuideSummary, MaterialSummary, ActivitySummary, CalendarEventSummary, ChangelogSummary, LineSummary, MemberSummary } from '../../types/domain'
+import type { ActivityDetailView, ContentDetailView, GuideDetailView, ResourceDetailView } from '../../types/view-models'
 
 // ── 内容 ──
 export const getHome = () => get<unknown>(ep.content.home())
 export const getContentItems = (params?: Record<string, string | number | boolean | undefined>) => get<PageResult<ContentSummary>>(ep.content.items(), { params })
-export const getContentDetail = (contentId: string) => get<unknown>(ep.content.item(contentId))
+export const getContentDetail = (contentId: string) => get<ContentDetailView>(ep.content.item(contentId))
 export const getContentBySlug = (slug: string) => get<unknown>(ep.content.itemBySlug(slug))
 export const getCategories = () => get<unknown>(ep.content.categories())
 
@@ -23,14 +24,14 @@ export const getOutages = () => get<unknown>(ep.serverStatus.outages())
 
 // ── 资源 ──
 export const getResources = (params?: Record<string, string | number | boolean | undefined>) => get<PageResult<ResourceSummary>>(ep.resource.list(), { params })
-export const getResourceDetail = (resourceId: string) => get<unknown>(ep.resource.detail(resourceId))
+export const getResourceDetail = (resourceId: string) => get<ResourceDetailView>(ep.resource.detail(resourceId))
 export const getResourceBySlug = (slug: string) => get<unknown>(ep.resource.bySlug(slug))
 export const getResourceCategories = () => get<unknown>(ep.resource.categories())
 
 // ── 指南 ──
 export const getGuideHome = () => get<unknown>(ep.guide.home())
 export const getGuides = (params?: Record<string, string | number | boolean | undefined>) => get<PageResult<GuideSummary>>(ep.guide.articles(), { params })
-export const getGuideDetail = (guideId: string) => get<unknown>(ep.guide.article(guideId))
+export const getGuideDetail = (guideId: string) => get<GuideDetailView>(ep.guide.article(guideId))
 export const getGuideBySlug = (slug: string) => get<unknown>(ep.guide.articleBySlug(slug))
 export const getGuideCategories = () => get<unknown>(ep.guide.categories())
 export const getGuideSearch = (q: string) => get<unknown>(ep.guide.search(), { params: { q } })
@@ -45,7 +46,7 @@ export const getMaterialDetail = (materialId: string) => get<unknown>(ep.materia
 
 // ── 活动 ──
 export const getActivities = (params?: Record<string, string | number | boolean | undefined>) => get<PageResult<ActivitySummary>>(ep.activity.events(), { params })
-export const getActivityDetail = (activityIdOrSlug: string) => get<unknown>(ep.activity.event(activityIdOrSlug))
+export const getActivityDetail = (activityIdOrSlug: string) => get<ActivityDetailView>(ep.activity.event(activityIdOrSlug))
 export const getActivityResult = (activityId: string) => get<unknown>(ep.activity.result(activityId))
 export const getActivityCalendarSummary = () => get<unknown>(ep.activity.calendarSummary())
 

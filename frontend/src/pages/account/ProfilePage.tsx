@@ -9,10 +9,11 @@ import { DetailPanel } from '../../components/data-display/DetailPanel'
 import { useRequest } from '../../hooks/useRequest'
 import { getMyProfile } from '../../api/modules/account'
 import { useCurrentUser } from '../../hooks/useCurrentUser'
+import type { ProfileView } from '../../types/view-models'
 
 export function ProfilePage() {
   const user = useCurrentUser()
-  const { data, loading, run } = useRequest<any>()
+  const { data, loading, run } = useRequest<ProfileView>()
 
   useEffect(() => { run(() => getMyProfile()) }, [run])
 

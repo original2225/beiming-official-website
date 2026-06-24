@@ -7,10 +7,11 @@ import { PageLayout } from '../../components/layout/PageLayout'
 import { LoadingState } from '../../components/feedback/LoadingState'
 import { useRequest } from '../../hooks/useRequest'
 import { getOnboardingProgress, getNextAction } from '../../api/modules/account'
+import type { NextActionView, OnboardingProgressView } from '../../types/view-models'
 
 export function OnboardingPage() {
-  const { data, loading, run } = useRequest<any>()
-  const { data: action, run: runAction } = useRequest<any>()
+  const { data, loading, run } = useRequest<OnboardingProgressView>()
+  const { data: action, run: runAction } = useRequest<NextActionView>()
 
   useEffect(() => { run(() => getOnboardingProgress()) }, [run])
   useEffect(() => { runAction(() => getNextAction()) }, [runAction])

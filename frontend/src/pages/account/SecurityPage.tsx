@@ -12,7 +12,7 @@ import { ApiError } from '../../types/api'
 
 export function SecurityPage() {
   const user = useCurrentUser()
-  const { run } = useRequest<any>()
+  const { run } = useRequest<unknown>()
 
   const [oldPwd, setOldPwd] = useState('')
   const [newPwd, setNewPwd] = useState('')

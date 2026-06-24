@@ -10,9 +10,10 @@ import { StatusBadge } from '../../components/data-display/StatusBadge'
 import { TimeDisplay } from '../../components/data-display/TimeDisplay'
 import { useRequest } from '../../hooks/useRequest'
 import { getMyExamSessions } from '../../api/modules/account'
+import type { ExamSessionPage, ExamSessionView } from '../../types/view-models'
 
 export function ExamPage() {
-  const { data, loading, run } = useRequest<any>()
+  const { data, loading, run } = useRequest<ExamSessionPage>()
 
   useEffect(() => { run(() => getMyExamSessions()) }, [run])
 
@@ -21,7 +22,7 @@ export function ExamPage() {
       <h1 className="font-minecraft text-2xl text-mc-grass mb-6">考试记录</h1>
       {loading && <LoadingState />}
       {!loading && !data?.items?.length && <EmptyState text="暂无考试记录" />}
-      {data?.items?.map((s: any) => (
+      {data?.items?.map((s: ExamSessionView) => (
         <div key={s.sessionId} className="panel-mc p-3 mb-2 flex items-center justify-between">
           <div>
             <p className="text-sm text-text-primary">{s.title ?? s.direction ?? '考试'}</p>

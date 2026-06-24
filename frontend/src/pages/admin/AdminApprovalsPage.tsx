@@ -12,10 +12,11 @@ import { Pagination } from '../../components/data-display/Pagination'
 import { useRequest } from '../../hooks/useRequest'
 import { usePagination } from '../../hooks/usePagination'
 import { getAdminTodos } from '../../api/modules/admin'
+import type { AdminTodoPage, AdminTodoView } from '../../types/view-models'
 
 export function AdminApprovalsPage() {
   const { page, pageSize, goTo } = usePagination()
-  const { data, loading, run } = useRequest<any>()
+  const { data, loading, run } = useRequest<AdminTodoPage>()
 
   useEffect(() => { run(() => getAdminTodos()) }, [run])
 
@@ -24,7 +25,7 @@ export function AdminApprovalsPage() {
       <h1 className="font-minecraft text-2xl text-mc-grass mb-6">审核待办</h1>
       {loading && <LoadingState />}
       {!loading && !data?.items?.length && <EmptyState text="暂无待办" />}
-      {data?.items?.map((todo: any) => (
+      {data?.items?.map((todo: AdminTodoView) => (
         <div key={todo.todoId} className="panel-mc p-3 mb-2 flex items-center justify-between hover:border-mc-grass">
           <div>
             <p className="text-sm text-text-primary">{todo.title}</p>

@@ -11,9 +11,10 @@ import { TimeDisplay } from '../../components/data-display/TimeDisplay'
 import { FormField } from '../../components/forms/FormField'
 import { useRequest } from '../../hooks/useRequest'
 import { createWhitelistApplication, getMyWhitelistApplications } from '../../api/modules/account'
+import type { WhitelistApplicationPage, WhitelistApplicationView } from '../../types/view-models'
 
 export function WhitelistPage() {
-  const { data: applications, loading: listLoading, run } = useRequest<any>()
+  const { data: applications, loading: listLoading, run } = useRequest<WhitelistApplicationPage>()
   const [reason, setReason] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [msg, setMsg] = useState('')
@@ -43,7 +44,7 @@ export function WhitelistPage() {
 
       {listLoading && <LoadingState />}
       {!listLoading && !applications?.items?.length && <EmptyState text="暂无申请记录" />}
-      {applications?.items?.map((a: any) => (
+      {applications?.items?.map((a: WhitelistApplicationView) => (
         <div key={a.applicationId} className="panel-mc p-3 mb-2 flex items-center justify-between">
           <div>
             <p className="text-sm text-text-primary">申请 #{a.applicationId?.slice(0, 8)}</p>

@@ -7,15 +7,16 @@ import { get, post, patch, del } from '../client'
 import * as ep from '../endpoints'
 import type { PageResult } from '../../types/api'
 import type { PostSummary } from '../../types/domain'
+import type { BoardDetailView, BoardView, CommentView, PostDetailView } from '../../types/view-models'
 
 // ── 板块 ──
-export const getBoards = () => get<unknown>(ep.community.boards())
-export const getBoard = (boardId: string) => get<unknown>(ep.community.board(boardId))
+export const getBoards = () => get<BoardView[]>(ep.community.boards())
+export const getBoard = (boardId: string) => get<BoardDetailView>(ep.community.board(boardId))
 
 // ── 帖子 ──
 export const getPosts = (params?: Record<string, string | number | boolean | undefined>) => get<PageResult<PostSummary>>(ep.community.posts(), { params })
-export const getPost = (postId: string) => get<unknown>(ep.community.post(postId))
-export const getComments = (postId: string, params?: Record<string, string | number | boolean | undefined>) => get<unknown>(ep.community.comments(postId), { params })
+export const getPost = (postId: string) => get<PostDetailView>(ep.community.post(postId))
+export const getComments = (postId: string, params?: Record<string, string | number | boolean | undefined>) => get<PageResult<CommentView>>(ep.community.comments(postId), { params })
 export const searchCommunity = (q: string) => get<unknown>(ep.community.search(), { params: { q } })
 
 // ── 我的帖子 ──
