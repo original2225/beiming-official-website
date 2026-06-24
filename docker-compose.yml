@@ -25,8 +25,8 @@ services:
     environment:
       SPRING_AUTOCONFIGURE_EXCLUDE: ""
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/beiming
-      SPRING_DATASOURCE_USERNAME: $${POSTGRES_USER}
-      SPRING_DATASOURCE_PASSWORD: $${POSTGRES_PASSWORD}
+      SPRING_DATASOURCE_USERNAME: beiming
+      SPRING_DATASOURCE_PASSWORD: beiming_local_password
       SPRING_FLYWAY_ENABLED: "true"
     ports:
       - "8135:8135"
@@ -35,6 +35,23 @@ services:
       interval: 20s
       timeout: 5s
       start_period: 40s
+      retries: 10
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: beiming-frontend
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "5173:5173"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:5173/ | grep -q '<!doctype html>'"]
+      interval: 20s
+      timeout: 5s
+      start_period: 10s
       retries: 10
 
 volumes:

@@ -1,0 +1,8 @@
+node_modules
+dist-ssr
+*.log
+*.local
+.vite-out.log
+.vite-err.log
+*.tsbuildinfo
+.git
