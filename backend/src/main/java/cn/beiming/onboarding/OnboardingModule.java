@@ -1,6 +1,7 @@
 package cn.beiming.onboarding;
 
 import cn.beiming.admission.AdmissionTrustedActor;
+import cn.beiming.admission.persistence.OnboardingPersistence;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -44,8 +45,8 @@ import java.util.concurrent.ConcurrentHashMap;
 @Configuration
 class OnboardingModule {
     @Bean
-    OnboardingStore onboardingStore(OnboardingTestControls testControls) {
-        OnboardingStore store = new OnboardingStore(testControls);
+    OnboardingStore onboardingStore(OnboardingTestControls testControls, OnboardingPersistence onboardingPersistence) {
+        OnboardingStore store = new OnboardingStore(testControls, onboardingPersistence);
         store.seed();
         return store;
     }
@@ -243,11 +244,13 @@ class OnboardingStore {
     private final Map<String, IdempotencyRecord> idempotency = new ConcurrentHashMap<>();
     private final List<Map<String, Object>> audits = new ArrayList<>();
     private final OnboardingTestControls testControls;
+    private final OnboardingPersistence persistence;
     private int idSeq = 2000;
     private int handoffSnapshotsTotal;
 
-    OnboardingStore(OnboardingTestControls testControls) {
+    OnboardingStore(OnboardingTestControls testControls, OnboardingPersistence persistence) {
         this.testControls = testControls;
+        this.persistence = persistence;
     }
 
     void seed() {
@@ -273,6 +276,7 @@ class OnboardingStore {
         put(ready);
 
         audits.add(auditRow("audit-seed-1", "admin", "app-in-progress", "ONBOARDING_STARTED", "SUCCESS", "LOW", "IN_PROGRESS", "IN_PROGRESS", null));
+        persistence.seed(applications.values().stream().map(app -> applicationView(app, null, defaultRule(), false, List.of())).toList(), audits);
     }
 
     synchronized Map<String, Object> progress(AuthContext user, HttpServletRequest request) {
@@ -312,6 +316,7 @@ class OnboardingStore {
         applyAuxNotification(app, request);
         Map<String, Object> view = applicationView(app, user, ruleForRead(user, request, new ArrayList<>()), false, List.of());
         remember(user.userId(), "START", body, view);
+        persistence.persistApplicationWrite(request, user.userId(), actorRole(user), "onboarding.start", "ONBOARDING_STARTED", "LOW", null, app.status, null, idempotencyKey(body), canonical(body), view, view, created ? 201 : 200);
         return new MutationResult(created, view);
     }
 
@@ -334,6 +339,7 @@ class OnboardingStore {
         applyAuxNotification(app, request);
         Map<String, Object> view = applicationView(app, user, ruleForRead(user, request, new ArrayList<>()), false, List.of());
         remember(user.userId(), "PROFILE", body, view);
+        persistence.persistConfirmationWrite(request, user.userId(), actorRole(user), "PROFILE", "ONBOARDING_PROFILE_CONFIRMED", idempotencyKey(body), canonical(body), view, app.profileConfirmation, view, 200);
         return view;
     }
 
@@ -357,6 +363,7 @@ class OnboardingStore {
         applyAuxNotification(app, request);
         Map<String, Object> view = applicationView(app, user, rule, false, List.of());
         remember(user.userId(), "RULES", body, view);
+        persistence.persistConfirmationWrite(request, user.userId(), actorRole(user), "RULES", "ONBOARDING_RULES_CONFIRMED", idempotencyKey(body), canonical(body), view, app.ruleConfirmation, view, 200);
         return view;
     }
 
@@ -380,6 +387,7 @@ class OnboardingStore {
         applyAuxNotification(app, request);
         Map<String, Object> view = applicationView(app, user, ruleForRead(user, request, new ArrayList<>()), false, List.of());
         remember(user.userId(), "DIRECTION", body, view);
+        persistence.persistApplicationWrite(request, user.userId(), actorRole(user), "onboarding.direction", "ONBOARDING_DIRECTION_SELECTED", "LOW", app.status, app.status, null, idempotencyKey(body), canonical(body), view, view, 200);
         return view;
     }
 
@@ -406,6 +414,7 @@ class OnboardingStore {
         applyAuxNotification(app, request);
         Map<String, Object> view = applicationView(app, user, rule, false, List.of());
         remember(user.userId(), "ADVANCE", body, view);
+        persistence.persistApplicationWrite(request, user.userId(), actorRole(user), "onboarding.advance", "ONBOARDING_READY_FOR_EXAM", "LOW", before, app.status, null, idempotencyKey(body), canonical(body), view, view, 200);
         return view;
     }
 
@@ -881,6 +890,10 @@ class OnboardingStore {
     private void remember(String actorId, String operation, Map<String, Object> body, Map<String, Object> value) {
         String key = idempotencyKey(body);
         if (key != null) idempotency.put(actorId + ":" + operation + ":" + key, new IdempotencyRecord(canonical(body), value));
+    }
+
+    private String actorRole(AuthContext actor) {
+        return actor.roles().stream().findFirst().orElse("USER");
     }
 
     private String idempotencyKey(Map<String, Object> body) {

@@ -7,10 +7,10 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
@@ -39,6 +39,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = "activity.test-controls.enabled=true"
 )
+@Import(ActivityRequestDatabaseFlowIntegrationTest.EvidenceConfiguration.class)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_EACH_TEST_METHOD)
 class ActivityRequestDatabaseFlowIntegrationTest {
     private static final String FLOW_ID = "activity-flow-" + UUID.randomUUID();
@@ -523,7 +524,6 @@ class ActivityRequestDatabaseFlowIntegrationTest {
         return UUID.randomUUID().toString().replace("-", "");
     }
 
-    @TestConfiguration
     static class EvidenceConfiguration {
         @Bean
         ActivityFlowEvidenceRecorder activityFlowEvidenceRecorder() {

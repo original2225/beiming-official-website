@@ -118,6 +118,14 @@ API 网关或后端入口
 
 所有模块共享统一响应格式、错误码、分页格式、认证方式、审计字段和时间字段。
 
+PostgreSQL 是统一后端正式持久化数据库。Flyway 负责管理数据库迁移，迁移文件只新增不改已发布内容，统一放在 `backend/src/main/resources/db/migration`。生产和集成环境通过环境变量提供 `SPRING_DATASOURCE_URL`、`SPRING_DATASOURCE_USERNAME`、`SPRING_DATASOURCE_PASSWORD` 和 `SPRING_FLYWAY_ENABLED`，仓库内不得写入真实密码、真实 token 或真实生产连接串。H2 只允许用于轻量单测，不作为正式持久化或数据库集成测试依据。
+
+数据库集成测试必须使用 Testcontainers PostgreSQL。涉及新增、更新、状态流转、审计、幂等或请求日志的自动化测试，必须通过 `SpringBootTest` 的 `RANDOM_PORT` 发起真实 HTTP 请求进入后端，再使用独立 SQL 查询 PostgreSQL 验证业务表、`app_audit_logs`、`app_idempotency_records` 和 `app_request_logs`，并输出 `SQL evidence`。
+
+从容器化部署基线建立后，数据库相关开发默认运行在真实容器链路上。本地使用 Docker Desktop WSL，服务器使用 Arch Linux 容器环境。`beiming-backend` 与 `beiming-postgres` 均为 `healthy` 后才能开始数据库验收；验证必须从统一后端入口进入，再落到容器 PostgreSQL。H2、MockMvc、本机未容器化数据库和只启动本机 Spring 进程都不能作为数据库开发完成依据，只能作为轻量补充检查。
+
+每个 HTTP 写请求是事务边界。业务表写入、审计写入、幂等记录和请求日志必须在同一个事务内提交。审计写入失败必须阻断对应写操作，幂等记录写入失败也必须回滚业务写入。同一操作者、同一作用域、同一幂等键、同一请求指纹返回原结果；同键不同指纹返回对应模块 API 契约定义的冲突错误。
+
 内容类、审核类和资源类数据默认支持软删除、归档、状态流转和操作记录。常用状态包括草稿、待审核、已通过、已拒绝、需修改、已下架和已归档。
 
 每个模块实现前必须补齐接口契约。接口契约至少包括路径、方法、认证要求、权限点、请求字段、响应字段、错误码、分页规则、幂等规则和失败降级行为。
@@ -164,7 +172,7 @@ Cloudreve 第一阶段可以作为外部分享链接存在。后续接入 API �
 
 每个模块拥有自己的数据。跨模块读取必须通过接口，不直接读库。高频展示可以保存快照字段，例如昵称、头像、Minecraft ID、资源名称和实例名称。
 
-`auth` 拥有用户、会话、角色、权限和邀请码。
+`auth` 拥有用户、会话、角色、权限、邀请码、Minecraft 绑定、密码重置凭证、认证审计和认证幂等记录。PostgreSQL 落地后，`auth` 的对外字段、路径、响应格式、错误码和认证语义保持不变；密码只保存哈希，session token 只保存安全摘要或可撤销凭证，不保存可直接使用的明文 token。注册、登录、退出、用户修改、角色权限修改、邀请码创建或禁用、Minecraft 绑定变更等写请求必须把业务写入、审计、幂等和请求日志放在同一事务中。
 
 `profile` 拥有成员档案、成员组、成员状态和公开资料。
 
@@ -238,6 +246,8 @@ Cloudreve 第一阶段可以作为外部分享链接存在。后续接入 API �
 ## 部署原则
 
 官网前端、后端模块化单体、数据库、缓存、Cloudreve、Minecraft 服务器和外部节点执行器应分开部署。开发阶段以 `backend/pom.xml` 这一个 Spring Boot 工程模拟和验证后端模块边界，但接口、权限和数据归属不能混乱。本地开发态 `api-gateway-service:8125` Maven 入口已退役，五个 core 独立 Maven 入口也已退役，网关能力和五个 core 模块由 `backend:8135` 自承载。外部节点执行器已出仓且未接入。
+
+本地容器部署以仓库根目录的 `docker-compose.yml` 为入口，只编排 PostgreSQL 和统一后端。统一后端镜像由 `backend/Dockerfile` 构建，运行 Maven 产出的 Spring Boot jar，容器端口只暴露 `8135`，健康检查复用 `/api/v1/unified-backend/health`。容器运行前必须先执行 `mvn -q -f backend/pom.xml -DskipTests package` 生成 jar。容器运行时必须显式提供 `SPRING_DATASOURCE_URL`、`SPRING_DATASOURCE_USERNAME`、`SPRING_DATASOURCE_PASSWORD`、`SPRING_FLYWAY_ENABLED=true` 和空的 `SPRING_AUTOCONFIGURE_EXCLUDE`，确保 PostgreSQL 与 Flyway 在容器环境打开。`compose.local.env` 只用于本地 Docker Desktop WSL 测试，必须保持本地忽略；迁移到 Arch Linux 容器时使用同一端口、同一镜像入口和同一环境变量契约，由服务器侧外部密钥或编排配置注入真实密码。
 
 节点守护进程部署在被管理服务器上。它只开放必要管理端口，优先由控制面主动连接或通过受控通道通信，不暴露无鉴权的系统操作接口。
 

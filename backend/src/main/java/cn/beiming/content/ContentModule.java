@@ -6,12 +6,15 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -28,7 +31,12 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -40,12 +48,13 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.HexFormat;
 
 @Configuration
 class ContentModule {
     @Bean
-    ContentStore contentStore() {
-        return new ContentStore();
+    ContentStore contentStore(ContentPersistence contentPersistence) {
+        return new ContentStore(contentPersistence);
     }
 
     @Bean("contentTestAuthContextProvider")
@@ -67,6 +76,15 @@ class ContentModule {
     @ConditionalOnMissingBean
     ContentFlowEvidenceRecorder contentFlowEvidenceRecorder() {
         return new NoopContentFlowEvidenceRecorder();
+    }
+
+    @Bean
+    ContentPersistence contentPersistence(ObjectProvider<JdbcTemplate> jdbcTemplate, ObjectMapper objectMapper) {
+        JdbcTemplate available = jdbcTemplate.getIfAvailable();
+        if (available == null) {
+            return new NoopContentPersistence();
+        }
+        return new ContentPostgresPersistence(available, objectMapper);
     }
 }
 
@@ -167,7 +185,7 @@ class ContentController {
                                                    HttpServletRequest request,
                                                    @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        Map<String, Object> payload = store.createItem(actor, profile, body);
+        Map<String, Object> payload = store.createItem(request, actor, profile, body);
         ResponseEntity<Map<String, Object>> response = ResponseEntity.status(HttpStatus.CREATED).body(okData(payload));
         evidenceRecorder.recordItemWrite(request, "CONTENT_ITEM_CREATED", payload, response.getStatusCode().value());
         return response;
@@ -175,50 +193,56 @@ class ContentController {
 
     @PatchMapping("/admin/items/{contentId}")
     Map<String, Object> patchItem(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                  HttpServletRequest request,
                                   @PathVariable String contentId,
                                   @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ok(store.patchItem(actor, profile, contentId, body));
+        return ok(store.patchItem(request, actor, profile, contentId, body));
     }
 
     @PostMapping("/admin/items/{contentId}/preview-token")
     ResponseEntity<Map<String, Object>> createPreviewToken(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                                           HttpServletRequest request,
                                                            @PathVariable String contentId,
                                                            @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ResponseEntity.status(HttpStatus.CREATED).body(okData(store.createPreviewToken(actor, contentId, body)));
+        return ResponseEntity.status(HttpStatus.CREATED).body(okData(store.createPreviewToken(request, actor, contentId, body)));
     }
 
     @PatchMapping("/admin/items/{contentId}/submit-review")
     Map<String, Object> submitReview(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                     HttpServletRequest request,
                                      @PathVariable String contentId,
                                      @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ok(store.submitReview(actor, contentId, body));
+        return ok(store.submitReview(request, actor, contentId, body));
     }
 
     @PatchMapping("/admin/items/{contentId}/approve")
     Map<String, Object> approve(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                HttpServletRequest request,
                                 @PathVariable String contentId,
                                 @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ok(store.approve(actor, notification, contentId, body));
+        return ok(store.approve(request, actor, notification, contentId, body));
     }
 
     @PatchMapping("/admin/items/{contentId}/reject")
     Map<String, Object> reject(@RequestHeader(value = "Authorization", required = false) String authorization,
+                               HttpServletRequest request,
                                @PathVariable String contentId,
                                @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ok(store.reject(actor, notification, contentId, body));
+        return ok(store.reject(request, actor, notification, contentId, body));
     }
 
     @PatchMapping("/admin/items/{contentId}/request-changes")
     Map<String, Object> requestChanges(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                       HttpServletRequest request,
                                        @PathVariable String contentId,
                                        @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ok(store.requestChanges(actor, notification, contentId, body));
+        return ok(store.requestChanges(request, actor, notification, contentId, body));
     }
 
     @PatchMapping("/admin/items/{contentId}/publish")
@@ -227,33 +251,36 @@ class ContentController {
                                     @PathVariable String contentId,
                                     @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        Map<String, Object> payload = store.publish(actor, notification, contentId, body);
+        Map<String, Object> payload = store.publish(request, actor, notification, contentId, body);
         evidenceRecorder.recordItemWrite(request, "CONTENT_ITEM_PUBLISHED", payload, HttpStatus.OK.value());
         return ok(payload);
     }
 
     @PatchMapping("/admin/items/{contentId}/offline")
     Map<String, Object> offlineItem(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                    HttpServletRequest request,
                                     @PathVariable String contentId,
                                     @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ok(store.offline(actor, contentId, body));
+        return ok(store.offline(request, actor, contentId, body));
     }
 
     @PatchMapping("/admin/items/{contentId}/archive")
     Map<String, Object> archiveItem(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                    HttpServletRequest request,
                                     @PathVariable String contentId,
                                     @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ok(store.archive(actor, contentId, body));
+        return ok(store.archive(request, actor, contentId, body));
     }
 
     @PatchMapping("/admin/items/{contentId}/delete")
     Map<String, Object> deleteItem(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                   HttpServletRequest request,
                                    @PathVariable String contentId,
                                    @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ok(store.softDelete(actor, contentId, body));
+        return ok(store.softDelete(request, actor, contentId, body));
     }
 
     @GetMapping("/admin/items/{contentId}/versions")
@@ -274,11 +301,12 @@ class ContentController {
 
     @PatchMapping("/admin/items/{contentId}/versions/{version}/restore")
     Map<String, Object> restoreItemVersion(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                           HttpServletRequest request,
                                            @PathVariable String contentId,
                                            @PathVariable int version,
                                            @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ok(store.restoreItemVersion(actor, contentId, version, body));
+        return ok(store.restoreItemVersion(request, actor, contentId, version, body));
     }
 
     @GetMapping("/admin/items/{contentId}/audit-logs")
@@ -297,9 +325,10 @@ class ContentController {
 
     @PutMapping("/admin/home")
     Map<String, Object> saveHome(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                 HttpServletRequest request,
                                  @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ok(store.saveHome(actor, body));
+        return ok(store.saveHome(request, actor, body));
     }
 
     @PostMapping("/admin/home/preview")
@@ -311,16 +340,18 @@ class ContentController {
 
     @PatchMapping("/admin/home/publish")
     Map<String, Object> publishHome(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                    HttpServletRequest request,
                                     @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ok(store.publishHome(actor, body));
+        return ok(store.publishHome(request, actor, body));
     }
 
     @PatchMapping("/admin/home/rollback")
     Map<String, Object> rollbackHome(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                     HttpServletRequest request,
                                      @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ok(store.rollbackHome(actor, body));
+        return ok(store.rollbackHome(request, actor, body));
     }
 
     @GetMapping("/admin/categories")
@@ -335,7 +366,7 @@ class ContentController {
                                                        HttpServletRequest request,
                                                        @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        Map<String, Object> payload = store.createCategory(actor, body);
+        Map<String, Object> payload = store.createCategory(request, actor, body);
         ResponseEntity<Map<String, Object>> response = ResponseEntity.status(HttpStatus.CREATED).body(okData(payload));
         evidenceRecorder.recordCategoryWrite(request, "CONTENT_CATEGORY_CREATED", payload, response.getStatusCode().value());
         return response;
@@ -343,18 +374,20 @@ class ContentController {
 
     @PatchMapping("/admin/categories/{categoryId}")
     Map<String, Object> patchCategory(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                      HttpServletRequest request,
                                       @PathVariable String categoryId,
                                       @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ok(store.patchCategory(actor, categoryId, body));
+        return ok(store.patchCategory(request, actor, categoryId, body));
     }
 
     @PatchMapping("/admin/categories/{categoryId}/archive")
     Map<String, Object> archiveCategory(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                        HttpServletRequest request,
                                         @PathVariable String categoryId,
                                         @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ok(store.archiveCategory(actor, categoryId, body));
+        return ok(store.archiveCategory(request, actor, categoryId, body));
     }
 
     @GetMapping("/admin/tags")
@@ -366,25 +399,28 @@ class ContentController {
 
     @PostMapping("/admin/tags")
     ResponseEntity<Map<String, Object>> createTag(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                                  HttpServletRequest request,
                                                   @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ResponseEntity.status(HttpStatus.CREATED).body(okData(store.createTag(actor, body)));
+        return ResponseEntity.status(HttpStatus.CREATED).body(okData(store.createTag(request, actor, body)));
     }
 
     @PatchMapping("/admin/tags/{tagId}")
     Map<String, Object> patchTag(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                 HttpServletRequest request,
                                  @PathVariable String tagId,
                                  @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ok(store.patchTag(actor, tagId, body));
+        return ok(store.patchTag(request, actor, tagId, body));
     }
 
     @PatchMapping("/admin/tags/{tagId}/archive")
     Map<String, Object> archiveTag(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                   HttpServletRequest request,
                                    @PathVariable String tagId,
                                    @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ok(store.archiveTag(actor, tagId, body));
+        return ok(store.archiveTag(request, actor, tagId, body));
     }
 
     @GetMapping("/admin/topics")
@@ -403,49 +439,55 @@ class ContentController {
 
     @PostMapping("/admin/topics")
     ResponseEntity<Map<String, Object>> createTopic(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                                    HttpServletRequest request,
                                                     @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ResponseEntity.status(HttpStatus.CREATED).body(okData(store.createTopic(actor, body)));
+        return ResponseEntity.status(HttpStatus.CREATED).body(okData(store.createTopic(request, actor, body)));
     }
 
     @PatchMapping("/admin/topics/{topicId}")
     Map<String, Object> patchTopic(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                   HttpServletRequest request,
                                    @PathVariable String topicId,
                                    @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ok(store.patchTopic(actor, topicId, body));
+        return ok(store.patchTopic(request, actor, topicId, body));
     }
 
     @PatchMapping("/admin/topics/{topicId}/publish")
     Map<String, Object> publishTopic(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                     HttpServletRequest request,
                                      @PathVariable String topicId,
                                      @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ok(store.publishTopic(actor, topicId, body));
+        return ok(store.publishTopic(request, actor, topicId, body));
     }
 
     @PatchMapping("/admin/topics/{topicId}/offline")
     Map<String, Object> offlineTopic(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                     HttpServletRequest request,
                                      @PathVariable String topicId,
                                      @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ok(store.offlineTopic(actor, topicId, body));
+        return ok(store.offlineTopic(request, actor, topicId, body));
     }
 
     @PatchMapping("/admin/topics/{topicId}/archive")
     Map<String, Object> archiveTopic(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                     HttpServletRequest request,
                                      @PathVariable String topicId,
                                      @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ok(store.archiveTopic(actor, topicId, body));
+        return ok(store.archiveTopic(request, actor, topicId, body));
     }
 
     @PatchMapping("/admin/topics/{topicId}/delete")
     Map<String, Object> deleteTopic(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                    HttpServletRequest request,
                                     @PathVariable String topicId,
                                     @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ok(store.deleteTopic(actor, topicId, body));
+        return ok(store.deleteTopic(request, actor, topicId, body));
     }
 
     @GetMapping("/admin/seo")
@@ -468,17 +510,18 @@ class ContentController {
                                 @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
         boolean created = !store.seoExistsByRoute(String.valueOf(body.get("route")));
-        Map<String, Object> payload = store.saveSeo(actor, body);
+        Map<String, Object> payload = store.saveSeo(request, actor, body);
         evidenceRecorder.recordSeoWrite(request, created ? "CONTENT_SEO_CREATED" : "CONTENT_SEO_UPDATED", payload, HttpStatus.OK.value());
         return ok(payload);
     }
 
     @PatchMapping("/admin/seo/{seoId}/disable")
     Map<String, Object> disableSeo(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                   HttpServletRequest request,
                                    @PathVariable String seoId,
                                    @RequestBody Map<String, Object> body) {
         AuthUser actor = auth.requireAny(authorization, "ADMIN", "OWNER");
-        return ok(store.disableSeo(actor, seoId, body));
+        return ok(store.disableSeo(request, actor, seoId, body));
     }
 
     @GetMapping("/admin/ops/summary")
@@ -530,6 +573,313 @@ class NoopContentFlowEvidenceRecorder implements ContentFlowEvidenceRecorder {
     }
 }
 
+interface ContentPersistence {
+    void resetForTests();
+
+    Map<String, Object> replay(String actorUserId, String scope, String idempotencyKey, String fingerprint);
+
+    void persistSnapshot(Iterable<ContentCategoryRecord> categories, Iterable<ContentTagRecord> tags, Iterable<ContentItem> items, Map<String, List<ContentItemVersionRecord>> itemVersions, Iterable<TopicRecord> topics, Iterable<HomeConfig> homeVersions, HomeConfig draftHome, HomeConfig publishedHome, Iterable<PreviewTokenRecord> previewTokens, Iterable<SeoRecord> seo);
+
+    void persistWrite(HttpServletRequest request, AuthUser actor, String targetType, String targetId, String action, Object reason, String idempotencyScope, String idempotencyKey, String fingerprint, Map<String, Object> payload, int responseCode, Iterable<ContentCategoryRecord> categories, Iterable<ContentTagRecord> tags, Iterable<ContentItem> items, Map<String, List<ContentItemVersionRecord>> itemVersions, Iterable<TopicRecord> topics, Iterable<HomeConfig> homeVersions, HomeConfig draftHome, HomeConfig publishedHome, Iterable<PreviewTokenRecord> previewTokens, Iterable<SeoRecord> seo);
+
+    void persistRequestLog(HttpServletRequest request, String actorUserId, int responseCode);
+}
+
+class NoopContentPersistence implements ContentPersistence {
+    @Override
+    public void resetForTests() {
+    }
+
+    @Override
+    public Map<String, Object> replay(String actorUserId, String scope, String idempotencyKey, String fingerprint) {
+        return null;
+    }
+
+    @Override
+    public void persistSnapshot(Iterable<ContentCategoryRecord> categories, Iterable<ContentTagRecord> tags, Iterable<ContentItem> items, Map<String, List<ContentItemVersionRecord>> itemVersions, Iterable<TopicRecord> topics, Iterable<HomeConfig> homeVersions, HomeConfig draftHome, HomeConfig publishedHome, Iterable<PreviewTokenRecord> previewTokens, Iterable<SeoRecord> seo) {
+    }
+
+    @Override
+    public void persistWrite(HttpServletRequest request, AuthUser actor, String targetType, String targetId, String action, Object reason, String idempotencyScope, String idempotencyKey, String fingerprint, Map<String, Object> payload, int responseCode, Iterable<ContentCategoryRecord> categories, Iterable<ContentTagRecord> tags, Iterable<ContentItem> items, Map<String, List<ContentItemVersionRecord>> itemVersions, Iterable<TopicRecord> topics, Iterable<HomeConfig> homeVersions, HomeConfig draftHome, HomeConfig publishedHome, Iterable<PreviewTokenRecord> previewTokens, Iterable<SeoRecord> seo) {
+    }
+
+    @Override
+    public void persistRequestLog(HttpServletRequest request, String actorUserId, int responseCode) {
+    }
+}
+
+class ContentPostgresPersistence implements ContentPersistence {
+    private final JdbcTemplate jdbc;
+    private final ObjectMapper objectMapper;
+
+    ContentPostgresPersistence(JdbcTemplate jdbc, ObjectMapper objectMapper) {
+        this.jdbc = jdbc;
+        this.objectMapper = objectMapper;
+    }
+
+    @Override
+    @Transactional
+    public void resetForTests() {
+        deleteContentRows();
+        jdbc.update("DELETE FROM app_idempotency_records WHERE scope LIKE 'content.%'");
+        jdbc.update("DELETE FROM app_audit_logs WHERE action LIKE 'CONTENT_%'");
+        jdbc.update("DELETE FROM app_request_logs WHERE path LIKE '/api/v1/content%'");
+    }
+
+    @Override
+    public Map<String, Object> replay(String actorUserId, String scope, String idempotencyKey, String fingerprint) {
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                SELECT request_fingerprint, response_body::text
+                FROM app_idempotency_records
+                WHERE actor_user_id = ? AND scope = ? AND idempotency_key = ?
+                """, actorUserId, scope, idempotencyKey);
+        if (rows.isEmpty()) {
+            return null;
+        }
+        Map<String, Object> row = rows.getFirst();
+        if (!Objects.equals(String.valueOf(row.get("request_fingerprint")), fingerprint)) {
+            throw new ContentException(43002, HttpStatus.CONFLICT, "idempotency key conflict");
+        }
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> envelope = objectMapper.readValue(String.valueOf(row.get("response_body")), Map.class);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> data = (Map<String, Object>) envelope.get("data");
+            return data;
+        } catch (Exception exception) {
+            throw new IllegalStateException("failed to parse content idempotency response", exception);
+        }
+    }
+
+    @Override
+    @Transactional
+    public void persistSnapshot(Iterable<ContentCategoryRecord> categories, Iterable<ContentTagRecord> tags, Iterable<ContentItem> items, Map<String, List<ContentItemVersionRecord>> itemVersions, Iterable<TopicRecord> topics, Iterable<HomeConfig> homeVersions, HomeConfig draftHome, HomeConfig publishedHome, Iterable<PreviewTokenRecord> previewTokens, Iterable<SeoRecord> seo) {
+        replaceContentRows(categories, tags, items, itemVersions, topics, homeVersions, draftHome, publishedHome, previewTokens, seo);
+    }
+
+    @Override
+    @Transactional
+    public void persistWrite(HttpServletRequest request, AuthUser actor, String targetType, String targetId, String action, Object reason, String idempotencyScope, String idempotencyKey, String fingerprint, Map<String, Object> payload, int responseCode, Iterable<ContentCategoryRecord> categories, Iterable<ContentTagRecord> tags, Iterable<ContentItem> items, Map<String, List<ContentItemVersionRecord>> itemVersions, Iterable<TopicRecord> topics, Iterable<HomeConfig> homeVersions, HomeConfig draftHome, HomeConfig publishedHome, Iterable<PreviewTokenRecord> previewTokens, Iterable<SeoRecord> seo) {
+        replaceContentRows(categories, tags, items, itemVersions, topics, homeVersions, draftHome, publishedHome, previewTokens, seo);
+        insertAudit(request, actor, targetType, targetId, action, reason);
+        if (idempotencyKey != null) {
+            insertIdempotency(actor.userId, idempotencyScope, idempotencyKey, fingerprint, responseCode, payload);
+        }
+        insertRequestLog(request, actor.userId, responseCode);
+    }
+
+    @Override
+    @Transactional
+    public void persistRequestLog(HttpServletRequest request, String actorUserId, int responseCode) {
+        insertRequestLog(request, actorUserId, responseCode);
+    }
+
+    private void replaceContentRows(Iterable<ContentCategoryRecord> categories, Iterable<ContentTagRecord> tags, Iterable<ContentItem> items, Map<String, List<ContentItemVersionRecord>> itemVersions, Iterable<TopicRecord> topics, Iterable<HomeConfig> homeVersions, HomeConfig draftHome, HomeConfig publishedHome, Iterable<PreviewTokenRecord> previewTokens, Iterable<SeoRecord> seo) {
+        deleteContentRows();
+        for (ContentCategoryRecord category : categories) {
+            insertCategory(category);
+        }
+        for (ContentTagRecord tag : tags) {
+            insertTag(tag);
+        }
+        for (ContentItem item : items) {
+            insertItem(item);
+            for (String tagId : item.tagIds) {
+                jdbc.update("INSERT INTO content_item_tags(id, content_id, tag_id, created_at) VALUES (?, ?, ?, now()) ON CONFLICT (content_id, tag_id) DO NOTHING", UUID.randomUUID(), item.contentId, tagId);
+            }
+        }
+        for (List<ContentItemVersionRecord> versions : itemVersions.values()) {
+            for (ContentItemVersionRecord version : versions) {
+                insertItemVersion(version);
+            }
+        }
+        for (TopicRecord topic : topics) {
+            insertTopic(topic);
+            int sortOrder = 0;
+            for (String contentId : topic.contentIds) {
+                jdbc.update("INSERT INTO content_topic_items(id, topic_id, content_id, sort_order, created_at) VALUES (?, ?, ?, ?, now()) ON CONFLICT (topic_id, content_id) DO NOTHING", UUID.randomUUID(), topic.topicId, contentId, sortOrder++);
+            }
+        }
+        for (HomeConfig homeVersion : homeVersions) {
+            insertHomeVersion(homeVersion);
+        }
+        if (draftHome != null) {
+            insertHomeConfig(draftHome, false);
+        }
+        if (publishedHome != null) {
+            insertHomeConfig(publishedHome, true);
+        }
+        for (PreviewTokenRecord token : previewTokens) {
+            insertPreviewToken(token);
+        }
+        for (SeoRecord record : seo) {
+            insertSeo(record);
+        }
+    }
+
+    private void deleteContentRows() {
+        jdbc.update("DELETE FROM content_preview_tokens");
+        jdbc.update("DELETE FROM content_topic_items");
+        jdbc.update("DELETE FROM content_item_versions");
+        jdbc.update("DELETE FROM content_item_tags");
+        jdbc.update("DELETE FROM content_home_versions");
+        jdbc.update("DELETE FROM content_home_configs");
+        jdbc.update("DELETE FROM content_topics");
+        jdbc.update("DELETE FROM content_items");
+        jdbc.update("DELETE FROM content_tags");
+        jdbc.update("DELETE FROM content_categories");
+        jdbc.update("DELETE FROM content_seo_configs");
+    }
+
+    private void insertCategory(ContentCategoryRecord category) {
+        jdbc.update("""
+                INSERT INTO content_categories(id, category_id, name, slug, description, sort_order, archived, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, UUID.randomUUID(), category.categoryId, category.name, category.slug, category.description, category.sortOrder, category.archived, timestamp(category.createdAt), timestamp(category.updatedAt));
+    }
+
+    private void insertTag(ContentTagRecord tag) {
+        jdbc.update("""
+                INSERT INTO content_tags(id, tag_id, name, slug, archived, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, UUID.randomUUID(), tag.tagId, tag.name, tag.slug, tag.archived, timestamp(tag.createdAt), timestamp(tag.updatedAt));
+    }
+
+    private void insertItem(ContentItem item) {
+        jdbc.update("""
+                INSERT INTO content_items(id, content_id, type, status, visibility, slug, title, summary, body, cover_url, category_id, author_user_id, author_display_name_snapshot, member_snapshot, seo, admin_note, review_opinion, notification_status, submitted_at, reviewed_at, published_at, visible_from, visible_until, created_by, updated_by, created_at, updated_at, deleted_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS jsonb), CAST(? AS jsonb), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, UUID.randomUUID(), item.contentId, item.type, item.status, item.visibility, item.slug, item.title, item.summary, item.body, item.coverUrl,
+                item.categoryId, item.authorUserId, item.authorDisplayNameSnapshot, jsonOrNull(item.memberSnapshot), jsonOrNull(item.seo), item.adminNote, item.reviewOpinion,
+                item.notificationStatus, timestamp(item.submittedAt), timestamp(item.reviewedAt), timestamp(item.publishedAt), timestamp(item.visibleFrom), timestamp(item.visibleUntil),
+                item.createdBy, item.updatedBy, timestamp(item.createdAt), timestamp(item.updatedAt), timestamp(item.deletedAt));
+    }
+
+    private void insertItemVersion(ContentItemVersionRecord version) {
+        jdbc.update("""
+                INSERT INTO content_item_versions(id, content_id, version, source_action, snapshot, created_by, created_at, reason, restored_from_version)
+                VALUES (?, ?, ?, ?, CAST(? AS jsonb), ?, ?, ?, ?)
+                ON CONFLICT (content_id, version) DO NOTHING
+                """, UUID.randomUUID(), version.contentId, version.version, version.sourceAction, json(itemMap(version.snapshot)), version.createdBy, timestamp(version.createdAt), version.reason, version.restoredFromVersion);
+    }
+
+    private void insertTopic(TopicRecord topic) {
+        jdbc.update("""
+                INSERT INTO content_topics(id, topic_id, slug, title, summary, cover_url, status, visibility, seo, published_at, created_at, updated_at, deleted_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS jsonb), ?, ?, ?, ?)
+                """, UUID.randomUUID(), topic.topicId, topic.slug, topic.title, topic.summary, topic.coverUrl, topic.status, topic.visibility, jsonOrNull(topic.seo),
+                timestamp(topic.publishedAt), timestamp(topic.createdAt), timestamp(topic.updatedAt), timestamp(topic.deletedAt));
+    }
+
+    private void insertHomeConfig(HomeConfig config, boolean published) {
+        jdbc.update("""
+                INSERT INTO content_home_configs(id, home_config_id, version, sections, seo, published, published_at, created_at, updated_at)
+                VALUES (?, ?, ?, CAST(? AS jsonb), CAST(? AS jsonb), ?, ?, now(), now())
+                ON CONFLICT (home_config_id) DO NOTHING
+                """, UUID.randomUUID(), config.homeConfigId, config.version, json(config.sections), jsonOrNull(config.seo), published, timestamp(config.publishedAt));
+    }
+
+    private void insertHomeVersion(HomeConfig config) {
+        if (config.publishedAt == null) {
+            return;
+        }
+        jdbc.update("""
+                INSERT INTO content_home_versions(id, home_config_id, version, sections, seo, published_at, created_at)
+                VALUES (?, ?, ?, CAST(? AS jsonb), CAST(? AS jsonb), ?, now())
+                ON CONFLICT (version) DO NOTHING
+                """, UUID.randomUUID(), config.homeConfigId, config.version, json(config.sections), jsonOrNull(config.seo), timestamp(config.publishedAt));
+    }
+
+    private void insertPreviewToken(PreviewTokenRecord token) {
+        jdbc.update("""
+                INSERT INTO content_preview_tokens(id, content_id, token_hash, expires_at, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT (token_hash) DO NOTHING
+                """, UUID.randomUUID(), token.contentId, sha256(token.token), timestamp(token.expiresAt), timestamp(token.createdAt));
+    }
+
+    private void insertSeo(SeoRecord record) {
+        jdbc.update("""
+                INSERT INTO content_seo_configs(id, seo_id, route, title, description, keywords, cover_url, robots, canonical_url, enabled, updated_at)
+                VALUES (?, ?, ?, ?, ?, CAST(? AS jsonb), ?, ?, ?, ?, ?)
+                ON CONFLICT (seo_id) DO NOTHING
+                """, UUID.randomUUID(), record.seoId, record.route, record.title, record.description, json(record.keywords), record.coverUrl, record.robots, record.canonicalUrl, record.enabled, timestamp(record.updatedAt));
+    }
+
+    private void insertAudit(HttpServletRequest request, AuthUser actor, String targetType, String targetId, String action, Object reason) {
+        jdbc.update("""
+                INSERT INTO app_audit_logs(id, request_id, actor_user_id, actor_role, actor_permissions, source_ip, target_type, target_id, action, risk_level, reason, params_summary, before_state, after_state, result, failure_reason, created_at)
+                VALUES (?, ?, ?, ?, CAST(? AS jsonb), ?, ?, ?, ?, 'MEDIUM', ?, CAST(? AS jsonb), CAST(? AS jsonb), CAST(? AS jsonb), 'SUCCESS', NULL, now())
+                """, UUID.randomUUID(), requestId(request), actor.userId, String.join(",", actor.roles), json(List.of()), sourceIp(request), targetType, targetId, action,
+                reason == null ? null : String.valueOf(reason), json(Map.of("action", action)), json(Map.of("status", "UNKNOWN")), json(Map.of("status", "UPDATED")));
+    }
+
+    private void insertIdempotency(String actorUserId, String scope, String idempotencyKey, String fingerprint, int responseCode, Map<String, Object> payload) {
+        jdbc.update("""
+                INSERT INTO app_idempotency_records(id, actor_user_id, scope, idempotency_key, request_fingerprint, response_code, response_body, created_at, expires_at)
+                VALUES (?, ?, ?, ?, ?, ?, CAST(? AS jsonb), now(), now() + interval '24 hours')
+                ON CONFLICT (actor_user_id, scope, idempotency_key) DO NOTHING
+                """, UUID.randomUUID(), actorUserId, scope, idempotencyKey, fingerprint, responseCode, json(ContentController.envelope(0, "success", payload)));
+    }
+
+    private void insertRequestLog(HttpServletRequest request, String actorUserId, int responseCode) {
+        jdbc.update("""
+                INSERT INTO app_request_logs(id, request_id, method, path, actor_user_id, source_ip, response_code, result, failure_reason, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'SUCCESS', NULL, now())
+                ON CONFLICT (request_id) DO NOTHING
+                """, UUID.randomUUID(), requestId(request), request.getMethod(), request.getRequestURI(), actorUserId, sourceIp(request), responseCode);
+    }
+
+    private Map<String, Object> itemMap(ContentItem item) {
+        return ContentController.mapOf("contentId", item.contentId, "type", item.type, "status", item.status, "visibility", item.visibility, "slug", item.slug,
+                "title", item.title, "summary", item.summary, "body", item.body, "coverUrl", item.coverUrl, "categoryId", item.categoryId, "tagIds", item.tagIds,
+                "authorUserId", item.authorUserId, "memberSnapshot", item.memberSnapshot, "seo", item.seo, "adminNote", item.adminNote, "publishedAt", string(item.publishedAt));
+    }
+
+    private String requestId(HttpServletRequest request) {
+        String value = request.getHeader("X-Request-Id");
+        return value == null || value.isBlank() ? RequestIdFilter.currentRequestId() : value;
+    }
+
+    private String sourceIp(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            return forwarded.split(",")[0].trim();
+        }
+        String remote = request.getRemoteAddr();
+        return remote == null || remote.isBlank() ? "unknown" : remote;
+    }
+
+    private OffsetDateTime timestamp(Instant value) {
+        return value == null ? null : OffsetDateTime.ofInstant(value, ZoneOffset.UTC);
+    }
+
+    private String string(Instant value) {
+        return value == null ? null : value.toString();
+    }
+
+    private String jsonOrNull(Object value) {
+        return value == null ? null : json(value);
+    }
+
+    private String json(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("failed to serialize content PostgreSQL jsonb value", exception);
+        }
+    }
+
+    private String sha256(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(digest);
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 unavailable", exception);
+        }
+    }
+}
+
 class ContentStore {
     private final Map<String, ContentItem> items = new LinkedHashMap<>();
     private final Map<String, ContentCategoryRecord> categories = new LinkedHashMap<>();
@@ -546,6 +896,11 @@ class ContentStore {
     private boolean failNextAudit;
     private boolean failNextHomeRead;
     private int nextHomeVersion = 2;
+    private final ContentPersistence persistence;
+
+    ContentStore(ContentPersistence persistence) {
+        this.persistence = persistence;
+    }
 
     synchronized void reset() {
         items.clear();
@@ -563,6 +918,7 @@ class ContentStore {
         failNextAudit = false;
         failNextHomeRead = false;
         nextHomeVersion = 2;
+        persistence.resetForTests();
     }
 
     synchronized void seedTestData(TestProfileSnapshotProvider profile) {
@@ -614,6 +970,7 @@ class ContentStore {
         publishedHomeVersions.put(1, publishedHome.copy());
         draftHome = new HomeConfig("home_draft", 0, publishedHome.sections, publishedHome.seo, null);
         audit("system", "CONTENT_SEEDED", "seed", "content", "SUCCESS");
+        persistence.persistSnapshot(categories.values(), tags.values(), items.values(), itemVersions, topics.values(), publishedHomeVersions.values(), draftHome, publishedHome, previewTokens.values(), seo.values());
     }
 
     private ContentItem seedItem(String slug, String type, String status, String visibility, String title, String summary, String body, String categoryId, List<String> tagIds, boolean published, String authorUserId, Map<String, Object> memberSnapshot) {
@@ -743,11 +1100,17 @@ class ContentStore {
         return adminItemMap(requireItem(contentId));
     }
 
-    synchronized Map<String, Object> createItem(AuthUser actor, TestProfileSnapshotProvider profile, Map<String, Object> body) {
+    synchronized Map<String, Object> createItem(HttpServletRequest request, AuthUser actor, TestProfileSnapshotProvider profile, Map<String, Object> body) {
         String key = optionalString(body, "idempotencyKey");
         String idemKey = idempotencyKey(actor, "create-item", key);
         if (key != null && idempotency.containsKey(idemKey)) {
+            persistence.persistRequestLog(request, actor.userId, 201);
             return replay(idemKey, body);
+        }
+        Map<String, Object> postgresReplay = key == null ? null : persistence.replay(actor.userId, "content.item.create", key, fingerprint(body));
+        if (postgresReplay != null) {
+            persistence.persistRequestLog(request, actor.userId, 201);
+            return postgresReplay;
         }
         validateCreateBody(body);
         String slug = requiredString(body, "slug");
@@ -765,10 +1128,11 @@ class ContentStore {
         audit(actor.userId, "CONTENT_ITEM_CREATED", body.get("reason"), item.contentId, "SUCCESS");
         Map<String, Object> result = adminItemMap(item);
         remember(idemKey, body, result);
+        persistWrite(request, actor, "CONTENT", item.contentId, "CONTENT_ITEM_CREATED", body.get("reason"), "content.item.create", key, fingerprint(body), result, 201);
         return result;
     }
 
-    synchronized Map<String, Object> patchItem(AuthUser actor, TestProfileSnapshotProvider profile, String contentId, Map<String, Object> body) {
+    synchronized Map<String, Object> patchItem(HttpServletRequest request, AuthUser actor, TestProfileSnapshotProvider profile, String contentId, Map<String, Object> body) {
         ContentItem item = requireItem(contentId);
         if (Set.of("ARCHIVED", "DELETED").contains(item.status)) {
             throw new ContentException(43410, HttpStatus.CONFLICT, "content state conflict");
@@ -797,10 +1161,12 @@ class ContentStore {
         item.updatedAt = now();
         recordVersion(item, actor.userId, "UPDATED", body.get("reason"), null);
         audit(actor.userId, "CONTENT_ITEM_UPDATED", body.get("reason"), item.contentId, "SUCCESS");
-        return adminItemMap(item);
+        Map<String, Object> result = adminItemMap(item);
+        persistWrite(request, actor, "CONTENT", item.contentId, "CONTENT_ITEM_UPDATED", body.get("reason"), null, null, null, result, 200);
+        return result;
     }
 
-    synchronized Map<String, Object> createPreviewToken(AuthUser actor, String contentId, Map<String, Object> body) {
+    synchronized Map<String, Object> createPreviewToken(HttpServletRequest request, AuthUser actor, String contentId, Map<String, Object> body) {
         ContentItem item = requireItem(contentId);
         requireReason(body);
         if (Set.of("ARCHIVED", "DELETED").contains(item.status)) throw new ContentException(43410, HttpStatus.CONFLICT, "content state conflict");
@@ -813,13 +1179,19 @@ class ContentStore {
         PreviewTokenRecord record = new PreviewTokenRecord(contentId, token, expiresAt, createdAt);
         previewTokens.put(token, record);
         audit(actor.userId, "CONTENT_ITEM_PREVIEW_TOKEN_CREATED", body.get("reason"), contentId, "SUCCESS", mapOf("expiresAt", string(expiresAt)));
-        return previewTokenMap(record);
+        Map<String, Object> result = previewTokenMap(record);
+        persistWrite(request, actor, "CONTENT", contentId, "CONTENT_ITEM_PREVIEW_TOKEN_CREATED", body.get("reason"), null, null, null, result, 201);
+        return result;
     }
 
-    synchronized Map<String, Object> submitReview(AuthUser actor, String contentId, Map<String, Object> body) {
+    synchronized Map<String, Object> submitReview(HttpServletRequest request, AuthUser actor, String contentId, Map<String, Object> body) {
         ContentItem item = requireItem(contentId);
         requireReason(body);
-        if ("PENDING_REVIEW".equals(item.status)) return adminItemMap(item);
+        if ("PENDING_REVIEW".equals(item.status)) {
+            Map<String, Object> result = adminItemMap(item);
+            persistence.persistRequestLog(request, actor.userId, 200);
+            return result;
+        }
         if (!Set.of("DRAFT", "REJECTED", "NEEDS_CHANGES").contains(item.status)) {
             throw new ContentException(43410, HttpStatus.CONFLICT, "content state conflict");
         }
@@ -828,14 +1200,20 @@ class ContentStore {
         item.submittedAt = now();
         item.updatedAt = now();
         audit(actor.userId, "CONTENT_ITEM_SUBMITTED", body.get("reason"), item.contentId, "SUCCESS");
-        return adminItemMap(item);
+        Map<String, Object> result = adminItemMap(item);
+        persistWrite(request, actor, "CONTENT", item.contentId, "CONTENT_ITEM_SUBMITTED", body.get("reason"), null, null, null, result, 200);
+        return result;
     }
 
-    synchronized Map<String, Object> approve(AuthUser actor, TestNotificationClient notification, String contentId, Map<String, Object> body) {
+    synchronized Map<String, Object> approve(HttpServletRequest request, AuthUser actor, TestNotificationClient notification, String contentId, Map<String, Object> body) {
         ContentItem item = requireItem(contentId);
         String opinion = requiredString(body, "reviewOpinion");
         requireReason(body);
-        if ("APPROVED".equals(item.status)) return adminItemMap(item);
+        if ("APPROVED".equals(item.status)) {
+            Map<String, Object> result = adminItemMap(item);
+            persistence.persistRequestLog(request, actor.userId, 200);
+            return result;
+        }
         if (!"PENDING_REVIEW".equals(item.status)) throw new ContentException(43410, HttpStatus.CONFLICT, "content state conflict");
         notifyRequired(notification, item, "CONTENT_REVIEW_APPROVED");
         checkAudit();
@@ -845,22 +1223,28 @@ class ContentStore {
         item.updatedAt = now();
         item.notificationStatus = item.authorUserId == null ? "NO_AUTHOR_TO_NOTIFY" : "DELIVERED";
         audit(actor.userId, "CONTENT_ITEM_APPROVED", body.get("reason"), item.contentId, "SUCCESS");
-        return adminItemMap(item);
+        Map<String, Object> result = adminItemMap(item);
+        persistWrite(request, actor, "CONTENT", item.contentId, "CONTENT_ITEM_APPROVED", body.get("reason"), null, null, null, result, 200);
+        return result;
     }
 
-    synchronized Map<String, Object> reject(AuthUser actor, TestNotificationClient notification, String contentId, Map<String, Object> body) {
-        return reviewTo(actor, notification, contentId, body, "REJECTED", "CONTENT_ITEM_REJECTED", "CONTENT_REVIEW_REJECTED");
+    synchronized Map<String, Object> reject(HttpServletRequest request, AuthUser actor, TestNotificationClient notification, String contentId, Map<String, Object> body) {
+        return reviewTo(request, actor, notification, contentId, body, "REJECTED", "CONTENT_ITEM_REJECTED", "CONTENT_REVIEW_REJECTED");
     }
 
-    synchronized Map<String, Object> requestChanges(AuthUser actor, TestNotificationClient notification, String contentId, Map<String, Object> body) {
-        return reviewTo(actor, notification, contentId, body, "NEEDS_CHANGES", "CONTENT_ITEM_CHANGES_REQUESTED", "CONTENT_REVIEW_CHANGES_REQUESTED");
+    synchronized Map<String, Object> requestChanges(HttpServletRequest request, AuthUser actor, TestNotificationClient notification, String contentId, Map<String, Object> body) {
+        return reviewTo(request, actor, notification, contentId, body, "NEEDS_CHANGES", "CONTENT_ITEM_CHANGES_REQUESTED", "CONTENT_REVIEW_CHANGES_REQUESTED");
     }
 
-    private Map<String, Object> reviewTo(AuthUser actor, TestNotificationClient notification, String contentId, Map<String, Object> body, String targetStatus, String auditAction, String notifyType) {
+    private Map<String, Object> reviewTo(HttpServletRequest request, AuthUser actor, TestNotificationClient notification, String contentId, Map<String, Object> body, String targetStatus, String auditAction, String notifyType) {
         ContentItem item = requireItem(contentId);
         String opinion = requiredString(body, "reviewOpinion");
         requireReason(body);
-        if (targetStatus.equals(item.status)) return adminItemMap(item);
+        if (targetStatus.equals(item.status)) {
+            Map<String, Object> result = adminItemMap(item);
+            persistence.persistRequestLog(request, actor.userId, 200);
+            return result;
+        }
         if (!"PENDING_REVIEW".equals(item.status)) throw new ContentException(43410, HttpStatus.CONFLICT, "content state conflict");
         notifyRequired(notification, item, notifyType);
         checkAudit();
@@ -870,15 +1254,21 @@ class ContentStore {
         item.updatedAt = now();
         item.notificationStatus = item.authorUserId == null ? "NO_AUTHOR_TO_NOTIFY" : "DELIVERED";
         audit(actor.userId, auditAction, body.get("reason"), item.contentId, "SUCCESS");
-        return adminItemMap(item);
+        Map<String, Object> result = adminItemMap(item);
+        persistWrite(request, actor, "CONTENT", item.contentId, auditAction, body.get("reason"), null, null, null, result, 200);
+        return result;
     }
 
-    synchronized Map<String, Object> publish(AuthUser actor, TestNotificationClient notification, String contentId, Map<String, Object> body) {
+    synchronized Map<String, Object> publish(HttpServletRequest request, AuthUser actor, TestNotificationClient notification, String contentId, Map<String, Object> body) {
         ContentItem item = requireItem(contentId);
         requireReason(body);
         if (!Set.of("APPROVED", "OFFLINE").contains(item.status)) throw new ContentException(43410, HttpStatus.CONFLICT, "content state conflict");
         boolean changed = "OFFLINE".equals(item.status) || item.publishedAt == null;
-        if (!changed) return adminItemMap(item);
+        if (!changed) {
+            Map<String, Object> result = adminItemMap(item);
+            persistence.persistRequestLog(request, actor.userId, 200);
+            return result;
+        }
         checkAudit();
         item.status = "APPROVED";
         if (item.publishedAt == null) item.publishedAt = now();
@@ -893,7 +1283,9 @@ class ContentStore {
         item.updatedAt = now();
         recordVersion(item, actor.userId, "PUBLISHED", body.get("reason"), null);
         audit(actor.userId, "CONTENT_ITEM_PUBLISHED", body.get("reason"), item.contentId, "SUCCESS");
-        return adminItemMap(item);
+        Map<String, Object> result = adminItemMap(item);
+        persistWrite(request, actor, "CONTENT", item.contentId, "CONTENT_ITEM_PUBLISHED", body.get("reason"), null, null, null, result, 200);
+        return result;
     }
 
     synchronized Map<String, Object> itemVersions(String contentId, Map<String, String> query) {
@@ -913,7 +1305,7 @@ class ContentStore {
         return versionMap(requireVersion(contentId, version));
     }
 
-    synchronized Map<String, Object> restoreItemVersion(AuthUser actor, String contentId, int version, Map<String, Object> body) {
+    synchronized Map<String, Object> restoreItemVersion(HttpServletRequest request, AuthUser actor, String contentId, int version, Map<String, Object> body) {
         ContentItem item = requireItem(contentId);
         requireReason(body);
         if (Set.of("ARCHIVED", "DELETED").contains(item.status)) {
@@ -951,45 +1343,65 @@ class ContentStore {
         int newVersion = recordVersion(item, actor.userId, "RESTORED", body.get("reason"), version);
         audit(actor.userId, "CONTENT_ITEM_VERSION_RESTORED", body.get("reason"), item.contentId, "SUCCESS",
                 mapOf("sourceVersion", version, "newVersion", newVersion));
-        return adminItemMap(item);
+        Map<String, Object> result = adminItemMap(item);
+        persistWrite(request, actor, "CONTENT", item.contentId, "CONTENT_ITEM_VERSION_RESTORED", body.get("reason"), null, null, null, result, 200);
+        return result;
     }
 
-    synchronized Map<String, Object> offline(AuthUser actor, String contentId, Map<String, Object> body) {
+    synchronized Map<String, Object> offline(HttpServletRequest request, AuthUser actor, String contentId, Map<String, Object> body) {
         ContentItem item = requireItem(contentId);
         requireReason(body);
-        if ("OFFLINE".equals(item.status)) return adminItemMap(item);
+        if ("OFFLINE".equals(item.status)) {
+            Map<String, Object> result = adminItemMap(item);
+            persistence.persistRequestLog(request, actor.userId, 200);
+            return result;
+        }
         if (!"APPROVED".equals(item.status) || item.publishedAt == null) throw new ContentException(43410, HttpStatus.CONFLICT, "content state conflict");
         checkAudit();
         item.status = "OFFLINE";
         item.updatedAt = now();
         audit(actor.userId, "CONTENT_ITEM_OFFLINE", body.get("reason"), item.contentId, "SUCCESS");
-        return adminItemMap(item);
+        Map<String, Object> result = adminItemMap(item);
+        persistWrite(request, actor, "CONTENT", item.contentId, "CONTENT_ITEM_OFFLINE", body.get("reason"), null, null, null, result, 200);
+        return result;
     }
 
-    synchronized Map<String, Object> archive(AuthUser actor, String contentId, Map<String, Object> body) {
+    synchronized Map<String, Object> archive(HttpServletRequest request, AuthUser actor, String contentId, Map<String, Object> body) {
         ContentItem item = requireItem(contentId);
         requireReason(body);
-        if ("ARCHIVED".equals(item.status)) return adminItemMap(item);
+        if ("ARCHIVED".equals(item.status)) {
+            Map<String, Object> result = adminItemMap(item);
+            persistence.persistRequestLog(request, actor.userId, 200);
+            return result;
+        }
         if ("APPROVED".equals(item.status) && item.publishedAt != null) throw new ContentException(43410, HttpStatus.CONFLICT, "content state conflict");
         if (!Set.of("DRAFT", "REJECTED", "NEEDS_CHANGES", "OFFLINE").contains(item.status)) throw new ContentException(43410, HttpStatus.CONFLICT, "content state conflict");
         checkAudit();
         item.status = "ARCHIVED";
         item.updatedAt = now();
         audit(actor.userId, "CONTENT_ITEM_ARCHIVED", body.get("reason"), item.contentId, "SUCCESS");
-        return adminItemMap(item);
+        Map<String, Object> result = adminItemMap(item);
+        persistWrite(request, actor, "CONTENT", item.contentId, "CONTENT_ITEM_ARCHIVED", body.get("reason"), null, null, null, result, 200);
+        return result;
     }
 
-    synchronized Map<String, Object> softDelete(AuthUser actor, String contentId, Map<String, Object> body) {
+    synchronized Map<String, Object> softDelete(HttpServletRequest request, AuthUser actor, String contentId, Map<String, Object> body) {
         ContentItem item = requireItem(contentId);
         requireReason(body);
-        if ("DELETED".equals(item.status)) return adminItemMap(item);
+        if ("DELETED".equals(item.status)) {
+            Map<String, Object> result = adminItemMap(item);
+            persistence.persistRequestLog(request, actor.userId, 200);
+            return result;
+        }
         if ("APPROVED".equals(item.status) && item.publishedAt != null) throw new ContentException(43410, HttpStatus.CONFLICT, "content state conflict");
         checkAudit();
         item.status = "DELETED";
         item.deletedAt = now();
         item.updatedAt = now();
         audit(actor.userId, "CONTENT_ITEM_DELETED", body.get("reason"), item.contentId, "SUCCESS");
-        return adminItemMap(item);
+        Map<String, Object> result = adminItemMap(item);
+        persistWrite(request, actor, "CONTENT", item.contentId, "CONTENT_ITEM_DELETED", body.get("reason"), null, null, null, result, 200);
+        return result;
     }
 
     synchronized Map<String, Object> auditLogs(String contentId, Map<String, String> query) {
@@ -1005,10 +1417,18 @@ class ContentStore {
         return mapOf("draft", draftHome == null ? null : adminHomeMap(draftHome), "published", publishedHome == null ? null : homeView(publishedHome), "versions", publishedHomeVersions.keySet());
     }
 
-    synchronized Map<String, Object> saveHome(AuthUser actor, Map<String, Object> body) {
+    synchronized Map<String, Object> saveHome(HttpServletRequest request, AuthUser actor, Map<String, Object> body) {
         String key = optionalString(body, "idempotencyKey");
         String idemKey = idempotencyKey(actor, "save-home", key);
-        if (key != null && idempotency.containsKey(idemKey)) return replay(idemKey, body);
+        if (key != null && idempotency.containsKey(idemKey)) {
+            persistence.persistRequestLog(request, actor.userId, 200);
+            return replay(idemKey, body);
+        }
+        Map<String, Object> postgresReplay = key == null ? null : persistence.replay(actor.userId, "content.home.save", key, fingerprint(body));
+        if (postgresReplay != null) {
+            persistence.persistRequestLog(request, actor.userId, 200);
+            return postgresReplay;
+        }
         requireReason(body);
         List<Map<String, Object>> sections = sections(body);
         if (sections.size() > 20) throw new ContentException(40001, HttpStatus.BAD_REQUEST, "validation failed");
@@ -1017,6 +1437,7 @@ class ContentStore {
         Map<String, Object> result = mapOf("draft", adminHomeMap(draftHome), "published", publishedHome == null ? null : homeView(publishedHome));
         audit(actor.userId, "CONTENT_HOME_DRAFT_SAVED", body.get("reason"), draftHome.homeConfigId, "SUCCESS");
         remember(idemKey, body, result);
+        persistWrite(request, actor, "CONTENT_HOME", draftHome.homeConfigId, "CONTENT_HOME_DRAFT_SAVED", body.get("reason"), "content.home.save", key, fingerprint(body), result, 200);
         return result;
     }
 
@@ -1029,20 +1450,24 @@ class ContentStore {
         return result;
     }
 
-    synchronized Map<String, Object> publishHome(AuthUser actor, Map<String, Object> body) {
+    synchronized Map<String, Object> publishHome(HttpServletRequest request, AuthUser actor, Map<String, Object> body) {
         requireReason(body);
         if (draftHome == null) throw new ContentException(43404, HttpStatus.NOT_FOUND, "home config not found");
         checkAudit();
         if (publishedHome != null && Objects.equals(publishedHome.sections, draftHome.sections)) {
-            return mapOf("published", homeView(publishedHome));
+            Map<String, Object> result = mapOf("published", homeView(publishedHome));
+            persistence.persistRequestLog(request, actor.userId, 200);
+            return result;
         }
         publishedHome = new HomeConfig("home_pub_" + UUID.randomUUID(), nextHomeVersion++, draftHome.sections, draftHome.seo, now());
         publishedHomeVersions.put(publishedHome.version, publishedHome.copy());
         audit(actor.userId, "CONTENT_HOME_PUBLISHED", body.get("reason"), publishedHome.homeConfigId, "SUCCESS");
-        return mapOf("published", homeView(publishedHome));
+        Map<String, Object> result = mapOf("published", homeView(publishedHome));
+        persistWrite(request, actor, "CONTENT_HOME", publishedHome.homeConfigId, "CONTENT_HOME_PUBLISHED", body.get("reason"), null, null, null, result, 200);
+        return result;
     }
 
-    synchronized Map<String, Object> rollbackHome(AuthUser actor, Map<String, Object> body) {
+    synchronized Map<String, Object> rollbackHome(HttpServletRequest request, AuthUser actor, Map<String, Object> body) {
         requireReason(body);
         Integer version = integer(body, "version");
         HomeConfig target = publishedHomeVersions.get(version);
@@ -1050,7 +1475,9 @@ class ContentStore {
         checkAudit();
         publishedHome = target.copy();
         audit(actor.userId, "CONTENT_HOME_ROLLED_BACK", body.get("reason"), publishedHome.homeConfigId, "SUCCESS");
-        return mapOf("published", homeView(publishedHome));
+        Map<String, Object> result = mapOf("published", homeView(publishedHome));
+        persistWrite(request, actor, "CONTENT_HOME", publishedHome.homeConfigId, "CONTENT_HOME_ROLLED_BACK", body.get("reason"), null, null, null, result, 200);
+        return result;
     }
 
     synchronized List<Map<String, Object>> adminCategories(Map<String, String> query) {
@@ -1062,10 +1489,18 @@ class ContentStore {
                 .toList();
     }
 
-    synchronized Map<String, Object> createCategory(AuthUser actor, Map<String, Object> body) {
+    synchronized Map<String, Object> createCategory(HttpServletRequest request, AuthUser actor, Map<String, Object> body) {
         String key = optionalString(body, "idempotencyKey");
         String idemKey = idempotencyKey(actor, "create-category", key);
-        if (key != null && idempotency.containsKey(idemKey)) return replay(idemKey, body);
+        if (key != null && idempotency.containsKey(idemKey)) {
+            persistence.persistRequestLog(request, actor.userId, 201);
+            return replay(idemKey, body);
+        }
+        Map<String, Object> postgresReplay = key == null ? null : persistence.replay(actor.userId, "content.category.create", key, fingerprint(body));
+        if (postgresReplay != null) {
+            persistence.persistRequestLog(request, actor.userId, 201);
+            return postgresReplay;
+        }
         requireReason(body);
         String name = requiredString(body, "name");
         String slug = requiredString(body, "slug");
@@ -1077,10 +1512,11 @@ class ContentStore {
         audit(actor.userId, "CONTENT_CATEGORY_CREATED", body.get("reason"), category.categoryId, "SUCCESS");
         Map<String, Object> result = categoryMap(category);
         remember(idemKey, body, result);
+        persistWrite(request, actor, "CONTENT_CATEGORY", category.categoryId, "CONTENT_CATEGORY_CREATED", body.get("reason"), "content.category.create", key, fingerprint(body), result, 201);
         return result;
     }
 
-    synchronized Map<String, Object> patchCategory(AuthUser actor, String categoryId, Map<String, Object> body) {
+    synchronized Map<String, Object> patchCategory(HttpServletRequest request, AuthUser actor, String categoryId, Map<String, Object> body) {
         ContentCategoryRecord category = requireCategory(categoryId);
         requireReason(body);
         String name = optionalString(body, "name");
@@ -1094,19 +1530,27 @@ class ContentStore {
         if (body.containsKey("sortOrder")) category.sortOrder = integer(body, "sortOrder");
         category.updatedAt = now();
         audit(actor.userId, "CONTENT_CATEGORY_UPDATED", body.get("reason"), categoryId, "SUCCESS");
-        return categoryMap(category);
+        Map<String, Object> result = categoryMap(category);
+        persistWrite(request, actor, "CONTENT_CATEGORY", categoryId, "CONTENT_CATEGORY_UPDATED", body.get("reason"), null, null, null, result, 200);
+        return result;
     }
 
-    synchronized Map<String, Object> archiveCategory(AuthUser actor, String categoryId, Map<String, Object> body) {
+    synchronized Map<String, Object> archiveCategory(HttpServletRequest request, AuthUser actor, String categoryId, Map<String, Object> body) {
         ContentCategoryRecord category = requireCategory(categoryId);
         requireReason(body);
-        if (category.archived) return categoryMap(category);
+        if (category.archived) {
+            Map<String, Object> result = categoryMap(category);
+            persistence.persistRequestLog(request, actor.userId, 200);
+            return result;
+        }
         if (items.values().stream().anyMatch(item -> categoryId.equals(item.categoryId) && !Set.of("ARCHIVED", "DELETED").contains(item.status))) throw new ContentException(43415, HttpStatus.CONFLICT, "category is used");
         checkAudit();
         category.archived = true;
         category.updatedAt = now();
         audit(actor.userId, "CONTENT_CATEGORY_ARCHIVED", body.get("reason"), categoryId, "SUCCESS");
-        return categoryMap(category);
+        Map<String, Object> result = categoryMap(category);
+        persistWrite(request, actor, "CONTENT_CATEGORY", categoryId, "CONTENT_CATEGORY_ARCHIVED", body.get("reason"), null, null, null, result, 200);
+        return result;
     }
 
     synchronized List<Map<String, Object>> adminTags(Map<String, String> query) {
@@ -1118,10 +1562,18 @@ class ContentStore {
                 .toList();
     }
 
-    synchronized Map<String, Object> createTag(AuthUser actor, Map<String, Object> body) {
+    synchronized Map<String, Object> createTag(HttpServletRequest request, AuthUser actor, Map<String, Object> body) {
         String key = optionalString(body, "idempotencyKey");
         String idemKey = idempotencyKey(actor, "create-tag", key);
-        if (key != null && idempotency.containsKey(idemKey)) return replay(idemKey, body);
+        if (key != null && idempotency.containsKey(idemKey)) {
+            persistence.persistRequestLog(request, actor.userId, 201);
+            return replay(idemKey, body);
+        }
+        Map<String, Object> postgresReplay = key == null ? null : persistence.replay(actor.userId, "content.tag.create", key, fingerprint(body));
+        if (postgresReplay != null) {
+            persistence.persistRequestLog(request, actor.userId, 201);
+            return postgresReplay;
+        }
         requireReason(body);
         String name = requiredString(body, "name");
         String slug = requiredString(body, "slug");
@@ -1133,10 +1585,11 @@ class ContentStore {
         audit(actor.userId, "CONTENT_TAG_CREATED", body.get("reason"), tag.tagId, "SUCCESS");
         Map<String, Object> result = tagMap(tag);
         remember(idemKey, body, result);
+        persistWrite(request, actor, "CONTENT_TAG", tag.tagId, "CONTENT_TAG_CREATED", body.get("reason"), "content.tag.create", key, fingerprint(body), result, 201);
         return result;
     }
 
-    synchronized Map<String, Object> patchTag(AuthUser actor, String tagId, Map<String, Object> body) {
+    synchronized Map<String, Object> patchTag(HttpServletRequest request, AuthUser actor, String tagId, Map<String, Object> body) {
         ContentTagRecord tag = requireTag(tagId);
         requireReason(body);
         String name = optionalString(body, "name");
@@ -1148,19 +1601,27 @@ class ContentStore {
         if (slug != null) tag.slug = slug;
         tag.updatedAt = now();
         audit(actor.userId, "CONTENT_TAG_UPDATED", body.get("reason"), tagId, "SUCCESS");
-        return tagMap(tag);
+        Map<String, Object> result = tagMap(tag);
+        persistWrite(request, actor, "CONTENT_TAG", tagId, "CONTENT_TAG_UPDATED", body.get("reason"), null, null, null, result, 200);
+        return result;
     }
 
-    synchronized Map<String, Object> archiveTag(AuthUser actor, String tagId, Map<String, Object> body) {
+    synchronized Map<String, Object> archiveTag(HttpServletRequest request, AuthUser actor, String tagId, Map<String, Object> body) {
         ContentTagRecord tag = requireTag(tagId);
         requireReason(body);
-        if (tag.archived) return tagMap(tag);
+        if (tag.archived) {
+            Map<String, Object> result = tagMap(tag);
+            persistence.persistRequestLog(request, actor.userId, 200);
+            return result;
+        }
         if (items.values().stream().anyMatch(item -> item.tagIds.contains(tagId) && !Set.of("ARCHIVED", "DELETED").contains(item.status))) throw new ContentException(43415, HttpStatus.CONFLICT, "tag is used");
         checkAudit();
         tag.archived = true;
         tag.updatedAt = now();
         audit(actor.userId, "CONTENT_TAG_ARCHIVED", body.get("reason"), tagId, "SUCCESS");
-        return tagMap(tag);
+        Map<String, Object> result = tagMap(tag);
+        persistWrite(request, actor, "CONTENT_TAG", tagId, "CONTENT_TAG_ARCHIVED", body.get("reason"), null, null, null, result, 200);
+        return result;
     }
 
     synchronized Map<String, Object> adminTopics(Map<String, String> query) {
@@ -1181,10 +1642,18 @@ class ContentStore {
         return topicMap(requireTopic(topicId));
     }
 
-    synchronized Map<String, Object> createTopic(AuthUser actor, Map<String, Object> body) {
+    synchronized Map<String, Object> createTopic(HttpServletRequest request, AuthUser actor, Map<String, Object> body) {
         String key = optionalString(body, "idempotencyKey");
         String idemKey = idempotencyKey(actor, "create-topic", key);
-        if (key != null && idempotency.containsKey(idemKey)) return replay(idemKey, body);
+        if (key != null && idempotency.containsKey(idemKey)) {
+            persistence.persistRequestLog(request, actor.userId, 201);
+            return replay(idemKey, body);
+        }
+        Map<String, Object> postgresReplay = key == null ? null : persistence.replay(actor.userId, "content.topic.create", key, fingerprint(body));
+        if (postgresReplay != null) {
+            persistence.persistRequestLog(request, actor.userId, 201);
+            return postgresReplay;
+        }
         requireReason(body);
         String slug = requiredString(body, "slug");
         String title = requiredString(body, "title");
@@ -1201,10 +1670,11 @@ class ContentStore {
         audit(actor.userId, "CONTENT_TOPIC_CREATED", body.get("reason"), topic.topicId, "SUCCESS");
         Map<String, Object> result = topicMap(topic);
         remember(idemKey, body, result);
+        persistWrite(request, actor, "CONTENT_TOPIC", topic.topicId, "CONTENT_TOPIC_CREATED", body.get("reason"), "content.topic.create", key, fingerprint(body), result, 201);
         return result;
     }
 
-    synchronized Map<String, Object> patchTopic(AuthUser actor, String topicId, Map<String, Object> body) {
+    synchronized Map<String, Object> patchTopic(HttpServletRequest request, AuthUser actor, String topicId, Map<String, Object> body) {
         TopicRecord topic = requireTopic(topicId);
         requireReason(body);
         if (Set.of("ARCHIVED", "DELETED").contains(topic.status)) throw new ContentException(43414, HttpStatus.CONFLICT, "topic state conflict");
@@ -1231,56 +1701,82 @@ class ContentStore {
         topic.seo = seo;
         topic.updatedAt = now();
         audit(actor.userId, "CONTENT_TOPIC_UPDATED", body.get("reason"), topicId, "SUCCESS");
-        return topicMap(topic);
+        Map<String, Object> result = topicMap(topic);
+        persistWrite(request, actor, "CONTENT_TOPIC", topicId, "CONTENT_TOPIC_UPDATED", body.get("reason"), null, null, null, result, 200);
+        return result;
     }
 
-    synchronized Map<String, Object> publishTopic(AuthUser actor, String topicId, Map<String, Object> body) {
+    synchronized Map<String, Object> publishTopic(HttpServletRequest request, AuthUser actor, String topicId, Map<String, Object> body) {
         TopicRecord topic = requireTopic(topicId);
         requireReason(body);
-        if ("APPROVED".equals(topic.status) && topic.publishedAt != null) return topicMap(topic);
+        if ("APPROVED".equals(topic.status) && topic.publishedAt != null) {
+            Map<String, Object> result = topicMap(topic);
+            persistence.persistRequestLog(request, actor.userId, 200);
+            return result;
+        }
         if (!Set.of("DRAFT", "OFFLINE", "APPROVED").contains(topic.status)) throw new ContentException(43414, HttpStatus.CONFLICT, "topic state conflict");
         topic.status = "APPROVED";
         if (topic.publishedAt == null) topic.publishedAt = now();
         topic.updatedAt = now();
         audit(actor.userId, "CONTENT_TOPIC_PUBLISHED", body.get("reason"), topicId, "SUCCESS");
-        return topicMap(topic);
+        Map<String, Object> result = topicMap(topic);
+        persistWrite(request, actor, "CONTENT_TOPIC", topicId, "CONTENT_TOPIC_PUBLISHED", body.get("reason"), null, null, null, result, 200);
+        return result;
     }
 
-    synchronized Map<String, Object> offlineTopic(AuthUser actor, String topicId, Map<String, Object> body) {
+    synchronized Map<String, Object> offlineTopic(HttpServletRequest request, AuthUser actor, String topicId, Map<String, Object> body) {
         TopicRecord topic = requireTopic(topicId);
         requireReason(body);
-        if ("OFFLINE".equals(topic.status)) return topicMap(topic);
+        if ("OFFLINE".equals(topic.status)) {
+            Map<String, Object> result = topicMap(topic);
+            persistence.persistRequestLog(request, actor.userId, 200);
+            return result;
+        }
         if (!"APPROVED".equals(topic.status)) throw new ContentException(43414, HttpStatus.CONFLICT, "topic state conflict");
         topic.status = "OFFLINE";
         topic.updatedAt = now();
         audit(actor.userId, "CONTENT_TOPIC_OFFLINED", body.get("reason"), topicId, "SUCCESS");
-        return topicMap(topic);
+        Map<String, Object> result = topicMap(topic);
+        persistWrite(request, actor, "CONTENT_TOPIC", topicId, "CONTENT_TOPIC_OFFLINED", body.get("reason"), null, null, null, result, 200);
+        return result;
     }
 
-    synchronized Map<String, Object> archiveTopic(AuthUser actor, String topicId, Map<String, Object> body) {
+    synchronized Map<String, Object> archiveTopic(HttpServletRequest request, AuthUser actor, String topicId, Map<String, Object> body) {
         TopicRecord topic = requireTopic(topicId);
         requireReason(body);
-        if ("ARCHIVED".equals(topic.status)) return topicMap(topic);
+        if ("ARCHIVED".equals(topic.status)) {
+            Map<String, Object> result = topicMap(topic);
+            persistence.persistRequestLog(request, actor.userId, 200);
+            return result;
+        }
         if ("APPROVED".equals(topic.status) && topic.publishedAt != null) throw new ContentException(43414, HttpStatus.CONFLICT, "topic state conflict");
         if (!Set.of("DRAFT", "OFFLINE").contains(topic.status)) throw new ContentException(43414, HttpStatus.CONFLICT, "topic state conflict");
         checkAudit();
         topic.status = "ARCHIVED";
         topic.updatedAt = now();
         audit(actor.userId, "CONTENT_TOPIC_ARCHIVED", body.get("reason"), topicId, "SUCCESS");
-        return topicMap(topic);
+        Map<String, Object> result = topicMap(topic);
+        persistWrite(request, actor, "CONTENT_TOPIC", topicId, "CONTENT_TOPIC_ARCHIVED", body.get("reason"), null, null, null, result, 200);
+        return result;
     }
 
-    synchronized Map<String, Object> deleteTopic(AuthUser actor, String topicId, Map<String, Object> body) {
+    synchronized Map<String, Object> deleteTopic(HttpServletRequest request, AuthUser actor, String topicId, Map<String, Object> body) {
         TopicRecord topic = requireTopic(topicId);
         requireReason(body);
-        if ("DELETED".equals(topic.status)) return topicMap(topic);
+        if ("DELETED".equals(topic.status)) {
+            Map<String, Object> result = topicMap(topic);
+            persistence.persistRequestLog(request, actor.userId, 200);
+            return result;
+        }
         if ("APPROVED".equals(topic.status) && topic.publishedAt != null) throw new ContentException(43414, HttpStatus.CONFLICT, "topic state conflict");
         checkAudit();
         topic.status = "DELETED";
         topic.deletedAt = now();
         topic.updatedAt = now();
         audit(actor.userId, "CONTENT_TOPIC_DELETED", body.get("reason"), topicId, "SUCCESS");
-        return topicMap(topic);
+        Map<String, Object> result = topicMap(topic);
+        persistWrite(request, actor, "CONTENT_TOPIC", topicId, "CONTENT_TOPIC_DELETED", body.get("reason"), null, null, null, result, 200);
+        return result;
     }
 
     synchronized Map<String, Object> adminSeoList(Map<String, String> query) {
@@ -1299,10 +1795,18 @@ class ContentStore {
         return seoMap(requireSeo(seoId));
     }
 
-    synchronized Map<String, Object> saveSeo(AuthUser actor, Map<String, Object> body) {
+    synchronized Map<String, Object> saveSeo(HttpServletRequest request, AuthUser actor, Map<String, Object> body) {
         String key = optionalString(body, "idempotencyKey");
         String idemKey = idempotencyKey(actor, "save-seo", key);
-        if (key != null && idempotency.containsKey(idemKey)) return replay(idemKey, body);
+        if (key != null && idempotency.containsKey(idemKey)) {
+            persistence.persistRequestLog(request, actor.userId, 200);
+            return replay(idemKey, body);
+        }
+        Map<String, Object> postgresReplay = key == null ? null : persistence.replay(actor.userId, "content.seo.save", key, fingerprint(body));
+        if (postgresReplay != null) {
+            persistence.persistRequestLog(request, actor.userId, 200);
+            return postgresReplay;
+        }
         requireReason(body);
         String route = requiredString(body, "route");
         validateRoute(route);
@@ -1332,6 +1836,7 @@ class ContentStore {
         audit(actor.userId, created ? "CONTENT_SEO_CREATED" : "CONTENT_SEO_UPDATED", body.get("reason"), record.seoId, "SUCCESS");
         Map<String, Object> result = seoMap(record);
         remember(idemKey, body, result);
+        persistWrite(request, actor, "CONTENT_SEO", record.seoId, created ? "CONTENT_SEO_CREATED" : "CONTENT_SEO_UPDATED", body.get("reason"), "content.seo.save", key, fingerprint(body), result, 200);
         return result;
     }
 
@@ -1339,15 +1844,21 @@ class ContentStore {
         return seo.values().stream().anyMatch(record -> Objects.equals(record.route, route));
     }
 
-    synchronized Map<String, Object> disableSeo(AuthUser actor, String seoId, Map<String, Object> body) {
+    synchronized Map<String, Object> disableSeo(HttpServletRequest request, AuthUser actor, String seoId, Map<String, Object> body) {
         SeoRecord record = requireSeo(seoId);
         requireReason(body);
-        if (!record.enabled) return seoMap(record);
+        if (!record.enabled) {
+            Map<String, Object> result = seoMap(record);
+            persistence.persistRequestLog(request, actor.userId, 200);
+            return result;
+        }
         checkAudit();
         record.enabled = false;
         record.updatedAt = now();
         audit(actor.userId, "CONTENT_SEO_DISABLED", body.get("reason"), seoId, "SUCCESS");
-        return seoMap(record);
+        Map<String, Object> result = seoMap(record);
+        persistWrite(request, actor, "CONTENT_SEO", seoId, "CONTENT_SEO_DISABLED", body.get("reason"), null, null, null, result, 200);
+        return result;
     }
 
     synchronized Map<String, Object> opsSummary() {
@@ -1710,6 +2221,11 @@ class ContentStore {
             failNextAudit = false;
             throw new ContentException(51401, HttpStatus.INTERNAL_SERVER_ERROR, "content audit write failed");
         }
+    }
+
+    private void persistWrite(HttpServletRequest request, AuthUser actor, String targetType, String targetId, String action, Object reason, String idempotencyScope, String idempotencyKey, String fingerprint, Map<String, Object> payload, int responseCode) {
+        persistence.persistWrite(request, actor, targetType, targetId, action, reason, idempotencyScope, idempotencyKey, fingerprint, payload, responseCode,
+                categories.values(), tags.values(), items.values(), itemVersions, topics.values(), publishedHomeVersions.values(), draftHome, publishedHome, previewTokens.values(), seo.values());
     }
 
     private void remember(String idemKey, Map<String, Object> body, Map<String, Object> result) {

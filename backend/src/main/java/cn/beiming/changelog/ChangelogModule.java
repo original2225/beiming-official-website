@@ -1,6 +1,7 @@
 package cn.beiming.changelog;
 
 import cn.beiming.engagement.TrustedGatewayAuth;
+import cn.beiming.engagement.persistence.ChangelogPersistence;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import jakarta.servlet.FilterChain;
@@ -48,8 +49,8 @@ import java.util.function.Supplier;
 class ChangelogEvidenceConfiguration {
     @Bean
     @ConditionalOnMissingBean
-    ChangelogFlowEvidenceRecorder changelogFlowEvidenceRecorder() {
-        return new NoopChangelogFlowEvidenceRecorder();
+    ChangelogFlowEvidenceRecorder changelogFlowEvidenceRecorder(ChangelogPersistence persistence) {
+        return new PersistentChangelogFlowEvidenceRecorder(persistence);
     }
 }
 
@@ -60,12 +61,15 @@ class ChangelogController {
     private final ChangelogAuth auth;
     private final ChangelogProperties properties;
     private final ChangelogFlowEvidenceRecorder evidenceRecorder;
+    private final ChangelogPersistence persistence;
 
-    ChangelogController(ChangelogStore store, ChangelogAuth auth, ChangelogProperties properties, ChangelogFlowEvidenceRecorder evidenceRecorder) {
+    ChangelogController(ChangelogStore store, ChangelogAuth auth, ChangelogProperties properties,
+                        ChangelogFlowEvidenceRecorder evidenceRecorder, ChangelogPersistence persistence) {
         this.store = store;
         this.auth = auth;
         this.properties = properties;
         this.evidenceRecorder = evidenceRecorder;
+        this.persistence = persistence;
     }
 
     @GetMapping("/releases")
@@ -541,6 +545,7 @@ class ChangelogController {
             }
             ensureAuditWritable(request);
             String mode = text(body, "mode", "DRY_RUN");
+            request.setAttribute("changelog.syncMode", mode);
             String status = "UPSERT_SNAPSHOT".equals(mode) ? "SYNCED" : "SKIPPED";
             if ("SYNCED".equals(status)) {
                 release.calendarSyncStatus = "SYNCED";
@@ -602,7 +607,7 @@ class ChangelogController {
     ResponseEntity<Map<String, Object>> opsSummary(HttpServletRequest request) {
         Actor actor = auth.requireStaff(request);
         store.audit("CHANGELOG_OPS_SUMMARY_READ", "changelog", "changelog", "CHANGELOG_SERVICE", actor, request, Map.of(), "SUCCESS", null, null);
-        return ok(request, store.ops(properties.enabled(), actor));
+        return ok(request, store.ops(properties.enabled(), actor, persistence.counts()));
     }
 
     private ResponseEntity<Map<String, Object>> transitionStaff(HttpServletRequest request,
@@ -645,11 +650,29 @@ class ChangelogController {
                                                            Supplier<ResponseEntity<Map<String, Object>>> supplier) {
         validateIdempotency(body);
         String key = body == null ? null : Objects.toString(body.get("idempotencyKey"), null);
+        request.setAttribute("changelog.actorUserId", actor.userId);
+        request.setAttribute("changelog.actorRole", actor.role);
+        request.setAttribute("changelog.scope", scopeFor(request));
+        request.setAttribute("changelog.idempotencyKey", key == null || key.isBlank() ? null : key);
+        request.setAttribute("changelog.fingerprint", store.fingerprint(body));
+        request.setAttribute("changelog.reason", body == null ? null : Objects.toString(body.get("reason"), null));
         if (key == null || key.isBlank()) {
             return supplier.get();
         }
         String idempotencyKey = actor.userId + ":" + scope + ":" + key;
-        String fingerprint = store.fingerprint(body);
+        String fingerprint = request.getAttribute("changelog.fingerprint").toString();
+        String persistenceScope = Objects.toString(request.getAttribute("changelog.scope"), null);
+        Map<String, Object> replay;
+        try {
+            replay = persistence.replay(actor.userId, persistenceScope, key, fingerprint);
+        } catch (IllegalStateException exception) {
+            throw new ChangelogException(HttpStatus.CONFLICT, 49312, "changelog idempotency conflict");
+        }
+        if (replay != null) {
+            ChangelogIdempotencyRecord existing = store.idempotency.get(idempotencyKey);
+            HttpStatus status = existing == null ? HttpStatus.OK : existing.status();
+            return ResponseEntity.status(status).body(envelope(request, replay));
+        }
         ChangelogIdempotencyRecord existing = store.idempotency.get(idempotencyKey);
         if (existing != null) {
             if (!existing.fingerprint().equals(fingerprint)) {
@@ -660,6 +683,19 @@ class ChangelogController {
         ResponseEntity<Map<String, Object>> response = supplier.get();
         store.idempotency.put(idempotencyKey, new ChangelogIdempotencyRecord(fingerprint, (HttpStatus) response.getStatusCode(), response.getBody().get("data")));
         return response;
+    }
+
+    private String scopeFor(HttpServletRequest request) {
+        String method = request.getMethod();
+        String path = request.getRequestURI();
+        if ("POST".equals(method) && "/api/v1/changelog/admin/releases".equals(path)) return "changelog.release.create";
+        if ("PATCH".equals(method) && path.matches("/api/v1/changelog/admin/releases/[^/]+")) return "changelog.release.update";
+        if ("POST".equals(method) && path.matches("/api/v1/changelog/admin/releases/[^/]+/submit")) return "changelog.release.transition";
+        if ("PATCH".equals(method) && path.matches("/api/v1/changelog/admin/releases/[^/]+/(approve|reject|request-changes|publish|offline|archive|delete)")) return "changelog.release.transition";
+        if ("POST".equals(method) && path.matches("/api/v1/changelog/me/releases/[^/]+/bookmark")) return "changelog.bookmark.create";
+        if ("POST".equals(method) && path.matches("/api/v1/changelog/me/releases/[^/]+/unbookmark")) return "changelog.bookmark.cancel";
+        if ("POST".equals(method) && path.matches("/api/v1/changelog/admin/releases/[^/]+/calendar-sync")) return "changelog.calendar-sync.run";
+        return "changelog.write";
     }
 
     private void validateReleaseBody(HttpServletRequest request, Map<String, Object> body, boolean creating, ChangelogReleaseRecord existing) {
@@ -1247,12 +1283,12 @@ class ChangelogStore {
         return summary;
     }
 
-    Map<String, Object> ops(boolean testControlsEnabled, Actor actor) {
+    Map<String, Object> ops(boolean testControlsEnabled, Actor actor, Map<String, Object> counts) {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("service", "changelog");
         data.put("port", 8132);
         data.put("legacyPort", 8115);
-        data.put("storageMode", "IN_MEMORY");
+        data.put("storageMode", counts.getOrDefault("storageMode", "IN_MEMORY"));
         data.put("authMode", actor.authMode);
         data.put("actorUserId", actor.userId);
         data.put("resourceMode", "TEST_STUB");
@@ -1261,12 +1297,12 @@ class ChangelogStore {
         data.put("calendarSyncMode", "SKIPPED");
         data.put("notificationMode", "SKIPPED");
         data.put("testControlsEnabled", testControlsEnabled);
-        data.put("releasesTotal", releases.size());
-        data.put("publishedReleasesTotal", releases.values().stream().filter(ChangelogReleaseRecord::isPublicVisible).count());
-        data.put("bookmarksTotal", bookmarks.size());
-        data.put("auditsTotal", audits.size());
-        data.put("idempotencyRecordsTotal", idempotency.size());
-        data.put("lastPublishedAt", releases.values().stream().map(release -> release.publishedAt).filter(Objects::nonNull).max(String::compareTo).orElse(null));
+        data.put("releasesTotal", counts.getOrDefault("releasesTotal", releases.size()));
+        data.put("publishedReleasesTotal", counts.getOrDefault("publishedReleasesTotal", releases.values().stream().filter(ChangelogReleaseRecord::isPublicVisible).count()));
+        data.put("bookmarksTotal", counts.getOrDefault("bookmarksTotal", bookmarks.size()));
+        data.put("auditsTotal", counts.getOrDefault("auditsTotal", audits.size()));
+        data.put("idempotencyRecordsTotal", counts.getOrDefault("idempotencyRecordsTotal", idempotency.size()));
+        data.put("lastPublishedAt", counts.getOrDefault("lastPublishedAt", releases.values().stream().map(release -> release.publishedAt).filter(Objects::nonNull).max(String::compareTo).orElse(null)));
         data.put("lastAuditAt", audits.isEmpty() ? null : audits.get(audits.size() - 1).createdAt);
         data.put("productionGaps", List.of("P1_IN_MEMORY_STORAGE", "P1_AUTH_STUB", "P1_RESOURCE_STUB", "P1_SERVER_STATUS_STUB",
                 "P1_CONTENT_STUB", "CALENDAR_WRITE_NOT_CONNECTED", "NOTIFICATION_DELIVERY_NOT_CONNECTED", "TEST_CONTROLS_DISABLED_OUTSIDE_TEST"));
@@ -1333,6 +1369,82 @@ class NoopChangelogFlowEvidenceRecorder implements ChangelogFlowEvidenceRecorder
 
     @Override
     public void recordCalendarSyncWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+}
+
+class PersistentChangelogFlowEvidenceRecorder implements ChangelogFlowEvidenceRecorder {
+    private final ChangelogPersistence persistence;
+
+    PersistentChangelogFlowEvidenceRecorder(ChangelogPersistence persistence) {
+        this.persistence = persistence;
+    }
+
+    @Override
+    public void recordReleaseWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+        persist(request, action, payload, responseCode, "CHANGELOG_RELEASE");
+    }
+
+    @Override
+    public void recordBookmarkWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+        persist(request, action, payload, responseCode, "CHANGELOG_BOOKMARK");
+    }
+
+    @Override
+    public void recordCalendarSyncWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+        persist(request, action, payload, responseCode, "CHANGELOG_CALENDAR_SYNC");
+    }
+
+    private void persist(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode, String targetType) {
+        String actorUserId = Objects.toString(request.getAttribute("changelog.actorUserId"), null);
+        String actorRole = Objects.toString(request.getAttribute("changelog.actorRole"), null);
+        String scope = Objects.toString(request.getAttribute("changelog.scope"), null);
+        String idempotencyKey = Objects.toString(request.getAttribute("changelog.idempotencyKey"), null);
+        String fingerprint = Objects.toString(request.getAttribute("changelog.fingerprint"), null);
+        String reason = Objects.toString(request.getAttribute("changelog.reason"), null);
+        Map<String, Object> snapshot = snapshotFor(action, payload);
+        persistence.persistWrite(request, actorUserId, actorRole, scope, action, targetType, targetId(action, payload), "LOW",
+                beforeStatus(payload), afterStatus(payload), reason, idempotencyKey, fingerprint, snapshot, payload, responseCode);
+    }
+
+    private Map<String, Object> snapshotFor(String action, Map<String, Object> payload) {
+        Map<String, Object> snapshot = new LinkedHashMap<>(payload);
+        snapshot.put("snapshotType", switch (action) {
+            case "CHANGELOG_RELEASE_BOOKMARKED", "CHANGELOG_RELEASE_UNBOOKMARKED" -> "BOOKMARK";
+            case "CHANGELOG_CALENDAR_SYNCED" -> "CALENDAR_SYNC";
+            default -> "RELEASE";
+        });
+        return snapshot;
+    }
+
+    private String targetId(String action, Map<String, Object> payload) {
+        if (payload.containsKey("releaseId") && !"CHANGELOG_CALENDAR_SYNCED".equals(action)) {
+            return Objects.toString(payload.get("releaseId"), null);
+        }
+        Object bookmark = payload.get("bookmark");
+        if (bookmark instanceof Map<?, ?> bookmarkMap && bookmarkMap.get("bookmarkId") != null) {
+            return bookmarkMap.get("bookmarkId").toString();
+        }
+        if (payload.containsKey("releaseId")) {
+            return Objects.toString(payload.get("releaseId"), null);
+        }
+        return null;
+    }
+
+    private String beforeStatus(Map<String, Object> payload) {
+        return Objects.toString(payload.get("beforeStatus"), null);
+    }
+
+    private String afterStatus(Map<String, Object> payload) {
+        Object status = payload.get("status");
+        if (status != null) {
+            return status.toString();
+        }
+        Object bookmark = payload.get("bookmark");
+        if (bookmark instanceof Map<?, ?> bookmarkMap && bookmarkMap.get("status") != null) {
+            return bookmarkMap.get("status").toString();
+        }
+        Object syncStatus = payload.get("syncStatus");
+        return syncStatus == null ? null : syncStatus.toString();
     }
 }
 

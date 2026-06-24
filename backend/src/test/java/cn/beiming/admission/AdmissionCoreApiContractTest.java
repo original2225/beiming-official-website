@@ -217,6 +217,7 @@ class AdmissionCoreApiContractTest {
                     }
                 })
                 .filter(Files::isRegularFile)
+                .filter(path -> !path.startsWith(Path.of("src/main/java/cn/beiming/admission/persistence")))
                 .map(path -> {
                     try {
                         return Files.readString(path);

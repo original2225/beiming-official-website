@@ -7,14 +7,16 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.boot.ApplicationRunner;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -33,10 +35,16 @@ import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -70,7 +78,7 @@ class AuthController {
         validateUsername(username);
         validatePassword(password);
         validateDisplayName(displayName);
-        Map<String, Object> payload = store.register(invitationCode, username, password, displayName, optionalString(body, "idempotencyKey"));
+        Map<String, Object> payload = store.register(request, invitationCode, username, password, displayName, optionalString(body, "idempotencyKey"));
         ResponseEntity<Map<String, Object>> response = created(payload);
         evidenceRecorder.recordRegisterSuccess(request, invitationCode, username, payload, response.getStatusCode().value());
         return response;
@@ -81,7 +89,7 @@ class AuthController {
                                               @RequestBody(required = false) Map<String, Object> body) {
         body = bodyOrEmpty(body);
         String username = requiredString(body, "username");
-        Map<String, Object> payload = store.login(username, requiredString(body, "password"), optionalString(body, "idempotencyKey"));
+        Map<String, Object> payload = store.login(request, username, requiredString(body, "password"), optionalString(body, "idempotencyKey"));
         ResponseEntity<Map<String, Object>> response = ok(payload);
         evidenceRecorder.recordLoginSuccess(request, username, payload, response.getStatusCode().value());
         return response;
@@ -91,7 +99,7 @@ class AuthController {
     ResponseEntity<Map<String, Object>> logout(HttpServletRequest request,
                                                @RequestHeader(value = "Authorization", required = false) String authorization) {
         CurrentSession session = store.requireSessionForLogout(authorization);
-        store.logout(session);
+        store.logout(request, session);
         ResponseEntity<Map<String, Object>> response = ok(null);
         evidenceRecorder.recordLogoutSuccess(request, session.user.username, session.token, response.getStatusCode().value());
         return response;
@@ -393,9 +401,17 @@ class AuthLocalWebConfig {
     }
 
     @Bean
-    @ConditionalOnMissingBean
     AuthFlowEvidenceRecorder authFlowEvidenceRecorder() {
         return new NoopAuthFlowEvidenceRecorder();
+    }
+
+    @Bean
+    AuthPersistence authPersistence(ObjectProvider<JdbcTemplate> jdbcTemplate, ObjectMapper objectMapper) {
+        JdbcTemplate available = jdbcTemplate.getIfAvailable();
+        if (available == null) {
+            return new NoopAuthPostgresPersistence();
+        }
+        return new AuthPostgresPersistence(available, objectMapper);
     }
 }
 
@@ -421,12 +437,285 @@ class NoopAuthFlowEvidenceRecorder implements AuthFlowEvidenceRecorder {
     }
 }
 
+interface AuthPersistence {
+    void resetForTests();
+
+    void seedUser(UserAccount user);
+
+    void seedInvitation(String rawCode, InvitationRecord invitation);
+
+    void seedMinecraftBinding(String userId, MinecraftBinding binding);
+
+    Map<String, Object> replay(String actorUserId, String scope, String idempotencyKey, String fingerprint);
+
+    void persistRegister(HttpServletRequest request, String rawInvitationCode, InvitationRecord invitation, UserAccount user, SessionRecord session, String idempotencyKey, String fingerprint, Map<String, Object> payload, int responseCode);
+
+    void persistLogin(HttpServletRequest request, UserAccount user, SessionRecord session, String idempotencyKey, String fingerprint, Map<String, Object> payload, int responseCode);
+
+    void persistLogout(HttpServletRequest request, UserAccount user, SessionRecord session, int responseCode);
+
+    void persistReplayRequest(HttpServletRequest request, String actorUserId, int responseCode);
+}
+
+class NoopAuthPostgresPersistence implements AuthPersistence {
+    @Override
+    public void resetForTests() {
+    }
+
+    @Override
+    public void seedUser(UserAccount user) {
+    }
+
+    @Override
+    public void seedInvitation(String rawCode, InvitationRecord invitation) {
+    }
+
+    @Override
+    public void seedMinecraftBinding(String userId, MinecraftBinding binding) {
+    }
+
+    @Override
+    public Map<String, Object> replay(String actorUserId, String scope, String idempotencyKey, String fingerprint) {
+        return null;
+    }
+
+    @Override
+    public void persistRegister(HttpServletRequest request, String rawInvitationCode, InvitationRecord invitation, UserAccount user, SessionRecord session, String idempotencyKey, String fingerprint, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void persistLogin(HttpServletRequest request, UserAccount user, SessionRecord session, String idempotencyKey, String fingerprint, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void persistLogout(HttpServletRequest request, UserAccount user, SessionRecord session, int responseCode) {
+    }
+
+    @Override
+    public void persistReplayRequest(HttpServletRequest request, String actorUserId, int responseCode) {
+    }
+}
+
+class AuthPostgresPersistence implements AuthPersistence {
+    private final JdbcTemplate jdbc;
+    private final ObjectMapper objectMapper;
+
+    AuthPostgresPersistence(JdbcTemplate jdbc, ObjectMapper objectMapper) {
+        this.jdbc = jdbc;
+        this.objectMapper = objectMapper;
+    }
+
+    @Override
+    @Transactional
+    public void resetForTests() {
+        jdbc.update("DELETE FROM auth_password_reset_tokens");
+        jdbc.update("DELETE FROM auth_minecraft_bindings");
+        jdbc.update("DELETE FROM auth_invitation_usage_records");
+        jdbc.update("DELETE FROM auth_sessions");
+        jdbc.update("DELETE FROM auth_invitations");
+        jdbc.update("DELETE FROM auth_users");
+        jdbc.update("DELETE FROM app_idempotency_records");
+        jdbc.update("DELETE FROM app_audit_logs");
+        jdbc.update("DELETE FROM app_request_logs");
+    }
+
+    @Override
+    @Transactional
+    public void seedUser(UserAccount user) {
+        jdbc.update("""
+                INSERT INTO auth_users(id, user_id, username, username_normalized, display_name, display_name_normalized, password_hash, roles, permissions, status, created_at, updated_at, last_login_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, CAST(? AS jsonb), CAST(? AS jsonb), ?, ?, ?, ?)
+                ON CONFLICT (user_id) DO NOTHING
+                """,
+                UUID.randomUUID(), user.id, user.username, normalize(user.username), user.displayName, normalize(user.displayName),
+                user.passwordHash, json(new ArrayList<>(user.roles)), json(new ArrayList<>(user.permissions)), user.status,
+                timestamp(user.createdAt), timestamp(user.updatedAt), timestamp(user.lastLoginAt));
+    }
+
+    @Override
+    @Transactional
+    public void seedInvitation(String rawCode, InvitationRecord invitation) {
+        jdbc.update("""
+                INSERT INTO auth_invitations(id, invitation_id, code_prefix, code_hash, type, bound_roles, bound_permissions, max_uses, used_count, expires_at, created_by, created_at, disabled_at)
+                VALUES (?, ?, ?, ?, ?, CAST(? AS jsonb), CAST(? AS jsonb), ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (invitation_id) DO NOTHING
+                """,
+                UUID.randomUUID(), invitation.id, invitation.codePrefix, invitation.codeHash, invitation.type,
+                json(new ArrayList<>(invitation.boundRoles)), json(new ArrayList<>(invitation.boundPermissions)),
+                invitation.maxUses, invitation.usedCount, timestamp(invitation.expiresAt), invitation.createdBy, timestamp(invitation.createdAt), timestamp(invitation.disabledAt));
+    }
+
+    @Override
+    @Transactional
+    public void seedMinecraftBinding(String userId, MinecraftBinding binding) {
+        jdbc.update("""
+                INSERT INTO auth_minecraft_bindings(id, user_id, minecraft_id, minecraft_uuid, verified_at, source)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT (user_id) DO UPDATE SET minecraft_id = EXCLUDED.minecraft_id, minecraft_uuid = EXCLUDED.minecraft_uuid, verified_at = EXCLUDED.verified_at, source = EXCLUDED.source
+                """,
+                UUID.randomUUID(), userId, binding.minecraftId, binding.minecraftUuid, timestamp(binding.verifiedAt), binding.source);
+    }
+
+    @Override
+    public Map<String, Object> replay(String actorUserId, String scope, String idempotencyKey, String fingerprint) {
+        return null;
+    }
+
+    @Override
+    @Transactional
+    public void persistRegister(HttpServletRequest request, String rawInvitationCode, InvitationRecord invitation, UserAccount user, SessionRecord session, String idempotencyKey, String fingerprint, Map<String, Object> payload, int responseCode) {
+        upsertUser(user);
+        upsertInvitation(invitation);
+        jdbc.update("""
+                INSERT INTO auth_invitation_usage_records(id, usage_id, invitation_id, used_by_user_id, used_by_username, source_ip, request_id, used_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (usage_id) DO NOTHING
+                """,
+                UUID.randomUUID(), "use_" + RequestIdFilter.currentRequestId(), invitation.id, user.id, user.username, sourceIp(request), requestId(request), timestamp(Instant.now()));
+        insertSession(session);
+        insertAudit(request, null, "ANONYMOUS", List.of(), user.id, "AUTH_USER", "AUTH_REGISTER_SUCCESS", null, null, null, "SUCCESS", null);
+        if (idempotencyKey != null) {
+            insertIdempotency("anonymous", "auth.register", idempotencyKey, fingerprint, responseCode, payload);
+        }
+        insertRequestLog(request, user.id, responseCode, "SUCCESS", null);
+    }
+
+    @Override
+    @Transactional
+    public void persistLogin(HttpServletRequest request, UserAccount user, SessionRecord session, String idempotencyKey, String fingerprint, Map<String, Object> payload, int responseCode) {
+        upsertUser(user);
+        insertSession(session);
+        insertAudit(request, user.id, String.join(",", user.roles), new ArrayList<>(user.permissions), user.id, "AUTH_USER", "AUTH_LOGIN_SUCCESS", null, null, null, "SUCCESS", null);
+        if (idempotencyKey != null) {
+            insertIdempotency("anonymous", "auth.login", idempotencyKey, fingerprint, responseCode, payload);
+        }
+        insertRequestLog(request, user.id, responseCode, "SUCCESS", null);
+    }
+
+    @Override
+    @Transactional
+    public void persistLogout(HttpServletRequest request, UserAccount user, SessionRecord session, int responseCode) {
+        jdbc.update("UPDATE auth_sessions SET revoked = true, revoked_at = now(), last_seen_at = ? WHERE token_hash = ?", timestamp(Instant.now()), digest(session.token));
+        insertAudit(request, user.id, String.join(",", user.roles), new ArrayList<>(user.permissions), user.id, "AUTH_SESSION", "AUTH_LOGOUT_SUCCESS", null, null, null, "SUCCESS", null);
+        insertRequestLog(request, user.id, responseCode, "SUCCESS", null);
+    }
+
+    @Override
+    @Transactional
+    public void persistReplayRequest(HttpServletRequest request, String actorUserId, int responseCode) {
+        insertRequestLog(request, actorUserId, responseCode, "SUCCESS", null);
+    }
+
+    private void upsertUser(UserAccount user) {
+        jdbc.update("""
+                INSERT INTO auth_users(id, user_id, username, username_normalized, display_name, display_name_normalized, password_hash, roles, permissions, status, created_at, updated_at, last_login_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, CAST(? AS jsonb), CAST(? AS jsonb), ?, ?, ?, ?)
+                ON CONFLICT (user_id) DO UPDATE SET display_name = EXCLUDED.display_name, display_name_normalized = EXCLUDED.display_name_normalized, password_hash = EXCLUDED.password_hash, roles = EXCLUDED.roles, permissions = EXCLUDED.permissions, status = EXCLUDED.status, updated_at = EXCLUDED.updated_at, last_login_at = EXCLUDED.last_login_at
+                """,
+                UUID.randomUUID(), user.id, user.username, normalize(user.username), user.displayName, normalize(user.displayName),
+                user.passwordHash, json(new ArrayList<>(user.roles)), json(new ArrayList<>(user.permissions)), user.status,
+                timestamp(user.createdAt), timestamp(user.updatedAt), timestamp(user.lastLoginAt));
+    }
+
+    private void upsertInvitation(InvitationRecord invitation) {
+        jdbc.update("""
+                INSERT INTO auth_invitations(id, invitation_id, code_prefix, code_hash, type, bound_roles, bound_permissions, max_uses, used_count, expires_at, created_by, created_at, disabled_at)
+                VALUES (?, ?, ?, ?, ?, CAST(? AS jsonb), CAST(? AS jsonb), ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (invitation_id) DO UPDATE SET used_count = EXCLUDED.used_count, disabled_at = EXCLUDED.disabled_at
+                """,
+                UUID.randomUUID(), invitation.id, invitation.codePrefix, invitation.codeHash, invitation.type,
+                json(new ArrayList<>(invitation.boundRoles)), json(new ArrayList<>(invitation.boundPermissions)),
+                invitation.maxUses, invitation.usedCount, timestamp(invitation.expiresAt), invitation.createdBy, timestamp(invitation.createdAt), timestamp(invitation.disabledAt));
+    }
+
+    private void insertSession(SessionRecord session) {
+        jdbc.update("""
+                INSERT INTO auth_sessions(id, session_id, token_hash, user_id, created_at, last_seen_at, expires_at, revoked, revoked_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (session_id) DO UPDATE SET last_seen_at = EXCLUDED.last_seen_at, expires_at = EXCLUDED.expires_at, revoked = EXCLUDED.revoked, revoked_at = EXCLUDED.revoked_at
+                """,
+                UUID.randomUUID(), session.id, digest(session.token), session.userId, timestamp(session.createdAt), timestamp(session.lastSeenAt), timestamp(session.expiresAt), session.revoked, session.revoked ? timestamp(Instant.now()) : null);
+    }
+
+    private void insertAudit(HttpServletRequest request, String actorUserId, String actorRole, List<String> permissions, String targetId, String targetType, String action, String reason, String beforeState, String afterState, String result, String failureReason) {
+        jdbc.update("""
+                INSERT INTO app_audit_logs(id, request_id, actor_user_id, actor_role, actor_permissions, source_ip, target_type, target_id, action, risk_level, reason, params_summary, before_state, after_state, result, failure_reason, created_at)
+                VALUES (?, ?, ?, ?, CAST(? AS jsonb), ?, ?, ?, ?, 'LOW', ?, '{}'::jsonb, CAST(? AS jsonb), CAST(? AS jsonb), ?, ?, now())
+                """,
+                UUID.randomUUID(), requestId(request), actorUserId, actorRole == null ? "ANONYMOUS" : actorRole, json(permissions), sourceIp(request),
+                targetType, targetId == null ? "unknown" : targetId, action, reason, nullableJson(beforeState), nullableJson(afterState), result, failureReason);
+    }
+
+    private void insertIdempotency(String actorUserId, String scope, String idempotencyKey, String fingerprint, int responseCode, Map<String, Object> payload) {
+        jdbc.update("""
+                INSERT INTO app_idempotency_records(id, actor_user_id, scope, idempotency_key, request_fingerprint, response_code, response_body, created_at, expires_at)
+                VALUES (?, ?, ?, ?, ?, ?, CAST(? AS jsonb), now(), now() + interval '24 hours')
+                ON CONFLICT (actor_user_id, scope, idempotency_key) DO NOTHING
+                """,
+                UUID.randomUUID(), actorUserId, scope, idempotencyKey, fingerprint, responseCode, json(AuthController.envelope(0, "success", payload)));
+    }
+
+    private void insertRequestLog(HttpServletRequest request, String actorUserId, int responseCode, String result, String failureReason) {
+        jdbc.update("""
+                INSERT INTO app_request_logs(id, request_id, method, path, actor_user_id, source_ip, response_code, result, failure_reason, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, now())
+                ON CONFLICT (request_id) DO NOTHING
+                """,
+                UUID.randomUUID(), requestId(request), request.getMethod(), request.getRequestURI(), actorUserId, sourceIp(request), responseCode, result, failureReason);
+    }
+
+    private String requestId(HttpServletRequest request) {
+        String value = request.getHeader("X-Request-Id");
+        return value == null || value.isBlank() ? RequestIdFilter.currentRequestId() : value;
+    }
+
+    private String sourceIp(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            return forwarded.split(",")[0].trim();
+        }
+        return request.getRemoteAddr();
+    }
+
+    private String normalize(String value) {
+        return value.toLowerCase(Locale.ROOT);
+    }
+
+    private String digest(String value) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 digest is unavailable", exception);
+        }
+    }
+
+    private String nullableJson(String value) {
+        if (value == null) {
+            return null;
+        }
+        return json(Map.of("value", value));
+    }
+
+    private OffsetDateTime timestamp(Instant value) {
+        return value == null ? null : OffsetDateTime.ofInstant(value, ZoneOffset.UTC);
+    }
+
+    private String json(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("failed to serialize PostgreSQL jsonb value", exception);
+        }
+    }
+}
+
 @Service
 class AuthStore {
     private static final Set<String> VALID_ROLES = Set.of("OWNER", "ADMIN", "HELPER", "USER");
     private static final Set<String> VALID_PERMISSIONS = Set.of("NODE_READ", "NODE_WRITE", "CONTAINER_OPERATE", "VM_OPERATE", "FILE_MANAGE", "TERMINAL_ACCESS", "HIGH_RISK_APPROVE");
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final AuthPersistence persistence;
     private final Map<String, UserAccount> usersById = new ConcurrentHashMap<>();
     private final Map<String, String> userIdByUsername = new ConcurrentHashMap<>();
     private final Map<String, SessionRecord> sessions = new ConcurrentHashMap<>();
@@ -442,6 +731,10 @@ class AuthStore {
     private final Map<String, Integer> passwordResetAttempts = new ConcurrentHashMap<>();
     private boolean failNextSessionCreation;
     private boolean failNextAudit;
+
+    AuthStore(AuthPersistence persistence) {
+        this.persistence = persistence;
+    }
 
     synchronized void reset() {
         usersById.clear();
@@ -459,6 +752,7 @@ class AuthStore {
         passwordResetAttempts.clear();
         failNextSessionCreation = false;
         failNextAudit = false;
+        persistence.resetForTests();
     }
 
     synchronized void seedOwner(String username, String password) {
@@ -470,6 +764,7 @@ class AuthStore {
         UserAccount user = new UserAccount(id, username, username, encoder.encode(password), roles, permissions, status, Instant.now(), Instant.now());
         usersById.put(id, user);
         userIdByUsername.put(username.toLowerCase(Locale.ROOT), id);
+        persistence.seedUser(user);
     }
 
     synchronized void seedInvitation(String rawCode, String type, Set<String> roles, Set<String> permissions, int maxUses, Instant expiresAt, String createdByUsername) {
@@ -477,6 +772,7 @@ class AuthStore {
         InvitationRecord invitation = new InvitationRecord("inv_" + UUID.randomUUID(), rawCode.substring(0, Math.min(rawCode.length(), 8)), encoder.encode(rawCode), type, roles, permissions, maxUses, 0, expiresAt, creator.id, Instant.now());
         invitationsById.put(invitation.id, invitation);
         invitationIdByCode.put(rawCode, invitation.id);
+        persistence.seedInvitation(rawCode, invitation);
     }
 
     synchronized void disableInvitationByCode(String rawCode, String reason) {
@@ -490,7 +786,9 @@ class AuthStore {
     }
 
     synchronized void seedMinecraftBinding(String username, String minecraftId, String minecraftUuid) {
-        findByUsername(username).minecraftBinding = new MinecraftBinding(minecraftId, minecraftUuid, Instant.now(), "MANUAL_VERIFICATION");
+        UserAccount user = findByUsername(username);
+        user.minecraftBinding = new MinecraftBinding(minecraftId, minecraftUuid, Instant.now(), "MANUAL_VERIFICATION");
+        persistence.seedMinecraftBinding(user.id, user.minecraftBinding);
     }
 
     synchronized void seedLocalDevDataIfEmpty() {
@@ -597,7 +895,7 @@ class AuthStore {
         failNextAudit = true;
     }
 
-    synchronized Map<String, Object> register(String rawCode, String username, String password, String displayName, String idempotencyKey) {
+    synchronized Map<String, Object> register(HttpServletRequest request, String rawCode, String username, String password, String displayName, String idempotencyKey) {
         int attempts = registerAttempts.merge("global", 1, Integer::sum);
         if (attempts > 5) {
             throw new ApiException(44101, HttpStatus.TOO_MANY_REQUESTS, "too many register attempts");
@@ -609,6 +907,7 @@ class AuthStore {
                 if (!old.signature.equals(signature)) {
                     throw new ApiException(43002, HttpStatus.CONFLICT, "idempotency key conflict");
                 }
+                persistence.persistReplayRequest(request, "anonymous", 201);
                 return old.payload;
             }
         }
@@ -643,6 +942,8 @@ class AuthStore {
                 audits.add(new AuditRecord("aud_" + UUID.randomUUID(), RequestIdFilter.currentRequestId(), null, null, user.id, "AUTH_AUDIT_COMPENSATION_RECORDED", null, null, null, "SUCCESS", exception.getMessage(), Instant.now()));
             }
             Map<String, Object> payload = sessionPayload(user);
+            SessionRecord session = sessions.get(String.valueOf(payload.get("accessToken")));
+            persistence.persistRegister(request, rawCode, invitation, user, session, idempotencyKey, signature, payload, 201);
             if (idempotencyKey != null) {
                 registerIdempotency.put(idempotencyKey, new IdempotencyRecord(signature, payload, null));
             }
@@ -658,7 +959,7 @@ class AuthStore {
         }
     }
 
-    synchronized Map<String, Object> login(String username, String password, String idempotencyKey) {
+    synchronized Map<String, Object> login(HttpServletRequest request, String username, String password, String idempotencyKey) {
         String signature = signature(username, password);
         if (idempotencyKey != null) {
             IdempotencyRecord old = loginIdempotency.get(idempotencyKey);
@@ -666,6 +967,7 @@ class AuthStore {
                 if (!old.signature.equals(signature)) {
                     throw new ApiException(43002, HttpStatus.CONFLICT, "idempotency key conflict");
                 }
+                persistence.persistReplayRequest(request, "anonymous", 200);
                 return old.payload;
             }
         }
@@ -692,16 +994,21 @@ class AuthStore {
         user.lastLoginAt = Instant.now();
         audit("AUTH_LOGIN_SUCCESS", user, user, "SUCCESS", null, null, null);
         Map<String, Object> payload = sessionPayload(user);
+        SessionRecord session = sessions.get(String.valueOf(payload.get("accessToken")));
+        persistence.persistLogin(request, user, session, idempotencyKey, signature, payload, 200);
         if (idempotencyKey != null) {
             loginIdempotency.put(idempotencyKey, new IdempotencyRecord(signature, payload, null));
         }
         return payload;
     }
 
-    synchronized void logout(CurrentSession current) {
+    synchronized void logout(HttpServletRequest request, CurrentSession current) {
         if (!current.session.revoked) {
             current.session.revoked = true;
             audit("AUTH_LOGOUT_SUCCESS", current.user, current.user, "SUCCESS", null, null, null);
+            persistence.persistLogout(request, current.user, current.session, 200);
+        } else {
+            persistence.persistReplayRequest(request, current.user.id, 200);
         }
     }
 

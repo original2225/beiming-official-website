@@ -1,6 +1,7 @@
 package cn.beiming.activity;
 
 import cn.beiming.engagement.TrustedGatewayAuth;
+import cn.beiming.engagement.persistence.ActivityPersistence;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import jakarta.servlet.FilterChain;
@@ -47,8 +48,8 @@ import java.util.function.Supplier;
 class ActivityEvidenceConfiguration {
     @Bean
     @ConditionalOnMissingBean
-    ActivityFlowEvidenceRecorder activityFlowEvidenceRecorder() {
-        return new NoopActivityFlowEvidenceRecorder();
+    ActivityFlowEvidenceRecorder activityFlowEvidenceRecorder(ActivityPersistence persistence) {
+        return new PersistentActivityFlowEvidenceRecorder(persistence);
     }
 }
 
@@ -59,12 +60,15 @@ class ActivityController {
     private final ActivityAuth auth;
     private final ActivityProperties properties;
     private final ActivityFlowEvidenceRecorder evidenceRecorder;
+    private final ActivityPersistence persistence;
 
-    ActivityController(ActivityStore store, ActivityAuth auth, ActivityProperties properties, ActivityFlowEvidenceRecorder evidenceRecorder) {
+    ActivityController(ActivityStore store, ActivityAuth auth, ActivityProperties properties,
+                       ActivityFlowEvidenceRecorder evidenceRecorder, ActivityPersistence persistence) {
         this.store = store;
         this.auth = auth;
         this.properties = properties;
         this.evidenceRecorder = evidenceRecorder;
+        this.persistence = persistence;
     }
 
     @GetMapping("/events")
@@ -749,11 +753,12 @@ class ActivityController {
     @GetMapping("/admin/ops/summary")
     ResponseEntity<Map<String, Object>> opsSummary(HttpServletRequest request) {
         Actor actor = auth.requireStaff(request);
+        Map<String, Object> counts = persistence.counts();
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("service", "activity");
         data.put("port", 8132);
         data.put("legacyPort", 8113);
-        data.put("storageMode", "IN_MEMORY");
+        data.put("storageMode", counts.getOrDefault("storageMode", "IN_MEMORY"));
         data.put("authMode", actor.authMode);
         data.put("actorUserId", actor.userId);
         data.put("profileMode", "TEST_STUB");
@@ -763,16 +768,16 @@ class ActivityController {
         data.put("contentMode", "TEST_STUB");
         data.put("resourceMode", "TEST_STUB");
         data.put("testControlsEnabled", properties.enabled());
-        data.put("activitiesTotal", store.activities.size());
-        data.put("publishedActivitiesTotal", store.activities.values().stream().filter(ActivityRecord::isPublicVisible).count());
-        data.put("openRegistrationsTotal", store.registrations.size());
-        data.put("waitlistedRegistrationsTotal", store.registrations.values().stream().filter(registration -> "WAITLISTED".equals(registration.status)).count());
-        data.put("checkedInRegistrationsTotal", store.registrations.values().stream().filter(registration -> "CHECKED_IN".equals(registration.status)).count());
-        data.put("resultsPublishedTotal", store.results.values().stream().filter(result -> "PUBLISHED".equals(result.status)).count());
-        data.put("rewardsTotal", store.rewards.size());
-        data.put("contributionCandidatesTotal", store.candidates.size());
-        data.put("auditsTotal", store.audits.size());
-        data.put("idempotencyRecordsTotal", store.idempotencyRecords.size());
+        data.put("activitiesTotal", counts.getOrDefault("activitiesTotal", store.activities.size()));
+        data.put("publishedActivitiesTotal", counts.getOrDefault("publishedActivitiesTotal", store.activities.values().stream().filter(ActivityRecord::isPublicVisible).count()));
+        data.put("openRegistrationsTotal", counts.getOrDefault("openRegistrationsTotal", store.registrations.size()));
+        data.put("waitlistedRegistrationsTotal", counts.getOrDefault("waitlistedRegistrationsTotal", store.registrations.values().stream().filter(registration -> "WAITLISTED".equals(registration.status)).count()));
+        data.put("checkedInRegistrationsTotal", counts.getOrDefault("checkedInRegistrationsTotal", store.registrations.values().stream().filter(registration -> "CHECKED_IN".equals(registration.status)).count()));
+        data.put("resultsPublishedTotal", counts.getOrDefault("resultsPublishedTotal", store.results.values().stream().filter(result -> "PUBLISHED".equals(result.status)).count()));
+        data.put("rewardsTotal", counts.getOrDefault("rewardsTotal", store.rewards.size()));
+        data.put("contributionCandidatesTotal", counts.getOrDefault("contributionCandidatesTotal", store.candidates.size()));
+        data.put("auditsTotal", counts.getOrDefault("auditsTotal", store.audits.size()));
+        data.put("idempotencyRecordsTotal", counts.getOrDefault("idempotencyRecordsTotal", store.idempotencyRecords.size()));
         data.put("lastAuditAt", store.audits.isEmpty() ? null : store.audits.get(store.audits.size() - 1).createdAt);
         data.put("productionGaps", List.of(
                 "P1_IN_MEMORY_STORAGE",
@@ -872,12 +877,18 @@ class ActivityController {
                                                            Supplier<ResponseEntity<Map<String, Object>>> action) {
         validateIdempotency(body);
         String idempotencyKey = idempotencyKey(body);
+        request.setAttribute("activity.actorUserId", actor.userId);
+        request.setAttribute("activity.actorRole", actor.role);
+        request.setAttribute("activity.idempotencyKey", idempotencyKey);
+        request.setAttribute("activity.fingerprint", store.fingerprint(body));
+        request.setAttribute("activity.reason", Objects.toString(body == null ? null : body.get("reason"), null));
+        request.setAttribute("activity.scope", scopeFor(request));
         if (idempotencyKey == null) {
             return action.get();
         }
         String semanticKey = request.getMethod() + " " + request.getRequestURI();
         String storageKey = actor.userId + "|" + semanticKey + "|" + idempotencyKey;
-        String fingerprint = store.fingerprint(body);
+        String fingerprint = request.getAttribute("activity.fingerprint").toString();
         synchronized (store) {
             ActivityIdempotencyRecord existing = store.idempotencyRecords.get(storageKey);
             if (existing != null) {
@@ -912,6 +923,24 @@ class ActivityController {
         if (!expected.equals(text(body, "confirmText", ""))) {
             throw new ApiException(HttpStatus.FORBIDDEN, 42003, "confirmation required");
         }
+    }
+
+    private String scopeFor(HttpServletRequest request) {
+        String method = request.getMethod();
+        String path = request.getRequestURI();
+        if ("POST".equals(method) && "/api/v1/activity/admin/events".equals(path)) return "activity.event.create";
+        if ("PATCH".equals(method) && path.matches("/api/v1/activity/admin/events/[^/]+")) return "activity.event.update";
+        if ("POST".equals(method) && path.matches("/api/v1/activity/admin/events/[^/]+/submit")) return "activity.event.submit";
+        if ("PATCH".equals(method) && path.matches("/api/v1/activity/admin/events/[^/]+/(approve|reject|request-changes|publish|open-registration|close-registration|start|complete|offline|archive|delete)")) return "activity.event.transition";
+        if ("POST".equals(method) && path.matches("/api/v1/activity/me/events/[^/]+/registrations")) return "activity.registration.create";
+        if ("POST".equals(method) && path.matches("/api/v1/activity/me/registrations/[^/]+/cancel")) return "activity.registration.cancel";
+        if ("PATCH".equals(method) && path.matches("/api/v1/activity/admin/registrations/[^/]+/(confirm|reject|promote|cancel|check-in|no-show)")) return "activity.registration.transition";
+        if ("PUT".equals(method) && path.matches("/api/v1/activity/admin/events/[^/]+/result")) return "activity.result.upsert";
+        if ("PATCH".equals(method) && path.matches("/api/v1/activity/admin/events/[^/]+/result/publish")) return "activity.result.publish";
+        if ("POST".equals(method) && path.matches("/api/v1/activity/admin/events/[^/]+/rewards")) return "activity.reward.create";
+        if ("PATCH".equals(method) && path.matches("/api/v1/activity/admin/rewards/[^/]+/(issue|revoke)")) return "activity.reward.transition";
+        if ("POST".equals(method) && path.matches("/api/v1/activity/admin/events/[^/]+/contribution-candidates")) return "activity.contribution-candidates.create";
+        return "activity.write";
     }
 
     private <T> Map<String, Object> page(List<T> items, int page, int pageSize) {
@@ -1669,6 +1698,107 @@ class NoopActivityFlowEvidenceRecorder implements ActivityFlowEvidenceRecorder {
 
     @Override
     public void recordCandidateWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+}
+
+class PersistentActivityFlowEvidenceRecorder implements ActivityFlowEvidenceRecorder {
+    private final ActivityPersistence persistence;
+
+    PersistentActivityFlowEvidenceRecorder(ActivityPersistence persistence) {
+        this.persistence = persistence;
+    }
+
+    @Override
+    public void recordEventWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+        persist(request, action, payload, responseCode, "ACTIVITY_EVENT");
+    }
+
+    @Override
+    public void recordRegistrationWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+        persist(request, action, payload, responseCode, "ACTIVITY_REGISTRATION");
+    }
+
+    @Override
+    public void recordResultWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+        persist(request, action, payload, responseCode, "ACTIVITY_RESULT");
+    }
+
+    @Override
+    public void recordRewardWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+        persist(request, action, payload, responseCode, "ACTIVITY_REWARD");
+    }
+
+    @Override
+    public void recordCandidateWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+        persist(request, action, payload, responseCode, "ACTIVITY_CONTRIBUTION_CANDIDATE");
+    }
+
+    private void persist(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode, String targetType) {
+        String actorUserId = Objects.toString(request.getAttribute("activity.actorUserId"), null);
+        String actorRole = Objects.toString(request.getAttribute("activity.actorRole"), null);
+        String scope = Objects.toString(request.getAttribute("activity.scope"), null);
+        String idempotencyKey = Objects.toString(request.getAttribute("activity.idempotencyKey"), null);
+        String fingerprint = Objects.toString(request.getAttribute("activity.fingerprint"), null);
+        String reason = Objects.toString(request.getAttribute("activity.reason"), null);
+        Map<String, Object> snapshot = snapshotFor(action, payload);
+        persistence.persistWrite(request, actorUserId, actorRole, scope, action, targetType, targetId(action, payload), "LOW",
+                beforeStatus(payload), afterStatus(payload), reason, idempotencyKey, fingerprint, snapshot, payload, responseCode);
+    }
+
+    private Map<String, Object> snapshotFor(String action, Map<String, Object> payload) {
+        Map<String, Object> snapshot = new LinkedHashMap<>(payload);
+        snapshot.put("snapshotType", switch (action) {
+            case "ACTIVITY_CREATED", "ACTIVITY_UPDATED", "ACTIVITY_SUBMITTED", "ACTIVITY_APPROVED", "ACTIVITY_REJECTED",
+                 "ACTIVITY_CHANGES_REQUESTED", "ACTIVITY_PUBLISHED", "ACTIVITY_REGISTRATION_OPENED", "ACTIVITY_REGISTRATION_CLOSED",
+                 "ACTIVITY_STARTED", "ACTIVITY_COMPLETED", "ACTIVITY_OFFLINED", "ACTIVITY_ARCHIVED", "ACTIVITY_DELETED" -> "EVENT";
+            case "ACTIVITY_REGISTERED", "ACTIVITY_REGISTRATION_CANCELED", "ACTIVITY_REGISTRATION_CONFIRMED",
+                 "ACTIVITY_REGISTRATION_REJECTED", "ACTIVITY_WAITLIST_PROMOTED", "ACTIVITY_REGISTRATION_ADMIN_CANCELED",
+                 "ACTIVITY_REGISTRATION_CHECKED_IN", "ACTIVITY_REGISTRATION_NO_SHOW" -> "REGISTRATION";
+            case "ACTIVITY_RESULT_UPSERTED", "ACTIVITY_RESULT_PUBLISHED" -> "RESULT";
+            case "ACTIVITY_REWARD_CREATED", "ACTIVITY_REWARD_ISSUED", "ACTIVITY_REWARD_REVOKED" -> "REWARD";
+            case "ACTIVITY_CONTRIBUTION_CANDIDATES_CREATED" -> "CANDIDATES";
+            default -> "EVENT";
+        });
+        return snapshot;
+    }
+
+    private String targetId(String action, Map<String, Object> payload) {
+        if (payload.containsKey("registrationId")) {
+            return Objects.toString(payload.get("registrationId"), null);
+        }
+        if (payload.containsKey("resultId")) {
+            return Objects.toString(payload.get("resultId"), null);
+        }
+        if (payload.containsKey("rewardId")) {
+            return Objects.toString(payload.get("rewardId"), null);
+        }
+        if (payload.containsKey("candidateId")) {
+            return Objects.toString(payload.get("candidateId"), null);
+        }
+        if (payload.containsKey("activityId")) {
+            return Objects.toString(payload.get("activityId"), null);
+        }
+        Object items = payload.get("items");
+        if (items instanceof List<?> list && !list.isEmpty() && list.getFirst() instanceof Map<?, ?> first && first.containsKey("candidateId")) {
+            return Objects.toString(first.get("candidateId"), null);
+        }
+        return null;
+    }
+
+    private String beforeStatus(Map<String, Object> payload) {
+        return Objects.toString(payload.get("beforeStatus"), null);
+    }
+
+    private String afterStatus(Map<String, Object> payload) {
+        Object status = payload.get("status");
+        if (status != null) {
+            return status.toString();
+        }
+        Object activity = payload.get("activity");
+        if (activity instanceof Map<?, ?> activityMap && activityMap.get("status") != null) {
+            return activityMap.get("status").toString();
+        }
+        return Objects.toString(payload.get("afterStatus"), null);
     }
 }
 

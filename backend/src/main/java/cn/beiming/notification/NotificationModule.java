@@ -7,12 +7,15 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -28,6 +31,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -87,7 +92,7 @@ class NotificationController {
                                                  @PathVariable String notificationId,
                                                  @RequestBody(required = false) Map<String, Object> body) {
         AuthUser current = auth.requireCurrent(request);
-        Map<String, Object> payload = store.markRead(current.userId, notificationId);
+        Map<String, Object> payload = store.markRead(request, current.userId, notificationId);
         ResponseEntity<Map<String, Object>> response = ok(payload);
         evidenceRecorder.recordRecipientWrite(request, "NOTIFICATION_RECIPIENT_READ", payload, response.getStatusCode().value());
         return response;
@@ -98,7 +103,7 @@ class NotificationController {
                                                     @RequestBody(required = false) Map<String, Object> body) {
         AuthUser current = auth.requireCurrent(request);
         body = bodyOrEmpty(body);
-        return ok(mapOf("updatedCount", store.markAllRead(current.userId, optionalString(body, "type"), optionalString(body, "sourceModule"))));
+        return ok(mapOf("updatedCount", store.markAllRead(request, current.userId, optionalString(body, "type"), optionalString(body, "sourceModule"))));
     }
 
     @PatchMapping("/me/{notificationId}/archive")
@@ -111,7 +116,7 @@ class NotificationController {
         if (reason != null && reason.length() > 200) {
             throw ApiException.badRequest("reason");
         }
-        Map<String, Object> payload = store.archive(current, notificationId, reason);
+        Map<String, Object> payload = store.archive(request, current, notificationId, reason);
         ResponseEntity<Map<String, Object>> response = ok(payload);
         evidenceRecorder.recordRecipientWrite(request, "NOTIFICATION_RECIPIENT_ARCHIVED", payload, response.getStatusCode().value());
         return response;
@@ -146,7 +151,7 @@ class NotificationController {
                                                       @RequestBody(required = false) Map<String, Object> body) {
         AuthUser current = auth.requireCurrent(request);
         requireWriter(current);
-        Map<String, Object> payload = store.createMessage(current, auth, bodyOrEmpty(body), false);
+        Map<String, Object> payload = store.createMessage(request, current, auth, bodyOrEmpty(body), false);
         ResponseEntity<Map<String, Object>> response = created(payload);
         evidenceRecorder.recordMessageWrite(request, "NOTIFICATION_MESSAGE_CREATED", payload, response.getStatusCode().value());
         return response;
@@ -157,7 +162,7 @@ class NotificationController {
                                                            @RequestBody(required = false) Map<String, Object> body) {
         AuthUser current = auth.requireCurrent(request);
         requireWriter(current);
-        return created(store.createFromTemplate(current, auth, bodyOrEmpty(body)));
+        return created(store.createFromTemplate(request, current, auth, bodyOrEmpty(body)));
     }
 
     @GetMapping("/admin/templates")
@@ -194,7 +199,7 @@ class NotificationController {
                                                        @RequestBody(required = false) Map<String, Object> body) {
         AuthUser current = auth.requireCurrent(request);
         requireWriter(current);
-        Map<String, Object> payload = store.createTemplate(current, bodyOrEmpty(body));
+        Map<String, Object> payload = store.createTemplate(request, current, bodyOrEmpty(body));
         ResponseEntity<Map<String, Object>> response = created(payload);
         evidenceRecorder.recordTemplateWrite(request, "NOTIFICATION_TEMPLATE_CREATED", payload, response.getStatusCode().value());
         return response;
@@ -206,7 +211,7 @@ class NotificationController {
                                                       @RequestBody(required = false) Map<String, Object> body) {
         AuthUser current = auth.requireCurrent(request);
         requireWriter(current);
-        return ok(store.patchTemplate(current, templateId, bodyOrEmpty(body)));
+        return ok(store.patchTemplate(request, current, templateId, bodyOrEmpty(body)));
     }
 
     @PatchMapping("/admin/templates/{templateId}/disable")
@@ -215,7 +220,7 @@ class NotificationController {
                                                         @RequestBody(required = false) Map<String, Object> body) {
         AuthUser current = auth.requireCurrent(request);
         requireWriter(current);
-        return ok(store.disableTemplate(current, templateId, requiredString(bodyOrEmpty(body), "reason")));
+        return ok(store.disableTemplate(request, current, templateId, requiredString(bodyOrEmpty(body), "reason")));
     }
 
     @PatchMapping("/admin/templates/{templateId}/enable")
@@ -224,7 +229,7 @@ class NotificationController {
                                                        @RequestBody(required = false) Map<String, Object> body) {
         AuthUser current = auth.requireCurrent(request);
         requireWriter(current);
-        return ok(store.enableTemplate(current, templateId, requiredString(bodyOrEmpty(body), "reason")));
+        return ok(store.enableTemplate(request, current, templateId, requiredString(bodyOrEmpty(body), "reason")));
     }
 
     @GetMapping("/admin/messages/{notificationId}/audit-logs")
@@ -334,6 +339,311 @@ class NoopNotificationFlowEvidenceRecorder implements NotificationFlowEvidenceRe
 
     @Override
     public void recordTemplateWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+    }
+}
+
+@Configuration
+class NotificationPersistenceConfiguration {
+    @Bean
+    NotificationPersistence notificationPersistence(ObjectProvider<JdbcTemplate> jdbcTemplate, ObjectMapper objectMapper) {
+        JdbcTemplate available = jdbcTemplate.getIfAvailable();
+        if (available == null) {
+            return new NoopNotificationPersistence();
+        }
+        return new NotificationPostgresPersistence(available, objectMapper);
+    }
+}
+
+interface NotificationPersistence {
+    void resetForTests();
+
+    void seedMessage(NotificationMessage message);
+
+    void seedTemplate(NotificationTemplateRecord template);
+
+    Map<String, Object> replay(String actorUserId, String scope, String idempotencyKey, String fingerprint);
+
+    void persistMessageWrite(HttpServletRequest request, AuthUser actor, NotificationMessage message, String action, String reason, Map<String, Object> paramsSummary, Map<String, Object> beforeState, Map<String, Object> afterState, String idempotencyKey, String fingerprint, Map<String, Object> payload, int responseCode);
+
+    void persistRecipientWrite(HttpServletRequest request, AuthUser actor, NotificationMessage message, NotificationRecipient recipient, String action, String reason, Map<String, Object> paramsSummary, Map<String, Object> beforeState, Map<String, Object> afterState, Map<String, Object> payload, int responseCode);
+
+    void persistReadAllWrite(HttpServletRequest request, AuthUser actor, String type, String sourceModule, int updatedCount, Map<String, Object> paramsSummary, Map<String, Object> beforeState, Map<String, Object> afterState, Map<String, Object> payload, int responseCode);
+
+    void persistTemplateWrite(HttpServletRequest request, AuthUser actor, NotificationTemplateRecord template, String action, String reason, Map<String, Object> paramsSummary, Map<String, Object> beforeState, Map<String, Object> afterState, String idempotencyKey, String fingerprint, Map<String, Object> payload, int responseCode);
+
+    void persistRequestLog(HttpServletRequest request, String actorUserId, int responseCode);
+}
+
+class NoopNotificationPersistence implements NotificationPersistence {
+    @Override
+    public void resetForTests() {
+    }
+
+    @Override
+    public Map<String, Object> replay(String actorUserId, String scope, String idempotencyKey, String fingerprint) {
+        return null;
+    }
+
+    @Override
+    public void seedMessage(NotificationMessage message) {
+    }
+
+    @Override
+    public void seedTemplate(NotificationTemplateRecord template) {
+    }
+
+    @Override
+    public void persistMessageWrite(HttpServletRequest request, AuthUser actor, NotificationMessage message, String action, String reason, Map<String, Object> paramsSummary, Map<String, Object> beforeState, Map<String, Object> afterState, String idempotencyKey, String fingerprint, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void persistRecipientWrite(HttpServletRequest request, AuthUser actor, NotificationMessage message, NotificationRecipient recipient, String action, String reason, Map<String, Object> paramsSummary, Map<String, Object> beforeState, Map<String, Object> afterState, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void persistReadAllWrite(HttpServletRequest request, AuthUser actor, String type, String sourceModule, int updatedCount, Map<String, Object> paramsSummary, Map<String, Object> beforeState, Map<String, Object> afterState, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void persistTemplateWrite(HttpServletRequest request, AuthUser actor, NotificationTemplateRecord template, String action, String reason, Map<String, Object> paramsSummary, Map<String, Object> beforeState, Map<String, Object> afterState, String idempotencyKey, String fingerprint, Map<String, Object> payload, int responseCode) {
+    }
+
+    @Override
+    public void persistRequestLog(HttpServletRequest request, String actorUserId, int responseCode) {
+    }
+}
+
+class NotificationPostgresPersistence implements NotificationPersistence {
+    private final JdbcTemplate jdbc;
+    private final ObjectMapper objectMapper;
+
+    NotificationPostgresPersistence(JdbcTemplate jdbc, ObjectMapper objectMapper) {
+        this.jdbc = jdbc;
+        this.objectMapper = objectMapper;
+    }
+
+    @Override
+    @Transactional
+    public void resetForTests() {
+        jdbc.update("DELETE FROM notification_recipients");
+        jdbc.update("DELETE FROM notification_messages");
+        jdbc.update("DELETE FROM notification_templates");
+        jdbc.update("DELETE FROM app_idempotency_records WHERE scope LIKE 'notification.%'");
+        jdbc.update("DELETE FROM app_audit_logs WHERE action LIKE 'NOTIFICATION_%'");
+        jdbc.update("DELETE FROM app_request_logs WHERE path LIKE '/api/v1/notifications%'");
+    }
+
+    @Override
+    public Map<String, Object> replay(String actorUserId, String scope, String idempotencyKey, String fingerprint) {
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                SELECT request_fingerprint, response_body::text
+                FROM app_idempotency_records
+                WHERE actor_user_id = ? AND scope = ? AND idempotency_key = ? AND expires_at > now()
+                """, actorUserId, scope, idempotencyKey);
+        if (rows.isEmpty()) {
+            return null;
+        }
+        Map<String, Object> row = rows.getFirst();
+        if (!Objects.equals(String.valueOf(row.get("request_fingerprint")), fingerprint)) {
+            throw new ApiException(43002, HttpStatus.CONFLICT, "idempotency conflict");
+        }
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> envelope = objectMapper.readValue(String.valueOf(row.get("response_body")), Map.class);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> data = (Map<String, Object>) envelope.get("data");
+            return data;
+        } catch (Exception exception) {
+            throw new IllegalStateException("failed to parse notification idempotency response", exception);
+        }
+    }
+
+    @Override
+    @Transactional
+    public void seedMessage(NotificationMessage message) {
+        upsertMessage(message);
+        replaceRecipients(message);
+    }
+
+    @Override
+    @Transactional
+    public void seedTemplate(NotificationTemplateRecord template) {
+        upsertTemplate(template);
+    }
+
+    @Override
+    @Transactional
+    public void persistMessageWrite(HttpServletRequest request, AuthUser actor, NotificationMessage message, String action, String reason, Map<String, Object> paramsSummary, Map<String, Object> beforeState, Map<String, Object> afterState, String idempotencyKey, String fingerprint, Map<String, Object> payload, int responseCode) {
+        upsertMessage(message);
+        replaceRecipients(message);
+        insertAudit(request, actor, message.notificationId, action, reason, paramsSummary, beforeState, afterState);
+        if (idempotencyKey != null) {
+            insertIdempotency(actor.userId, messageScope(message), idempotencyKey, fingerprint, responseCode, payload);
+        }
+        insertRequestLog(request, actor.userId, responseCode);
+    }
+
+    @Override
+    @Transactional
+    public void persistRecipientWrite(HttpServletRequest request, AuthUser actor, NotificationMessage message, NotificationRecipient recipient, String action, String reason, Map<String, Object> paramsSummary, Map<String, Object> beforeState, Map<String, Object> afterState, Map<String, Object> payload, int responseCode) {
+        upsertMessage(message);
+        upsertRecipient(message, recipient);
+        insertAudit(request, actor, message.notificationId, action, reason, paramsSummary, beforeState, afterState);
+        insertRequestLog(request, actor.userId, responseCode);
+    }
+
+    @Override
+    @Transactional
+    public void persistReadAllWrite(HttpServletRequest request, AuthUser actor, String type, String sourceModule, int updatedCount, Map<String, Object> paramsSummary, Map<String, Object> beforeState, Map<String, Object> afterState, Map<String, Object> payload, int responseCode) {
+        if (updatedCount > 0) {
+            jdbc.update("""
+                    UPDATE notification_recipients r
+                    SET status = 'READ',
+                        read_at = COALESCE(r.read_at, now()),
+                        updated_at = now()
+                    FROM notification_messages m
+                    WHERE r.notification_id = m.notification_id
+                      AND r.recipient_user_id = ?
+                      AND r.status = 'UNREAD'
+                      AND (? IS NULL OR m.type = ?)
+                      AND (? IS NULL OR m.source_module = ?)
+                      AND (m.expires_at IS NULL OR m.expires_at > now())
+                    """, actor.userId, type, type, sourceModule, sourceModule);
+        }
+        insertAudit(request, actor, actor.userId, "NOTIFICATION_RECIPIENTS_READ_ALL", "bulk read all", paramsSummary, beforeState, afterState);
+        insertRequestLog(request, actor.userId, responseCode);
+    }
+
+    @Override
+    @Transactional
+    public void persistTemplateWrite(HttpServletRequest request, AuthUser actor, NotificationTemplateRecord template, String action, String reason, Map<String, Object> paramsSummary, Map<String, Object> beforeState, Map<String, Object> afterState, String idempotencyKey, String fingerprint, Map<String, Object> payload, int responseCode) {
+        upsertTemplate(template);
+        insertAudit(request, actor, template.templateId, action, reason, paramsSummary, beforeState, afterState);
+        if (idempotencyKey != null) {
+            insertIdempotency(actor.userId, "notification.template.create", idempotencyKey, fingerprint, responseCode, payload);
+        }
+        insertRequestLog(request, actor.userId, responseCode);
+    }
+
+    @Override
+    @Transactional
+    public void persistRequestLog(HttpServletRequest request, String actorUserId, int responseCode) {
+        insertRequestLog(request, actorUserId, responseCode);
+    }
+
+    private void upsertMessage(NotificationMessage message) {
+        jdbc.update("""
+                INSERT INTO notification_messages(id, notification_id, title, body, type, channels, source_module, source_id, risk_level, action_url, template_id, template_code, template_version, variables, created_by, created_at, expires_at)
+                VALUES (?, ?, ?, ?, ?, CAST(? AS jsonb), ?, ?, ?, ?, ?, ?, ?, CAST(? AS jsonb), ?, ?, ?)
+                ON CONFLICT (notification_id) DO UPDATE SET title = EXCLUDED.title, body = EXCLUDED.body, type = EXCLUDED.type, channels = EXCLUDED.channels, source_module = EXCLUDED.source_module, source_id = EXCLUDED.source_id, risk_level = EXCLUDED.risk_level, action_url = EXCLUDED.action_url, template_id = EXCLUDED.template_id, template_code = EXCLUDED.template_code, template_version = EXCLUDED.template_version, variables = EXCLUDED.variables, created_by = EXCLUDED.created_by, created_at = EXCLUDED.created_at, expires_at = EXCLUDED.expires_at
+                """,
+                UUID.randomUUID(), message.notificationId, message.title, message.body, message.type, json(message.channels), message.sourceModule, message.sourceId,
+                message.riskLevel, message.actionUrl, message.templateId, message.templateCode, message.templateVersion, message.variables == null ? null : json(message.variables),
+                message.createdBy, timestamp(message.createdAt), timestamp(message.expiresAt));
+    }
+
+    private void replaceRecipients(NotificationMessage message) {
+        jdbc.update("DELETE FROM notification_recipients WHERE notification_id = ?", message.notificationId);
+        for (NotificationRecipient recipient : message.recipients.values()) {
+            upsertRecipient(message, recipient);
+        }
+    }
+
+    private void upsertRecipient(NotificationMessage message, NotificationRecipient recipient) {
+        jdbc.update("""
+                INSERT INTO notification_recipients(id, notification_id, recipient_user_id, recipient_display_name_snapshot, status, delivery_status, failure_reason, read_at, archived_at, delivered_at, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (notification_id, recipient_user_id) DO UPDATE SET recipient_display_name_snapshot = EXCLUDED.recipient_display_name_snapshot, status = EXCLUDED.status, delivery_status = EXCLUDED.delivery_status, failure_reason = EXCLUDED.failure_reason, read_at = EXCLUDED.read_at, archived_at = EXCLUDED.archived_at, delivered_at = EXCLUDED.delivered_at, updated_at = EXCLUDED.updated_at
+                """,
+                UUID.randomUUID(), message.notificationId, recipient.recipientUserId, recipient.recipientDisplayNameSnapshot, recipient.status, recipient.deliveryStatus, recipient.failureReason,
+                timestamp(recipient.readAt), timestamp(recipient.archivedAt), timestamp(recipient.deliveredAt), timestamp(message.createdAt), timestamp(now()));
+    }
+
+    private void upsertTemplate(NotificationTemplateRecord template) {
+        jdbc.update("""
+                INSERT INTO notification_templates(id, template_id, code, name, title_template, body_template, variable_definitions, type, channels, status, version, created_by, created_at, updated_by, updated_at, disabled_at)
+                VALUES (?, ?, ?, ?, ?, ?, CAST(? AS jsonb), ?, CAST(? AS jsonb), ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (template_id) DO UPDATE SET code = EXCLUDED.code, name = EXCLUDED.name, title_template = EXCLUDED.title_template, body_template = EXCLUDED.body_template, variable_definitions = EXCLUDED.variable_definitions, type = EXCLUDED.type, channels = EXCLUDED.channels, status = EXCLUDED.status, version = EXCLUDED.version, updated_by = EXCLUDED.updated_by, updated_at = EXCLUDED.updated_at, disabled_at = EXCLUDED.disabled_at
+                """,
+                UUID.randomUUID(), template.templateId, template.code, template.name, template.titleTemplate, template.bodyTemplate, json(templateVariables(template)), template.type,
+                json(template.channels), template.status, template.version, template.createdBy, timestamp(template.createdAt), template.updatedBy, timestamp(template.updatedAt), timestamp(template.disabledAt));
+    }
+
+    private void insertAudit(HttpServletRequest request, AuthUser actor, String targetId, String action, String reason, Map<String, Object> paramsSummary, Map<String, Object> beforeState, Map<String, Object> afterState) {
+        jdbc.update("""
+                INSERT INTO app_audit_logs(id, request_id, actor_user_id, actor_role, actor_permissions, source_ip, target_type, target_id, action, risk_level, reason, params_summary, before_state, after_state, result, failure_reason, created_at)
+                VALUES (?, ?, ?, ?, CAST(? AS jsonb), ?, 'NOTIFICATION', ?, ?, ?, ?, CAST(? AS jsonb), CAST(? AS jsonb), CAST(? AS jsonb), 'SUCCESS', NULL, now())
+                """,
+                UUID.randomUUID(), requestId(request), actor.userId, String.join(",", actor.roles), json(new ArrayList<>(actor.permissions)), sourceIp(request),
+                targetId, action, riskLevel(action), reason, json(paramsSummary == null ? Map.of() : paramsSummary), json(beforeState == null ? Map.of() : beforeState), json(afterState == null ? Map.of() : afterState));
+    }
+
+    private void insertIdempotency(String actorUserId, String scope, String idempotencyKey, String fingerprint, int responseCode, Map<String, Object> payload) {
+        jdbc.update("""
+                INSERT INTO app_idempotency_records(id, actor_user_id, scope, idempotency_key, request_fingerprint, response_code, response_body, created_at, expires_at)
+                VALUES (?, ?, ?, ?, ?, ?, CAST(? AS jsonb), now(), now() + interval '24 hours')
+                ON CONFLICT (actor_user_id, scope, idempotency_key) DO NOTHING
+                """,
+                UUID.randomUUID(), actorUserId, scope, idempotencyKey, fingerprint, responseCode, json(NotificationController.envelope(0, "success", payload)));
+    }
+
+    private void insertRequestLog(HttpServletRequest request, String actorUserId, int responseCode) {
+        jdbc.update("""
+                INSERT INTO app_request_logs(id, request_id, method, path, actor_user_id, source_ip, response_code, result, failure_reason, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'SUCCESS', NULL, now())
+                ON CONFLICT (request_id) DO NOTHING
+                """,
+                UUID.randomUUID(), requestId(request), request.getMethod(), request.getRequestURI(), actorUserId, sourceIp(request), responseCode);
+    }
+
+    private String messageScope(NotificationMessage message) {
+        if (message.templateId == null) {
+            return "notification.message.create";
+        }
+        return "notification.message.from-template";
+    }
+
+    private String requestId(HttpServletRequest request) {
+        String value = request.getHeader("X-Request-Id");
+        return value == null || value.isBlank() ? RequestIdFilter.currentRequestId() : value;
+    }
+
+    private String sourceIp(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            return forwarded.split(",")[0].trim();
+        }
+        String remote = request.getRemoteAddr();
+        return remote == null || remote.isBlank() ? "unknown" : remote;
+    }
+
+    private String riskLevel(String action) {
+        if ("NOTIFICATION_RECIPIENT_ARCHIVED".equals(action)) {
+            return "LOW";
+        }
+        return "MEDIUM";
+    }
+
+    private List<Map<String, Object>> templateVariables(NotificationTemplateRecord template) {
+        return template.variableDefinitions.stream()
+                .map(variable -> NotificationController.mapOf("name", variable.name, "required", variable.required, "description", variable.description, "example", variable.example))
+                .toList();
+    }
+
+    private OffsetDateTime timestamp(Instant value) {
+        return value == null ? null : OffsetDateTime.ofInstant(value, ZoneOffset.UTC);
+    }
+
+    private String json(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("failed to serialize notification PostgreSQL jsonb value", exception);
+        }
+    }
+
+    private Instant now() {
+        return Instant.now();
     }
 }
 
@@ -544,10 +854,15 @@ class NotificationStore {
     private final List<NotificationAudit> audits = new ArrayList<>();
     private final Map<String, IdempotencyRecord> messageIdempotency = new ConcurrentHashMap<>();
     private final Map<String, IdempotencyRecord> templateIdempotency = new ConcurrentHashMap<>();
+    private final NotificationPersistence persistence;
     private boolean failNextAudit;
     private boolean failNextDeliveryWrite;
     private boolean examStatusChanged;
     private boolean whitelistStatusChanged;
+
+    NotificationStore(NotificationPersistence persistence) {
+        this.persistence = persistence;
+    }
 
     synchronized void reset() {
         messages.clear();
@@ -557,6 +872,7 @@ class NotificationStore {
         audits.clear();
         messageIdempotency.clear();
         templateIdempotency.clear();
+        persistence.resetForTests();
         failNextAudit = false;
         failNextDeliveryWrite = false;
         examStatusChanged = false;
@@ -596,6 +912,7 @@ class NotificationStore {
         messages.put(id, message);
         idsByAlias.put(alias, id);
         audits.add(new NotificationAudit("aud_" + UUID.randomUUID(), RequestIdFilter.currentRequestId(), createdBy, "ADMIN", id, "NOTIFICATION_MESSAGE_CREATED", "seed", "SUCCESS", now()));
+        persistence.seedMessage(message);
     }
 
     private void seedTemplate(String alias, String code, String name, String title, String body, String type, String status) {
@@ -607,6 +924,7 @@ class NotificationStore {
         templates.put(id, template);
         templateIdByCode.put(code, id);
         idsByAlias.put(alias, id);
+        persistence.seedTemplate(template);
     }
 
     synchronized Map<String, Object> currentUserMessages(String userId, int page, int pageSize, String status, String type, String sourceModule, boolean includeExpired, String sort) {
@@ -649,21 +967,28 @@ class NotificationStore {
         return recipientView(message, recipient);
     }
 
-    synchronized Map<String, Object> markRead(String userId, String notificationId) {
+    synchronized Map<String, Object> markRead(HttpServletRequest request, String userId, String notificationId) {
         NotificationMessage message = message(notificationId);
         NotificationRecipient recipient = message.recipients.get(userId);
         if (recipient == null) throw notFoundMessage();
         if ("ARCHIVED".equals(recipient.status)) {
             throw new ApiException(43311, HttpStatus.CONFLICT, "recipient state conflict");
         }
+        String beforeStatus = recipient.status;
         if ("UNREAD".equals(recipient.status)) {
             recipient.status = "READ";
             recipient.readAt = now();
         }
-        return recipientView(message, recipient);
+        Map<String, Object> payload = recipientView(message, recipient);
+        persistence.persistRecipientWrite(request, new AuthUser(userId, userId, Set.of("USER"), Set.of(), "ACTIVE"), message, recipient, "NOTIFICATION_RECIPIENT_READ", "mark read",
+                NotificationController.mapOf("notificationId", notificationId),
+                NotificationController.mapOf("status", beforeStatus),
+                NotificationController.mapOf("status", recipient.status),
+                payload, 200);
+        return payload;
     }
 
-    synchronized int markAllRead(String userId, String type, String sourceModule) {
+    synchronized int markAllRead(HttpServletRequest request, String userId, String type, String sourceModule) {
         if (type != null && !TYPES.contains(type)) throw ApiException.badRequest("type");
         int updated = 0;
         for (NotificationMessage message : messages.values()) {
@@ -676,15 +1001,20 @@ class NotificationStore {
             recipient.readAt = now();
             updated++;
         }
+        persistence.persistReadAllWrite(request, new AuthUser(userId, userId, Set.of("USER"), Set.of(), "ACTIVE"), type, sourceModule, updated,
+                NotificationController.mapOf("type", type, "sourceModule", sourceModule, "updatedCount", updated),
+                NotificationController.mapOf("status", "UNREAD"),
+                NotificationController.mapOf("status", "READ"),
+                NotificationController.mapOf("updatedCount", updated), 200);
         return updated;
     }
 
-    synchronized Map<String, Object> archive(AuthUser current, String notificationId, String reason) {
+    synchronized Map<String, Object> archive(HttpServletRequest request, AuthUser current, String notificationId, String reason) {
         NotificationMessage message = message(notificationId);
         NotificationRecipient recipient = message.recipients.get(current.userId);
         if (recipient == null) throw notFoundMessage();
+        String beforeStatus = recipient.status;
         if (!"ARCHIVED".equals(recipient.status)) {
-            String beforeStatus = recipient.status;
             recipient.status = "ARCHIVED";
             recipient.archivedAt = now();
             audit("NOTIFICATION_RECIPIENT_ARCHIVED", current, notificationId, reason, "LOW",
@@ -692,7 +1022,13 @@ class NotificationStore {
                     NotificationController.mapOf("status", beforeStatus),
                     NotificationController.mapOf("status", "ARCHIVED"));
         }
-        return recipientView(message, recipient);
+        Map<String, Object> payload = recipientView(message, recipient);
+        persistence.persistRecipientWrite(request, current, message, recipient, "NOTIFICATION_RECIPIENT_ARCHIVED", reason,
+                NotificationController.mapOf("notificationId", notificationId, "reasonPresent", reason != null && !reason.isBlank()),
+                NotificationController.mapOf("status", beforeStatus),
+                NotificationController.mapOf("status", recipient.status),
+                payload, 200);
+        return payload;
     }
 
     synchronized Map<String, Object> adminMessages(int page, int pageSize, String keyword, String type, String sourceModule, String recipientUserId, String deliveryStatus, String createdBy, String sort) {
@@ -721,7 +1057,7 @@ class NotificationStore {
         return adminMessageMap(message(notificationId));
     }
 
-    synchronized Map<String, Object> createMessage(AuthUser actor, NotificationAuthContextProvider auth, Map<String, Object> body, boolean fromTemplate) {
+    synchronized Map<String, Object> createMessage(HttpServletRequest request, AuthUser actor, NotificationAuthContextProvider auth, Map<String, Object> body, boolean fromTemplate) {
         cleanupExpiredIdempotencyRecords();
         String idempotencyKey = optionalString(body, "idempotencyKey");
         String idempotencyScope = actor.userId + ":" + (fromTemplate ? "template:" : "direct:") + idempotencyKey;
@@ -731,7 +1067,15 @@ class NotificationStore {
             if (!record.signature.equals(signature)) {
                 throw new ApiException(43002, HttpStatus.CONFLICT, "idempotency conflict");
             }
+            persistence.persistRequestLog(request, actor.userId, 201);
             return record.payload;
+        }
+        if (idempotencyKey != null) {
+            Map<String, Object> replay = persistence.replay(actor.userId, fromTemplate ? "notification.message.from-template" : "notification.message.create", idempotencyKey, signature);
+            if (replay != null) {
+                persistence.persistRequestLog(request, actor.userId, 201);
+                return replay;
+            }
         }
         List<String> recipientUserIds = stringList(body.get("recipientUserIds"));
         LinkedHashSet<String> uniqueRecipients = new LinkedHashSet<>(recipientUserIds);
@@ -782,10 +1126,14 @@ class NotificationStore {
         if (idempotencyKey != null) {
             messageIdempotency.put(idempotencyScope, new IdempotencyRecord(signature, payload, now(), now().plusSeconds(IDEMPOTENCY_RETENTION_SECONDS)));
         }
+        persistence.persistMessageWrite(request, actor, message, fromTemplate ? "NOTIFICATION_MESSAGE_FROM_TEMPLATE_CREATED" : "NOTIFICATION_MESSAGE_CREATED", reason, createMessageParams(message, uniqueRecipients.size(), idempotencyKey != null),
+                NotificationController.mapOf("status", "NONE"),
+                NotificationController.mapOf("status", "CREATED", "recipientTotal", uniqueRecipients.size()),
+                idempotencyKey, signature, payload, 201);
         return payload;
     }
 
-    synchronized Map<String, Object> createFromTemplate(AuthUser actor, NotificationAuthContextProvider auth, Map<String, Object> body) {
+    synchronized Map<String, Object> createFromTemplate(HttpServletRequest request, AuthUser actor, NotificationAuthContextProvider auth, Map<String, Object> body) {
         String templateCode = requiredString(body, "templateCode");
         NotificationTemplateRecord template = templateByCode(templateCode);
         if ("DISABLED".equals(template.status)) {
@@ -817,7 +1165,7 @@ class NotificationStore {
         if (!messageBody.containsKey("sourceModule")) {
             messageBody.put("sourceModule", "notification");
         }
-        return createMessage(actor, auth, messageBody, true);
+        return createMessage(request, actor, auth, messageBody, true);
     }
 
     synchronized Map<String, Object> templates(int page, int pageSize, String keyword, String status, String type, String sort) {
@@ -866,7 +1214,7 @@ class NotificationStore {
         );
     }
 
-    synchronized Map<String, Object> createTemplate(AuthUser actor, Map<String, Object> body) {
+    synchronized Map<String, Object> createTemplate(HttpServletRequest request, AuthUser actor, Map<String, Object> body) {
         cleanupExpiredIdempotencyRecords();
         String idempotencyKey = optionalString(body, "idempotencyKey");
         String scope = actor.userId + ":" + idempotencyKey;
@@ -876,7 +1224,15 @@ class NotificationStore {
             if (!record.signature.equals(signature)) {
                 throw new ApiException(43002, HttpStatus.CONFLICT, "idempotency conflict");
             }
+            persistence.persistRequestLog(request, actor.userId, 201);
             return record.payload;
+        }
+        if (idempotencyKey != null) {
+            Map<String, Object> replay = persistence.replay(actor.userId, "notification.template.create", idempotencyKey, signature);
+            if (replay != null) {
+                persistence.persistRequestLog(request, actor.userId, 201);
+                return replay;
+            }
         }
         NotificationTemplateRecord candidate = templateFromBody(null, actor, body, false);
         if (templateIdByCode.containsKey(candidate.code)) {
@@ -892,10 +1248,14 @@ class NotificationStore {
         if (idempotencyKey != null) {
             templateIdempotency.put(scope, new IdempotencyRecord(signature, payload, now(), now().plusSeconds(IDEMPOTENCY_RETENTION_SECONDS)));
         }
+        persistence.persistTemplateWrite(request, actor, candidate, "NOTIFICATION_TEMPLATE_CREATED", requiredString(body, "reason"), templateParams(candidate, idempotencyKey != null),
+                NotificationController.mapOf("status", "NONE"),
+                NotificationController.mapOf("status", candidate.status, "version", candidate.version),
+                idempotencyKey, signature, payload, 201);
         return payload;
     }
 
-    synchronized Map<String, Object> patchTemplate(AuthUser actor, String templateId, Map<String, Object> body) {
+    synchronized Map<String, Object> patchTemplate(HttpServletRequest request, AuthUser actor, String templateId, Map<String, Object> body) {
         NotificationTemplateRecord existing = template(templateId);
         String reason = requiredString(body, "reason");
         NotificationTemplateRecord candidate = existing.copy();
@@ -916,11 +1276,17 @@ class NotificationStore {
         candidate.updatedBy = actor.userId;
         candidate.updatedAt = now();
         templates.put(templateId, candidate);
-        return templateMapRecord(candidate);
+        Map<String, Object> payload = templateMapRecord(candidate);
+        persistence.persistTemplateWrite(request, actor, candidate, "NOTIFICATION_TEMPLATE_UPDATED", reason, templateParams(candidate, false),
+                NotificationController.mapOf("status", existing.status, "version", existing.version, "code", existing.code),
+                NotificationController.mapOf("status", candidate.status, "version", candidate.version, "code", candidate.code),
+                null, null, payload, 200);
+        return payload;
     }
 
-    synchronized Map<String, Object> disableTemplate(AuthUser actor, String templateId, String reason) {
+    synchronized Map<String, Object> disableTemplate(HttpServletRequest request, AuthUser actor, String templateId, String reason) {
         NotificationTemplateRecord template = template(templateId);
+        String beforeStatus = template.status;
         if (!"DISABLED".equals(template.status)) {
             audit("NOTIFICATION_TEMPLATE_DISABLED", actor, templateId, reason, "MEDIUM",
                     NotificationController.mapOf("templateId", templateId, "code", template.code),
@@ -931,12 +1297,19 @@ class NotificationStore {
             template.updatedBy = actor.userId;
             template.updatedAt = now();
         }
-        return templateMapRecord(template);
+        Map<String, Object> payload = templateMapRecord(template);
+        persistence.persistTemplateWrite(request, actor, template, "NOTIFICATION_TEMPLATE_DISABLED", reason,
+                NotificationController.mapOf("templateId", templateId, "code", template.code),
+                NotificationController.mapOf("status", beforeStatus),
+                NotificationController.mapOf("status", template.status),
+                null, null, payload, 200);
+        return payload;
     }
 
-    synchronized Map<String, Object> enableTemplate(AuthUser actor, String templateId, String reason) {
+    synchronized Map<String, Object> enableTemplate(HttpServletRequest request, AuthUser actor, String templateId, String reason) {
         NotificationTemplateRecord template = template(templateId);
         validateTemplate(template);
+        String beforeStatus = template.status;
         if (!"ENABLED".equals(template.status)) {
             audit("NOTIFICATION_TEMPLATE_ENABLED", actor, templateId, reason, "MEDIUM",
                     NotificationController.mapOf("templateId", templateId, "code", template.code),
@@ -947,7 +1320,13 @@ class NotificationStore {
             template.updatedBy = actor.userId;
             template.updatedAt = now();
         }
-        return templateMapRecord(template);
+        Map<String, Object> payload = templateMapRecord(template);
+        persistence.persistTemplateWrite(request, actor, template, "NOTIFICATION_TEMPLATE_ENABLED", reason,
+                NotificationController.mapOf("templateId", templateId, "code", template.code),
+                NotificationController.mapOf("status", beforeStatus),
+                NotificationController.mapOf("status", template.status),
+                null, null, payload, 200);
+        return payload;
     }
 
     synchronized Map<String, Object> auditLogs(String notificationId, int page, int pageSize) {

@@ -8,6 +8,7 @@ backend/*/target/
 .env
 .env.local
 .env.*.local
+compose.local.env
 
 *.log
 *.tmp
