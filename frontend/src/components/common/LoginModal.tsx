@@ -6,7 +6,6 @@ import { useState } from 'react'
 import { useAuth } from '../../hooks/useAuth'
 import { login } from '../../api/modules/account'
 import { ApiError } from '../../types/api'
-import { img } from '../../constants/images'
 
 interface LoginModalProps {
   open: boolean

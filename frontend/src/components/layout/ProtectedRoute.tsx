@@ -16,8 +16,7 @@ interface ProtectedRouteProps {
 export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) {
   const { isAuthenticated, user } = useAuthStore()
 
-  // 开发模式：后端未启动时绕过登录校验，用 mock 用户
-  const devBypass = import.meta.env.DEV && !isAuthenticated && import.meta.env.VITE_DEV_BYPASS_AUTH !== 'false'
+  const devBypass = import.meta.env.DEV && !isAuthenticated && import.meta.env.VITE_DEV_BYPASS_AUTH === 'true'
 
   if (!isAuthenticated && !devBypass) {
     return <Navigate to={ROUTES.LOGIN} replace />

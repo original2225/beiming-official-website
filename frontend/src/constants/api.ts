@@ -4,7 +4,7 @@
  */
 
 /** 默认网关地址，本地联调走这里，可通过 VITE_API_BASE_URL 覆盖 */
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8125'
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8135'
 
 /** 请求默认超时 ms */
 export const API_TIMEOUT = 15000
@@ -35,7 +35,7 @@ export const SERVICE_PORTS: Record<string, number> = {
   'plugin-integration': 8122,
   'cross-platform-notification': 8123,
   'ops-image-market': 8124,
-  'api-gateway': 8125,
+  'api-gateway': 8135,
   material: 8126,
   guide: 8127,
 }
