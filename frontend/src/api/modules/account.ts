@@ -5,8 +5,9 @@
 
 import { get, post, put, patch, del } from '../client'
 import * as ep from '../endpoints'
-import type { PageResult } from '../../types/api'
+import { ApiError, type PageResult } from '../../types/api'
 import type { CurrentUser } from '../../types/common'
+import type { OpsCapability, Role } from '../../types/common'
 import type { NotificationSummary } from '../../types/domain'
 import type {
   AttendanceAccountView,
@@ -18,19 +19,89 @@ import type {
   WhitelistApplicationPage,
 } from '../../types/view-models'
 
+const ROLE_PRIORITY: Role[] = ['OWNER', 'ADMIN', 'HELPER', 'USER']
+
+interface BackendMinecraftBinding {
+  minecraftId?: string
+  minecraftUuid?: string
+}
+
+interface BackendUserSummary {
+  id: string
+  username: string
+  roles?: string[]
+  permissions?: string[]
+  minecraftBinding?: BackendMinecraftBinding | null
+}
+
+interface BackendSessionPayload {
+  accessToken: string
+  user: BackendUserSummary
+}
+
+interface LoginResult {
+  token: string
+  user: CurrentUser
+}
+
+function mapBackendUser(user: BackendUserSummary): CurrentUser {
+  const roles = user.roles ?? []
+  const role = ROLE_PRIORITY.find((candidate) => roles.includes(candidate)) ?? 'USER'
+  const minecraftBinding = user.minecraftBinding ?? null
+
+  return {
+    userId: user.id,
+    username: user.username,
+    role,
+    permissions: (user.permissions ?? []) as OpsCapability[],
+    minecraftName: minecraftBinding?.minecraftId,
+    minecraftUuid: minecraftBinding?.minecraftUuid,
+  }
+}
+
+function ensureObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' ? value as Record<string, unknown> : {}
+}
+
 // ── auth ──
-export const register = (body: unknown) => post<unknown>(ep.auth.register(), body)
-export const login = (body: unknown) => post<{ token: string; user: CurrentUser }>(ep.auth.login(), body)
+export const register = (body: unknown) => {
+  const payload = ensureObject(body)
+  return post<unknown>(ep.auth.register(), {
+    ...payload,
+    displayName: payload.displayName ?? payload.username,
+  })
+}
+export const login = async (body: unknown): Promise<LoginResult> => {
+  const session = await post<BackendSessionPayload>(ep.auth.login(), body)
+  return { token: session.accessToken, user: mapBackendUser(session.user) }
+}
 export const logout = () => post<unknown>(ep.auth.logout())
-export const getMe = () => get<CurrentUser>(ep.auth.me())
+export const getMe = async () => mapBackendUser(await get<BackendUserSummary>(ep.auth.me()))
 export const verifySession = () => get<unknown>(ep.auth.sessionVerify())
 export const getMeSessions = () => get<unknown>(ep.auth.meSessions())
-export const deleteMeSession = (sessionId: string) => del<unknown>(ep.auth.meSession(sessionId))
-export const changePassword = (body: unknown) => post<unknown>(ep.auth.mePassword(), body)
+export const deleteMeSession = (sessionId: string) => del<unknown>(ep.auth.meSession(sessionId), { reason: 'USER_SESSION_REVOKE' })
+export const changePassword = (body: unknown) => {
+  const payload = ensureObject(body)
+  return post<unknown>(ep.auth.mePassword(), {
+    currentPassword: payload.currentPassword ?? payload.oldPassword,
+    newPassword: payload.newPassword,
+    reason: payload.reason ?? 'USER_PASSWORD_CHANGE',
+  })
+}
 export const requestPasswordReset = (body: unknown) => post<unknown>(ep.auth.passwordResetRequest(), body)
 export const confirmPasswordReset = (body: unknown) => post<unknown>(ep.auth.passwordResetConfirm(), body)
-export const bindMinecraft = (body: unknown) => put<unknown>(ep.auth.minecraftBinding(), body)
-export const unbindMinecraft = () => del<unknown>(ep.auth.minecraftBinding())
+export const bindMinecraft = (body: unknown) => {
+  const payload = ensureObject(body)
+  if (!payload.minecraftUuid || !payload.verificationCode) {
+    return Promise.reject(new ApiError(40001, '当前绑定需要 Minecraft UUID 和验证码'))
+  }
+  return put<unknown>(ep.auth.minecraftBinding(), {
+    minecraftId: payload.minecraftId ?? payload.minecraftName,
+    minecraftUuid: payload.minecraftUuid,
+    verificationCode: payload.verificationCode,
+  })
+}
+export const unbindMinecraft = () => del<unknown>(ep.auth.minecraftBinding(), { reason: 'USER_MINECRAFT_UNBIND' })
 
 // ── profile ──
 export const getMyProfile = () => get<ProfileView>(ep.profile.me())
@@ -38,7 +109,7 @@ export const updateMyProfile = (body: unknown) => patch<unknown>(ep.profile.me()
 
 // ── notification ──
 export const getMyNotifications = (params?: Record<string, string | number | boolean | undefined>) => get<PageResult<NotificationSummary>>(ep.notification.meList(), { params })
-export const getUnreadCount = () => get<{ count: number }>(ep.notification.meUnreadCount())
+export const getUnreadCount = () => get<{ unreadCount: number }>(ep.notification.meUnreadCount())
 export const getNotificationDetail = (notificationId: string) => get<unknown>(ep.notification.meDetail(notificationId))
 export const markNotificationRead = (notificationId: string) => patch<unknown>(ep.notification.meRead(notificationId))
 export const markAllNotificationsRead = () => patch<unknown>(ep.notification.meReadAll())

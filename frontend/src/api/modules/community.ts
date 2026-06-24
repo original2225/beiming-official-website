@@ -10,7 +10,7 @@ import type { PostSummary } from '../../types/domain'
 import type { BoardDetailView, BoardView, CommentView, PostDetailView } from '../../types/view-models'
 
 // ── 板块 ──
-export const getBoards = () => get<BoardView[]>(ep.community.boards())
+export const getBoards = async () => (await get<PageResult<BoardView>>(ep.community.boards())).items
 export const getBoard = (boardId: string) => get<BoardDetailView>(ep.community.board(boardId))
 
 // ── 帖子 ──

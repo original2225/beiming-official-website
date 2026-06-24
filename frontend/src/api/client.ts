@@ -67,4 +67,4 @@ export const get = <T>(path: string, options?: RequestOptions) => request<T>(pat
 export const post = <T>(path: string, body?: unknown, options?: RequestOptions) => request<T>(path, 'POST', body, options)
 export const put = <T>(path: string, body?: unknown, options?: RequestOptions) => request<T>(path, 'PUT', body, options)
 export const patch = <T>(path: string, body?: unknown, options?: RequestOptions) => request<T>(path, 'PATCH', body, options)
-export const del = <T>(path: string, options?: RequestOptions) => request<T>(path, 'DELETE', undefined, options)
+export const del = <T>(path: string, body?: unknown, options?: RequestOptions) => request<T>(path, 'DELETE', body, options)
