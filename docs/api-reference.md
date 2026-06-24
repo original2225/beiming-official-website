@@ -1,6 +1,6 @@
 # 北冥官网 API 总文档
 
-版本：1.1
+版本：1.2
 
 本文档是当前仓库唯一保留的总 API 文档。当前后端是模块化单体，唯一后端 Maven 入口是 `backend/pom.xml`，本地联调默认入口是 `http://127.0.0.1:8135`，所有业务路径保持 `/api/v1/**` 原样。历史独立服务入口、历史端口和旧微服务目录不作为当前调用入口。
 
@@ -51,7 +51,7 @@ PostgreSQL 是正式持久化数据库。所有涉及新增、更新、状态流
 
 | 模块 | 路径前缀 | 当前承载 | 路由数 |
 | --- | --- | --- | ---: |
-| `api-gateway` | `/api/v1/gateway` | `backend:8135` | 9 |
+| `api-gateway` | `/api/v1/**`，管理接口为 `/api/v1/gateway/**` | `backend:8135` | 8 |
 | `business-core` | `/api/v1/business-core` | `backend:8135` | 3 |
 | `admission-core` | `/api/v1/admission-core` | `backend:8135` | 2 |
 | `engagement-core` | `/api/v1/engagement-core` | `backend:8135` | 3 |
@@ -83,6 +83,10 @@ PostgreSQL 是正式持久化数据库。所有涉及新增、更新、状态流
 | `guide` | `/api/v1/guides` | `portal-core` | 41 |
 | `material` | `/api/v1/materials` | `portal-core` | 33 |
 | `online-map` | `/api/v1/online-map` | `portal-core` | 34 |
+
+当前代码中共挂载 32 个控制器入口和 765 个映射方法。`api-gateway` 在统一后端内保留 `/api/v1/gateway/**` 管理接口，同时通过 `/api/v1/**` 兼容代理入口承接历史网关行为；它不是独立服务入口，旧 `api-gateway:8125` 只作为回滚追溯引用。
+
+当前 Flyway 迁移位于 `backend/src/main/resources/db/migration`，已覆盖 PostgreSQL 公共基础表以及 `auth`、`profile`、`notification`、`content`、`server-status`、`resource`、`admin`、`onboarding`、`exam`、`whitelist`、`attendance`、`community`、`activity`、`calendar` 和 `changelog`。`ops-core`、`portal-core` 及其下属扩展模块当前已有统一后端路由、契约测试、生产边界测试和请求数据库流测试，但正式 PostgreSQL 迁移尚未进入本表范围；后续落库必须继续按模块顺序补齐本总 API 文档、自动化测试、Flyway 迁移和真实容器验收。
 
 ## 业务边界
 
@@ -593,4 +597,4 @@ PostgreSQL 是 `attendance` 正式持久化验收依据。成功写接口必须�
 
 ## 验收
 
-当前后端统一验证命令是 `mvn -q -f backend/pom.xml test`。接口路径、响应格式、认证方式、错误码、分页、幂等、状态流转、失败降级和审计字段以本文档、`docs/system-design.md` 和当前代码为准。`docs/` 当前只保留本文档和模块设计文档，不再保留独立模块契约文件、本地测试文档、阶段治理文档或旧微服务样例文件。
+当前后端统一验证命令是 `mvn -q -f backend/pom.xml test`。前端验证命令是进入 `frontend` 后执行 `npm test` 和 `npm run build`。容器联调以仓库根目录 `docker-compose.yml` 为入口，当前编排 `beiming-postgres`、`beiming-backend` 和 `beiming-frontend`，后端健康检查为 `/api/v1/unified-backend/health`，前端本地入口为 `http://127.0.0.1:5173`。接口路径、响应格式、认证方式、错误码、分页、幂等、状态流转、失败降级和审计字段以本文档、`docs/system-design.md` 和当前代码为准。`docs/` 当前只保留本文档和模块设计文档，不再保留独立模块契约文件、本地测试文档、阶段治理文档或旧微服务样例文件。
