@@ -1,0 +1,110 @@
+@import "tailwindcss";
+@import "@south-paw/typeface-minecraft";
+
+/* ── Minecraft 主题设计 Token ── */
+@theme {
+  /* 像素字体 */
+  --font-minecraft: "Minecraft", "Press Start 2P", monospace;
+  --font-body: system-ui, -apple-system, sans-serif;
+
+  /* MC 大地色系 */
+  --color-mc-dirt: #8B6914;
+  --color-mc-grass: #5B8731;
+  --color-mc-stone: #7F7F7F;
+  --color-mc-wood: #BC9862;
+  --color-mc-plank: #C49B4A;
+  --color-mc-water: #3B6FD4;
+  --color-mc-sky: #87CEEB;
+  --color-mc-redstone: #C11E1E;
+  --color-mc-gold: #F5A623;
+  --color-mc-iron: #D8D8D8;
+  --color-mc-diamond: #4AEDD9;
+  --color-mc-emerald: #17DD62;
+  --color-mc-obsidian: #1A0D2E;
+  --color-mc-bedrock: #333333;
+
+  /* 语义色 */
+  --color-surface: #2D2D2D;
+  --color-surface-light: #3D3D3D;
+  --color-surface-dark: #1A1A1A;
+  --color-text-primary: #FFFFFF;
+  --color-text-secondary: #AAAAAA;
+  --color-text-muted: #777777;
+  --color-accent: #5B8731;
+  --color-danger: #C11E1E;
+  --color-warning: #F5A623;
+  --color-success: #17DD62;
+  --color-info: #87CEEB;
+
+  /* 默认零圆角 */
+  --radius-default: 0;
+}
+
+/* ── 全局基础样式 ── */
+@layer base {
+  *, *::before, *::after {
+    border-radius: 0 !important;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    font-family: var(--font-body);
+    background-color: #1A1A1A;
+    color: #FFFFFF;
+    image-rendering: auto;
+  }
+
+  /* 像素素材保持锐利 */
+  img[src*="item"], img[src*="block"], img[src*="icon"],
+  .pixel-perfect {
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+  }
+
+  .mc-heading {
+    font-family: var(--font-minecraft);
+    letter-spacing: 0.05em;
+    text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.5);
+  }
+}
+
+/* ── MC 风格按钮 ── */
+@layer components {
+  .btn-mc {
+    font-family: var(--font-minecraft);
+    padding: 0.5rem 1.5rem;
+    border: 3px solid #1a4d23;
+    background-color: #5B8731;
+    color: #FFFFFF;
+    box-shadow: inset 2px 2px 0 rgba(255,255,255,0.2),
+                inset -2px -2px 0 rgba(0,0,0,0.4);
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: background-color 0.1s;
+  }
+  .btn-mc:hover {
+    background-color: #6B9F3A;
+  }
+  .btn-mc:active {
+    box-shadow: inset -2px -2px 0 rgba(255,255,255,0.1),
+                inset 2px 2px 0 rgba(0,0,0,0.4);
+  }
+  .btn-mc-danger {
+    border-color: #781515;
+    background-color: #C11E1E;
+  }
+  .btn-mc-danger:hover {
+    background-color: #D93030;
+  }
+
+  /* MC 风格面板 */
+  .panel-mc {
+    border: 3px solid #555;
+    background-color: #8B8B8B;
+    box-shadow: inset 2px 2px 0 rgba(255,255,255,0.1),
+                inset -2px -2px 0 rgba(0,0,0,0.3);
+  }
+}
