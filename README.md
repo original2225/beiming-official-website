@@ -35,6 +35,7 @@ mvn -f backend/pom.xml spring-boot:run
 ```bash
 cp compose.local.env.example compose.local.env
 mvn -q -f backend/pom.xml -DskipTests package
+cd frontend && npm ci && npm run build && cd ..
 docker compose up --build
 ```
 

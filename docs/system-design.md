@@ -247,7 +247,7 @@ Cloudreve 第一阶段可以作为外部分享链接存在。后续接入 API �
 
 官网前端、后端模块化单体、数据库、缓存、Cloudreve、Minecraft 服务器和外部节点执行器应分开部署。开发阶段以 `backend/pom.xml` 这一个 Spring Boot 工程模拟和验证后端模块边界，但接口、权限和数据归属不能混乱。本地开发态 `api-gateway-service:8125` Maven 入口已退役，五个 core 独立 Maven 入口也已退役，网关能力和五个 core 模块由 `backend:8135` 自承载。外部节点执行器已出仓且未接入。
 
-本地容器部署以仓库根目录的 `docker-compose.yml` 为入口，当前编排 PostgreSQL、统一后端和前端静态服务。统一后端镜像由 `backend/Dockerfile` 构建，运行 Maven 产出的 Spring Boot jar，容器端口只暴露 `8135`，健康检查复用 `/api/v1/unified-backend/health`。前端镜像由 `frontend/Dockerfile` 构建，本地容器入口暴露 `5173`。容器运行前必须先执行 `mvn -q -f backend/pom.xml -DskipTests package` 生成 jar。容器运行时必须显式提供 `SPRING_DATASOURCE_URL`、`SPRING_DATASOURCE_USERNAME`、`SPRING_DATASOURCE_PASSWORD`、`SPRING_FLYWAY_ENABLED=true` 和空的 `SPRING_AUTOCONFIGURE_EXCLUDE`，确保 PostgreSQL 与 Flyway 在容器环境打开。`compose.local.env` 只用于本地 Docker Desktop WSL 测试，必须保持本地忽略；迁移到 Arch Linux 容器时使用同一端口、同一镜像入口和同一环境变量契约，由服务器侧外部密钥或编排配置注入真实密码。
+本地容器部署以仓库根目录的 `docker-compose.yml` 为入口，当前编排 PostgreSQL、统一后端和前端静态服务。统一后端镜像由 `backend/Dockerfile` 构建，运行 Maven 产出的 Spring Boot jar，容器端口只暴露 `8135`，健康检查复用 `/api/v1/unified-backend/health`。前端镜像由 `frontend/Dockerfile` 构建，本地容器入口暴露 `5173`。容器运行前必须先执行 `mvn -q -f backend/pom.xml -DskipTests package` 生成 jar，并执行 `cd frontend && npm ci && npm run build && cd ..` 生成前端 `dist`。容器运行时必须显式提供 `SPRING_DATASOURCE_URL`、`SPRING_DATASOURCE_USERNAME`、`SPRING_DATASOURCE_PASSWORD`、`SPRING_FLYWAY_ENABLED=true` 和空的 `SPRING_AUTOCONFIGURE_EXCLUDE`，确保 PostgreSQL 与 Flyway 在容器环境打开。`compose.local.env` 只用于本地 Docker Desktop WSL 测试，必须保持本地忽略；迁移到 Arch Linux 容器时使用同一端口、同一镜像入口和同一环境变量契约，由服务器侧外部密钥或编排配置注入真实密码。
 
 节点守护进程部署在被管理服务器上。它只开放必要管理端口，优先由控制面主动连接或通过受控通道通信，不暴露无鉴权的系统操作接口。
 

@@ -597,4 +597,4 @@ PostgreSQL 是 `attendance` 正式持久化验收依据。成功写接口必须�
 
 ## 验收
 
-当前后端统一验证命令是 `mvn -q -f backend/pom.xml test`。前端验证命令是进入 `frontend` 后执行 `npm test` 和 `npm run build`。容器联调以仓库根目录 `docker-compose.yml` 为入口，当前编排 `beiming-postgres`、`beiming-backend` 和 `beiming-frontend`，后端健康检查为 `/api/v1/unified-backend/health`，前端本地入口为 `http://127.0.0.1:5173`。接口路径、响应格式、认证方式、错误码、分页、幂等、状态流转、失败降级和审计字段以本文档、`docs/system-design.md` 和当前代码为准。`docs/` 当前只保留本文档和模块设计文档，不再保留独立模块契约文件、本地测试文档、阶段治理文档或旧微服务样例文件。
+当前后端统一验证命令是 `mvn -q -f backend/pom.xml test`。前端依赖安装和验证命令是进入 `frontend` 后执行 `npm ci`、`npm test` 和 `npm run build`。容器联调以仓库根目录 `docker-compose.yml` 为入口，当前编排 `beiming-postgres`、`beiming-backend` 和 `beiming-frontend`，后端健康检查为 `/api/v1/unified-backend/health`，前端本地入口为 `http://127.0.0.1:5173`。接口路径、响应格式、认证方式、错误码、分页、幂等、状态流转、失败降级和审计字段以本文档、`docs/system-design.md` 和当前代码为准。`docs/` 当前只保留本文档和模块设计文档，不再保留独立模块契约文件、本地测试文档、阶段治理文档或旧微服务样例文件。

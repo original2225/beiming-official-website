@@ -31,9 +31,8 @@ class UnifiedBackendContainerDeploymentConfigTest {
                 .contains("SPRING_AUTOCONFIGURE_EXCLUDE: \"\"")
                 .contains("SPRING_FLYWAY_ENABLED: \"true\"")
                 .contains("jdbc:postgresql://postgres:5432/beiming")
-                .contains("SPRING_DATASOURCE_USERNAME: $${POSTGRES_USER}")
-                .contains("SPRING_DATASOURCE_PASSWORD: $${POSTGRES_PASSWORD}")
                 .contains("/api/v1/unified-backend/health")
+                .doesNotContain("beiming_local_password")
                 .doesNotContain("5432:5432")
                 .doesNotContain("8125")
                 .doesNotContain("8130")
@@ -46,7 +45,8 @@ class UnifiedBackendContainerDeploymentConfigTest {
                 .contains("POSTGRES_DB=beiming")
                 .contains("POSTGRES_USER=beiming")
                 .contains("POSTGRES_PASSWORD=")
-                .doesNotContain("SPRING_DATASOURCE_PASSWORD=");
+                .contains("SPRING_DATASOURCE_USERNAME=")
+                .contains("SPRING_DATASOURCE_PASSWORD=");
     }
 
     @Test
