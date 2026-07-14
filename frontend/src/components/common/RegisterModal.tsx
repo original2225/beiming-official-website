@@ -40,30 +40,30 @@ export function RegisterModal({ open, onClose, onSwitchToLogin }: RegisterModalP
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
 
-      <div className="relative bg-white rounded-2xl w-[400px] shadow-2xl">
-        <div className="px-8 pt-12 pb-8">
-          <img src={img('logo')} alt="" className="absolute -top-0 right-0 w-20 h-20 object-contain" />
+      <div className="relative panel-ink w-[400px] mx-4">
+        <div className="px-8 pt-10 pb-8">
+          <img src={img('logo')} alt="" className="absolute -top-0 right-0 w-20 h-20 object-contain opacity-80" />
 
-          <h2 className="text-xl font-bold text-gray-900">注册</h2>
-          <p className="text-sm text-gray-500 mt-1 mb-6">创建你的北冥账号</p>
+          <h2 className="text-xl font-display font-bold text-text-primary">注册</h2>
+          <p className="text-sm text-text-muted mt-1 mb-6">创建你的北冥账号</p>
 
-          {error && <p className="text-sm text-red-600 mb-4 bg-red-50 px-3 py-2 rounded">{error}</p>}
-          {ok && <p className="text-sm text-green-600 mb-4 bg-green-50 px-3 py-2 rounded">{ok}</p>}
+          {error && <p className="text-sm text-cinnabar mb-4 bg-cinnabar/10 px-3 py-2 rounded-md">{error}</p>}
+          {ok && <p className="text-sm text-jade mb-4 bg-jade/10 px-3 py-2 rounded-md">{ok}</p>}
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="用户名" className="w-full px-4 py-2.5 bg-gray-100 rounded-lg text-gray-900 text-sm outline-none focus:ring-2 focus:ring-gray-400" required />
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="密码" className="w-full px-4 py-2.5 bg-gray-100 rounded-lg text-gray-900 text-sm outline-none focus:ring-2 focus:ring-gray-400" required />
-            <input type="text" value={invitationCode} onChange={(e) => setInvitationCode(e.target.value)} placeholder="邀请码" className="w-full px-4 py-2.5 bg-gray-100 rounded-lg text-gray-900 text-sm outline-none focus:ring-2 focus:ring-gray-400" required />
-            <button type="submit" disabled={loading} className="w-full py-2.5 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 disabled:opacity-50 mt-2">
+            <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="用户名" className="w-full px-4 py-2.5 bg-surface-light rounded-md text-text-primary text-sm outline-none focus:ring-2 focus:ring-indigo" required />
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="密码" className="w-full px-4 py-2.5 bg-surface-light rounded-md text-text-primary text-sm outline-none focus:ring-2 focus:ring-indigo" required />
+            <input type="text" value={invitationCode} onChange={(e) => setInvitationCode(e.target.value)} placeholder="邀请码" className="w-full px-4 py-2.5 bg-surface-light rounded-md text-text-primary text-sm outline-none focus:ring-2 focus:ring-indigo" required />
+            <button type="submit" disabled={loading} className="btn-ink w-full text-sm disabled:opacity-50 mt-2">
               {loading ? '注册中...' : '注册'}
             </button>
           </form>
 
-          <p className="text-sm text-gray-400 text-center mt-4">
+          <p className="text-sm text-text-muted text-center mt-4">
             已有账号？{' '}
-            <button onClick={onSwitchToLogin} className="text-gray-900 font-medium hover:underline">登录</button>
+            <button onClick={onSwitchToLogin} className="text-indigo font-medium hover:underline">登录</button>
           </p>
         </div>
       </div>

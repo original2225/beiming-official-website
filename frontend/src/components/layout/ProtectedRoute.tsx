@@ -31,7 +31,7 @@ export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) 
     if (rank[user.role] < rank[requiredRole]) {
       return (
         <div className="flex items-center justify-center min-h-[50vh]">
-          <p className="font-minecraft text-mc-redstone text-xl">权限不足</p>
+          <p className="font-display text-cinnabar text-xl">权限不足</p>
         </div>
       )
     }

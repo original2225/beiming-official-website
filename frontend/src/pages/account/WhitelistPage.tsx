@@ -9,6 +9,8 @@ import { EmptyState } from '../../components/feedback/EmptyState'
 import { StatusBadge } from '../../components/data-display/StatusBadge'
 import { TimeDisplay } from '../../components/data-display/TimeDisplay'
 import { FormField } from '../../components/forms/FormField'
+import { Seal } from '../../components/common/Seal'
+import { InkStroke } from '../../components/common/InkStroke'
 import { useRequest } from '../../hooks/useRequest'
 import { createWhitelistApplication, getMyWhitelistApplications } from '../../api/modules/account'
 import type { WhitelistApplicationPage, WhitelistApplicationView } from '../../types/view-models'
@@ -29,23 +31,29 @@ export function WhitelistPage() {
 
   return (
     <PageLayout variant="account">
-      <h1 className="font-minecraft text-2xl text-mc-grass mb-6">白名单申请</h1>
+      <div className="mb-6">
+        <div className="flex items-center gap-3 mb-2">
+          <Seal text="白" />
+          <h1 className="font-display text-2xl text-indigo">白名单申请</h1>
+        </div>
+        <InkStroke />
+      </div>
 
-      <div className="panel-mc p-4 mb-6">
-        <h2 className="font-minecraft text-sm text-mc-gold mb-3">新建申请</h2>
+      <div className="panel-ink p-4 mb-6">
+        <h2 className="font-display text-sm text-ochre mb-3">新建申请</h2>
         <div className="flex items-end gap-3">
           <FormField label="申请理由">
-            <input type="text" value={reason} onChange={(e) => setReason(e.target.value)} className="bg-surface-dark border border-mc-stone text-text-primary px-3 py-1 text-sm outline-none focus:border-mc-grass w-64" />
+            <input type="text" value={reason} onChange={(e) => setReason(e.target.value)} className="bg-surface-dark border border-ink-600 text-text-primary px-3 py-1 text-sm rounded-md outline-none focus:border-indigo w-64" />
           </FormField>
-          <button onClick={handleCreate} disabled={submitting} className="btn-mc text-xs">{submitting ? '提交中...' : '提交申请'}</button>
+          <button onClick={handleCreate} disabled={submitting} className="btn-ink text-xs">{submitting ? '提交中...' : '提交申请'}</button>
         </div>
-        {msg && <p className="text-xs text-mc-emerald mt-2">{msg}</p>}
+        {msg && <p className="text-xs text-jade mt-2">{msg}</p>}
       </div>
 
       {listLoading && <LoadingState />}
       {!listLoading && !applications?.items?.length && <EmptyState text="暂无申请记录" />}
       {applications?.items?.map((a: WhitelistApplicationView) => (
-        <div key={a.applicationId} className="panel-mc p-3 mb-2 flex items-center justify-between">
+        <div key={a.applicationId} className="panel-ink p-3 mb-2 flex items-center justify-between">
           <div>
             <p className="text-sm text-text-primary">申请 #{a.applicationId?.slice(0, 8)}</p>
             <p className="text-xs text-text-muted"><TimeDisplay iso={a.createdAt} /></p>

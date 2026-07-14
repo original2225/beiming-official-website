@@ -1,8 +1,19 @@
-/** 空状态 — 列表无数据时展示 */
-export function EmptyState({ text = '暂无数据' }: { text?: string }) {
+import type { ReactNode } from 'react'
+
+interface EmptyStateProps {
+  text?: string
+  title?: string
+  icon?: ReactNode
+  action?: ReactNode
+}
+
+export function EmptyState({ text = '暂无数据', title, icon, action }: EmptyStateProps) {
   return (
-    <div className="flex items-center justify-center py-12">
-      <span className="text-text-muted">{text}</span>
+    <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
+      {icon && <div className="text-indigo">{icon}</div>}
+      {title && <span className="font-display text-text-primary">{title}</span>}
+      <span className="text-text-muted text-sm max-w-md">{text}</span>
+      {action}
     </div>
   )
 }

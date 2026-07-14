@@ -3,15 +3,15 @@ import type { RiskLevel } from '../../types/common'
 import { RISK_LABELS } from '../../constants/status'
 
 const RISK_COLORS: Record<RiskLevel, string> = {
-  LOW: 'text-mc-emerald border-mc-emerald',
-  MEDIUM: 'text-mc-gold border-mc-gold',
-  HIGH: 'text-mc-redstone border-mc-redstone',
-  CRITICAL: 'text-purple-500 border-purple-500',
+  LOW: 'text-jade border-jade',
+  MEDIUM: 'text-ochre border-ochre',
+  HIGH: 'text-cinnabar border-cinnabar',
+  CRITICAL: 'text-cinnabar border-cinnabar',
 }
 
 export function RiskBadge({ level }: { level: RiskLevel }) {
   return (
-    <span className={`inline-block px-2 py-0.5 text-xs font-minecraft border ${RISK_COLORS[level]}`}>
+    <span className={`inline-block px-2 py-0.5 text-xs font-display border rounded-sm ${RISK_COLORS[level]}`}>
       {RISK_LABELS[level].label}
     </span>
   )

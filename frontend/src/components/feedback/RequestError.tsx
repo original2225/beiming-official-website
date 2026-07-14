@@ -3,7 +3,7 @@ import { ApiError } from '../../types/api'
 
 export function RequestError({ error }: { error: ApiError }) {
   return (
-    <div className="text-center py-4 text-mc-redstone text-sm">
+    <div className="text-center py-4 text-cinnabar text-sm">
       服务暂不可用
       {error.requestId && <span className="text-text-muted ml-2">({error.requestId})</span>}
     </div>

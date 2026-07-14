@@ -16,12 +16,12 @@ interface DataTableProps<T> {
 
 export function DataTable<T>({ columns, data, rowKey }: DataTableProps<T>) {
   return (
-    <div className="overflow-x-auto border border-mc-stone">
+    <div className="overflow-x-auto border border-ink-600/30 rounded-lg">
       <table className="w-full text-sm">
         <thead>
-          <tr className="bg-surface border-b border-mc-stone">
+          <tr className="bg-surface border-b border-ink-600/30">
             {columns.map((col) => (
-              <th key={col.key} className="text-left px-3 py-2 font-minecraft text-xs text-text-muted uppercase" style={{ width: col.width }}>
+              <th key={col.key} className="text-left px-3 py-2 font-display text-xs text-text-muted uppercase" style={{ width: col.width }}>
                 {col.header}
               </th>
             ))}

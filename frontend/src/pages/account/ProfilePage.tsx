@@ -6,6 +6,8 @@ import { useEffect } from 'react'
 import { PageLayout } from '../../components/layout/PageLayout'
 import { LoadingState } from '../../components/feedback/LoadingState'
 import { DetailPanel } from '../../components/data-display/DetailPanel'
+import { Seal } from '../../components/common/Seal'
+import { InkStroke } from '../../components/common/InkStroke'
 import { useRequest } from '../../hooks/useRequest'
 import { getMyProfile } from '../../api/modules/account'
 import { useCurrentUser } from '../../hooks/useCurrentUser'
@@ -19,13 +21,19 @@ export function ProfilePage() {
 
   return (
     <PageLayout variant="account">
-      <h1 className="font-minecraft text-2xl text-mc-grass mb-6">个人档案</h1>
+      <div className="mb-6">
+        <div className="flex items-center gap-3 mb-2">
+          <Seal text="我" />
+          <h1 className="font-display text-2xl text-indigo">个人档案</h1>
+        </div>
+        <InkStroke />
+      </div>
       {loading && <LoadingState />}
       {user && (
         <DetailPanel fields={[
-          { label: '用户名', value: <span className="font-minecraft">{user.username}</span> },
+          { label: '用户名', value: <span className="font-display">{user.username}</span> },
           { label: '角色', value: user.role },
-          { label: 'Minecraft', value: user.minecraftName ? <span className="text-mc-grass">{user.minecraftName}</span> : <span className="text-text-muted">未绑定</span> },
+          { label: 'Minecraft', value: user.minecraftName ? <span className="text-indigo">{user.minecraftName}</span> : <span className="text-text-muted">未绑定</span> },
         ]} />
       )}
       {data && (

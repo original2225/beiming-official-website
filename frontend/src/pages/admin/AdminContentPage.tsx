@@ -11,6 +11,8 @@ import { DataTable } from '../../components/data-display/DataTable'
 import { StatusBadge } from '../../components/data-display/StatusBadge'
 import { TimeDisplay } from '../../components/data-display/TimeDisplay'
 import { Pagination } from '../../components/data-display/Pagination'
+import { Seal } from '../../components/common/Seal'
+import { InkStroke } from '../../components/common/InkStroke'
 import { useRequest } from '../../hooks/useRequest'
 import { usePagination } from '../../hooks/usePagination'
 import { getAdminContent } from '../../api/modules/admin'
@@ -25,7 +27,13 @@ export function AdminContentPage() {
 
   return (
     <PageLayout variant="admin">
-      <h1 className="font-minecraft text-2xl text-mc-grass mb-6">内容管理</h1>
+      <div className="mb-6">
+        <div className="flex items-center gap-3 mb-2">
+          <Seal text="内" />
+          <h1 className="font-display text-2xl text-indigo">内容管理</h1>
+        </div>
+        <InkStroke />
+      </div>
       <div className="mb-4">
         <SearchFilter onSearch={setQuery} placeholder="搜索内容..." />
       </div>

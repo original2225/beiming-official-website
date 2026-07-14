@@ -1,59 +1,73 @@
 @import "tailwindcss";
-@import "@south-paw/typeface-minecraft";
 
-/* ── Minecraft 主题设计 Token ── */
+/* ── 中式水墨风主题设计 Token ── */
 @theme {
-  /* 像素字体 */
-  --font-minecraft: "Minecraft", "Press Start 2P", monospace;
-  --font-body: system-ui, -apple-system, sans-serif;
+  /* 字体 */
+  --font-display: "Noto Serif SC", "Songti SC", "SimSun", "STSong", serif;
+  --font-body: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", sans-serif;
+  --font-calligraphy: "ZCOOL XiaoWei", "Noto Serif SC", cursive;
 
-  /* MC 大地色系 */
-  --color-mc-dirt: #8B6914;
-  --color-mc-grass: #5B8731;
-  --color-mc-stone: #7F7F7F;
-  --color-mc-wood: #BC9862;
-  --color-mc-plank: #C49B4A;
-  --color-mc-water: #3B6FD4;
-  --color-mc-sky: #87CEEB;
-  --color-mc-redstone: #C11E1E;
-  --color-mc-gold: #F5A623;
-  --color-mc-iron: #D8D8D8;
-  --color-mc-diamond: #4AEDD9;
-  --color-mc-emerald: #17DD62;
-  --color-mc-obsidian: #1A0D2E;
-  --color-mc-bedrock: #333333;
+  /* 墨色 */
+  --color-ink-900: #1A1A1A;
+  --color-ink-800: #2D2D2D;
+  --color-ink-700: #3D3D3D;
+  --color-ink-600: #4A4A4A;
+  --color-ink-wash: #8A8A8A;
 
-  /* 语义色 */
+  /* 宣纸 */
+  --color-rice-50: #F7F5F0;
+  --color-rice-100: #EDE8DD;
+  --color-rice-200: #E0D8C8;
+
+  /* 点缀 */
+  --color-cinnabar: #B93A3A;
+  --color-indigo: #2E5A6B;
+  --color-indigo-light: #3D7488;
+  --color-ochre: #B87333;
+  --color-jade: #4A9B7F;
+  --color-gold-leaf: #C9A227;
+
+  /* 语义色（深色主题） */
   --color-surface: #2D2D2D;
   --color-surface-light: #3D3D3D;
   --color-surface-dark: #1A1A1A;
-  --color-text-primary: #FFFFFF;
-  --color-text-secondary: #AAAAAA;
-  --color-text-muted: #777777;
-  --color-accent: #5B8731;
-  --color-danger: #C11E1E;
-  --color-warning: #F5A623;
-  --color-success: #17DD62;
-  --color-info: #87CEEB;
+  --color-surface-glass: #2D2D2DB8;
+  --color-surface-elevated: #363636;
+  --color-text-primary: #F7F5F0;
+  --color-text-secondary: #B8B3A8;
+  --color-text-muted: #7A7A7A;
+  --color-accent: #2E5A6B;
+  --color-danger: #B93A3A;
+  --color-warning: #B87333;
+  --color-success: #4A9B7F;
+  --color-info: #3D7488;
+  --color-rim: rgba(247, 245, 240, 0.08);
+  --color-rim-active: rgba(46, 90, 107, 0.55);
+  --color-highlight: rgba(46, 90, 107, 0.15);
 
-  /* 默认零圆角 */
-  --radius-default: 0;
+  /* 圆角 */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-default: var(--radius-md);
+
+  /* 阴影 */
+  --shadow-paper: 0 4px 20px rgba(0, 0, 0, 0.2);
+  --shadow-glow-indigo: 0 0 12px rgba(46, 90, 107, 0.35);
+  --shadow-glow-gold: 0 0 12px rgba(201, 162, 39, 0.3);
 }
 
 /* ── 全局基础样式 ── */
 @layer base {
-  *, *::before, *::after {
-    border-radius: 0 !important;
-  }
-
   html {
     scroll-behavior: smooth;
   }
 
   body {
     font-family: var(--font-body);
-    background-color: #1A1A1A;
-    color: #FFFFFF;
+    background-color: var(--color-surface-dark);
+    color: var(--color-text-primary);
     image-rendering: auto;
   }
 
@@ -64,47 +78,171 @@
     image-rendering: crisp-edges;
   }
 
-  .mc-heading {
-    font-family: var(--font-minecraft);
-    letter-spacing: 0.05em;
-    text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.5);
+  .ink-heading {
+    font-family: var(--font-display);
+    letter-spacing: 0.02em;
   }
 }
 
-/* ── MC 风格按钮 ── */
+/* ── 水墨按钮 ── */
 @layer components {
-  .btn-mc {
-    font-family: var(--font-minecraft);
-    padding: 0.5rem 1.5rem;
-    border: 3px solid #1a4d23;
-    background-color: #5B8731;
-    color: #FFFFFF;
-    box-shadow: inset 2px 2px 0 rgba(255,255,255,0.2),
-                inset -2px -2px 0 rgba(0,0,0,0.4);
+  .btn-ink {
+    font-family: var(--font-display);
+    padding: 0.5rem 1.25rem;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-indigo);
+    background-color: var(--color-indigo);
+    color: var(--color-rice-50);
     cursor: pointer;
-    text-transform: uppercase;
-    transition: background-color 0.1s;
+    transition: all 0.15s ease;
+    box-shadow: var(--shadow-paper);
   }
-  .btn-mc:hover {
-    background-color: #6B9F3A;
+  .btn-ink:hover {
+    background-color: var(--color-indigo-light);
+    border-color: var(--color-indigo-light);
   }
-  .btn-mc:active {
-    box-shadow: inset -2px -2px 0 rgba(255,255,255,0.1),
-                inset 2px 2px 0 rgba(0,0,0,0.4);
-  }
-  .btn-mc-danger {
-    border-color: #781515;
-    background-color: #C11E1E;
-  }
-  .btn-mc-danger:hover {
-    background-color: #D93030;
+  .btn-ink:active {
+    transform: translateY(1px);
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
   }
 
-  /* MC 风格面板 */
-  .panel-mc {
-    border: 3px solid #555;
-    background-color: #8B8B8B;
-    box-shadow: inset 2px 2px 0 rgba(255,255,255,0.1),
-                inset -2px -2px 0 rgba(0,0,0,0.3);
+  .btn-ink-danger {
+    font-family: var(--font-display);
+    padding: 0.5rem 1.25rem;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-cinnabar);
+    background-color: var(--color-cinnabar);
+    color: var(--color-rice-50);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    box-shadow: var(--shadow-paper);
   }
+  .btn-ink-danger:hover {
+    background-color: #C94A4A;
+    border-color: #C94A4A;
+  }
+
+  .btn-ink-ghost {
+    font-family: var(--font-display);
+    padding: 0.5rem 1rem;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-rim);
+    background-color: transparent;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .btn-ink-ghost:hover {
+    border-color: var(--color-indigo);
+    color: var(--color-text-primary);
+    background-color: rgba(46, 90, 107, 0.1);
+  }
+  .btn-ink-ghost-active {
+    border-color: var(--color-ochre);
+    color: var(--color-ochre);
+    background-color: rgba(184, 115, 51, 0.12);
+  }
+
+  /* 水墨面板 */
+  .panel-ink {
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-rim);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-paper);
+  }
+
+  /* 玻璃拟态面板 */
+  .panel-glass {
+    background-color: var(--color-surface-glass);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--color-rim);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-paper);
+  }
+
+  /* 标签 chip */
+  .chip-ink {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.125rem 0.5rem;
+    border: 1px solid var(--color-rim);
+    border-radius: var(--radius-sm);
+    background-color: rgba(255, 255, 255, 0.05);
+    font-size: 0.75rem;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .chip-ink:hover {
+    border-color: var(--color-indigo);
+    color: var(--color-text-primary);
+  }
+  .chip-ink-active {
+    border-color: var(--color-indigo);
+    background-color: rgba(46, 90, 107, 0.15);
+    color: var(--color-indigo);
+  }
+
+  /* hover 发光边框 */
+  .rim-light {
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .rim-light:hover {
+    border-color: var(--color-rim-active);
+    box-shadow: var(--shadow-glow-indigo);
+  }
+}
+
+/* ── 社区浅色主题 ── */
+.community-light {
+  --color-surface: #EDE8DD;
+  --color-surface-light: #F7F5F0;
+  --color-surface-dark: #E0D8C8;
+  --color-surface-glass: #F7F5F0B8;
+  --color-surface-elevated: #FFFFFF;
+  --color-text-primary: #1A1A1A;
+  --color-text-secondary: #4A4A4A;
+  --color-text-muted: #8A8A8A;
+  --color-rim: rgba(26, 26, 26, 0.08);
+  --color-rim-active: rgba(46, 90, 107, 0.45);
+  --color-highlight: rgba(46, 90, 107, 0.12);
+
+  background-color: #EDE8DD;
+  color: #1A1A1A;
+}
+
+.community-light .chip-ink {
+  background-color: rgba(0, 0, 0, 0.04);
+}
+
+.community-light .chip-ink-active {
+  background-color: rgba(46, 90, 107, 0.10);
+}
+
+.community-light .btn-ink-ghost:hover {
+  background-color: rgba(46, 90, 107, 0.08);
+}
+
+/* ── 水墨背景晕染动画 ── */
+@keyframes ink-drift {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+    opacity: 0.35;
+  }
+  33% {
+    transform: translate(3%, -2%) scale(1.05);
+    opacity: 0.45;
+  }
+  66% {
+    transform: translate(-2%, 2%) scale(0.95);
+    opacity: 0.3;
+  }
+}
+
+.ink-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  pointer-events: none;
+  animation: ink-drift 20s ease-in-out infinite;
 }

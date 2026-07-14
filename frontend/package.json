@@ -11,7 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@south-paw/typeface-minecraft": "^1.0.0",
+    "lucide-react": "^1.23.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-router-dom": "^7.16.0",

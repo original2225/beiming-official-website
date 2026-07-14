@@ -32,36 +32,45 @@ export function PublicNav() {
   const openRegister = () => { setLoginOpen(false); setRegisterOpen(true) }
   const openLogin = () => { setRegisterOpen(false); setLoginOpen(true) }
 
+  const isActive = (to: string) => {
+    if (location.pathname === to) return true
+    if (to === ROUTES.BOARDS && location.pathname.startsWith('/community')) return true
+    return false
+  }
+
   return (
     <>
-      <nav className="bg-surface border-b-3 border-mc-stone">
+      <nav className="bg-surface border-b border-ink-600/30">
         <div className="max-w-7xl mx-auto px-4 flex items-center justify-between h-14">
-          <Link to={ROUTES.HOME} className="font-minecraft text-mc-grass text-lg tracking-wider">
+          <Link to={ROUTES.HOME} className="font-display text-indigo text-xl tracking-wider">
             北冥
           </Link>
 
           <div className="flex items-center gap-1">
-            {NAV_ITEMS.map((item) => (
-              <Link
-                key={item.to}
-                to={item.to}
-                className={`px-3 py-1 text-sm transition-colors
-                  ${location.pathname === item.to
-                    ? 'text-mc-gold bg-surface-light'
-                    : 'text-text-secondary hover:text-text-primary'
-                  }`}
-              >
-                {item.label}
-              </Link>
-            ))}
+            {NAV_ITEMS.map((item) => {
+              const active = isActive(item.to)
+              return (
+                <Link
+                  key={item.to}
+                  to={item.to}
+                  className={`px-3 py-1 text-sm transition-colors rounded-md
+                    ${active
+                      ? 'text-ochre border-b-2 border-indigo'
+                      : 'text-text-secondary hover:text-text-primary'
+                    }`}
+                >
+                  {item.label}
+                </Link>
+              )
+            })}
 
-            <div className="ml-3 pl-3 border-l border-mc-stone">
+            <div className="ml-3 pl-3 border-l border-ink-600/30">
               {isAuthenticated ? (
-                <Link to={ROUTES.PROFILE} className="px-3 py-1 text-sm text-mc-gold hover:text-mc-grass">
+                <Link to={ROUTES.PROFILE} className="px-3 py-1 text-sm text-ochre hover:text-indigo">
                   {user?.username ?? '用户中心'}
                 </Link>
               ) : (
-                <button onClick={() => setLoginOpen(true)} className="px-3 py-1 text-sm text-mc-grass hover:text-mc-gold">
+                <button onClick={() => setLoginOpen(true)} className="px-3 py-1 text-sm text-indigo hover:text-ochre">
                   登录
                 </button>
               )}

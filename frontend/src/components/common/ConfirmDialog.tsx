@@ -17,19 +17,19 @@ export function ConfirmDialog({ open, title, message, risk, confirmText = '确�
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-      <div className="bg-surface border-3 border-mc-stone p-6 max-w-md w-full mx-4">
-        <h3 className="font-minecraft text-lg mb-2">{title}</h3>
+      <div className="panel-ink p-6 max-w-md w-full mx-4">
+        <h3 className="font-display text-lg mb-2">{title}</h3>
         {risk && (
-          <span className="inline-block mb-2 px-2 py-0.5 text-xs font-minecraft border text-mc-redstone border-mc-redstone">
+          <span className="inline-block mb-2 px-2 py-0.5 text-xs font-display border rounded-sm text-cinnabar border-cinnabar">
             {RISK_LABELS[risk].label}
           </span>
         )}
         <p className="text-text-secondary text-sm mb-4">{message}</p>
         <div className="flex gap-3 justify-end">
-          <button onClick={onCancel} className="px-4 py-1 text-sm border border-mc-stone text-text-secondary hover:text-text-primary">
+          <button onClick={onCancel} className="btn-ink-ghost text-sm">
             取消
           </button>
-          <button onClick={onConfirm} className={`btn-mc text-sm px-4 py-1 ${risk === 'HIGH' || risk === 'CRITICAL' ? 'btn-mc-danger' : ''}`}>
+          <button onClick={onConfirm} className={`btn-ink text-sm ${risk === 'HIGH' || risk === 'CRITICAL' ? 'btn-ink-danger' : ''}`}>
             {confirmText}
           </button>
         </div>

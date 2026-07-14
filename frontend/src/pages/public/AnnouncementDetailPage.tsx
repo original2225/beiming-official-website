@@ -5,6 +5,8 @@ import { PageLayout } from '../../components/layout/PageLayout'
 import { LoadingState } from '../../components/feedback/LoadingState'
 import { ErrorState } from '../../components/feedback/ErrorState'
 import { TimeDisplay } from '../../components/data-display/TimeDisplay'
+import { Seal } from '../../components/common/Seal'
+import { InkStroke } from '../../components/common/InkStroke'
 import { useRequest } from '../../hooks/useRequest'
 import { getContentDetail } from '../../api/modules/public'
 import { ROUTES } from '../../constants/routes'
@@ -18,12 +20,16 @@ export function AnnouncementDetailPage() {
 
   return (
     <PageLayout variant="public">
-      <Link to={ROUTES.ANNOUNCEMENTS} className="text-xs text-mc-gold hover:text-mc-grass mb-4 inline-block">← 返回公告</Link>
+      <Link to={ROUTES.ANNOUNCEMENTS} className="text-xs text-ochre hover:text-indigo mb-4 inline-block">← 返回公告</Link>
       {loading && <LoadingState />}
       {error && <ErrorState message="公告加载失败" />}
       {data && (
         <article>
-          <h1 className="font-minecraft text-2xl text-mc-grass mb-2">{data.title}</h1>
+          <h1 className="font-display text-2xl text-indigo mb-2 flex items-center gap-2">
+            <Seal text="文" />
+            {data.title}
+          </h1>
+          <InkStroke className="mb-4" />
           {data.publishedAt && <p className="text-xs text-text-muted mb-4"><TimeDisplay iso={data.publishedAt} /></p>}
           <div className="text-text-secondary text-sm leading-relaxed">{data.body ?? data.content ?? '暂无内容'}</div>
         </article>

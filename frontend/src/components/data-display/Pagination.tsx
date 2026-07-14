@@ -14,17 +14,17 @@ export function Pagination({ page, pageSize, total, onChange }: PaginationProps)
       <button
         onClick={() => onChange(page - 1)}
         disabled={page <= 1}
-        className="btn-mc text-xs px-3 py-1 disabled:opacity-40"
+        className="btn-ink-ghost text-xs px-3 py-1 rounded-md disabled:opacity-40"
       >
         上一页
       </button>
-      <span className="text-sm text-text-secondary px-2">
+      <span className="text-sm text-indigo bg-indigo/20 border border-indigo px-3 py-1 rounded-md">
         {page} / {totalPages}
       </span>
       <button
         onClick={() => onChange(page + 1)}
         disabled={page >= totalPages}
-        className="btn-mc text-xs px-3 py-1 disabled:opacity-40"
+        className="btn-ink-ghost text-xs px-3 py-1 rounded-md disabled:opacity-40"
       >
         下一页
       </button>

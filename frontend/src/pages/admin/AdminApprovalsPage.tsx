@@ -9,6 +9,8 @@ import { EmptyState } from '../../components/feedback/EmptyState'
 import { StatusBadge } from '../../components/data-display/StatusBadge'
 import { TimeDisplay } from '../../components/data-display/TimeDisplay'
 import { Pagination } from '../../components/data-display/Pagination'
+import { Seal } from '../../components/common/Seal'
+import { InkStroke } from '../../components/common/InkStroke'
 import { useRequest } from '../../hooks/useRequest'
 import { usePagination } from '../../hooks/usePagination'
 import { getAdminTodos } from '../../api/modules/admin'
@@ -22,11 +24,17 @@ export function AdminApprovalsPage() {
 
   return (
     <PageLayout variant="admin">
-      <h1 className="font-minecraft text-2xl text-mc-grass mb-6">审核待办</h1>
+      <div className="mb-6">
+        <div className="flex items-center gap-3 mb-2">
+          <Seal text="审" />
+          <h1 className="font-display text-2xl text-indigo">审核待办</h1>
+        </div>
+        <InkStroke />
+      </div>
       {loading && <LoadingState />}
       {!loading && !data?.items?.length && <EmptyState text="暂无待办" />}
       {data?.items?.map((todo: AdminTodoView) => (
-        <div key={todo.todoId} className="panel-mc p-3 mb-2 flex items-center justify-between hover:border-mc-grass">
+        <div key={todo.todoId} className="panel-ink p-3 mb-2 flex items-center justify-between hover:border-indigo">
           <div>
             <p className="text-sm text-text-primary">{todo.title}</p>
             <p className="text-xs text-text-muted">{todo.type ?? '审核'} · <TimeDisplay iso={todo.createdAt} /></p>

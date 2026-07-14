@@ -5,6 +5,8 @@ import { PageLayout } from '../../components/layout/PageLayout'
 import { LoadingState } from '../../components/feedback/LoadingState'
 import { ErrorState } from '../../components/feedback/ErrorState'
 import { useRequest } from '../../hooks/useRequest'
+import { Seal } from '../../components/common/Seal'
+import { InkStroke } from '../../components/common/InkStroke'
 import { getResourceDetail } from '../../api/modules/public'
 import { ROUTES } from '../../constants/routes'
 import type { ResourceDetailView } from '../../types/view-models'
@@ -17,15 +19,19 @@ export function ResourceDetailPage() {
 
   return (
     <PageLayout variant="public">
-      <Link to={ROUTES.RESOURCES} className="text-xs text-mc-gold hover:text-mc-grass mb-4 inline-block">← 返回资源</Link>
+      <Link to={ROUTES.RESOURCES} className="text-xs text-ochre hover:text-indigo mb-4 inline-block">← 返回资源</Link>
       {loading && <LoadingState />}
       {error && <ErrorState message="资源加载失败" />}
       {data && (
         <article>
-          <h1 className="font-minecraft text-2xl text-mc-grass mb-2">{data.title}</h1>
+          <h1 className="font-display text-2xl text-indigo mb-2 flex items-center gap-2">
+            <Seal text="详" />
+            {data.title}
+          </h1>
+          <InkStroke className="mb-4" />
           <p className="text-xs text-text-muted mb-2">{data.category} · v{data.version}</p>
           <div className="text-text-secondary text-sm leading-relaxed mb-4">{data.description ?? '暂无简介'}</div>
-          {data.downloadUrl && <a href={data.downloadUrl as string} className="btn-mc text-sm inline-block">下载</a>}
+          {data.downloadUrl && <a href={data.downloadUrl as string} className="btn-ink text-sm inline-block">下载</a>}
         </article>
       )}
     </PageLayout>

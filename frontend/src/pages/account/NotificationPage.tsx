@@ -8,6 +8,8 @@ import { LoadingState } from '../../components/feedback/LoadingState'
 import { EmptyState } from '../../components/feedback/EmptyState'
 import { TimeDisplay } from '../../components/data-display/TimeDisplay'
 import { Pagination } from '../../components/data-display/Pagination'
+import { Seal } from '../../components/common/Seal'
+import { InkStroke } from '../../components/common/InkStroke'
 import { useRequest } from '../../hooks/useRequest'
 import { usePagination } from '../../hooks/usePagination'
 import { getMyNotifications, markNotificationRead, markAllNotificationsRead } from '../../api/modules/account'
@@ -31,20 +33,26 @@ export function NotificationPage() {
 
   return (
     <PageLayout variant="account">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="font-minecraft text-2xl text-mc-grass">通知中心</h1>
-        <button onClick={handleMarkAll} className="text-xs text-mc-gold hover:text-mc-grass">全部标记已读</button>
+      <div className="mb-6">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-3">
+            <Seal text="消" />
+            <h1 className="font-display text-2xl text-indigo">通知中心</h1>
+          </div>
+          <button onClick={handleMarkAll} className="btn-ink-ghost text-xs">全部标记已读</button>
+        </div>
+        <InkStroke />
       </div>
       {loading && <LoadingState />}
       {!loading && !data?.items.length && <EmptyState text="暂无通知" />}
       {data?.items.map((n) => (
-        <div key={n.notificationId} className={`panel-mc p-3 mb-2 flex items-center justify-between ${!n.read && !marked.has(n.notificationId) ? 'border-mc-gold' : ''}`}>
+        <div key={n.notificationId} className={`panel-ink p-3 mb-2 flex items-center justify-between ${!n.read && !marked.has(n.notificationId) ? 'border-ochre' : ''}`}>
           <div>
             <span className="text-sm text-text-primary">{n.title}</span>
             <span className="text-xs text-text-muted ml-3"><TimeDisplay iso={n.createdAt} /></span>
           </div>
           {!n.read && !marked.has(n.notificationId) && (
-            <button onClick={() => handleMarkRead(n.notificationId)} className="text-xs text-mc-grass hover:text-mc-gold">标记已读</button>
+            <button onClick={() => handleMarkRead(n.notificationId)} className="btn-ink-ghost text-xs">标记已读</button>
           )}
         </div>
       ))}

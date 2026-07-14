@@ -8,6 +8,8 @@ import { LoadingState } from '../../components/feedback/LoadingState'
 import { EmptyState } from '../../components/feedback/EmptyState'
 import { StatusBadge } from '../../components/data-display/StatusBadge'
 import { TimeDisplay } from '../../components/data-display/TimeDisplay'
+import { Seal } from '../../components/common/Seal'
+import { InkStroke } from '../../components/common/InkStroke'
 import { useRequest } from '../../hooks/useRequest'
 import { getMyExamSessions } from '../../api/modules/account'
 import type { ExamSessionPage, ExamSessionView } from '../../types/view-models'
@@ -19,11 +21,17 @@ export function ExamPage() {
 
   return (
     <PageLayout variant="account">
-      <h1 className="font-minecraft text-2xl text-mc-grass mb-6">考试记录</h1>
+      <div className="mb-6">
+        <div className="flex items-center gap-3 mb-2">
+          <Seal text="考" />
+          <h1 className="font-display text-2xl text-indigo">考试记录</h1>
+        </div>
+        <InkStroke />
+      </div>
       {loading && <LoadingState />}
       {!loading && !data?.items?.length && <EmptyState text="暂无考试记录" />}
       {data?.items?.map((s: ExamSessionView) => (
-        <div key={s.sessionId} className="panel-mc p-3 mb-2 flex items-center justify-between">
+        <div key={s.sessionId} className="panel-ink p-3 mb-2 flex items-center justify-between">
           <div>
             <p className="text-sm text-text-primary">{s.title ?? s.direction ?? '考试'}</p>
             <p className="text-xs text-text-muted"><TimeDisplay iso={s.createdAt} /></p>

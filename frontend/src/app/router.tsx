@@ -48,7 +48,7 @@ import { AdminApprovalsPage } from '../pages/admin/AdminApprovalsPage'
 function Placeholder({ title, variant = 'public' }: { title: string; variant?: 'public' | 'account' | 'admin' | 'ops' }) {
   const inner = (
     <PageLayout variant={variant}>
-      <h1 className="font-minecraft text-2xl text-mc-grass">{title}</h1>
+      <h1 className="font-display text-2xl text-indigo">{title}</h1>
       <p className="text-text-secondary mt-2">页面建设中</p>
     </PageLayout>
   )

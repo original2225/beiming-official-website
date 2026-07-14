@@ -10,9 +10,9 @@ interface FormFieldProps {
 export function FormField({ label, error, children }: FormFieldProps) {
   return (
     <div className="flex flex-col gap-1">
-      <label className="text-xs text-text-muted font-minecraft uppercase tracking-wider">{label}</label>
+      <label className="text-xs text-text-muted font-display uppercase tracking-wider">{label}</label>
       {children}
-      {error && <span className="text-xs text-mc-redstone">{error}</span>}
+      {error && <span className="text-xs text-cinnabar">{error}</span>}
     </div>
   )
 }

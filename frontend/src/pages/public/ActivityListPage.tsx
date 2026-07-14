@@ -6,6 +6,8 @@ import { LoadingState } from '../../components/feedback/LoadingState'
 import { EmptyState } from '../../components/feedback/EmptyState'
 import { StatusBadge } from '../../components/data-display/StatusBadge'
 import { Pagination } from '../../components/data-display/Pagination'
+import { Seal } from '../../components/common/Seal'
+import { InkStroke } from '../../components/common/InkStroke'
 import { useRequest } from '../../hooks/useRequest'
 import { usePagination } from '../../hooks/usePagination'
 import { getActivities } from '../../api/modules/public'
@@ -20,15 +22,19 @@ export function ActivityListPage() {
 
   return (
     <PageLayout variant="public">
-      <h1 className="font-minecraft text-2xl text-mc-grass mb-6">活动</h1>
+      <h1 className="font-display text-2xl text-indigo mb-2 flex items-center gap-2">
+        <Seal text="动" />
+        活动
+      </h1>
+      <InkStroke className="mb-6" />
       {loading && <LoadingState />}
       {!loading && !data?.items.length && <EmptyState text="暂无活动" />}
       {data?.items.map((a) => (
-        <Link key={a.activityId} to={`/activities/${a.activityId}`} className="block panel-mc p-3 mb-2 hover:border-mc-grass">
+        <Link key={a.activityId} to={`/activities/${a.activityId}`} className="block panel-ink p-3 mb-2 hover:border-indigo">
           <div className="flex items-center gap-3">
             <span className="text-sm text-text-primary">{a.title}</span>
             <StatusBadge status={a.status} />
-            {a.registrationOpen && <span className="text-xs text-mc-emerald">报名中</span>}
+            {a.registrationOpen && <span className="text-xs text-jade">报名中</span>}
           </div>
           <p className="text-xs text-text-muted mt-1">{a.startTime} - {a.endTime}</p>
         </Link>

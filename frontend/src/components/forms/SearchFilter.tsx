@@ -17,10 +17,10 @@ export function SearchFilter({ placeholder = '搜索...', onSearch }: SearchFilt
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={(e) => e.key === 'Enter' && onSearch(value)}
         placeholder={placeholder}
-        className="bg-surface border border-mc-stone text-text-primary px-3 py-1 text-sm w-64
-          placeholder:text-text-muted focus:border-mc-grass outline-none"
+        className="bg-surface border border-ink-600 text-text-primary px-3 py-1 text-sm w-64
+          placeholder:text-text-muted focus:border-indigo outline-none"
       />
-      <button onClick={() => onSearch(value)} className="btn-mc text-xs px-3 py-1">
+      <button onClick={() => onSearch(value)} className="btn-ink text-xs px-3 py-1">
         搜索
       </button>
     </div>

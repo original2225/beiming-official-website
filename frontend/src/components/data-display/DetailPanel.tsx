@@ -12,10 +12,10 @@ interface DetailPanelProps {
 
 export function DetailPanel({ fields }: DetailPanelProps) {
   return (
-    <div className="border border-mc-stone bg-surface p-4">
+    <div className="panel-ink p-4">
       {fields.map((f, i) => (
         <div key={i} className={`flex py-2 ${i > 0 ? 'border-t border-surface-light' : ''}`}>
-          <span className="w-32 shrink-0 text-xs text-text-muted font-minecraft uppercase">{f.label}</span>
+          <span className="w-32 shrink-0 text-xs text-text-muted font-display uppercase">{f.label}</span>
           <span className="text-sm text-text-primary">{f.value}</span>
         </div>
       ))}
