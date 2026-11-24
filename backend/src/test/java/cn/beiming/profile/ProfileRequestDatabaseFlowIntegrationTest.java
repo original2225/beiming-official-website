@@ -35,7 +35,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest(
         classes = BusinessCoreServiceApplication.class,
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = "beiming.business-core.test-control-headers.enabled=true"
+        properties = {"beiming.business-core.test-control-headers.enabled=true", "profile.auth.stub-tokens-enabled=true"}
 )
 class ProfileRequestDatabaseFlowIntegrationTest {
     private static final String FLOW_ID = "profile-flow-" + UUID.randomUUID();

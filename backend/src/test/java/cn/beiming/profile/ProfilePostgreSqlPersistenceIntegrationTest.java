@@ -37,7 +37,8 @@ import static org.assertj.core.api.Assertions.assertThat;
         properties = {
                 "beiming.business-core.test-control-headers.enabled=true",
                 "spring.autoconfigure.exclude=",
-                "spring.flyway.enabled=true"
+                "spring.flyway.enabled=true",
+                "profile.auth.stub-tokens-enabled=true"
         }
 )
 @Testcontainers

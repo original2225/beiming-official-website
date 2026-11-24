@@ -724,6 +724,24 @@ class ProfileAuthContextProvider {
     private boolean failTargetIncompatible;
     private int writeCallCount;
 
+    /**
+     * 真实会话解析入口。
+     *
+     * <p>可选注入：只加载 profile 的测试上下文里没有 auth 模块，强制依赖会让应用起不来。
+     * 拿不到时退回原有的 {@code usersByToken} 行为。
+     */
+    private final org.springframework.beans.factory.ObjectProvider<cn.beiming.core.AuthSessionResolver> sessionResolver;
+    private final boolean stubTokensEnabled;
+
+    ProfileAuthContextProvider(
+            org.springframework.beans.factory.ObjectProvider<cn.beiming.core.AuthSessionResolver> sessionResolver,
+            @org.springframework.beans.factory.annotation.Value("${profile.auth.stub-tokens-enabled:false}") boolean stubTokensEnabled) {
+        this.sessionResolver = sessionResolver;
+        this.stubTokensEnabled = stubTokensEnabled;
+        // 桩 token 仍要预置，测试靠它认证；生产走真实会话解析，桩不会被命中。
+        reset();
+    }
+
     synchronized void reset() {
         usersByToken.clear();
         targetsByUserId.clear();
@@ -790,7 +808,31 @@ class ProfileAuthContextProvider {
             failCurrentIncompatible = false;
             throw new ApiException(46202, HttpStatus.BAD_GATEWAY, "auth incompatible");
         }
-        AuthUser user = usersByToken.get(authorization.substring("Bearer ".length()));
+        String rawToken = authorization.substring("Bearer ".length());
+
+        // 真实会话优先：登录拿到的 ses_* token 由核心 auth 解析出真实用户。
+        // 不先走这一步，profile 对真实用户永远返回 41001 —— 因为 usersByToken
+        // 只是内存里的测试桩，真实 token 从来不在里面。
+        cn.beiming.core.AuthSessionResolver resolver = sessionResolver.getIfAvailable();
+        if (resolver != null) {
+            cn.beiming.core.AuthSessionResolver.ResolvedSession resolved = resolver.resolve(authorization);
+            if (resolved != null) {
+                java.util.Set<String> roles = new java.util.LinkedHashSet<>();
+                if (resolved.role() != null && !resolved.role().isBlank()) {
+                    roles.add(resolved.role());
+                }
+                return new AuthUser(resolved.userId(), resolved.username(), roles,
+                        new java.util.LinkedHashSet<>(resolved.permissions()), "ACTIVE", null);
+            }
+        }
+
+        // 真实会话没解析出来，才考虑桩 token —— 且必须开关打开。
+        // 开关关闭时不回落，直接报无效会话（生产语义）。
+        if (!stubTokensEnabled) {
+            throw new ApiException(41001, HttpStatus.UNAUTHORIZED, "invalid session");
+        }
+
+        AuthUser user = usersByToken.get(rawToken);
         if (user == null) {
             throw new ApiException(41001, HttpStatus.UNAUTHORIZED, "invalid session");
         }

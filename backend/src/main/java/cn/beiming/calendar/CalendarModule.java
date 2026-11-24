@@ -1545,8 +1545,30 @@ class CalendarExceptionHandler {
         return ResponseEntity.status(exception.status).body(body);
     }
 
+    /**
+     * 缺必填参数 / 参数类型不匹配是调用方错误，回 400 而不是 500。
+     *
+     * <p>此前这类请求落到通用兜底分支，被包成 54800 "calendar internal error" + 500，
+     * 让「少传一个 query 参数」看起来像服务端缺陷。
+     */
+    @ExceptionHandler({
+            org.springframework.web.bind.MissingServletRequestParameterException.class,
+            org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class
+    })
+    ResponseEntity<Map<String, Object>> badRequest(Exception exception, HttpServletRequest request) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("code", 40001);
+        body.put("message", exception.getMessage());
+        body.put("data", null);
+        body.put("requestId", request.getAttribute("requestId"));
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+    }
+
     @ExceptionHandler(Exception.class)
     ResponseEntity<Map<String, Object>> fallback(Exception exception, HttpServletRequest request) {
+        // 兜底不记日志 = 每个缺陷都变成同一个无痕的 54800，线上无法定位。
+        org.slf4j.LoggerFactory.getLogger("cn.beiming.calendar")
+                .error("calendar {} {}", request.getMethod(), request.getRequestURI(), exception);
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("code", 54800);
         body.put("message", "calendar internal error");

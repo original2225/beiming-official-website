@@ -65,8 +65,10 @@ class AdminModule {
     }
 
     @Bean
-    TestAdminAuthProvider adminAuthProvider(@Value("${beiming.admin.test-mode:false}") boolean testMode) {
-        return new TestAdminAuthProvider(testMode);
+    TestAdminAuthProvider adminAuthProvider(
+            @Value("${beiming.admin.test-mode:false}") boolean testMode,
+            org.springframework.beans.factory.ObjectProvider<cn.beiming.core.AuthSessionResolver> sessionResolver) {
+        return new TestAdminAuthProvider(testMode, sessionResolver);
     }
 
     @Bean
@@ -1435,9 +1437,12 @@ class AdminStore {
 class TestAdminAuthProvider {
     private static final Set<String> VALID_ROLES = Set.of("OWNER", "ADMIN", "HELPER", "USER");
     private final boolean testMode;
+    private final org.springframework.beans.factory.ObjectProvider<cn.beiming.core.AuthSessionResolver> sessionResolver;
 
-    TestAdminAuthProvider(boolean testMode) {
+    TestAdminAuthProvider(boolean testMode,
+                          org.springframework.beans.factory.ObjectProvider<cn.beiming.core.AuthSessionResolver> sessionResolver) {
         this.testMode = testMode;
+        this.sessionResolver = sessionResolver;
     }
 
     AuthUser requireAny(HttpServletRequest request, String authorization, String... roles) {
@@ -1447,6 +1452,26 @@ class TestAdminAuthProvider {
                 throw new AdminException(403, 42001, "role permission denied");
             }
             return trusted;
+        }
+        // 真实会话优先：登录拿到的 ses_* token 由核心 auth 解析。
+        // 只靠硬编码 switch 时，admin 模块对真实用户恒返回 41001。
+        if (authorization != null && authorization.startsWith("Bearer ")) {
+            cn.beiming.core.AuthSessionResolver resolver = sessionResolver.getIfAvailable();
+            if (resolver != null) {
+                cn.beiming.core.AuthSessionResolver.ResolvedSession resolved = resolver.resolve(authorization);
+                if (resolved != null) {
+                    java.util.Set<String> roleSet = new java.util.LinkedHashSet<>();
+                    if (resolved.role() != null && !resolved.role().isBlank()) {
+                        roleSet.add(resolved.role());
+                    }
+                    AuthUser realUser = new AuthUser(resolved.userId(), roleSet,
+                            new java.util.LinkedHashSet<>(resolved.permissions()), "REAL_SESSION");
+                    if (!realUser.hasAny(roles)) {
+                        throw new AdminException(403, 42001, "role permission denied");
+                    }
+                    return realUser;
+                }
+            }
         }
         if (!testMode) {
             throw new AdminException(401, 41000, "unauthorized");
