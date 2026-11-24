@@ -52,7 +52,11 @@ import java.util.concurrent.TimeUnit;
 class ServerStatusModule {
     @Bean
     ServerStatusStore serverStatusStore(ServerStatusPersistence persistence) {
-        return new ServerStatusStore(persistence);
+        ServerStatusStore store = new ServerStatusStore(persistence);
+        // 启动即读回：读路径全走内存 LinkedHashMap，不读回重启后状态页会变空。
+        // 本模块启动不播种（与 resource 不同），所以这里只读回、不写库。
+        store.hydrateFromStore();
+        return store;
     }
 
     @Bean("serverStatusTestAuthContextProvider")
@@ -350,6 +354,23 @@ class NoopServerStatusFlowEvidenceRecorder implements ServerStatusFlowEvidenceRe
 interface ServerStatusPersistence {
     void resetForTests();
 
+    /**
+     * 启动时读回状态源、线路与快照。
+     *
+     * <p>读路径走内存 {@code LinkedHashMap}，持久化层只实现了写。不读回的话，
+     * 服务重启后服务器状态页会从「有数据」变成「空列表」，而库里记录还在。
+     *
+     * <p>返回 null 表示没有持久化后端（Noop 实现），调用方保持原有启动行为。
+     */
+    StatusSnapshot loadAll();
+
+    /** 库内容快照。任一列表为空表示库里这部分没有数据。 */
+    record StatusSnapshot(
+            java.util.List<StatusSourceRecord> sources,
+            java.util.List<LineRecord> lines,
+            java.util.List<SnapshotRecord> snapshots) {
+    }
+
     Map<String, Object> replay(String actorUserId, String scope, String idempotencyKey, String fingerprint);
 
     void persistSnapshot(List<StatusSourceRecord> sources,
@@ -383,6 +404,11 @@ class NoopServerStatusPersistence implements ServerStatusPersistence {
 
     @Override
     public Map<String, Object> replay(String actorUserId, String scope, String idempotencyKey, String fingerprint) {
+        return null;
+    }
+
+    @Override
+    public StatusSnapshot loadAll() {
         return null;
     }
 
@@ -446,6 +472,84 @@ class ServerStatusPostgresPersistence implements ServerStatusPersistence {
     @Transactional
     public void persistSnapshot(List<StatusSourceRecord> sources, List<LineRecord> lines, List<SnapshotRecord> snapshots, List<OutageRecord> outages, List<RefreshRecord> refreshRecords) {
         replaceRows(sources, lines, snapshots, outages, refreshRecords);
+    }
+
+    @Override
+    public StatusSnapshot loadAll() {
+        java.util.List<StatusSourceRecord> loadedSources = new java.util.ArrayList<>();
+        jdbc.query("""
+                SELECT source_id, instance_id, display_name, instance_name, instance_kind, source_type, config_status,
+                       public_visible, primary_source, target, timeout_ms, sort_order, started_at, admin_note,
+                       created_by, updated_by, created_at, updated_at
+                FROM server_status_sources ORDER BY sort_order
+                """, (org.springframework.jdbc.core.RowCallbackHandler) result -> loadedSources.add(new StatusSourceRecord(
+                result.getString("source_id"),
+                result.getString("instance_id"),
+                result.getString("display_name"),
+                result.getString("instance_name"),
+                result.getString("instance_kind"),
+                result.getString("source_type"),
+                result.getString("config_status"),
+                result.getBoolean("public_visible"),
+                result.getBoolean("primary_source"),
+                result.getString("target"),
+                result.getInt("timeout_ms"),
+                result.getInt("sort_order"),
+                result.getTimestamp("started_at") == null ? null : result.getTimestamp("started_at").toInstant(),
+                result.getString("admin_note"),
+                result.getString("created_by"),
+                result.getString("updated_by"),
+                result.getTimestamp("created_at").toInstant(),
+                result.getTimestamp("updated_at").toInstant())));
+
+        java.util.List<LineRecord> loadedLines = new java.util.ArrayList<>();
+        jdbc.query("""
+                SELECT line_id, name, entry_address, check_target, description, config_status, current_status,
+                       public_visible, primary_line, sort_order, latency_ms, packet_loss_percent, admin_note,
+                       created_by, updated_by, created_at, updated_at
+                FROM server_status_lines ORDER BY sort_order
+                """, (org.springframework.jdbc.core.RowCallbackHandler) result -> loadedLines.add(new LineRecord(
+                result.getString("line_id"),
+                result.getString("name"),
+                result.getString("entry_address"),
+                result.getString("check_target"),
+                result.getString("description"),
+                result.getString("config_status"),
+                result.getString("current_status"),
+                result.getBoolean("public_visible"),
+                result.getBoolean("primary_line"),
+                result.getInt("sort_order"),
+                result.getObject("latency_ms") == null ? null : result.getInt("latency_ms"),
+                result.getObject("packet_loss_percent") == null ? null : result.getDouble("packet_loss_percent"),
+                result.getString("admin_note"),
+                result.getString("created_by"),
+                result.getString("updated_by"),
+                result.getTimestamp("created_at").toInstant(),
+                result.getTimestamp("updated_at").toInstant())));
+
+        java.util.List<SnapshotRecord> loadedSnapshots = new java.util.ArrayList<>();
+        jdbc.query("""
+                SELECT snapshot_id, source_id, instance_id, line_id, source, status, line_status, version, motd,
+                       online_players, max_players, latency_ms, line_latency_ms, checked_at, degraded
+                FROM server_status_snapshots ORDER BY checked_at DESC
+                """, (org.springframework.jdbc.core.RowCallbackHandler) result -> loadedSnapshots.add(new SnapshotRecord(
+                result.getString("snapshot_id"),
+                result.getString("source_id"),
+                result.getString("instance_id"),
+                result.getString("line_id"),
+                result.getString("source"),
+                result.getString("status"),
+                result.getString("line_status"),
+                result.getString("version"),
+                result.getString("motd"),
+                result.getInt("online_players"),
+                result.getInt("max_players"),
+                result.getObject("latency_ms") == null ? null : result.getInt("latency_ms"),
+                result.getObject("line_latency_ms") == null ? null : result.getInt("line_latency_ms"),
+                result.getTimestamp("checked_at").toInstant(),
+                result.getBoolean("degraded"))));
+
+        return new StatusSnapshot(loadedSources, loadedLines, loadedSnapshots);
     }
 
     @Override
@@ -567,6 +671,27 @@ class ServerStatusPostgresPersistence implements ServerStatusPersistence {
 }
 
 class ServerStatusStore {
+
+    /**
+     * 从正式库读回状态源、线路与快照。
+     *
+     * <p>没有持久化后端时 {@code loadAll()} 返回 null，直接跳过，行为与改造前一致。
+     */
+    synchronized void hydrateFromStore() {
+        ServerStatusPersistence.StatusSnapshot snapshot = persistence.loadAll();
+        if (snapshot == null) {
+            return;
+        }
+        for (StatusSourceRecord source : snapshot.sources()) {
+            sources.put(source.sourceId, source);
+        }
+        for (LineRecord line : snapshot.lines()) {
+            lines.put(line.lineId, line);
+        }
+        for (SnapshotRecord snap : snapshot.snapshots()) {
+            snapshots.put(snap.snapshotId, snap);
+        }
+    }
     private static final Duration CREATE_IDEMPOTENCY_TTL = Duration.ofHours(24);
     private static final Duration REFRESH_IDEMPOTENCY_TTL = Duration.ofMinutes(10);
     private static final Duration REFRESH_COOLDOWN = Duration.ofMinutes(10);

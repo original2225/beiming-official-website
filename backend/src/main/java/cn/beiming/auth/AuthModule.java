@@ -1,6 +1,7 @@
 package cn.beiming.auth;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -55,6 +56,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
+import cn.beiming.core.AuthSessionResolver;
 
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -397,7 +399,12 @@ class AuthLocalWebConfig {
 
     @Bean
     ApplicationRunner authLocalSeedData(AuthStore store) {
-        return args -> store.seedLocalDevDataIfEmpty();
+        return args -> {
+            store.seedLocalDevDataIfEmpty();
+            // 用户读回在 seed 内部完成；会话必须单独读回，否则重启后已发出的 token 全部失效
+            store.hydrateSessionsFromStore();
+            store.hydrateInvitationsFromStore();
+        };
     }
 
     @Bean
@@ -440,6 +447,29 @@ class NoopAuthFlowEvidenceRecorder implements AuthFlowEvidenceRecorder {
 interface AuthPersistence {
     void resetForTests();
 
+    /**
+     * 启动时从正式库读回全部用户。返回空表示没有持久化后端（内存模式）。
+     * 只有读回内存，登录、鉴权、角色校验这些读路径才看得见库里的账号。
+     */
+    List<UserAccount> loadUsers();
+
+    /**
+     * 启动时从正式库读回未撤销、未过期的会话。
+     * 会话只存 token_hash 无法还原 token，所以同时存 token_value；
+     * 不读回的话，进程重启后所有已发出的 accessToken 立刻失效（41001 invalid session）。
+     */
+    List<SessionRecord> loadSessions();
+
+    /**
+     * 启动时读回邀请码。校验走 invitationIdByCode.get(rawCode) 明文查找，
+     * 只存 code_hash 会让重启后所有邀请码都报 43101 invitation not found。
+     */
+    List<LoadedInvitation> loadInvitations();
+
+    /** 邀请码读回载体：rawCode 是明文，invitation 是已建好的记录。 */
+    record LoadedInvitation(String rawCode, InvitationRecord invitation) {
+    }
+
     void seedUser(UserAccount user);
 
     void seedInvitation(String rawCode, InvitationRecord invitation);
@@ -460,6 +490,21 @@ interface AuthPersistence {
 class NoopAuthPostgresPersistence implements AuthPersistence {
     @Override
     public void resetForTests() {
+    }
+
+    @Override
+    public List<UserAccount> loadUsers() {
+        return List.of();
+    }
+
+    @Override
+    public List<SessionRecord> loadSessions() {
+        return List.of();
+    }
+
+    @Override
+    public List<LoadedInvitation> loadInvitations() {
+        return List.of();
     }
 
     @Override
@@ -506,6 +551,99 @@ class AuthPostgresPersistence implements AuthPersistence {
     }
 
     @Override
+    public List<UserAccount> loadUsers() {
+        List<UserAccount> loaded = new ArrayList<>();
+        jdbc.query("""
+                SELECT user_id, username, display_name, password_hash, roles::text, permissions::text, status,
+                       created_at, updated_at, last_login_at
+                FROM auth_users
+                """, result -> {
+            UserAccount account = new UserAccount(
+                    result.getString("user_id"),
+                    result.getString("username"),
+                    result.getString("display_name"),
+                    result.getString("password_hash"),
+                    readStringSet(result.getString("roles")),
+                    readStringSet(result.getString("permissions")),
+                    result.getString("status"),
+                    timestampOf(result.getTimestamp("created_at")),
+                    timestampOf(result.getTimestamp("updated_at")));
+            if (result.getTimestamp("last_login_at") != null) {
+                account.lastLoginAt = timestampOf(result.getTimestamp("last_login_at"));
+            }
+            loaded.add(account);
+        });
+        return loaded;
+    }
+
+    @Override
+    public List<SessionRecord> loadSessions() {
+        List<SessionRecord> loaded = new ArrayList<>();
+        jdbc.query("""
+                SELECT session_id, token_value, user_id, created_at, last_seen_at, expires_at, revoked
+                FROM auth_sessions
+                WHERE revoked = false AND expires_at > now() AND token_value IS NOT NULL
+                """, result -> {
+            SessionRecord session = new SessionRecord(
+                    result.getString("session_id"),
+                    result.getString("token_value"),
+                    result.getString("user_id"),
+                    timestampOf(result.getTimestamp("created_at")),
+                    timestampOf(result.getTimestamp("expires_at")));
+            if (result.getTimestamp("last_seen_at") != null) {
+                session.lastSeenAt = timestampOf(result.getTimestamp("last_seen_at"));
+            }
+            session.revoked = result.getBoolean("revoked");
+            loaded.add(session);
+        });
+        return loaded;
+    }
+
+    @Override
+    public List<LoadedInvitation> loadInvitations() {
+        List<LoadedInvitation> loaded = new ArrayList<>();
+        jdbc.query("""
+                SELECT invitation_id, code_prefix, code_hash, code_value, type, bound_roles::text, bound_permissions::text,
+                       max_uses, used_count, expires_at, created_by, created_at, disabled_at
+                FROM auth_invitations
+                WHERE code_value IS NOT NULL
+                """, result -> {
+            InvitationRecord invitation = new InvitationRecord(
+                    result.getString("invitation_id"),
+                    result.getString("code_prefix"),
+                    result.getString("code_hash"),
+                    result.getString("type"),
+                    readStringSet(result.getString("bound_roles")),
+                    readStringSet(result.getString("bound_permissions")),
+                    result.getInt("max_uses"),
+                    result.getInt("used_count"),
+                    result.getTimestamp("expires_at") == null ? null : timestampOf(result.getTimestamp("expires_at")),
+                    result.getString("created_by"),
+                    timestampOf(result.getTimestamp("created_at")));
+            if (result.getTimestamp("disabled_at") != null) {
+                invitation.disabledAt = timestampOf(result.getTimestamp("disabled_at"));
+            }
+            loaded.add(new LoadedInvitation(result.getString("code_value"), invitation));
+        });
+        return loaded;
+    }
+
+    private Set<String> readStringSet(String json) {
+        if (json == null || json.isBlank()) {
+            return new LinkedHashSet<>();
+        }
+        try {
+            return new LinkedHashSet<>(objectMapper.readValue(json, new TypeReference<List<String>>() { }));
+        } catch (Exception exception) {
+            throw new IllegalStateException("failed to read auth user roles or permissions", exception);
+        }
+    }
+
+    private static Instant timestampOf(java.sql.Timestamp value) {
+        return value == null ? Instant.now() : value.toInstant();
+    }
+
+    @Override
     @Transactional
     public void resetForTests() {
         jdbc.update("DELETE FROM auth_password_reset_tokens");
@@ -536,11 +674,11 @@ class AuthPostgresPersistence implements AuthPersistence {
     @Transactional
     public void seedInvitation(String rawCode, InvitationRecord invitation) {
         jdbc.update("""
-                INSERT INTO auth_invitations(id, invitation_id, code_prefix, code_hash, type, bound_roles, bound_permissions, max_uses, used_count, expires_at, created_by, created_at, disabled_at)
-                VALUES (?, ?, ?, ?, ?, CAST(? AS jsonb), CAST(? AS jsonb), ?, ?, ?, ?, ?, ?)
-                ON CONFLICT (invitation_id) DO NOTHING
+                INSERT INTO auth_invitations(id, invitation_id, code_prefix, code_hash, code_value, type, bound_roles, bound_permissions, max_uses, used_count, expires_at, created_by, created_at, disabled_at)
+                VALUES (?, ?, ?, ?, ?, ?, CAST(? AS jsonb), CAST(? AS jsonb), ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (invitation_id) DO UPDATE SET code_value = EXCLUDED.code_value, used_count = EXCLUDED.used_count, disabled_at = EXCLUDED.disabled_at
                 """,
-                UUID.randomUUID(), invitation.id, invitation.codePrefix, invitation.codeHash, invitation.type,
+                UUID.randomUUID(), invitation.id, invitation.codePrefix, invitation.codeHash, rawCode, invitation.type,
                 json(new ArrayList<>(invitation.boundRoles)), json(new ArrayList<>(invitation.boundPermissions)),
                 invitation.maxUses, invitation.usedCount, timestamp(invitation.expiresAt), invitation.createdBy, timestamp(invitation.createdAt), timestamp(invitation.disabledAt));
     }
@@ -630,11 +768,11 @@ class AuthPostgresPersistence implements AuthPersistence {
 
     private void insertSession(SessionRecord session) {
         jdbc.update("""
-                INSERT INTO auth_sessions(id, session_id, token_hash, user_id, created_at, last_seen_at, expires_at, revoked, revoked_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT (session_id) DO UPDATE SET last_seen_at = EXCLUDED.last_seen_at, expires_at = EXCLUDED.expires_at, revoked = EXCLUDED.revoked, revoked_at = EXCLUDED.revoked_at
+                INSERT INTO auth_sessions(id, session_id, token_hash, token_value, user_id, created_at, last_seen_at, expires_at, revoked, revoked_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (session_id) DO UPDATE SET token_value = EXCLUDED.token_value, last_seen_at = EXCLUDED.last_seen_at, expires_at = EXCLUDED.expires_at, revoked = EXCLUDED.revoked, revoked_at = EXCLUDED.revoked_at
                 """,
-                UUID.randomUUID(), session.id, digest(session.token), session.userId, timestamp(session.createdAt), timestamp(session.lastSeenAt), timestamp(session.expiresAt), session.revoked, session.revoked ? timestamp(Instant.now()) : null);
+                UUID.randomUUID(), session.id, digest(session.token), session.token, session.userId, timestamp(session.createdAt), timestamp(session.lastSeenAt), timestamp(session.expiresAt), session.revoked, session.revoked ? timestamp(Instant.now()) : null);
     }
 
     private void insertAudit(HttpServletRequest request, String actorUserId, String actorRole, List<String> permissions, String targetId, String targetType, String action, String reason, String beforeState, String afterState, String result, String failureReason) {
@@ -710,7 +848,7 @@ class AuthPostgresPersistence implements AuthPersistence {
 }
 
 @Service
-class AuthStore {
+class AuthStore implements AuthSessionResolver {
     private static final Set<String> VALID_ROLES = Set.of("OWNER", "ADMIN", "HELPER", "USER");
     private static final Set<String> VALID_PERMISSIONS = Set.of("NODE_READ", "NODE_WRITE", "CONTAINER_OPERATE", "VM_OPERATE", "FILE_MANAGE", "TERMINAL_ACCESS", "HIGH_RISK_APPROVE");
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
@@ -791,7 +929,41 @@ class AuthStore {
         persistence.seedMinecraftBinding(user.id, user.minecraftBinding);
     }
 
+    /**
+     * 启动时把库里的会话读回内存。必须在 seedLocalDevDataIfEmpty 之前执行，
+     * 且不能被「内存已有用户就 return」的短路挡住。
+     */
+    synchronized void hydrateSessionsFromStore() {
+        for (SessionRecord session : persistence.loadSessions()) {
+            // 用户可能在库里已不存在，这种会话读回来也无意义
+            if (!usersById.containsKey(session.userId)) {
+                continue;
+            }
+            sessions.put(session.token, session);
+        }
+    }
+
+    /**
+     * 启动时把库里的邀请码读回内存。校验按 invitationIdByCode.get(rawCode) 明文查找，
+     * 不读回会让所有邀请码在重启后报 43101 invitation not found。
+     */
+    synchronized void hydrateInvitationsFromStore() {
+        for (AuthPersistence.LoadedInvitation loaded : persistence.loadInvitations()) {
+            invitationsById.put(loaded.invitation().id, loaded.invitation());
+            invitationIdByCode.put(loaded.rawCode(), loaded.invitation().id);
+        }
+    }
+
     synchronized void seedLocalDevDataIfEmpty() {
+        if (!usersById.isEmpty()) {
+            return;
+        }
+        // 先把正式库里的账号读回内存：登录、鉴权、角色校验都走内存 Map，
+        // 不读回就会出现「库里有 admin 但登录说密码错」。
+        for (UserAccount existing : persistence.loadUsers()) {
+            usersById.put(existing.id, existing);
+            userIdByUsername.put(existing.username.toLowerCase(Locale.ROOT), existing.id);
+        }
         if (!usersById.isEmpty()) {
             return;
         }
@@ -1272,6 +1444,37 @@ class AuthStore {
             throw new ApiException(42001, HttpStatus.FORBIDDEN, "role insufficient");
         }
         return page(invitation.usageRecords, page, pageSize);
+    }
+
+    /**
+     * {@link AuthSessionResolver} 实现：不抛异常，任何失败都返回 null。
+     * 这样 ops-control 能用自己的错误码体系回应，同时不必复制 session 校验逻辑。
+     */
+    @Override
+    public synchronized AuthSessionResolver.ResolvedSession resolve(String authorization) {
+        if (authorization == null || !authorization.startsWith("Bearer ")) {
+            return null;
+        }
+        SessionRecord session = sessions.get(authorization.substring("Bearer ".length()));
+        if (session == null || session.revoked || session.expiresAt.isBefore(Instant.now())) {
+            return null;
+        }
+        UserAccount user = usersById.get(session.userId);
+        if (user == null || "DISABLED".equals(user.status) || "BANNED".equals(user.status) || "DELETED".equals(user.status)) {
+            return null;
+        }
+        return new AuthSessionResolver.ResolvedSession(
+                user.id, user.username, primaryRole(user.roles), List.copyOf(user.permissions));
+    }
+
+    /** 角色优先级 OWNER > ADMIN > HELPER > USER，与前端 mapBackendUser 保持一致 */
+    private static String primaryRole(Set<String> roles) {
+        for (String candidate : List.of("OWNER", "ADMIN", "HELPER", "USER")) {
+            if (roles.contains(candidate)) {
+                return candidate;
+            }
+        }
+        return "USER";
     }
 
     synchronized CurrentSession requireSession(String authorization) {

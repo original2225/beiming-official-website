@@ -70,7 +70,11 @@ class OpsCoreRealHttpSmokeIntegrationTest {
                         "--server.port=" + opsPort,
                         "--ops-core.http-smoke.gateway-base-url=http://127.0.0.1:" + gatewayPort,
                         "--ops-core.http-smoke.self-base-url=http://127.0.0.1:" + opsPort,
-                        "--ops-core.http-smoke.timeout-ms=2000"
+                        "--ops-core.http-smoke.timeout-ms=2000",
+                        // 冒烟探针用 admin-token 这类桩 token 打 ops-control/overview；
+                        // 本用例验证的是「真实进程间 HTTP 是否连通」，不是鉴权强度，
+                        // 因此显式开启桩 token，避免把鉴权改造测成连通性回归。
+                        "--ops-control.auth.stub-tokens-enabled=true"
                 );
     }
 
@@ -78,7 +82,10 @@ class OpsCoreRealHttpSmokeIntegrationTest {
         return new SpringApplicationBuilder(UnifiedBackendServiceApplication.class)
                 .web(WebApplicationType.SERVLET)
                 .run(
-                        "--server.port=" + gatewayPort
+                        "--server.port=" + gatewayPort,
+                        // 探针实际打到 gateway 进程（它内置挂载了一份 ops-control），
+                        // 只给 ops core 开开关不够，这里也必须开。
+                        "--ops-control.auth.stub-tokens-enabled=true"
                 );
     }
 

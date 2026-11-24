@@ -36,7 +36,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "server.port=8133",
         "ops-core.http-smoke.gateway-base-url=http://127.0.0.1:1",
         "ops-core.http-smoke.self-base-url=http://127.0.0.1:1",
-        "ops-core.http-smoke.timeout-ms=100"
+        "ops-core.http-smoke.timeout-ms=100",
+        // 契约用例用 ops-*-token 这类桩 token 充当主体；真实会话鉴权落地后
+        // 桩 token 默认关闭，这里显式开启，避免把「鉴权改造」误测成「契约变更」。
+        "ops-control.auth.stub-tokens-enabled=true"
 })
 @AutoConfigureMockMvc
 class OpsCoreApiContractTest {

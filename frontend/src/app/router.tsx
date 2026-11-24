@@ -5,7 +5,6 @@
 import { Routes, Route } from 'react-router-dom'
 import { ROUTES } from '../constants/routes'
 import { ProtectedRoute } from '../components/layout/ProtectedRoute'
-import { PageLayout } from '../components/layout/PageLayout'
 
 // 公开页
 import { HomePage } from '../pages/public/HomePage'
@@ -24,6 +23,7 @@ import { CalendarPage } from '../pages/public/CalendarPage'
 import { ChangelogPage } from '../pages/public/ChangelogPage'
 
 // 账号
+import { LoginPage } from '../pages/account/LoginPage'
 import { ProfilePage } from '../pages/account/ProfilePage'
 import { NotificationPage } from '../pages/account/NotificationPage'
 import { SecurityPage } from '../pages/account/SecurityPage'
@@ -44,25 +44,18 @@ import { AdminUsersPage } from '../pages/admin/AdminUsersPage'
 import { AdminContentPage } from '../pages/admin/AdminContentPage'
 import { AdminApprovalsPage } from '../pages/admin/AdminApprovalsPage'
 
-// 占位（运维 — 后续阶段）
-function Placeholder({ title, variant = 'public' }: { title: string; variant?: 'public' | 'account' | 'admin' | 'ops' }) {
-  const inner = (
-    <PageLayout variant={variant}>
-      <h1 className="font-display text-2xl text-indigo">{title}</h1>
-      <p className="text-text-secondary mt-2">页面建设中</p>
-    </PageLayout>
-  )
-  if (variant === 'account') return <ProtectedRoute>{inner}</ProtectedRoute>
-  if (variant === 'admin' || variant === 'ops') return <ProtectedRoute requiredRole="HELPER">{inner}</ProtectedRoute>
-  return inner
-}
+// 运维
+import { OpsOverviewPage } from '../pages/ops/OpsOverviewPage'
+import { OpsNodesPage } from '../pages/ops/OpsNodesPage'
+import { OpsAssetsPage } from '../pages/ops/OpsAssetsPage'
 
 export function AppRouter() {
   return (
     <Routes>
       {/* 公开页 */}
       <Route path={ROUTES.HOME} element={<HomePage />} />
-      {/* 登录/注册改为弹窗，不再有独立页面 */}
+      {/* 登录/注册以弹窗承载，/login 作为未登录落地页（ProtectedRoute 回跳目标） */}
+      <Route path={ROUTES.LOGIN} element={<LoginPage />} />
       <Route path={ROUTES.ANNOUNCEMENTS} element={<AnnouncementListPage />} />
       <Route path={ROUTES.ANNOUNCEMENT_DETAIL} element={<AnnouncementDetailPage />} />
       <Route path={ROUTES.GUIDES} element={<GuideListPage />} />
@@ -98,10 +91,10 @@ export function AppRouter() {
       <Route path={ROUTES.ADMIN_CONTENT} element={<ProtectedRoute requiredRole="HELPER"><AdminContentPage /></ProtectedRoute>} />
       <Route path={ROUTES.ADMIN_APPROVALS} element={<ProtectedRoute requiredRole="HELPER"><AdminApprovalsPage /></ProtectedRoute>} />
 
-      {/* 运维 — 占位，后续 #11 */}
-      <Route path={ROUTES.OPS} element={<Placeholder title="运维总览" variant="ops" />} />
-      <Route path={ROUTES.OPS_NODES} element={<Placeholder title="节点管理" variant="ops" />} />
-      <Route path={ROUTES.OPS_ASSETS} element={<Placeholder title="资产管理" variant="ops" />} />
+      {/* 运维 */}
+      <Route path={ROUTES.OPS} element={<ProtectedRoute requiredRole="HELPER"><OpsOverviewPage /></ProtectedRoute>} />
+      <Route path={ROUTES.OPS_NODES} element={<ProtectedRoute requiredRole="HELPER"><OpsNodesPage /></ProtectedRoute>} />
+      <Route path={ROUTES.OPS_ASSETS} element={<ProtectedRoute requiredRole="HELPER"><OpsAssetsPage /></ProtectedRoute>} />
     </Routes>
   )
 }

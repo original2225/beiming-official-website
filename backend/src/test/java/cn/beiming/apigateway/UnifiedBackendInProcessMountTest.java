@@ -24,7 +24,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest(classes = {UnifiedBackendServiceApplication.class, UnifiedBackendInProcessMountTest.FailOnMountedProxyConfig.class})
+@SpringBootTest(classes = {UnifiedBackendServiceApplication.class, UnifiedBackendInProcessMountTest.FailOnMountedProxyConfig.class},
+        properties = {
+                // 本用例验证「网关进程内挂载路由优先于 catch-all 代理」，路径能被命中即为通过。
+                // 它用 owner-token 这类桩 token 换取主体；ops-control 接真实会话后桩 token 默认关闭，
+                // 这里显式开启，否则 401 会被误读成「路由没挂载」。
+                "ops-control.auth.stub-tokens-enabled=true"
+        })
 @AutoConfigureMockMvc
 @DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_EACH_TEST_METHOD)
 class UnifiedBackendInProcessMountTest {

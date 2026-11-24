@@ -17,3 +17,6 @@ tmp-*/
 
 .DS_Store
 Thumbs.db
+
+# 图片压缩前的原图备份（29MB，仅本地保留，不进仓库）
+frontend/src/img/.originals/

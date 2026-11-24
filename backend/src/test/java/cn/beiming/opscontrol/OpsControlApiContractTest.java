@@ -28,7 +28,12 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest(classes = cn.beiming.opscore.OpsCoreServiceApplication.class, properties = {"server.port=8133", "ops-control.test-controls.enabled=true"})
+@SpringBootTest(classes = cn.beiming.opscore.OpsCoreServiceApplication.class, properties = {
+        "server.port=8133",
+        "ops-control.test-controls.enabled=true",
+        // 契约用例用 ops-*-token 桩 token 充当主体，真实会话鉴权落地后桩 token 默认关闭
+        "ops-control.auth.stub-tokens-enabled=true"
+})
 @AutoConfigureMockMvc
 @DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_EACH_TEST_METHOD)
 class OpsControlApiContractTest {
@@ -427,8 +432,17 @@ class OpsControlApiContractTest {
         assertThat(ops.at("/data/externalExecutorConnected").asBoolean()).isFalse();
         assertThat(ops.at("/data/testControlsEnabled").asBoolean()).isTrue();
         assertThat(ops.toString())
-                .contains("P1_IN_MEMORY_STORAGE", "EXTERNAL_EXECUTOR_NOT_CONNECTED")
+                .contains("EXTERNAL_EXECUTOR_NOT_CONNECTED")
                 .doesNotContain("NODE_DAEMON_NOT_CONNECTED", "nodeDaemonConnected");
+        // storageMode 必须如实反映真实存储：无数据库时为 IN_MEMORY 且列出 P1_IN_MEMORY_STORAGE，
+        // 已接 PostgreSQL 主存储时为 POSTGRESQL_PRIMARY 且不得再谎报该缺口。
+        String storageMode = ops.at("/data/storageMode").asText();
+        if ("IN_MEMORY".equals(storageMode)) {
+            assertThat(ops.toString()).contains("P1_IN_MEMORY_STORAGE");
+        } else {
+            assertThat(storageMode).isEqualTo("POSTGRESQL_PRIMARY");
+            assertThat(ops.at("/data/productionGaps").toString()).doesNotContain("P1_IN_MEMORY_STORAGE");
+        }
         assertNoSecrets(ops);
 
         Path serviceRoot = Path.of("src/main/java/cn/beiming/opscontrol");
@@ -443,11 +457,15 @@ class OpsControlApiContractTest {
                     }
                 }).toList())
                 : "";
+        // 边界扫描：模块之间不得互相直读、不得内联执行服务器操作命令。
+        // `JdbcTemplate` 从禁列移出：ops-control 已按 docs/api-reference.md 的正式持久化契约
+        // 落地 ops_nodes / ops_runtime_snapshots / ops_tasks / ops_approvals，写入必须经自身持久化层完成；
+        // 仍需禁止它直读其他模块的数据表，因此下面的跨模块包名与危险命令断言保持不变。
         assertThat(source).doesNotContain(
                 "cn.beiming.auth.", "cn.beiming.profile.", "cn.beiming.notification.", "cn.beiming.content.",
                 "cn.beiming.serverstatus.", "cn.beiming.resource.", "cn.beiming.admin.", "cn.beiming.onboarding.",
                 "cn.beiming.exam.", "cn.beiming.whitelist.", "cn.beiming.attendance.", "cn.beiming.community.",
-                "cn.beiming.activity.", "cn.beiming.calendar.", "cn.beiming.changelog.", "Repository", "JdbcTemplate",
+                "cn.beiming.activity.", "cn.beiming.calendar.", "cn.beiming.changelog.", "Repository",
                 "ProcessBuilder", "Runtime.getRuntime", "docker ", "kubectl", "pvesh", "mcrcon",
                 "whitelist add", "whitelist remove", "rm -rf", "Remove-Item -Recurse", "rmdir /s", "rd /s", "del /s",
                 "cloudreveToken", "server.properties=", "authorized_keys", "id_rsa", "token=");

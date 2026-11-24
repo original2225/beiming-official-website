@@ -39,13 +39,17 @@ import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
+import cn.beiming.core.AuthSessionResolver;
+import java.util.LinkedHashSet;
+import java.util.Set;
+import org.springframework.beans.factory.ObjectProvider;
 
 @Configuration
 class OpsControlEvidenceConfiguration {
     @Bean
     @ConditionalOnMissingBean
-    OpsControlFlowEvidenceRecorder opsControlFlowEvidenceRecorder() {
-        return new NoopOpsControlFlowEvidenceRecorder();
+    OpsControlFlowEvidenceRecorder opsControlFlowEvidenceRecorder(OpsControlPersistence persistence) {
+        return new PersistentOpsControlFlowEvidenceRecorder(persistence);
     }
 }
 
@@ -56,12 +60,15 @@ class OpsControlController {
     private final OpsAuth auth;
     private final OpsProperties properties;
     private final OpsControlFlowEvidenceRecorder evidenceRecorder;
+    private final OpsControlPersistence persistence;
 
-    OpsControlController(OpsStore store, OpsAuth auth, OpsProperties properties, OpsControlFlowEvidenceRecorder evidenceRecorder) {
+    OpsControlController(OpsStore store, OpsAuth auth, OpsProperties properties, OpsControlFlowEvidenceRecorder evidenceRecorder,
+                         OpsControlPersistence persistence) {
         this.store = store;
         this.auth = auth;
         this.properties = properties;
         this.evidenceRecorder = evidenceRecorder;
+        this.persistence = persistence;
     }
 
     @GetMapping("/overview")
@@ -241,8 +248,13 @@ class OpsControlController {
             store.audit("OPS_NODE_HEARTBEAT", "NODE", nodeId, actor, request, body, "MEDIUM", "SUCCESS", null, before, node.status);
             Map<String, Object> payload = node.view();
             payload.put("runtimeEvidence", runtimeEvidence(nodeId));
+            OpsMetric latestMetric = store.metrics.get(nodeId);
+            if (latestMetric != null) {
+                payload.put("metricsSnapshot", latestMetric.view());
+            }
             evidenceRecorder.recordNodeWrite(request, "OPS_NODE_HEARTBEAT", payload, HttpStatus.OK.value());
             payload.remove("runtimeEvidence");
+            payload.remove("metricsSnapshot");
             return ok(request, payload);
         }
     }
@@ -615,7 +627,7 @@ class OpsControlController {
     @GetMapping("/ops/summary")
     ResponseEntity<Map<String, Object>> ops(HttpServletRequest request) {
         auth.requireCapability(request, "NODE_READ");
-        return ok(request, store.ops(properties.enabled()));
+        return ok(request, store.ops(properties.enabled(), persistence.counts()));
     }
 
     private ResponseEntity<Map<String, Object>> reviewApproval(HttpServletRequest request, String approvalId, Map<String, Object> body, Actor actor, boolean approved) {
@@ -819,6 +831,9 @@ class OpsControlController {
     private ResponseEntity<Map<String, Object>> idempotent(HttpServletRequest request, Actor actor, String scope, Map<String, Object> body,
                                                            Supplier<ResponseEntity<Map<String, Object>>> supplier) {
         String key = text(body, "idempotencyKey", null);
+        request.setAttribute(OpsControlFlowEvidenceRecorder.SCOPE_ATTRIBUTE, "ops-control." + scope);
+        request.setAttribute("opsControl.idempotencyKey", key);
+        request.setAttribute(OpsControlFlowEvidenceRecorder.FINGERPRINT_ATTRIBUTE, store.fingerprint(body));
         if (key == null || key.isBlank()) {
             return supplier.get();
         }
@@ -1081,12 +1096,14 @@ class OpsStore {
                 String.valueOf(request.getAttribute("requestId"))));
     }
 
-    Map<String, Object> ops(boolean testControlsEnabled) {
+    Map<String, Object> ops(boolean testControlsEnabled, Map<String, Object> persistenceCounts) {
+        String storageMode = Objects.toString(persistenceCounts.getOrDefault("storageMode", "IN_MEMORY"));
+        boolean persisted = "POSTGRESQL_PRIMARY".equals(storageMode);
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("service", "ops-control");
         data.put("port", 8133);
         data.put("legacyPort", 8116);
-        data.put("storageMode", "IN_MEMORY");
+        data.put("storageMode", storageMode);
         data.put("authMode", "TEST_STUB");
         data.put("adminAdapterMode", "TEST_STUB");
         data.put("nodeAdapterMode", "SIMULATED");
@@ -1100,8 +1117,18 @@ class OpsStore {
         data.put("idempotencyRecordsTotal", idempotency.size());
         data.put("lastHeartbeatAt", nodes.values().stream().map(node -> node.lastHeartbeatAt).filter(Objects::nonNull).max(String::compareTo).orElse(null));
         data.put("lastAuditAt", audits.isEmpty() ? null : audits.get(0).createdAt);
-        data.put("productionGaps", List.of("P1_IN_MEMORY_STORAGE", "P1_AUTH_STUB", "P1_ADMIN_STUB", "EXTERNAL_EXECUTOR_NOT_CONNECTED",
-                "REAL_DOCKER_NOT_CONNECTED", "REAL_VM_PLATFORM_NOT_CONNECTED", "REAL_MCSMANAGER_NOT_CONNECTED", "TEST_CONTROLS_DISABLED_OUTSIDE_TEST"));
+        // productionGaps 只列真实缺口：已落 PostgreSQL 主存储时不再谎报 P1_IN_MEMORY_STORAGE。
+        List<String> gaps = new ArrayList<>();
+        if (!persisted) {
+            gaps.add("P1_IN_MEMORY_STORAGE");
+        }
+        gaps.addAll(List.of("P1_AUTH_STUB", "P1_ADMIN_STUB", "EXTERNAL_EXECUTOR_NOT_CONNECTED",
+                "REAL_DOCKER_NOT_CONNECTED", "REAL_VM_PLATFORM_NOT_CONNECTED", "REAL_MCSMANAGER_NOT_CONNECTED",
+                "TEST_CONTROLS_DISABLED_OUTSIDE_TEST"));
+        data.put("productionGaps", gaps);
+        if (persisted) {
+            data.put("persistenceCounts", persistenceCounts);
+        }
         return data;
     }
 
@@ -1149,11 +1176,49 @@ record OpsIdempotency(String fingerprint, HttpStatus status, Object data) {
 }
 
 interface OpsControlFlowEvidenceRecorder {
+    String ACTOR_ATTRIBUTE = "opsControl.actor";
+    String SCOPE_ATTRIBUTE = "opsControl.scope";
+    String FINGERPRINT_ATTRIBUTE = "opsControl.fingerprint";
+
     void recordNodeWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
 
     void recordTaskWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
 
     void recordApprovalWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode);
+}
+
+class PersistentOpsControlFlowEvidenceRecorder implements OpsControlFlowEvidenceRecorder {
+    private final OpsControlPersistence persistence;
+
+    PersistentOpsControlFlowEvidenceRecorder(OpsControlPersistence persistence) {
+        this.persistence = persistence;
+    }
+
+    @Override
+    public void recordNodeWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+        persist(request, action, payload, responseCode);
+    }
+
+    @Override
+    public void recordTaskWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+        persist(request, action, payload, responseCode);
+    }
+
+    @Override
+    public void recordApprovalWrite(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+        persist(request, action, payload, responseCode);
+    }
+
+    private void persist(HttpServletRequest request, String action, Map<String, Object> payload, int responseCode) {
+        Actor actor = (Actor) request.getAttribute(ACTOR_ATTRIBUTE);
+        persistence.persistWrite(request,
+                actor == null ? null : actor.userId,
+                actor == null ? null : actor.role,
+                Objects.toString(request.getAttribute(SCOPE_ATTRIBUTE), null),
+                Objects.toString(request.getAttribute("opsControl.idempotencyKey"), null),
+                Objects.toString(request.getAttribute(FINGERPRINT_ATTRIBUTE), null),
+                action, payload, responseCode);
+    }
 }
 
 class NoopOpsControlFlowEvidenceRecorder implements OpsControlFlowEvidenceRecorder {
@@ -1555,9 +1620,11 @@ class OpsAudit {
 @Service
 class OpsAuth {
     private final OpsProperties properties;
+    private final ObjectProvider<AuthSessionResolver> sessionResolver;
 
-    OpsAuth(OpsProperties properties) {
+    OpsAuth(OpsProperties properties, ObjectProvider<AuthSessionResolver> sessionResolver) {
         this.properties = properties;
+        this.sessionResolver = sessionResolver;
     }
 
     Actor current(HttpServletRequest request) {
@@ -1571,6 +1638,50 @@ class OpsAuth {
         if (!header.startsWith("Bearer ")) {
             throw new OpsException(HttpStatus.UNAUTHORIZED, 41003, "bad token");
         }
+        // 优先用真实会话：登录拿到的 ses_xxx 在这里换成真实用户与角色。
+        // 硬编码桩只在 ops-control.auth.stub-tokens-enabled=true 时启用；该开关默认 false，
+        // 生产配置也不设，因此源码里那些 "owner-token" 之类的串一律被拒。
+        Actor actor = resolveFromSession(header);
+        if (actor == null && properties.stubTokensEnabled()) {
+            actor = resolveTestStub(header);
+        }
+        if (actor == null) {
+            throw new OpsException(HttpStatus.UNAUTHORIZED, 41003, "bad token");
+        }
+        request.setAttribute(OpsControlFlowEvidenceRecorder.ACTOR_ATTRIBUTE, actor);
+        return actor;
+    }
+
+    /** 真实会话校验失败返回 null，由调用方决定是否回落到测试桩 */
+    private Actor resolveFromSession(String header) {
+        AuthSessionResolver resolver = sessionResolver.getIfAvailable();
+        if (resolver == null) {
+            return null;
+        }
+        AuthSessionResolver.ResolvedSession session = resolver.resolve(header);
+        if (session == null) {
+            return null;
+        }
+        return new Actor(session.userId(), session.role(), defaultCapabilities(session.role(), session.permissions()));
+    }
+
+    /**
+     * 角色默认能力。真实用户表里 permissions 通常是空的，权限要由角色推导；
+     * 显式授予的 permissions 会并进来，所以给某个 ADMIN 单独开 FILE_MANAGE 仍然生效。
+     */
+    private static List<String> defaultCapabilities(String role, List<String> explicit) {
+        Set<String> capabilities = new LinkedHashSet<>(switch (role) {
+            case "OWNER" -> List.of("NODE_READ", "NODE_WRITE", "CONTAINER_OPERATE", "VM_OPERATE", "FILE_MANAGE", "TERMINAL_ACCESS", "HIGH_RISK_APPROVE");
+            case "ADMIN" -> List.of("NODE_READ", "NODE_WRITE", "CONTAINER_OPERATE", "VM_OPERATE", "FILE_MANAGE");
+            case "HELPER" -> List.of("NODE_READ");
+            default -> List.of();
+        });
+        capabilities.addAll(explicit);
+        return List.copyOf(capabilities);
+    }
+
+    /** 仅测试环境可用：按硬编码 token 换取固定主体，不做任何校验 */
+    private Actor resolveTestStub(String header) {
         return switch (header.substring("Bearer ".length())) {
             case "owner-token" -> new Actor("owner-user", "OWNER", List.of("NODE_READ", "NODE_WRITE", "CONTAINER_OPERATE", "VM_OPERATE", "FILE_MANAGE", "TERMINAL_ACCESS", "HIGH_RISK_APPROVE"));
             case "ops-admin-token" -> new Actor("ops-admin-user", "ADMIN", List.of("NODE_READ", "NODE_WRITE", "CONTAINER_OPERATE", "VM_OPERATE", "FILE_MANAGE"));
@@ -1581,7 +1692,7 @@ class OpsAuth {
             case "ops-terminal-token" -> new Actor("ops-terminal-user", "ADMIN", List.of("NODE_READ", "TERMINAL_ACCESS", "HIGH_RISK_APPROVE"));
             case "ops-approver-token" -> new Actor("ops-approver-user", "ADMIN", List.of("NODE_READ", "HIGH_RISK_APPROVE"));
             case "user-token" -> new Actor("plain-user", "USER", List.of());
-            default -> throw new OpsException(HttpStatus.UNAUTHORIZED, 41003, "bad token");
+            default -> null;
         };
     }
 
@@ -1619,13 +1730,21 @@ class Actor {
 @Component
 class OpsProperties {
     private final boolean enabled;
+    private final boolean stubTokensEnabled;
 
-    OpsProperties(@Value("${ops-control.test-controls.enabled:false}") boolean enabled) {
+    OpsProperties(@Value("${ops-control.test-controls.enabled:false}") boolean enabled,
+                  @Value("${ops-control.auth.stub-tokens-enabled:false}") boolean stubTokensEnabled) {
         this.enabled = enabled;
+        this.stubTokensEnabled = stubTokensEnabled;
     }
 
     boolean enabled() {
         return enabled;
+    }
+
+    /** 是否接受硬编码测试 token。生产必须为 false，否则任何人都能用 owner-token 冒充 OWNER。 */
+    boolean stubTokensEnabled() {
+        return stubTokensEnabled;
     }
 }
 
@@ -1646,6 +1765,8 @@ class OpsRequestIdFilter extends OncePerRequestFilter {
 
 @RestControllerAdvice(assignableTypes = OpsControlController.class)
 class OpsExceptionHandler {
+    private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(OpsExceptionHandler.class);
+
     @ExceptionHandler(OpsException.class)
     ResponseEntity<Map<String, Object>> api(OpsException exception, HttpServletRequest request) {
         Map<String, Object> body = new LinkedHashMap<>();
@@ -1658,6 +1779,9 @@ class OpsExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     ResponseEntity<Map<String, Object>> fallback(Exception exception, HttpServletRequest request) {
+        // 兜底异常必须留痕，否则 500 只剩一句「internal error」，线上无法定位。
+        LOG.error("ops-control internal error on {} {} (requestId={})",
+                request.getMethod(), request.getRequestURI(), request.getAttribute("requestId"), exception);
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("code", 55000);
         body.put("message", "ops-control internal error");

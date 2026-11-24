@@ -50,7 +50,7 @@ class ResourceModule {
     @Bean
     ResourceStore resourceStore(ResourcePersistence resourcePersistence) {
         ResourceStore store = new ResourceStore(resourcePersistence);
-        store.seed();
+        store.bootstrap();
         return store;
     }
 
@@ -78,6 +78,25 @@ class ResourceModule {
 interface ResourcePersistence {
     Map<String, Object> replay(String actorUserId, String scope, String idempotencyKey, String fingerprint);
 
+    /**
+     * 启动时读回全部资源、分类、版本与下载记录。
+     *
+     * <p>这里同时修两个缺陷：读路径走内存 Map（不读回就看不到库里数据），
+     * 以及 {@code persistSnapshot} 是整表替换（启动播种会把用户创建的数据 DELETE 掉）。
+     * 有了 loadAll，启动流程可以「库非空就不播种」，用户的资源才留得住。
+     *
+     * <p>返回 null 表示没有持久化后端，调用方应保持原有播种行为。
+     */
+    ResourceSnapshot loadAll();
+
+    /** 库内容快照。空列表表示库里没有数据。 */
+    record ResourceSnapshot(
+            java.util.List<Map<String, Object>> resources,
+            java.util.List<Map<String, Object>> categories,
+            java.util.Map<String, java.util.List<Map<String, Object>>> versionsByResourceId,
+            java.util.List<Map<String, Object>> downloadRecords) {
+    }
+
     void persistSnapshot(Iterable<Map<String, Object>> resources,
                          Iterable<Map<String, Object>> categories,
                          Iterable<List<Map<String, Object>>> versions,
@@ -102,6 +121,11 @@ interface ResourcePersistence {
 class NoopResourcePersistence implements ResourcePersistence {
     @Override
     public Map<String, Object> replay(String actorUserId, String scope, String idempotencyKey, String fingerprint) {
+        return null;
+    }
+
+    @Override
+    public ResourceSnapshot loadAll() {
         return null;
     }
 
@@ -163,6 +187,150 @@ class ResourcePostgresPersistence implements ResourcePersistence {
             insertIdempotency(actorId(actor), idempotencyScope, idempotencyKey, fingerprint, responseCode, payload);
         }
         insertRequestLog(request, actorId(actor), responseCode);
+    }
+
+    @Override
+    public ResourceSnapshot loadAll() {
+        java.util.List<Map<String, Object>> loadedCategories = new java.util.ArrayList<>();
+        jdbc.query("""
+                SELECT category_id, name, slug, description, icon, sort_order, enabled, archived, created_at, updated_at
+                FROM resource_categories ORDER BY sort_order
+                """, (org.springframework.jdbc.core.RowCallbackHandler) result -> {
+            Map<String, Object> row = new java.util.LinkedHashMap<>();
+            row.put("categoryId", result.getString("category_id"));
+            row.put("name", result.getString("name"));
+            row.put("slug", result.getString("slug"));
+            row.put("description", result.getString("description"));
+            row.put("icon", result.getString("icon"));
+            row.put("sortOrder", result.getInt("sort_order"));
+            row.put("enabled", result.getBoolean("enabled"));
+            row.put("archived", result.getBoolean("archived"));
+            row.put("createdAt", instantText(result.getTimestamp("created_at")));
+            row.put("updatedAt", instantText(result.getTimestamp("updated_at")));
+            loadedCategories.add(row);
+        });
+
+        java.util.List<Map<String, Object>> loadedResources = new java.util.ArrayList<>();
+        jdbc.query("""
+                SELECT resource_id, status, type, visibility, slug, title, summary, description, cover_url, category_id,
+                       tags::text, maintainer_member_id, admin_note, review_opinion, notification_status,
+                       created_by, updated_by, created_at, updated_at
+                FROM resource_items ORDER BY created_at
+                """, (org.springframework.jdbc.core.RowCallbackHandler) result -> {
+            Map<String, Object> row = new java.util.LinkedHashMap<>();
+            row.put("resourceId", result.getString("resource_id"));
+            row.put("status", result.getString("status"));
+            row.put("type", result.getString("type"));
+            row.put("visibility", result.getString("visibility"));
+            row.put("slug", result.getString("slug"));
+            row.put("title", result.getString("title"));
+            row.put("summary", result.getString("summary"));
+            row.put("description", result.getString("description"));
+            row.put("coverUrl", result.getString("cover_url"));
+            row.put("categoryId", result.getString("category_id"));
+            row.put("tags", readStringList(result.getString("tags")));
+            row.put("maintainerMemberId", result.getString("maintainer_member_id"));
+            row.put("adminNote", result.getString("admin_note"));
+            row.put("reviewOpinion", result.getString("review_opinion"));
+            row.put("notificationStatus", result.getString("notification_status"));
+            row.put("createdBy", result.getString("created_by"));
+            row.put("updatedBy", result.getString("updated_by"));
+            row.put("createdAt", instantText(result.getTimestamp("created_at")));
+            row.put("updatedAt", instantText(result.getTimestamp("updated_at")));
+            loadedResources.add(row);
+        });
+
+        java.util.Map<String, java.util.List<Map<String, Object>>> loadedVersions = new java.util.LinkedHashMap<>();
+        jdbc.query("""
+                SELECT version_id, resource_id, status, version_name, title, changelog, minecraft_versions, loader,
+                       file_size_bytes, checksum_sha256, released_at, created_at, updated_at,
+                       (SELECT row_to_json(e) FROM resource_download_entries e WHERE e.version_id = v.version_id)::text AS entry_json
+                FROM resource_versions v ORDER BY created_at
+                """, (org.springframework.jdbc.core.RowCallbackHandler) result -> {
+            Map<String, Object> row = new java.util.LinkedHashMap<>();
+            row.put("versionId", result.getString("version_id"));
+            row.put("resourceId", result.getString("resource_id"));
+            row.put("status", result.getString("status"));
+            row.put("versionName", result.getString("version_name"));
+            row.put("title", result.getString("title"));
+            row.put("changelog", result.getString("changelog"));
+            row.put("minecraftVersions", readStringList(result.getString("minecraft_versions")));
+            row.put("loader", result.getString("loader"));
+            row.put("fileSizeBytes", result.getObject("file_size_bytes"));
+            row.put("checksumSha256", result.getString("checksum_sha256"));
+            row.put("releasedAt", instantText(result.getTimestamp("released_at")));
+            row.put("createdAt", instantText(result.getTimestamp("created_at")));
+            row.put("updatedAt", instantText(result.getTimestamp("updated_at")));
+            String entryJson = result.getString("entry_json");
+            if (entryJson != null) {
+                Map<String, Object> entry = new java.util.LinkedHashMap<>();
+                Map<String, Object> raw = readObjectMap(entryJson);
+                entry.put("downloadEntryId", raw.get("download_entry_id"));
+                entry.put("resourceId", raw.get("resource_id"));
+                entry.put("versionId", raw.get("version_id"));
+                entry.put("provider", raw.get("provider"));
+                entry.put("status", raw.get("status"));
+                entry.put("displayName", raw.get("display_name"));
+                entry.put("shareUrl", raw.get("share_url"));
+                entry.put("cloudMode", raw.get("cloud_mode"));
+                entry.put("passwordRequired", raw.get("password_required"));
+                entry.put("adminNote", raw.get("admin_note"));
+                row.put("entry", entry);
+            }
+            loadedVersions.computeIfAbsent(result.getString("resource_id"), key -> new java.util.ArrayList<>()).add(row);
+        });
+
+        java.util.List<Map<String, Object>> loadedRecords = new java.util.ArrayList<>();
+        jdbc.query("""
+                SELECT ticket_id, resource_id, version_id, download_entry_id, actor_user_id, anonymous, client_label,
+                       provider, result, degraded, request_id, created_at
+                FROM resource_download_records ORDER BY created_at
+                """, (org.springframework.jdbc.core.RowCallbackHandler) result -> {
+            Map<String, Object> row = new java.util.LinkedHashMap<>();
+            row.put("ticketId", result.getString("ticket_id"));
+            row.put("resourceId", result.getString("resource_id"));
+            row.put("versionId", result.getString("version_id"));
+            row.put("downloadEntryId", result.getString("download_entry_id"));
+            row.put("actorUserId", result.getString("actor_user_id"));
+            row.put("anonymous", result.getBoolean("anonymous"));
+            row.put("clientLabel", result.getString("client_label"));
+            row.put("provider", result.getString("provider"));
+            row.put("result", result.getString("result"));
+            row.put("degraded", result.getBoolean("degraded"));
+            row.put("requestId", result.getString("request_id"));
+            row.put("createdAt", instantText(result.getTimestamp("created_at")));
+            loadedRecords.add(row);
+        });
+
+        return new ResourceSnapshot(loadedResources, loadedCategories, loadedVersions, loadedRecords);
+    }
+
+    private java.util.List<String> readStringList(String rawJson) {
+        if (rawJson == null || rawJson.isBlank()) {
+            return java.util.List.of();
+        }
+        try {
+            return objectMapper.readValue(rawJson,
+                    new com.fasterxml.jackson.core.type.TypeReference<java.util.ArrayList<String>>() { });
+        } catch (Exception exception) {
+            throw new IllegalStateException("failed to read resource string list", exception);
+        }
+    }
+
+    private Map<String, Object> readObjectMap(String rawJson) {
+        if (rawJson == null || rawJson.isBlank()) {
+            return new java.util.LinkedHashMap<>();
+        }
+        try {
+            return objectMapper.readValue(rawJson,
+                    new com.fasterxml.jackson.core.type.TypeReference<java.util.LinkedHashMap<String, Object>>() { });
+        } catch (Exception exception) {
+            throw new IllegalStateException("failed to read resource object", exception);
+        }
+    }
+
+    private static String instantText(java.sql.Timestamp value) {
+        return value == null ? null : value.toInstant().toString();
     }
 
     private void replaceRows(Iterable<Map<String, Object>> resources, Iterable<Map<String, Object>> categories, Iterable<List<Map<String, Object>>> versions, Iterable<Map<String, Object>> downloadRecords) {
@@ -622,6 +790,46 @@ class ResourceStore {
 
     ResourceStore(ResourcePersistence persistence) {
         this.persistence = persistence;
+    }
+
+    /**
+     * 启动流程。
+     *
+     * <p>两个缺陷一次修掉：
+     * <ul>
+     *   <li>{@code seed()} 会先 clear 内存，再 {@code persistSnapshot} —— 后者是 DELETE 全表 + 重插，
+     *       每次重启都把用户创建的资源冲掉；</li>
+     *   <li>读路径只走内存 Map，不读回就看不到库里已有数据。</li>
+     * </ul>
+     *
+     * <p>所以先问库：非空就只读回、绝不播种；空了才当作全新环境播种。
+     * 没有持久化后端时 {@code loadAll()} 返回 null，保持原有的每次播种行为。
+     */
+    synchronized void bootstrap() {
+        ResourcePersistence.ResourceSnapshot snapshot = persistence.loadAll();
+        if (snapshot == null) {
+            seed();
+            return;
+        }
+        boolean storeHasData = !snapshot.resources().isEmpty() || !snapshot.categories().isEmpty();
+        if (!storeHasData) {
+            seed();
+            return;
+        }
+        resources.clear();
+        categories.clear();
+        versions.clear();
+        downloadRecords.clear();
+        for (Map<String, Object> category : snapshot.categories()) {
+            categories.put(String.valueOf(category.get("categoryId")), category);
+        }
+        for (Map<String, Object> item : snapshot.resources()) {
+            resources.put(String.valueOf(item.get("resourceId")), item);
+        }
+        for (Map.Entry<String, List<Map<String, Object>>> entry : snapshot.versionsByResourceId().entrySet()) {
+            versions.put(entry.getKey(), entry.getValue());
+        }
+        downloadRecords.addAll(snapshot.downloadRecords());
     }
 
     void seed() {
@@ -1236,7 +1444,11 @@ class ResourceStore {
     }
 
     private Map<String, Object> publicCategoryFor(Map<String, Object> item) {
-        Map<String, Object> cat = categories.get(str(item.get("categoryId")));
+        // 资源可以不属于任何分类（category_id 为 null）。ConcurrentHashMap.get(null) 会抛
+        // NPE，而一条这样的资源会让整个公开列表接口 500 —— 必须在查表前挡掉。
+        String categoryId = str(item.get("categoryId"));
+        if (categoryId == null) return null;
+        Map<String, Object> cat = categories.get(categoryId);
         if (cat == null || !Boolean.TRUE.equals(cat.get("enabled")) || Boolean.TRUE.equals(cat.get("archived"))) return null;
         return categoryPublic(cat);
     }
@@ -1270,13 +1482,26 @@ class ResourceStore {
         }
     }
 
+    /**
+     * 排序键提取。{@code getOrDefault} 在「key 存在但值为 null」时返回 null，
+     * {@code str(null)} 也是 null，替进 Comparator 就抛 NPE —— 一条未填发布时间的
+     * 资源会让整个列表接口 500。这里统一兜成空串，空值排最后。
+     */
+    private static String sortKey(Object map, String field) {
+        if (!(map instanceof Map<?, ?> source)) {
+            return "";
+        }
+        Object value = source.get(field);
+        return value == null ? "" : value.toString();
+    }
+
     private Comparator<Map<String, Object>> resourceComparator(String sort) {
-        Comparator<Map<String, Object>> byId = Comparator.comparing(map -> str(map.getOrDefault("resourceId", "")));
+        Comparator<Map<String, Object>> byId = Comparator.comparing(map -> sortKey(map, "resourceId"));
         return switch (sort) {
-            case "title_asc" -> Comparator.comparing((Map<String, Object> map) -> str(map.getOrDefault("title", ""))).thenComparing(byId);
-            case "createdAt_desc" -> Comparator.comparing((Map<String, Object> map) -> str(map.getOrDefault("createdAt", ""))).reversed().thenComparing(byId);
-            case "updatedAt_desc", "downloadUpdatedAt_desc" -> Comparator.comparing((Map<String, Object> map) -> str(map.getOrDefault("updatedAt", ""))).reversed().thenComparing(byId);
-            case "publishedAt_desc" -> Comparator.comparing((Map<String, Object> map) -> str(map.getOrDefault("publishedAt", ""))).reversed().thenComparing(byId);
+            case "title_asc" -> Comparator.comparing((Map<String, Object> map) -> sortKey(map, "title")).thenComparing(byId);
+            case "createdAt_desc" -> Comparator.comparing((Map<String, Object> map) -> sortKey(map, "createdAt")).reversed().thenComparing(byId);
+            case "updatedAt_desc", "downloadUpdatedAt_desc" -> Comparator.comparing((Map<String, Object> map) -> sortKey(map, "updatedAt")).reversed().thenComparing(byId);
+            case "publishedAt_desc" -> Comparator.comparing((Map<String, Object> map) -> sortKey(map, "publishedAt")).reversed().thenComparing(byId);
             default -> byId;
         };
     }
@@ -1661,6 +1886,7 @@ class ResourceRequestIdFilter extends OncePerRequestFilter {
 
 @RestControllerAdvice(assignableTypes = ResourceController.class)
 class ResourceExceptionHandler {
+    private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(ResourceExceptionHandler.class);
     @ExceptionHandler(ApiException.class)
     ResponseEntity<Map<String, Object>> handle(ApiException ex) {
         Map<String, Object> body = new LinkedHashMap<>();
@@ -1674,6 +1900,9 @@ class ResourceExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     ResponseEntity<Map<String, Object>> handleUnexpected(Exception ex) {
+        // 兜底处理器不记日志会把每个缺陷都变成同一个无痕的 51600，线上无法定位。
+        // 先记堆栈，再返回对外统一错误体。
+        LOG.error("resource unexpected error", ex);
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("code", 51600);
         body.put("message", "resource internal error");

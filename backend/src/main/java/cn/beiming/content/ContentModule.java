@@ -54,7 +54,11 @@ import java.util.HexFormat;
 class ContentModule {
     @Bean
     ContentStore contentStore(ContentPersistence contentPersistence) {
-        return new ContentStore(contentPersistence);
+        ContentStore store = new ContentStore(contentPersistence);
+        // 启动即读回：读路径全走内存 Map，不读回重启后公告/指南/专题会全变空。
+        // 本模块启动不播种（与 resource 不同），所以这里只读回、不写库。
+        store.hydrateFromStore();
+        return store;
     }
 
     @Bean("contentTestAuthContextProvider")
@@ -576,6 +580,33 @@ class NoopContentFlowEvidenceRecorder implements ContentFlowEvidenceRecorder {
 interface ContentPersistence {
     void resetForTests();
 
+    /**
+     * 启动时读回全部内容数据。
+     *
+     * <p>读路径全走 {@code ContentStore} 的内存 Map，持久化层此前只实现了写，
+     * 于是服务重启后公告/指南/专题会从「有内容」变成「空列表」，而库里记录还在。
+     *
+     * <p>返回 null 表示没有持久化后端（Noop），调用方跳过读回。
+     *
+     * <p>已知缺项：{@code content_preview_tokens} 只存 {@code token_hash} 不存明文，
+     * 重启后无法还原预览令牌本身，所以快照里不含预览令牌 —— 预览链接的有效期本就短，
+     * 重启失效可接受。
+     */
+    ContentSnapshot loadAll();
+
+    /** 库内容快照，与 {@code persistSnapshot} 的参数一一对应。 */
+    record ContentSnapshot(
+            java.util.List<ContentCategoryRecord> categories,
+            java.util.List<ContentTagRecord> tags,
+            java.util.List<ContentItem> items,
+            java.util.Map<String, java.util.List<ContentItemVersionRecord>> itemVersions,
+            java.util.List<TopicRecord> topics,
+            java.util.List<HomeConfig> homeVersions,
+            HomeConfig draftHome,
+            HomeConfig publishedHome,
+            java.util.List<SeoRecord> seo) {
+    }
+
     Map<String, Object> replay(String actorUserId, String scope, String idempotencyKey, String fingerprint);
 
     void persistSnapshot(Iterable<ContentCategoryRecord> categories, Iterable<ContentTagRecord> tags, Iterable<ContentItem> items, Map<String, List<ContentItemVersionRecord>> itemVersions, Iterable<TopicRecord> topics, Iterable<HomeConfig> homeVersions, HomeConfig draftHome, HomeConfig publishedHome, Iterable<PreviewTokenRecord> previewTokens, Iterable<SeoRecord> seo);
@@ -592,6 +623,11 @@ class NoopContentPersistence implements ContentPersistence {
 
     @Override
     public Map<String, Object> replay(String actorUserId, String scope, String idempotencyKey, String fingerprint) {
+        return null;
+    }
+
+    @Override
+    public ContentSnapshot loadAll() {
         return null;
     }
 
@@ -655,6 +691,308 @@ class ContentPostgresPersistence implements ContentPersistence {
     @Transactional
     public void persistSnapshot(Iterable<ContentCategoryRecord> categories, Iterable<ContentTagRecord> tags, Iterable<ContentItem> items, Map<String, List<ContentItemVersionRecord>> itemVersions, Iterable<TopicRecord> topics, Iterable<HomeConfig> homeVersions, HomeConfig draftHome, HomeConfig publishedHome, Iterable<PreviewTokenRecord> previewTokens, Iterable<SeoRecord> seo) {
         replaceContentRows(categories, tags, items, itemVersions, topics, homeVersions, draftHome, publishedHome, previewTokens, seo);
+    }
+
+    @Override
+    public ContentSnapshot loadAll() {
+        // ---- 分类 ----
+        java.util.List<ContentCategoryRecord> loadedCategories = new java.util.ArrayList<>();
+        jdbc.query("""
+                SELECT category_id, name, slug, description, sort_order, archived, created_at, updated_at
+                FROM content_categories ORDER BY sort_order
+                """, (org.springframework.jdbc.core.RowCallbackHandler) result -> loadedCategories.add(
+                new ContentCategoryRecord(
+                        result.getString("category_id"),
+                        result.getString("name"),
+                        result.getString("slug"),
+                        result.getString("description"),
+                        result.getInt("sort_order"),
+                        result.getBoolean("archived"),
+                        result.getTimestamp("created_at").toInstant(),
+                        result.getTimestamp("updated_at").toInstant())));
+
+        // ---- 标签 ----
+        java.util.List<ContentTagRecord> loadedTags = new java.util.ArrayList<>();
+        jdbc.query("""
+                SELECT tag_id, name, slug, archived, created_at, updated_at
+                FROM content_tags ORDER BY name
+                """, (org.springframework.jdbc.core.RowCallbackHandler) result -> loadedTags.add(
+                new ContentTagRecord(
+                        result.getString("tag_id"),
+                        result.getString("name"),
+                        result.getString("slug"),
+                        result.getBoolean("archived"),
+                        result.getTimestamp("created_at").toInstant(),
+                        result.getTimestamp("updated_at").toInstant())));
+
+        // ---- 内容条目（tagIds 走 content_item_tags 关联表）----
+        java.util.Map<String, java.util.List<String>> tagIdsByContent = new java.util.LinkedHashMap<>();
+        jdbc.query("""
+                SELECT content_id, tag_id FROM content_item_tags ORDER BY created_at
+                """, (org.springframework.jdbc.core.RowCallbackHandler) result -> tagIdsByContent
+                .computeIfAbsent(result.getString("content_id"), key -> new java.util.ArrayList<>())
+                .add(result.getString("tag_id")));
+
+        java.util.List<ContentItem> loadedItems = new java.util.ArrayList<>();
+        jdbc.query("""
+                SELECT content_id, type, status, visibility, slug, title, summary, body, cover_url, category_id,
+                       author_user_id, author_display_name_snapshot, member_snapshot::text, seo::text, admin_note,
+                       review_opinion, notification_status, submitted_at, reviewed_at, published_at, visible_from,
+                       visible_until, created_by, updated_by, created_at, updated_at, deleted_at
+                FROM content_items ORDER BY created_at
+                """, (org.springframework.jdbc.core.RowCallbackHandler) result -> loadedItems.add(
+                new ContentItem(
+                        result.getString("content_id"),
+                        result.getString("type"),
+                        result.getString("status"),
+                        result.getString("visibility"),
+                        result.getString("slug"),
+                        result.getString("title"),
+                        result.getString("summary"),
+                        result.getString("body"),
+                        result.getString("cover_url"),
+                        result.getString("category_id"),
+                        tagIdsByContent.getOrDefault(result.getString("content_id"), new java.util.ArrayList<>()),
+                        result.getString("author_user_id"),
+                        result.getString("author_display_name_snapshot"),
+                        readMapOrNull(result.getString("member_snapshot")),
+                        readMapOrNull(result.getString("seo")),
+                        result.getString("admin_note"),
+                        result.getString("review_opinion"),
+                        result.getString("notification_status"),
+                        instantOrNull(result.getTimestamp("submitted_at")),
+                        instantOrNull(result.getTimestamp("reviewed_at")),
+                        instantOrNull(result.getTimestamp("published_at")),
+                        instantOrNull(result.getTimestamp("visible_from")),
+                        instantOrNull(result.getTimestamp("visible_until")),
+                        result.getString("created_by"),
+                        result.getString("updated_by"),
+                        result.getTimestamp("created_at").toInstant(),
+                        result.getTimestamp("updated_at").toInstant(),
+                        instantOrNull(result.getTimestamp("deleted_at")))));
+
+        // ---- 版本历史（快照列存的是整条 ContentItem 的 JSON）----
+        java.util.Map<String, java.util.List<ContentItemVersionRecord>> loadedVersions = new java.util.LinkedHashMap<>();
+        jdbc.query("""
+                SELECT content_id, version, source_action, snapshot::text, created_by, created_at, reason, restored_from_version
+                FROM content_item_versions ORDER BY content_id, version
+                """, (org.springframework.jdbc.core.RowCallbackHandler) result -> {
+            ContentItem snapshotItem = itemFromSnapshotJson(result.getString("snapshot"));
+            if (snapshotItem == null) {
+                return;
+            }
+            loadedVersions.computeIfAbsent(result.getString("content_id"), key -> new java.util.ArrayList<>())
+                    .add(new ContentItemVersionRecord(
+                            result.getString("content_id"),
+                            result.getInt("version"),
+                            result.getString("source_action"),
+                            snapshotItem,
+                            result.getString("created_by"),
+                            result.getTimestamp("created_at").toInstant(),
+                            result.getString("reason"),
+                            result.getObject("restored_from_version") == null ? null : result.getInt("restored_from_version")));
+        });
+
+        // ---- 专题（contentIds 走 content_topic_items 关联表）----
+        java.util.Map<String, java.util.List<String>> contentIdsByTopic = new java.util.LinkedHashMap<>();
+        jdbc.query("""
+                SELECT topic_id, content_id FROM content_topic_items ORDER BY sort_order
+                """, (org.springframework.jdbc.core.RowCallbackHandler) result -> contentIdsByTopic
+                .computeIfAbsent(result.getString("topic_id"), key -> new java.util.ArrayList<>())
+                .add(result.getString("content_id")));
+
+        java.util.List<TopicRecord> loadedTopics = new java.util.ArrayList<>();
+        jdbc.query("""
+                SELECT topic_id, slug, title, summary, cover_url, status, visibility, seo::text,
+                       published_at, created_at, updated_at, deleted_at
+                FROM content_topics ORDER BY created_at
+                """, (org.springframework.jdbc.core.RowCallbackHandler) result -> loadedTopics.add(
+                new TopicRecord(
+                        result.getString("topic_id"),
+                        result.getString("slug"),
+                        result.getString("title"),
+                        result.getString("summary"),
+                        result.getString("cover_url"),
+                        result.getString("status"),
+                        result.getString("visibility"),
+                        contentIdsByTopic.getOrDefault(result.getString("topic_id"), new java.util.ArrayList<>()),
+                        readMapOrNull(result.getString("seo")),
+                        instantOrNull(result.getTimestamp("published_at")),
+                        result.getTimestamp("created_at").toInstant(),
+                        result.getTimestamp("updated_at").toInstant(),
+                        instantOrNull(result.getTimestamp("deleted_at")))));
+
+        // ---- 首页配置：draft 与 published 各取一条 ----
+        // lambda 内不能给非 final 局部变量赋值，用单元素数组持有结果。
+        HomeConfig[] draftHolder = new HomeConfig[1];
+        HomeConfig[] publishedHolder = new HomeConfig[1];
+        java.util.List<HomeConfig> loadedHomeVersions = new java.util.ArrayList<>();
+        jdbc.query("""
+                SELECT home_config_id, version, sections::text, seo::text, published, published_at
+                FROM content_home_configs ORDER BY version
+                """, (org.springframework.jdbc.core.RowCallbackHandler) result -> {
+            HomeConfig config = new HomeConfig(
+                    result.getString("home_config_id"),
+                    result.getInt("version"),
+                    readSectionList(result.getString("sections")),
+                    readMapOrNull(result.getString("seo")),
+                    instantOrNull(result.getTimestamp("published_at")));
+            if (result.getBoolean("published")) {
+                if (publishedHolder[0] == null) {
+                    publishedHolder[0] = config;
+                }
+            } else if (draftHolder[0] == null) {
+                draftHolder[0] = config;
+            }
+        });
+
+        jdbc.query("""
+                SELECT home_config_id, version, sections::text, seo::text, published_at
+                FROM content_home_versions ORDER BY version
+                """, (org.springframework.jdbc.core.RowCallbackHandler) result -> loadedHomeVersions.add(
+                new HomeConfig(
+                        result.getString("home_config_id"),
+                        result.getInt("version"),
+                        readSectionList(result.getString("sections")),
+                        readMapOrNull(result.getString("seo")),
+                        instantOrNull(result.getTimestamp("published_at")))));
+
+        // ---- SEO 配置 ----
+        java.util.List<SeoRecord> loadedSeo = new java.util.ArrayList<>();
+        jdbc.query("""
+                SELECT seo_id, route, title, description, keywords::text, cover_url, robots, canonical_url, enabled, updated_at
+                FROM content_seo_configs ORDER BY route
+                """, (org.springframework.jdbc.core.RowCallbackHandler) result -> loadedSeo.add(
+                new SeoRecord(
+                        result.getString("seo_id"),
+                        result.getString("route"),
+                        result.getString("title"),
+                        result.getString("description"),
+                        readStringList(result.getString("keywords")),
+                        result.getString("cover_url"),
+                        result.getString("robots"),
+                        result.getString("canonical_url"),
+                        result.getBoolean("enabled"),
+                        result.getTimestamp("updated_at").toInstant())));
+
+        return new ContentSnapshot(loadedCategories, loadedTags, loadedItems, loadedVersions, loadedTopics,
+                loadedHomeVersions, draftHolder[0], publishedHolder[0], loadedSeo);
+    }
+
+    /** 版本历史里的 snapshot 列存整条 ContentItem JSON，反序列化回对象。 */
+    private ContentItem itemFromSnapshotJson(String rawJson) {
+        if (rawJson == null || rawJson.isBlank()) {
+            return null;
+        }
+        try {
+            Map<String, Object> raw = objectMapper.readValue(rawJson, Map.class);
+            return new ContentItem(
+                    text(raw.get("contentId")),
+                    text(raw.get("type")),
+                    text(raw.get("status")),
+                    text(raw.get("visibility")),
+                    text(raw.get("slug")),
+                    text(raw.get("title")),
+                    text(raw.get("summary")),
+                    text(raw.get("body")),
+                    text(raw.get("coverUrl")),
+                    text(raw.get("categoryId")),
+                    stringList(raw.get("tagIds")),
+                    text(raw.get("authorUserId")),
+                    text(raw.get("authorDisplayNameSnapshot")),
+                    asMap(raw.get("memberSnapshot")),
+                    asMap(raw.get("seo")),
+                    text(raw.get("adminNote")),
+                    text(raw.get("reviewOpinion")),
+                    text(raw.get("notificationStatus")),
+                    instantFromText(raw.get("submittedAt")),
+                    instantFromText(raw.get("reviewedAt")),
+                    instantFromText(raw.get("publishedAt")),
+                    instantFromText(raw.get("visibleFrom")),
+                    instantFromText(raw.get("visibleUntil")),
+                    text(raw.get("createdBy")),
+                    text(raw.get("updatedBy")),
+                    instantFromText(raw.get("createdAt")),
+                    instantFromText(raw.get("updatedAt")),
+                    instantFromText(raw.get("deletedAt")));
+        } catch (Exception exception) {
+            // 版本历史是审计凭证，单条坏数据不该拖垮整个启动读回。
+            org.slf4j.LoggerFactory.getLogger(ContentPostgresPersistence.class)
+                    .warn("skip unreadable content_item_versions.snapshot", exception);
+            return null;
+        }
+    }
+
+    private Map<String, Object> readMapOrNull(String rawJson) {
+        if (rawJson == null || rawJson.isBlank()) {
+            return null;
+        }
+        try {
+            return objectMapper.readValue(rawJson, Map.class);
+        } catch (Exception exception) {
+            throw new IllegalStateException("failed to read content json column", exception);
+        }
+    }
+
+    private java.util.List<Map<String, Object>> readSectionList(String rawJson) {
+        if (rawJson == null || rawJson.isBlank()) {
+            return new java.util.ArrayList<>();
+        }
+        try {
+            return objectMapper.readValue(rawJson,
+                    new com.fasterxml.jackson.core.type.TypeReference<java.util.ArrayList<Map<String, Object>>>() { });
+        } catch (Exception exception) {
+            throw new IllegalStateException("failed to read content sections", exception);
+        }
+    }
+
+    private java.util.List<String> readStringList(String rawJson) {
+        if (rawJson == null || rawJson.isBlank()) {
+            return new java.util.ArrayList<>();
+        }
+        try {
+            return objectMapper.readValue(rawJson,
+                    new com.fasterxml.jackson.core.type.TypeReference<java.util.ArrayList<String>>() { });
+        } catch (Exception exception) {
+            throw new IllegalStateException("failed to read content string list", exception);
+        }
+    }
+
+    private static String text(Object value) {
+        return value == null ? null : String.valueOf(value);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> asMap(Object value) {
+        return value instanceof Map<?, ?> map ? (Map<String, Object>) map : null;
+    }
+
+    private static java.util.List<String> stringList(Object value) {
+        if (!(value instanceof java.util.List<?> list)) {
+            return new java.util.ArrayList<>();
+        }
+        java.util.List<String> result = new java.util.ArrayList<>();
+        for (Object entry : list) {
+            if (entry != null) {
+                result.add(String.valueOf(entry));
+            }
+        }
+        return result;
+    }
+
+    private static java.time.Instant instantFromText(Object value) {
+        if (value == null) {
+            return null;
+        }
+        try {
+            return java.time.Instant.parse(String.valueOf(value));
+        } catch (Exception exception) {
+            return null;
+        }
+    }
+
+    private static java.time.Instant instantOrNull(java.sql.Timestamp value) {
+        return value == null ? null : value.toInstant();
     }
 
     @Override
@@ -881,6 +1219,48 @@ class ContentPostgresPersistence implements ContentPersistence {
 }
 
 class ContentStore {
+
+    /**
+     * 从正式库读回分类、标签、内容、版本历史、专题、首页配置与 SEO。
+     *
+     * <p>没有持久化后端时 {@code loadAll()} 返回 null，直接跳过。
+     * 预览令牌不入快照（库里只存哈希），重启后失效。
+     */
+    synchronized void hydrateFromStore() {
+        ContentPersistence.ContentSnapshot snapshot = persistence.loadAll();
+        if (snapshot == null) {
+            return;
+        }
+        for (ContentCategoryRecord category : snapshot.categories()) {
+            categories.put(category.categoryId, category);
+        }
+        for (ContentTagRecord tag : snapshot.tags()) {
+            tags.put(tag.tagId, tag);
+        }
+        for (ContentItem item : snapshot.items()) {
+            items.put(item.contentId, item);
+        }
+        itemVersions.putAll(snapshot.itemVersions());
+        for (TopicRecord topic : snapshot.topics()) {
+            topics.put(topic.topicId, topic);
+        }
+        if (snapshot.homeVersions() != null) {
+            for (HomeConfig config : snapshot.homeVersions()) {
+                publishedHomeVersions.put(config.version, config);
+            }
+        }
+        if (snapshot.draftHome() != null) {
+            draftHome = snapshot.draftHome();
+        }
+        if (snapshot.publishedHome() != null) {
+            publishedHome = snapshot.publishedHome();
+            // nextHomeVersion 必须越过已读回的最大版本号，否则下一次发布首页配置会撞号。
+            nextHomeVersion = Math.max(nextHomeVersion, publishedHome.version + 1);
+        }
+        for (SeoRecord record : snapshot.seo()) {
+            seo.put(record.seoId, record);
+        }
+    }
     private final Map<String, ContentItem> items = new LinkedHashMap<>();
     private final Map<String, ContentCategoryRecord> categories = new LinkedHashMap<>();
     private final Map<String, ContentTagRecord> tags = new LinkedHashMap<>();

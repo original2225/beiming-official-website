@@ -48,6 +48,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
+import org.springframework.boot.ApplicationRunner;
 
 @RestController
 @RequestMapping("/api/v1/profile")
@@ -268,6 +269,18 @@ class ProfileEvidenceConfig {
         }
         return new ProfilePostgresPersistence(available, objectMapper);
     }
+
+    /**
+     * 启动时把库里的成员与分组读回内存。
+     *
+     * <p>成员列表、成员详情、分组筛选这些读路径都走 {@code ProfileStore} 的内存 Map，
+     * 而持久化层只实现了写。不读回的话，服务重启一次列表就变空——库里的数据还在，
+     * 接口却查不到，表现为「数据莫名其妙消失了」。
+     */
+    @Bean
+    ApplicationRunner profileHydrateFromStore(ProfileStore store) {
+        return args -> store.hydrateFromStore();
+    }
 }
 
 interface ProfileFlowEvidenceRecorder {
@@ -288,6 +301,14 @@ class NoopProfileFlowEvidenceRecorder implements ProfileFlowEvidenceRecorder {
 
 interface ProfilePersistence {
     void resetForTests();
+
+    /**
+     * 启动时读回全部成员与分组。读路径走内存 Map，不读回则重启后列表为空，
+     * 而库里数据还在——表现为「重启一次数据就没了」。
+     */
+    java.util.List<MemberProfile> loadMembers();
+
+    java.util.List<MemberGroup> loadGroups();
 
     void seedGroup(MemberGroup group);
 
@@ -315,6 +336,16 @@ class NoopProfilePersistence implements ProfilePersistence {
 
     @Override
     public void seedMember(MemberProfile profile) {
+    }
+
+    @Override
+    public java.util.List<MemberProfile> loadMembers() {
+        return java.util.List.of();
+    }
+
+    @Override
+    public java.util.List<MemberGroup> loadGroups() {
+        return java.util.List.of();
     }
 
     @Override
@@ -372,6 +403,104 @@ class ProfilePostgresPersistence implements ProfilePersistence {
         upsertMember(profile);
         replaceMilestones(profile);
         replaceWorks(profile);
+    }
+
+    @Override
+    public java.util.List<MemberProfile> loadMembers() {
+        java.util.List<MemberProfile> loaded = new java.util.ArrayList<>();
+        java.util.Map<String, MemberProfile> byMemberId = new java.util.LinkedHashMap<>();
+        jdbc.query("""
+                SELECT member_id, user_id, display_name_snapshot, auth_user_status_snapshot, auth_roles_snapshot::text,
+                       avatar_url, minecraft_id, minecraft_uuid, skin_url, group_id, status, visibility,
+                       joined_at, bio, admin_note, created_at, updated_at, archived_at
+                FROM profile_members
+                """, result -> {
+            MemberProfile profile = new MemberProfile(
+                    result.getString("member_id"),
+                    result.getString("user_id"),
+                    result.getString("display_name_snapshot"),
+                    result.getString("auth_user_status_snapshot"),
+                    readRoles(result.getString("auth_roles_snapshot")),
+                    result.getString("avatar_url"),
+                    result.getString("minecraft_id"),
+                    result.getString("minecraft_uuid"),
+                    result.getString("skin_url"),
+                    result.getString("group_id"),
+                    result.getString("status"),
+                    result.getString("visibility"),
+                    instantOf(result.getTimestamp("joined_at")),
+                    result.getString("bio"),
+                    result.getString("admin_note"),
+                    instantOf(result.getTimestamp("created_at")),
+                    instantOf(result.getTimestamp("updated_at")),
+                    result.getTimestamp("archived_at") == null ? null : instantOf(result.getTimestamp("archived_at")));
+            byMemberId.put(profile.memberId, profile);
+            loaded.add(profile);
+        });
+        if (byMemberId.isEmpty()) {
+            return loaded;
+        }
+        // 里程碑与作品是成员的子集合，两次整表查询后挂回，避免 N+1
+        jdbc.query("""
+                SELECT milestone_id, member_id, type, title, description, happened_at, public_visible, sort_order, created_at, updated_at
+                FROM profile_member_milestones
+                ORDER BY member_id, sort_order
+                """, result -> {
+            MemberProfile owner = byMemberId.get(result.getString("member_id"));
+            if (owner != null) {
+                owner.milestones.add(new MemberMilestone(
+                        result.getString("milestone_id"),
+                        result.getString("type"),
+                        result.getString("title"),
+                        result.getString("description"),
+                        instantOf(result.getTimestamp("happened_at")),
+                        result.getBoolean("public_visible"),
+                        result.getInt("sort_order"),
+                        instantOf(result.getTimestamp("created_at")),
+                        instantOf(result.getTimestamp("updated_at"))));
+            }
+        });
+        jdbc.query("""
+                SELECT work_id, member_id, type, title, summary, cover_url, source_module, source_id, public_visible, sort_order, created_at, updated_at
+                FROM profile_member_work_snapshots
+                ORDER BY member_id, sort_order
+                """, result -> {
+            MemberProfile owner = byMemberId.get(result.getString("member_id"));
+            if (owner != null) {
+                owner.works.add(new MemberWork(
+                        result.getString("work_id"),
+                        result.getString("type"),
+                        result.getString("title"),
+                        result.getString("summary"),
+                        result.getString("cover_url"),
+                        result.getString("source_module"),
+                        result.getString("source_id"),
+                        result.getBoolean("public_visible"),
+                        result.getInt("sort_order"),
+                        instantOf(result.getTimestamp("created_at")),
+                        instantOf(result.getTimestamp("updated_at"))));
+            }
+        });
+        return loaded;
+    }
+
+    @Override
+    public java.util.List<MemberGroup> loadGroups() {
+        java.util.List<MemberGroup> loaded = new java.util.ArrayList<>();
+        jdbc.query("""
+                SELECT group_id, name, description, color, sort_order, archived, created_at, updated_at, archived_at
+                FROM profile_member_groups
+                """, (org.springframework.jdbc.core.RowCallbackHandler) result -> loaded.add(new MemberGroup(
+                result.getString("group_id"),
+                result.getString("name"),
+                result.getString("description"),
+                result.getString("color"),
+                result.getInt("sort_order"),
+                result.getBoolean("archived"),
+                instantOf(result.getTimestamp("created_at")),
+                instantOf(result.getTimestamp("updated_at")),
+                result.getTimestamp("archived_at") == null ? null : instantOf(result.getTimestamp("archived_at")))));
+        return loaded;
     }
 
     @Override
@@ -558,6 +687,23 @@ class ProfilePostgresPersistence implements ProfilePersistence {
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("failed to serialize profile PostgreSQL jsonb value", exception);
         }
+    }
+
+    /** 读 jsonb 角色数组。用 TypeReference 保留元素类型，List.class 会擦除泛型。 */
+    private Set<String> readRoles(String rawJson) {
+        if (rawJson == null || rawJson.isBlank()) {
+            return new LinkedHashSet<>();
+        }
+        try {
+            return new LinkedHashSet<>(objectMapper.readValue(rawJson,
+                    new com.fasterxml.jackson.core.type.TypeReference<ArrayList<String>>() { }));
+        } catch (Exception exception) {
+            throw new IllegalStateException("failed to read profile roles snapshot", exception);
+        }
+    }
+
+    private static Instant instantOf(java.sql.Timestamp value) {
+        return value == null ? Instant.now() : value.toInstant();
     }
 }
 
@@ -817,6 +963,17 @@ class ProfileStore {
         failNextPublicRead = false;
         failNextAudit = false;
         persistence.resetForTests();
+    }
+
+    /** 从正式库读回成员与分组。没有任何持久化后端时两个 load 都返回空列表，行为不变。 */
+    synchronized void hydrateFromStore() {
+        for (MemberGroup group : persistence.loadGroups()) {
+            groupsById.put(group.id, group);
+        }
+        for (MemberProfile profile : persistence.loadMembers()) {
+            profilesById.put(profile.memberId, profile);
+            memberIdByUserId.put(profile.userId, profile.memberId);
+        }
     }
 
     synchronized void seedTestData(ProfileAuthContextProvider auth) {

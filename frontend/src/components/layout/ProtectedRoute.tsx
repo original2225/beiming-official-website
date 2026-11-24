@@ -3,7 +3,7 @@
  */
 
 import type { ReactNode } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Navigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../store/authStore'
 import { ROUTES } from '../../constants/routes'
 import type { Role } from '../../types/common'
@@ -15,11 +15,12 @@ interface ProtectedRouteProps {
 
 export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) {
   const { isAuthenticated, user } = useAuthStore()
+  const location = useLocation()
 
   const devBypass = import.meta.env.DEV && !isAuthenticated && import.meta.env.VITE_DEV_BYPASS_AUTH === 'true'
 
   if (!isAuthenticated && !devBypass) {
-    return <Navigate to={ROUTES.LOGIN} replace />
+    return <Navigate to={ROUTES.LOGIN} replace state={{ from: location.pathname + location.search }} />
   }
 
   if (devBypass && !user) {

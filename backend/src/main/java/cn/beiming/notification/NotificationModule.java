@@ -352,10 +352,28 @@ class NotificationPersistenceConfiguration {
         }
         return new NotificationPostgresPersistence(available, objectMapper);
     }
+
+    /**
+     * 启动时把库里的通知与模板读回内存。与 profile 的 profileHydrateFromStore 同一模式：
+     * 持久化层只写不读时，重启会让读路径看到空数据。
+     */
+    @Bean
+    org.springframework.boot.ApplicationRunner notificationHydrateFromStore(NotificationStore store) {
+        return args -> store.hydrateFromStore();
+    }
 }
 
 interface NotificationPersistence {
     void resetForTests();
+
+    /**
+     * 启动时读回全部通知消息（含收件人）。读路径走内存 Map，不读回则重启后
+     * 消息列表与未读数全为空，而库里数据还在。
+     */
+    java.util.List<NotificationMessage> loadMessages();
+
+    /** 启动时读回全部模板。模板按 code 索引，重启后缺失会让发通知找不到模板。 */
+    java.util.List<NotificationTemplateRecord> loadTemplates();
 
     void seedMessage(NotificationMessage message);
 
@@ -382,6 +400,16 @@ class NoopNotificationPersistence implements NotificationPersistence {
     @Override
     public Map<String, Object> replay(String actorUserId, String scope, String idempotencyKey, String fingerprint) {
         return null;
+    }
+
+    @Override
+    public java.util.List<NotificationMessage> loadMessages() {
+        return java.util.List.of();
+    }
+
+    @Override
+    public java.util.List<NotificationTemplateRecord> loadTemplates() {
+        return java.util.List.of();
     }
 
     @Override
@@ -463,6 +491,143 @@ class NotificationPostgresPersistence implements NotificationPersistence {
     public void seedMessage(NotificationMessage message) {
         upsertMessage(message);
         replaceRecipients(message);
+    }
+
+    @Override
+    public java.util.List<NotificationMessage> loadMessages() {
+        java.util.List<NotificationMessage> loaded = new java.util.ArrayList<>();
+        java.util.Map<String, NotificationMessage> byId = new java.util.LinkedHashMap<>();
+        jdbc.query("""
+                SELECT notification_id, title, body, type, channels::text, source_module, source_id, risk_level,
+                       action_url, template_id, template_code, template_version, variables::text,
+                       created_by, created_at, expires_at
+                FROM notification_messages
+                """, (org.springframework.jdbc.core.RowCallbackHandler) result -> {
+            NotificationMessage message = new NotificationMessage(
+                    result.getString("notification_id"),
+                    result.getString("title"),
+                    result.getString("body"),
+                    result.getString("type"),
+                    readStringList(result.getString("channels")),
+                    result.getString("source_module"),
+                    result.getString("source_id"),
+                    result.getString("risk_level"),
+                    result.getString("action_url"),
+                    result.getString("template_id"),
+                    result.getString("template_code"),
+                    result.getObject("template_version") == null ? null : result.getInt("template_version"),
+                    readObjectMap(result.getString("variables")),
+                    result.getString("created_by"),
+                    instantOf(result.getTimestamp("created_at")),
+                    result.getTimestamp("expires_at") == null ? null : instantOf(result.getTimestamp("expires_at")));
+            byId.put(message.notificationId, message);
+            loaded.add(message);
+        });
+        if (byId.isEmpty()) {
+            return loaded;
+        }
+        // 收件人是消息的子集合，一次整表查询后挂回，避免 N+1
+        jdbc.query("""
+                SELECT notification_id, recipient_user_id, recipient_display_name_snapshot, status, delivery_status,
+                       failure_reason, read_at, archived_at, delivered_at
+                FROM notification_recipients
+                """, (org.springframework.jdbc.core.RowCallbackHandler) result -> {
+            NotificationMessage owner = byId.get(result.getString("notification_id"));
+            if (owner == null) {
+                return;
+            }
+            NotificationRecipient recipient = new NotificationRecipient(
+                    result.getString("recipient_user_id"),
+                    result.getString("recipient_display_name_snapshot"),
+                    result.getString("status"),
+                    result.getString("delivery_status"),
+                    result.getString("failure_reason"),
+                    result.getTimestamp("delivered_at") == null ? null : instantOf(result.getTimestamp("delivered_at")));
+            if (result.getTimestamp("read_at") != null) {
+                recipient.readAt = instantOf(result.getTimestamp("read_at"));
+            }
+            if (result.getTimestamp("archived_at") != null) {
+                recipient.archivedAt = instantOf(result.getTimestamp("archived_at"));
+            }
+            owner.recipients.put(recipient.recipientUserId, recipient);
+        });
+        return loaded;
+    }
+
+    @Override
+    public java.util.List<NotificationTemplateRecord> loadTemplates() {
+        java.util.List<NotificationTemplateRecord> loaded = new java.util.ArrayList<>();
+        jdbc.query("""
+                SELECT template_id, code, name, title_template, body_template, variable_definitions::text,
+                       type, channels::text, status, version, created_by, created_at, updated_by, updated_at, disabled_at
+                FROM notification_templates
+                """, (org.springframework.jdbc.core.RowCallbackHandler) result -> loaded.add(new NotificationTemplateRecord(
+                result.getString("template_id"),
+                result.getString("code"),
+                result.getString("name"),
+                result.getString("title_template"),
+                result.getString("body_template"),
+                readTemplateVariables(result.getString("variable_definitions")),
+                result.getString("type"),
+                readStringList(result.getString("channels")),
+                result.getString("status"),
+                result.getInt("version"),
+                result.getString("created_by"),
+                instantOf(result.getTimestamp("created_at")),
+                result.getString("updated_by"),
+                instantOf(result.getTimestamp("updated_at")),
+                result.getTimestamp("disabled_at") == null ? null : instantOf(result.getTimestamp("disabled_at")))));
+        return loaded;
+    }
+
+    /** 读 jsonb 字符串数组。用 TypeReference 保留元素类型，List.class 会擦除泛型。 */
+    private java.util.List<String> readStringList(String rawJson) {
+        if (rawJson == null || rawJson.isBlank()) {
+            return java.util.List.of();
+        }
+        try {
+            return objectMapper.readValue(rawJson,
+                    new com.fasterxml.jackson.core.type.TypeReference<java.util.ArrayList<String>>() { });
+        } catch (Exception exception) {
+            throw new IllegalStateException("failed to read notification string list", exception);
+        }
+    }
+
+    private java.util.Map<String, Object> readObjectMap(String rawJson) {
+        if (rawJson == null || rawJson.isBlank()) {
+            return new java.util.LinkedHashMap<>();
+        }
+        try {
+            return objectMapper.readValue(rawJson,
+                    new com.fasterxml.jackson.core.type.TypeReference<java.util.LinkedHashMap<String, Object>>() { });
+        } catch (Exception exception) {
+            throw new IllegalStateException("failed to read notification variables", exception);
+        }
+    }
+
+    private java.util.List<TemplateVariable> readTemplateVariables(String rawJson) {
+        if (rawJson == null || rawJson.isBlank()) {
+            return java.util.List.of();
+        }
+        try {
+            java.util.List<java.util.Map<String, Object>> raw = objectMapper.readValue(rawJson,
+                    new com.fasterxml.jackson.core.type.TypeReference<java.util.ArrayList<java.util.Map<String, Object>>>() { });
+            java.util.List<TemplateVariable> variables = new java.util.ArrayList<>();
+            for (java.util.Map<String, Object> item : raw) {
+                variables.add(new TemplateVariable(
+                        java.util.Objects.toString(item.get("name"), ""),
+                        Boolean.TRUE.equals(item.get("required")),
+                        item.get("description") == null ? null : item.get("description").toString(),
+                        item.get("example") == null ? null : item.get("example").toString()));
+            }
+            return variables;
+        } catch (Exception exception) {
+            throw new IllegalStateException("failed to read notification template variables", exception);
+        }
+    }
+
+    private static Instant instantOf(java.sql.Timestamp value) {
+        return value == null ? Instant.now() : value.toInstant();
     }
 
     @Override
@@ -649,6 +814,20 @@ class NotificationPostgresPersistence implements NotificationPersistence {
 
 @Service
 class NotificationAuthContextProvider {
+    /** 收件人兜底查询用；没有数据库时保持 null，行为退回只认内存桩。 */
+    private org.springframework.jdbc.core.JdbcTemplate dataSourceLookup;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setDataSourceLookup(org.springframework.jdbc.core.JdbcTemplate jdbc) {
+        this.dataSourceLookup = jdbc;
+    }
+    /** 跨模块会话解析；没有 auth 模块的上下文时保持 null，鉴权回落到内存桩。 */
+    private cn.beiming.core.AuthSessionResolver sessionResolver;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setSessionResolver(cn.beiming.core.AuthSessionResolver resolver) {
+        this.sessionResolver = resolver;
+    }
     private static final Pattern REQUEST_ID_PATTERN = Pattern.compile("[A-Za-z0-9_.:-]{1,128}");
     private static final Pattern MINECRAFT_UUID_PATTERN = Pattern.compile("[a-f0-9]{32}");
     private static final Set<String> VALID_ROLES = Set.of("OWNER", "ADMIN", "HELPER", "USER");
@@ -728,6 +907,12 @@ class NotificationAuthContextProvider {
             failCurrentIncompatible = false;
             throw new ApiException(46302, HttpStatus.BAD_GATEWAY, "auth incompatible");
         }
+        // 真实会话优先：登录拿到的 ses_xxx 在这里换成真实用户与角色。
+        // 内存 Map 里的桩 token 只在测试环境播种，生产不会出现。
+        AuthUser resolved = resolveFromSession(authorization);
+        if (resolved != null) {
+            return resolved;
+        }
         AuthUser user = usersByToken.get(authorization.substring("Bearer ".length()));
         if (user == null) {
             throw new ApiException(41001, HttpStatus.UNAUTHORIZED, "invalid session");
@@ -736,6 +921,26 @@ class NotificationAuthContextProvider {
             throw new ApiException(46302, HttpStatus.BAD_GATEWAY, "auth incompatible");
         }
         return user.copy();
+    }
+
+    /**
+     * 用 core 的会话契约把 Bearer token 换成真实用户。失败返回 null，
+     * 由调用方回落到内存桩（仅测试环境有数据），这样 41001/46302 的错误语义不变。
+     */
+    private AuthUser resolveFromSession(String authorization) {
+        if (sessionResolver == null) {
+            return null;
+        }
+        cn.beiming.core.AuthSessionResolver.ResolvedSession session = sessionResolver.resolve(authorization);
+        if (session == null) {
+            return null;
+        }
+        return new AuthUser(
+                session.userId(),
+                session.username(),
+                new LinkedHashSet<>(java.util.List.of(session.role())),
+                new LinkedHashSet<>(session.permissions()),
+                "ACTIVE");
     }
 
     private AuthUser requireGatewayContext(HttpServletRequest request, String gatewayRequestId) {
@@ -799,6 +1004,10 @@ class NotificationAuthContextProvider {
             throw new ApiException(46302, HttpStatus.BAD_GATEWAY, "auth incompatible");
         }
         AuthUser user = targetsByUserId.get(userId);
+        if (user == null) {
+            // 内存里没有就查真实用户表：收件人来自 auth 模块，不该被裁到只认桩数据。
+            user = lookupRealUser(userId);
+        }
         if (user == null || Set.of("DISABLED", "BANNED", "DELETED").contains(user.status)) {
             throw new ApiException(43315, HttpStatus.NOT_FOUND, "recipient not deliverable");
         }
@@ -806,6 +1015,43 @@ class NotificationAuthContextProvider {
             throw new ApiException(46302, HttpStatus.BAD_GATEWAY, "auth incompatible");
         }
         return user.copy();
+    }
+
+    /**
+     * 从 auth_users 直接读收件人。无法访问数据库时返回 null，由调用方回落到 43315。
+     * 只读必要字段，不复制 auth 模块的用户索引。
+     */
+    private AuthUser lookupRealUser(String userId) {
+        if (dataSourceLookup == null || userId == null || userId.isBlank()) {
+            return null;
+        }
+        java.util.List<AuthUser> found = new java.util.ArrayList<>();
+        try {
+            dataSourceLookup.query("""
+                    SELECT user_id, display_name, roles::text, status
+                    FROM auth_users WHERE user_id = ?
+                    """, (org.springframework.jdbc.core.RowCallbackHandler) result -> {
+                java.util.LinkedHashSet<String> roles = new java.util.LinkedHashSet<>();
+                String rolesJson = result.getString("roles");
+                if (rolesJson != null && !rolesJson.isBlank()) {
+                    try {
+                        roles.addAll(new com.fasterxml.jackson.databind.ObjectMapper().readValue(rolesJson,
+                                new com.fasterxml.jackson.core.type.TypeReference<java.util.ArrayList<String>>() { }));
+                    } catch (Exception exception) {
+                        throw new IllegalStateException("failed to read recipient roles", exception);
+                    }
+                }
+                found.add(new AuthUser(
+                        result.getString("user_id"),
+                        result.getString("display_name"),
+                        roles,
+                        new java.util.LinkedHashSet<>(),
+                        result.getString("status")));
+            }, userId);
+        } catch (Exception exception) {
+            return null;
+        }
+        return found.isEmpty() ? null : found.get(0);
     }
 
     void failNextCurrentUnavailable() {
@@ -851,6 +1097,25 @@ class NotificationStore {
     private final Map<String, NotificationTemplateRecord> templates = new ConcurrentHashMap<>();
     private final Map<String, String> templateIdByCode = new ConcurrentHashMap<>();
     private final Map<String, String> idsByAlias = new ConcurrentHashMap<>();
+
+    /**
+     * 从正式库读回模板与通知消息。
+     *
+     * <p>未读数、消息列表、模板查找全部走内存 Map，持久化层只实现了写。
+     * 不读回的话重启一次「我的通知」就全空，而库里消息还在。
+     */
+    synchronized void hydrateFromStore() {
+        for (NotificationTemplateRecord template : persistence.loadTemplates()) {
+            templates.put(template.templateId, template);
+            templateIdByCode.put(template.code, template.templateId);
+        }
+        for (NotificationMessage message : persistence.loadMessages()) {
+            messages.put(message.notificationId, message);
+            if (message.sourceId != null) {
+                idsByAlias.put(message.sourceModule + ':' + message.sourceId, message.notificationId);
+            }
+        }
+    }
     private final List<NotificationAudit> audits = new ArrayList<>();
     private final Map<String, IdempotencyRecord> messageIdempotency = new ConcurrentHashMap<>();
     private final Map<String, IdempotencyRecord> templateIdempotency = new ConcurrentHashMap<>();

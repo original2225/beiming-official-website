@@ -19,7 +19,14 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@SpringBootTest(classes = UnifiedBackendServiceApplication.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(classes = UnifiedBackendServiceApplication.class,
+        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        properties = {
+                // 预演用例逐个业务面打真实 HTTP，验证「候选入口能否承接全部业务面」。
+                // ops-control 现在只认真实会话，桩 token 默认关闭；显式开启才能继续用
+                // owner-token 当主体，否则这里会因 41003 被误判成业务面缺失。
+                "ops-control.auth.stub-tokens-enabled=true"
+        })
 class UnifiedBackendRealHttpRehearsalTest {
     @LocalServerPort
     private int port;

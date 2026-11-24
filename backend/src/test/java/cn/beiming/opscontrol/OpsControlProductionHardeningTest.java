@@ -21,7 +21,12 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest(classes = cn.beiming.opscore.OpsCoreServiceApplication.class, properties = "server.port=8133")
+@SpringBootTest(classes = cn.beiming.opscore.OpsCoreServiceApplication.class, properties = {
+        "server.port=8133",
+        // 本测试验证的是「测试控制头在生产默认配置下被忽略」，桩 token 只是绕过鉴权的手段，
+        // 不是被测行为；真实会话鉴权落地后必须显式开启桩 token 才能沿用原用例。
+        "ops-control.auth.stub-tokens-enabled=true"
+})
 @AutoConfigureMockMvc
 @DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_EACH_TEST_METHOD)
 class OpsControlProductionHardeningTest {

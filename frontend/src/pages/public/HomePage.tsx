@@ -10,6 +10,7 @@ import { RegisterModal } from '../../components/common/RegisterModal'
 import { EmptyState } from '../../components/feedback/EmptyState'
 import { TimeDisplay } from '../../components/data-display/TimeDisplay'
 import { useRequest } from '../../hooks/useRequest'
+import { useAuthStore } from '../../store/authStore'
 import * as pub from '../../api/modules/public'
 import { ROUTES } from '../../constants/routes'
 import { img } from '../../constants/images'
@@ -333,6 +334,9 @@ export function HomePage() {
   const [registerOpen, setRegisterOpen] = useState(false)
   const openRegister = () => { setLoginOpen(false); setRegisterOpen(true) }
   const openLogin = () => { setRegisterOpen(false); setLoginOpen(true) }
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  const currentUser = useAuthStore((s) => s.user)
+  const logout = useAuthStore((s) => s.clearAuth)
 
   return (
     <div className="bg-surface-dark">
@@ -345,7 +349,14 @@ export function HomePage() {
           <a href="#guides" className="hover:text-indigo">指南</a>
           <a href="#resources" className="hover:text-indigo">资源</a>
           <a href="#members" className="hover:text-indigo">成员</a>
-          <button onClick={() => setLoginOpen(true)} className="hover:text-ochre">登录</button>
+          {isAuthenticated ? (
+            <>
+              <Link to={ROUTES.PROFILE} className="hover:text-indigo">{currentUser?.username ?? '用户中心'}</Link>
+              <button onClick={logout} className="hover:text-ochre">退出</button>
+            </>
+          ) : (
+            <button onClick={() => setLoginOpen(true)} className="hover:text-ochre">登录</button>
+          )}
         </div>
       </nav>
       <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} onSwitchToRegister={openRegister} />

@@ -3,12 +3,12 @@
  */
 
 const IMG = {
-  logo: 'logo.png',
+  logo: 'logo.webp',
   heroBg: 'hero-bg.jpg',
-  bgHero: 'bg-hero.png',
-  bgStatus: 'bg-status.png',
-  bgAnnounce: 'bg-announce.png',
-  bgMembers: 'bg-members.png',
+  bgHero: 'bg-hero.webp',
+  bgStatus: 'bg-status.webp',
+  bgAnnounce: 'bg-announce.webp',
+  bgMembers: 'bg-members.webp',
   texStone: 'tex-stone.webp',
   texDark: 'tex-dark.webp',
   texLight: 'tex-light.webp',
