@@ -37,7 +37,8 @@ import static org.assertj.core.api.Assertions.assertThat;
         properties = {
                 "spring.autoconfigure.exclude=",
                 "spring.flyway.enabled=true",
-                "onboarding.test-controls.enabled=false"
+                "onboarding.test-controls.enabled=false",
+                "onboarding.auth.stub-tokens-enabled=true"
         }
 )
 @Testcontainers

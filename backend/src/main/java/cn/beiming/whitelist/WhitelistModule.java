@@ -51,9 +51,17 @@ class WhitelistModule {
         return new WhitelistStore(testControls, whitelistPersistence);
     }
 
+    /**
+     * 鉴权提供者。
+     *
+     * <p>硬编码 token 只在 {@code whitelist.auth.stub-tokens-enabled=true} 时可用，生产默认 false；
+     * 否则真实登录拿到的 {@code ses_*} token 永远命中不到，本模块对真实用户不可用。
+     */
     @Bean
-    TestWhitelistAuthProvider whitelistAuthProvider() {
-        return new TestWhitelistAuthProvider();
+    TestWhitelistAuthProvider whitelistAuthProvider(
+            org.springframework.beans.factory.ObjectProvider<cn.beiming.core.AuthSessionResolver> sessionResolver,
+            @org.springframework.beans.factory.annotation.Value("${whitelist.auth.stub-tokens-enabled:false}") boolean stubTokensEnabled) {
+        return new TestWhitelistAuthProvider(sessionResolver, stubTokensEnabled);
     }
 
     @Bean
@@ -1047,6 +1055,14 @@ class WhitelistStore {
 }
 
 class TestWhitelistAuthProvider {
+    private final org.springframework.beans.factory.ObjectProvider<cn.beiming.core.AuthSessionResolver> sessionResolver;
+    private final boolean stubTokensEnabled;
+
+    TestWhitelistAuthProvider(org.springframework.beans.factory.ObjectProvider<cn.beiming.core.AuthSessionResolver> sessionResolver,
+                              boolean stubTokensEnabled) {
+        this.sessionResolver = sessionResolver;
+        this.stubTokensEnabled = stubTokensEnabled;
+    }
     WhitelistUser requireUser(String authorization, HttpServletRequest request) {
         if (AdmissionTrustedActor.hasGatewayContext(request)) {
             return trustedActor(request);
@@ -1058,6 +1074,25 @@ class TestWhitelistAuthProvider {
         if (authorization == null || authorization.isBlank()) throw new WhitelistException(401, 41000, "not logged in");
         if (!authorization.startsWith("Bearer ")) throw new WhitelistException(401, 41003, "bad token format");
         String token = authorization.substring("Bearer ".length());
+
+        // 真实会话优先：登录拿到的 ses_* token 由核心 auth 解析出真实用户与角色。
+        // 只认硬编码 switch 时，本模块对真实用户恒返回 41001。
+        cn.beiming.core.AuthSessionResolver resolver = sessionResolver.getIfAvailable();
+        if (resolver != null) {
+            cn.beiming.core.AuthSessionResolver.ResolvedSession resolved = resolver.resolve(authorization);
+            if (resolved != null) {
+                java.util.Set<String> roles = new java.util.LinkedHashSet<>();
+                if (resolved.role() != null && !resolved.role().isBlank()) {
+                    roles.add(resolved.role());
+                }
+                return new WhitelistUser(resolved.userId(), resolved.username(), roles, "ACTIVE", "NORMAL");
+            }
+        }
+
+        // 真实会话没解析出来，才考虑桩 token —— 且必须开关打开。
+        if (!stubTokensEnabled) {
+            throw new WhitelistException(401, 41001, "invalid session");
+        }
         return switch (token) {
             case "auth-unavailable-token", "disabled-token", "banned-token", "deleted-token" -> throw new WhitelistException(502, 47000, "auth unavailable");
             case "auth-timeout-token" -> throw new WhitelistException(504, 47001, "auth timeout");

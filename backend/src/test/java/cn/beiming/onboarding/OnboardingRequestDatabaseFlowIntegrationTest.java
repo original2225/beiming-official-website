@@ -34,7 +34,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest(
         classes = AdmissionCoreServiceApplication.class,
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = "onboarding.test-controls.enabled=true"
+        properties = {"onboarding.test-controls.enabled=true", "onboarding.auth.stub-tokens-enabled=true"}
 )
 class OnboardingRequestDatabaseFlowIntegrationTest {
     private static final String FLOW_ID = "onboarding-flow-" + UUID.randomUUID();

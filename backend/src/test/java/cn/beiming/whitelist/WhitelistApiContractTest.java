@@ -30,7 +30,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest(classes = AdmissionCoreServiceApplication.class, properties = {"server.port=8131", "whitelist.test-controls.enabled=true"})
+@SpringBootTest(classes = AdmissionCoreServiceApplication.class, properties = {"server.port=8131", "whitelist.test-controls.enabled=true",
+                "whitelist.auth.stub-tokens-enabled=true"
+        })
 @AutoConfigureMockMvc
 @DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_EACH_TEST_METHOD)
 class WhitelistApiContractTest {

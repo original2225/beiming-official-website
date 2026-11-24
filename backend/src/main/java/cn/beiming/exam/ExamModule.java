@@ -52,9 +52,17 @@ class ExamModule {
         return store;
     }
 
+    /**
+     * 鉴权提供者。
+     *
+     * <p>硬编码 token 只在 {@code exam.auth.stub-tokens-enabled=true} 时可用，生产默认 false；
+     * 否则真实登录拿到的 {@code ses_*} token 永远命中不到，本模块对真实用户不可用。
+     */
     @Bean
-    TestExamAuthProvider examAuthProvider() {
-        return new TestExamAuthProvider();
+    TestExamAuthProvider examAuthProvider(
+            org.springframework.beans.factory.ObjectProvider<cn.beiming.core.AuthSessionResolver> sessionResolver,
+            @org.springframework.beans.factory.annotation.Value("${exam.auth.stub-tokens-enabled:false}") boolean stubTokensEnabled) {
+        return new TestExamAuthProvider(sessionResolver, stubTokensEnabled);
     }
 
     @Bean
@@ -1553,6 +1561,14 @@ class ExamStore {
 }
 
 class TestExamAuthProvider {
+    private final org.springframework.beans.factory.ObjectProvider<cn.beiming.core.AuthSessionResolver> sessionResolver;
+    private final boolean stubTokensEnabled;
+
+    TestExamAuthProvider(org.springframework.beans.factory.ObjectProvider<cn.beiming.core.AuthSessionResolver> sessionResolver,
+                         boolean stubTokensEnabled) {
+        this.sessionResolver = sessionResolver;
+        this.stubTokensEnabled = stubTokensEnabled;
+    }
     ExamUser requireUser(String authorization, HttpServletRequest request) {
         if (AdmissionTrustedActor.hasGatewayContext(request)) {
             return trustedActor(request);
@@ -1564,6 +1580,25 @@ class TestExamAuthProvider {
         if (authorization == null || authorization.isBlank()) throw new ExamException(401, 41000, "not logged in");
         if (!authorization.startsWith("Bearer ")) throw new ExamException(401, 41003, "bad token format");
         String token = authorization.substring("Bearer ".length());
+
+        // 真实会话优先：登录拿到的 ses_* token 由核心 auth 解析出真实用户与角色。
+        // 只认硬编码 switch 时，本模块对真实用户恒返回 41001。
+        cn.beiming.core.AuthSessionResolver resolver = sessionResolver.getIfAvailable();
+        if (resolver != null) {
+            cn.beiming.core.AuthSessionResolver.ResolvedSession resolved = resolver.resolve(authorization);
+            if (resolved != null) {
+                java.util.Set<String> roles = new java.util.LinkedHashSet<>();
+                if (resolved.role() != null && !resolved.role().isBlank()) {
+                    roles.add(resolved.role());
+                }
+                return new ExamUser(resolved.userId(), resolved.username(), roles, "ACTIVE", null, null);
+            }
+        }
+
+        // 真实会话没解析出来，才考虑桩 token —— 且必须开关打开。
+        if (!stubTokensEnabled) {
+            throw new ExamException(401, 41001, "invalid session");
+        }
         return switch (token) {
             case "auth-unavailable-token", "disabled-token", "banned-token", "deleted-token" -> throw new ExamException(502, 46900, "auth unavailable");
             case "auth-timeout-token" -> throw new ExamException(504, 46901, "auth timeout");

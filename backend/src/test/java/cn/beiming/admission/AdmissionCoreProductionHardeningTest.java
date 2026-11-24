@@ -22,7 +22,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest(classes = AdmissionCoreServiceApplication.class, properties = "server.port=8131")
+@SpringBootTest(classes = AdmissionCoreServiceApplication.class, properties = {"server.port=8131",
+        "onboarding.auth.stub-tokens-enabled=true",
+        "exam.auth.stub-tokens-enabled=true",
+        "whitelist.auth.stub-tokens-enabled=true"})
 @AutoConfigureMockMvc
 @DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_EACH_TEST_METHOD)
 class AdmissionCoreProductionHardeningTest {
