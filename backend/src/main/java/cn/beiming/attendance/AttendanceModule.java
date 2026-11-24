@@ -8,6 +8,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
@@ -37,6 +38,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import cn.beiming.core.AuthSessionResolver;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -49,9 +51,20 @@ class AttendanceModule {
         return new AttendanceStore(testControls, persistence);
     }
 
+    /**
+     * 鉴权提供者。
+     *
+     * <p>硬编码 token（{@code admin-token} 等）只在 {@code attendance.auth.stub-tokens-enabled=true}
+     * 时可用，生产默认 false —— 否则真实登录拿到的 {@code ses_*} token 永远命中不到，
+     * 整个考勤模块对真实用户不可用（返回 41001，看起来像"没登录"）。
+     *
+     * <p>开关关闭时走 {@link AuthSessionResolver} 解析真实会话，与其余模块一致。
+     */
     @Bean
-    TestAttendanceAuthProvider attendanceAuthProvider() {
-        return new TestAttendanceAuthProvider();
+    TestAttendanceAuthProvider attendanceAuthProvider(
+            ObjectProvider<AuthSessionResolver> sessionResolver,
+            @Value("${attendance.auth.stub-tokens-enabled:false}") boolean stubTokensEnabled) {
+        return new TestAttendanceAuthProvider(sessionResolver, stubTokensEnabled);
     }
 
     @Bean
@@ -1242,6 +1255,16 @@ class AttendanceStore {
 }
 
 class TestAttendanceAuthProvider {
+    // 可选注入：只加载 attendance 的测试/裁剪上下文里没有 auth 模块，用 ObjectProvider 避免启动即失败。
+    private final org.springframework.beans.factory.ObjectProvider<AuthSessionResolver> sessionResolver;
+    private final boolean stubTokensEnabled;
+
+    TestAttendanceAuthProvider(org.springframework.beans.factory.ObjectProvider<AuthSessionResolver> sessionResolver,
+                               boolean stubTokensEnabled) {
+        this.sessionResolver = sessionResolver;
+        this.stubTokensEnabled = stubTokensEnabled;
+    }
+
     AttendanceUser requireUser(String authorization, HttpServletRequest request) {
         if (AdmissionTrustedActor.hasGatewayContext(request)) {
             return trustedActor(request);
@@ -1252,6 +1275,25 @@ class TestAttendanceAuthProvider {
     AttendanceUser requireUser(String authorization) {
         if (authorization == null || authorization.isBlank()) throw new AttendanceException(401, 41000, "not logged in");
         if (!authorization.startsWith("Bearer ")) throw new AttendanceException(401, 41003, "bad token format");
+
+        // 真实会话优先：登录拿到的 ses_* token 由核心 auth 模块解析出真实用户与角色。
+        // 不先走这一步，整个模块对真实用户不可用（桩只认硬编码字符串）。
+        AuthSessionResolver resolver = sessionResolver.getIfAvailable();
+        AuthSessionResolver.ResolvedSession resolved = resolver == null ? null : resolver.resolve(authorization);
+        if (resolved != null) {
+            // ResolvedSession 只给最高优先级的一个角色（OWNER/ADMIN/HELPER/USER）。
+            Set<String> roles = new LinkedHashSet<>();
+            if (resolved.role() != null && !resolved.role().isBlank()) {
+                roles.add(resolved.role());
+            }
+            return new AttendanceUser(resolved.userId(), resolved.username(), roles, "ACTIVE");
+        }
+
+        if (!stubTokensEnabled) {
+            // 开关关闭时明确报无效会话，与核心 auth 的错误码语义一致。
+            throw new AttendanceException(401, 41001, "invalid session");
+        }
+
         String token = authorization.substring("Bearer ".length());
         return switch (token) {
             case "auth-unavailable-token", "disabled-token", "banned-token", "deleted-token" -> throw new AttendanceException(502, 48000, "auth unavailable");

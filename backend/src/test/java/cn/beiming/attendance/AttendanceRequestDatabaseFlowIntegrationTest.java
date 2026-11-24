@@ -37,7 +37,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest(
         classes = AdmissionCoreServiceApplication.class,
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = "attendance.test-controls.enabled=true"
+        properties = {"attendance.test-controls.enabled=true", "attendance.auth.stub-tokens-enabled=true"}
 )
 @DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_EACH_TEST_METHOD)
 class AttendanceRequestDatabaseFlowIntegrationTest {
