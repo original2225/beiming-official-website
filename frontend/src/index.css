@@ -246,3 +246,88 @@
   pointer-events: none;
   animation: ink-drift 20s ease-in-out infinite;
 }
+
+/* ── 登录/注册弹窗：浅色变体 + 背景虚化 ──
+ *
+ * 品牌 logo（src/img/logo.webp）是浅蓝灰实心方图（四角 RGB≈180,190,201，
+ * 无 alpha 通道），贴在全站深色 panel-ink（#2D2D2D）上对比强烈、色调割裂。
+ * 另一条路是重画一版深色 logo，但那是改动品牌资产、且以后换图又对不上；
+ * 这里改为让承载它的弹窗跟随 logo 的色系：
+ * 浅色纸面底 + 深墨字，logo 方块自然融进面板，像嵌在信封上的印章。
+ *
+ * 只用于 auth 弹窗，不影响全站深色主题。
+ */
+@layer components {
+  .auth-backdrop {
+    position: absolute;
+    inset: 0;
+    /* 背景虚化：先压暗再看不清细节，让注意力回到表单上。
+       backdrop-filter 需要浏览器支持；不支持时由底色兜底。 */
+    background-color: rgba(12, 16, 20, 0.55);
+    backdrop-filter: blur(14px) saturate(0.75);
+    -webkit-backdrop-filter: blur(14px) saturate(0.75);
+  }
+
+  .panel-rice {
+    /* 取 logo 四角的浅蓝灰做基底，往宣纸白方向提亮一点，避免和 logo 完全同色而没有层次 */
+    background-color: #EDF1F4;
+    border: 1px solid rgba(46, 90, 107, 0.18);
+    border-radius: var(--radius-lg);
+    box-shadow:
+      0 18px 48px rgba(0, 0, 0, 0.45),
+      0 1px 0 rgba(255, 255, 255, 0.7) inset;
+    color: #1F2A30;
+  }
+
+  /* 浅色面板内的输入框：白底细边，聚焦时用品牌靛蓝 */
+  .auth-input-light {
+    width: 100%;
+    padding: 0.625rem 1rem;
+    background-color: #FFFFFF;
+    border: 1px solid rgba(46, 90, 107, 0.22);
+    border-radius: var(--radius-md);
+    color: #1F2A30;
+    font-size: 0.875rem;
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .auth-input-light::placeholder {
+    color: #8C9AA3;
+  }
+  .auth-input-light:focus {
+    border-color: var(--color-indigo);
+    box-shadow: 0 0 0 3px rgba(46, 90, 107, 0.15);
+  }
+
+  /* 浅色面板的按钮：靛蓝实心，比深色面板下的按钮更沉稳 */
+  .btn-auth-light {
+    width: 100%;
+    padding: 0.625rem 1.25rem;
+    font-family: var(--font-display);
+    font-size: 0.875rem;
+    border-radius: var(--radius-md);
+    border: 1px solid #2E5A6B;
+    background-color: #2E5A6B;
+    color: #F7F5F0;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    box-shadow: 0 2px 8px rgba(46, 90, 107, 0.25);
+  }
+  .btn-auth-light:hover:not(:disabled) {
+    background-color: #3D7488;
+    border-color: #3D7488;
+  }
+  .btn-auth-light:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  /* logo 嵌在浅色面板里：给它一圈极淡的描边，避免同色背景糊成一片 */
+  .auth-logo {
+    width: 80px;
+    height: 80px;
+    object-fit: contain;
+    border-radius: var(--radius-lg);
+    box-shadow: 0 0 0 1px rgba(46, 90, 107, 0.12);
+  }
+}
