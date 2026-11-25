@@ -25,7 +25,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(classes = AdmissionCoreServiceApplication.class, properties = {"server.port=8131",
         "onboarding.auth.stub-tokens-enabled=true",
         "exam.auth.stub-tokens-enabled=true",
-        "whitelist.auth.stub-tokens-enabled=true"})
+        "whitelist.auth.stub-tokens-enabled=true",
+        "whitelist.stub-handoffs-enabled=true"})
 @AutoConfigureMockMvc
 @DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_EACH_TEST_METHOD)
 class AdmissionCoreProductionHardeningTest {

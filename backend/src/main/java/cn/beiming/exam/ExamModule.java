@@ -46,8 +46,10 @@ import java.util.concurrent.ConcurrentHashMap;
 @Configuration
 class ExamModule {
     @Bean
-    ExamStore examStore(ExamTestControls testControls, ExamPersistence examPersistence) {
-        ExamStore store = new ExamStore(testControls, examPersistence);
+    ExamStore examStore(ExamTestControls testControls, ExamPersistence examPersistence,
+                        org.springframework.beans.factory.ObjectProvider<cn.beiming.core.OnboardingDirectionResolver> onboardingDirectionResolver) {
+        ExamStore store = new ExamStore(testControls, examPersistence,
+                onboardingDirectionResolver.getIfAvailable());
         store.seed();
         return store;
     }
@@ -358,7 +360,7 @@ class ExamController {
     }
 }
 
-class ExamStore {
+class ExamStore implements cn.beiming.core.ExamHandoffResolver {
     private static final String NOW = "2026-05-23T12:00:00Z";
     private static final Set<String> DIRECTIONS = Set.of("REDSTONE", "LATE_GAME", "BUILDING", "GENERAL");
     private static final Set<String> TYPES = Set.of("SINGLE_CHOICE", "MULTIPLE_CHOICE", "TRUE_FALSE", "SHORT_TEXT");
@@ -375,12 +377,20 @@ class ExamStore {
     private final List<Map<String, Object>> audits = new ArrayList<>();
     private final ExamTestControls testControls;
     private final ExamPersistence persistence;
+    /** 读 onboarding 登记的真实审核方向；为 null 时回落 applicationId 字面值判断（测试上下文）。 */
+    private final cn.beiming.core.OnboardingDirectionResolver onboardingDirectionResolver;
     private int idSeq = 3000;
     private int whitelistHandoffSnapshotsTotal;
 
     ExamStore(ExamTestControls testControls, ExamPersistence persistence) {
+        this(testControls, persistence, null);
+    }
+
+    ExamStore(ExamTestControls testControls, ExamPersistence persistence,
+              cn.beiming.core.OnboardingDirectionResolver onboardingDirectionResolver) {
         this.testControls = testControls;
         this.persistence = persistence;
+        this.onboardingDirectionResolver = onboardingDirectionResolver;
     }
 
     void seed() {
@@ -389,7 +399,11 @@ class ExamStore {
         addQuestion(question("q-redstone-short", "SHORT_TEXT", "REDSTONE", "NORMAL", "Explain how to keep a redstone build reproducible.", List.of(), List.of(), "Mention timing and rollback.", 30, List.of("redstone"), "ACTIVE"));
         addQuestion(question("q-general-single", "SINGLE_CHOICE", "GENERAL", "NORMAL", "What should a new player read first?", options("A", "B"), List.of("A"), null, 10, List.of("general"), "ACTIVE"));
         addQuestion(question("q-general-true", "TRUE_FALSE", "GENERAL", "NORMAL", "Rules apply before whitelist approval.", options("A", "B"), List.of("A"), null, 10, List.of("general"), "ACTIVE"));
-        templates.put("tpl-redstone", template("tpl-redstone", "Redstone normal", "REDSTONE", "NORMAL", "PUBLISHED", 1, 45, 50, 20, List.of(
+        // passScore 50→40、objectivePassScore 20→10：红石卷客观题满分只有 20（单选10+多选10），
+        // 问答题 30；此前两项阈值都顶到满分，等于「任何一题答错就永远过不了」，实测客观全对但
+        // 问答只给 10 分就判 MANUAL_FAILED。调到 40/10 后：客观错一题仍可进人工阅卷，
+        // 客观+问答合计 40 即通过，既保留门槛又留出容错。
+        templates.put("tpl-redstone", template("tpl-redstone", "Redstone normal", "REDSTONE", "NORMAL", "PUBLISHED", 1, 45, 40, 10, List.of(
                 rule("SINGLE_CHOICE", 1, 10, List.of("redstone")),
                 rule("MULTIPLE_CHOICE", 1, 10, List.of("redstone")),
                 rule("SHORT_TEXT", 1, 30, List.of("redstone"))
@@ -944,6 +958,46 @@ class ExamStore {
         return pageRows(rows, page, pageSize);
     }
 
+    /**
+     * 跨模块交接查询：按 sessionId 给出下游（whitelist）判断所需的全部信息。
+     *
+     * <p>此前下游靠 {@code switch (sessionId)} 硬编码测试字符串，真实考生的 sessionId
+     * 一律命中不了；这个方法是那条断链的正解。
+     *
+     * <p>返回 null 的几种情况要区分清楚：会话不存在（真错）、还没考完（调用时机错）、
+     * 结果尚未定（还在人工复核）。这里统一返回 null，由调用方按自己的错误码语义表达。
+     */
+    @Override
+    public cn.beiming.core.ExamHandoffResolver.HandoffSnapshot resolve(String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) {
+            return null;
+        }
+        ExamSessionRecord session = sessions.get(sessionId);
+        if (session == null) {
+            return null;
+        }
+        // 只有已经结束且结论明确的会话才可交接。IN_PROGRESS / PENDING_MANUAL_REVIEW
+        // 等状态都不算，避免下游在考试还没判完时就把人放进来。
+        if (!Set.of("AUTO_PASSED", "AUTO_FAILED", "MANUAL_PASSED", "MANUAL_FAILED").contains(session.status)) {
+            return null;
+        }
+        if (session.result == null || session.result.isBlank()) {
+            return null;
+        }
+        return new cn.beiming.core.ExamHandoffResolver.HandoffSnapshot(
+                session.sessionId,
+                session.applicationId,
+                session.userId,
+                session.displayName,
+                session.reviewDirection,
+                session.attemptType,
+                session.result,
+                scoreSummary(session),
+                session.minecraftBinding,
+                session.onboardingHandoffVersion,
+                session.passedAt == null ? null : java.time.Instant.parse(session.passedAt));
+    }
+
     synchronized Map<String, Object> opsSummary(HttpServletRequest request) {
         if (storeShouldFail(request)) throw new ExamException(500, 51900, "exam internal error");
         long pending = sessions.values().stream().filter(s -> Set.of("PENDING_MANUAL_REVIEW", "SUPPLEMENT_SUBMITTED").contains(s.status)).count();
@@ -959,10 +1013,18 @@ class ExamStore {
         if (applicationId.contains("blocked")) throw new ExamException(409, 43910, "onboarding handoff blocked");
         if ("ONBOARDING:UNAVAILABLE".equals(testHeader(request, "X-Test-Dependency-Mode"))) throw new ExamException(502, 46910, "onboarding unavailable");
         if (!applicationId.startsWith("app-")) throw new ExamException(409, 43910, "onboarding not ready");
-        String direction = switch (applicationId) {
-            case "app-general" -> "GENERAL";
-            default -> "REDSTONE";
-        };
+        // 真实方向优先：从 onboarding 读考生实际选的方向。此前只有 switch(applicationId)
+        // 的字面值判断，真实申请 ID（app-2001）全落到 default=REDSTONE，选了 GENERAL 的用户
+        // 也拿到红石卷（含问答题，不人工阅卷永远过不了）。字面值兜底留给未装配 resolver 的测试。
+        String direction = onboardingDirectionResolver == null
+                ? null
+                : onboardingDirectionResolver.resolveReviewDirection(applicationId);
+        if (direction == null || direction.isBlank()) {
+            direction = switch (applicationId) {
+                case "app-general" -> "GENERAL";
+                default -> "REDSTONE";
+            };
+        }
         return new Handoff(applicationId, user.userId(), direction);
     }
 
@@ -1591,7 +1653,7 @@ class TestExamAuthProvider {
                 if (resolved.role() != null && !resolved.role().isBlank()) {
                     roles.add(resolved.role());
                 }
-                return new ExamUser(resolved.userId(), resolved.username(), roles, "ACTIVE", null, null);
+                return new ExamUser(resolved.userId(), resolved.username(), roles, "ACTIVE", resolved.minecraftBinding(), null);
             }
         }
 

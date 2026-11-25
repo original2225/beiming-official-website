@@ -47,8 +47,11 @@ import java.util.concurrent.ConcurrentHashMap;
 @Configuration
 class WhitelistModule {
     @Bean
-    WhitelistStore whitelistStore(WhitelistTestControls testControls, WhitelistPersistence whitelistPersistence) {
-        return new WhitelistStore(testControls, whitelistPersistence);
+    WhitelistStore whitelistStore(WhitelistTestControls testControls, WhitelistPersistence whitelistPersistence,
+                                  org.springframework.beans.factory.ObjectProvider<cn.beiming.core.ExamHandoffResolver> examHandoffResolver,
+                                  @org.springframework.beans.factory.annotation.Value("${whitelist.stub-handoffs-enabled:false}") boolean stubHandoffsEnabled,
+                                  org.springframework.beans.factory.ObjectProvider<cn.beiming.core.ProfileActivationResolver> profileActivationResolver) {
+        return new WhitelistStore(testControls, whitelistPersistence, examHandoffResolver, stubHandoffsEnabled, profileActivationResolver);
     }
 
     /**
@@ -301,15 +304,35 @@ class WhitelistStore {
     private final Map<String, String> currentByUser = new ConcurrentHashMap<>();
     private final Map<String, IdempotencyRecord> idempotency = new ConcurrentHashMap<>();
     private final Set<String> consumedHandoffs = ConcurrentHashMap.newKeySet();
+    /**
+     * 真实考试交接查询。可选注入：只加载 whitelist 的测试上下文里没有 exam 模块，
+     * 强制依赖会让应用起不来；拿不到时退回硬编码桩。
+     */
+    private final org.springframework.beans.factory.ObjectProvider<cn.beiming.core.ExamHandoffResolver> examHandoffResolver;
+    private final boolean stubHandoffsEnabled;
+    /** 审批通过后真实建档；为 null（未装配）时只保留原编造视图，供旧测试上下文运行。 */
+    private org.springframework.beans.factory.ObjectProvider<cn.beiming.core.ProfileActivationResolver> profileActivationResolver;
     private final List<Map<String, Object>> audits = Collections.synchronizedList(new ArrayList<>());
     private final WhitelistTestControls testControls;
     private final WhitelistPersistence persistence;
     private int idSeq = 1000;
     private int attendanceHandoffReads;
 
-    WhitelistStore(WhitelistTestControls testControls, WhitelistPersistence persistence) {
+    WhitelistStore(WhitelistTestControls testControls, WhitelistPersistence persistence,
+                   org.springframework.beans.factory.ObjectProvider<cn.beiming.core.ExamHandoffResolver> examHandoffResolver,
+                   boolean stubHandoffsEnabled) {
+        this(testControls, persistence, examHandoffResolver, stubHandoffsEnabled, null);
+    }
+
+    WhitelistStore(WhitelistTestControls testControls, WhitelistPersistence persistence,
+                   org.springframework.beans.factory.ObjectProvider<cn.beiming.core.ExamHandoffResolver> examHandoffResolver,
+                   boolean stubHandoffsEnabled,
+                   org.springframework.beans.factory.ObjectProvider<cn.beiming.core.ProfileActivationResolver> profileActivationResolver) {
         this.testControls = testControls;
         this.persistence = persistence;
+        this.examHandoffResolver = examHandoffResolver;
+        this.stubHandoffsEnabled = stubHandoffsEnabled;
+        this.profileActivationResolver = profileActivationResolver;
     }
 
     synchronized MutationResult createApplication(WhitelistUser user, Map<String, Object> body, HttpServletRequest request) {
@@ -597,10 +620,48 @@ class WhitelistStore {
             audit(actor, app.applicationId, "WHITELIST_DOWNSTREAM_COMPENSATION_REQUIRED", "HIGH", before, app.status, "state confirmation failed");
             throw new WhitelistException(500, 52003, "whitelist downstream compensation required");
         } else {
+            // 真实建档：此前这里往 profileActivation 塞的是编造字段
+            // （memberId = "member-" + userId、profileStatus = "ACTIVE"），根本没调用 profile，
+            // 于是成员走完全部流程 GET /profile/me 仍回 43200，也永远到不了 ACTIVE。
+            cn.beiming.core.ProfileActivationResolver.ActivationResult activation = activateProfile(app.userId);
+            if (activation == null) {
+                // profile 未装配（只加载 whitelist 的测试上下文）：沿用原有合成视图，
+                // 与 stub-token / stub-handoff 同一套路——真实能力在就优先真实，不在才回落桩。
+                app.status = "APPROVED";
+                app.result = "APPROVED";
+                app.approvedAt = NOW;
+                app.profileActivation = linkedMap("status", "ACTIVATED", "memberId", "member-" + app.userId,
+                        "profileStatus", "ACTIVE", "calledAt", NOW, "failureCode", null, "failureReason", null);
+                app.attendanceHandoff = handoffView(app);
+                audit(actor, app.applicationId, "WHITELIST_APPROVED", "MEDIUM", before, app.status, "approve");
+                audit(actor, app.applicationId, "WHITELIST_PROFILE_ACTIVATED", "MEDIUM", before, app.status, "profile activated");
+                app.updatedAt = NOW;
+                auditNotificationFailure(actor, app);
+                Map<String, Object> legacyValue = view(app, true);
+                remember(actor.userId(), "approve:" + applicationId, body, legacyValue);
+                persistence.persistApplicationWrite(request, actor.userId(), actorRole(actor), "whitelist.approve",
+                        "WHITELIST_APPROVED", before, app.status, "approve", idempotencyKey(body), canonical(body),
+                        whitelistPersistenceView(app), legacyValue, 200);
+                return legacyValue;
+            }
+            if ("FAILED".equals(activation.status())) {
+                app.status = "APPROVAL_BLOCKED";
+                app.result = "PENDING";
+                app.profileActivation = linkedMap("status", "FAILED", "memberId", null, "profileStatus", null,
+                        "calledAt", NOW, "failureCode", activation == null ? "44020" : activation.failureCode(),
+                        "failureReason", activation == null ? "profile activation unavailable" : activation.failureReason());
+                app.updatedAt = NOW;
+                audit(actor, app.applicationId, "WHITELIST_PROFILE_ACTIVATION_FAILED", "MEDIUM", before, app.status, "profile failed");
+                persistence.persistApplicationWrite(request, actor.userId(), actorRole(actor), "whitelist.approve",
+                        "WHITELIST_PROFILE_ACTIVATION_FAILED", before, app.status, "approve",
+                        idempotencyKey(body), canonical(body), whitelistPersistenceView(app), view(app, true), 200);
+                return view(app, true);
+            }
             app.status = "APPROVED";
             app.result = "APPROVED";
             app.approvedAt = NOW;
-            app.profileActivation = linkedMap("status", "ACTIVATED", "memberId", "member-" + app.userId, "profileStatus", "ACTIVE", "calledAt", NOW, "failureCode", null, "failureReason", null);
+            app.profileActivation = linkedMap("status", activation.status(), "memberId", activation.memberId(),
+                    "profileStatus", activation.profileStatus(), "calledAt", NOW, "failureCode", null, "failureReason", null);
             app.attendanceHandoff = handoffView(app);
             audit(actor, app.applicationId, "WHITELIST_APPROVED", "MEDIUM", before, app.status, "approve");
             audit(actor, app.applicationId, "WHITELIST_PROFILE_ACTIVATED", "MEDIUM", before, app.status, "profile activated");
@@ -611,6 +672,24 @@ class WhitelistStore {
         remember(actor.userId(), "approve:" + applicationId, body, value);
         persistence.persistApplicationWrite(request, actor.userId(), actorRole(actor), "whitelist.approve", "WHITELIST_APPROVED", before, app.status, "approve", idempotencyKey(body), canonical(body), whitelistPersistenceView(app), value, 200);
         return value;
+    }
+
+    /**
+     * 调 profile 真实建档；未装配 resolver（旧测试上下文）时返回 null，由调用方兜住。
+     */
+    private cn.beiming.core.ProfileActivationResolver.ActivationResult activateProfile(String userId) {
+        if (profileActivationResolver == null) {
+            return null;
+        }
+        cn.beiming.core.ProfileActivationResolver resolver = profileActivationResolver.getIfAvailable();
+        if (resolver == null) {
+            return null;
+        }
+        try {
+            return resolver.activate(userId, "whitelist approved");
+        } catch (RuntimeException exception) {
+            return cn.beiming.core.ProfileActivationResolver.ActivationResult.failed("44020", exception.getMessage());
+        }
     }
 
     synchronized Map<String, Object> reject(WhitelistUser actor, String applicationId, Map<String, Object> body, HttpServletRequest request) {
@@ -744,6 +823,37 @@ class WhitelistStore {
 
     private Handoff handoff(String sessionId, WhitelistUser user) {
         if (testControls.enabled() && "EXAM_UNAVAILABLE".equals(user.mode())) throw new WhitelistException(502, 47010, "exam unavailable");
+
+        // 真实考试交接优先。
+        //
+        // 此前这里只有下面那个 switch，靠十几个硬编码 sessionId 字符串假装拿到上游结果；
+        // 真实考生考完拿到的 ses/session ID 必然落 default，返回 47010，
+        // 于是整条准入链在第一步就断了——申请永远建不出来。
+        cn.beiming.core.ExamHandoffResolver resolver = examHandoffResolver.getIfAvailable();
+        if (resolver != null) {
+            cn.beiming.core.ExamHandoffResolver.HandoffSnapshot snapshot = resolver.resolve(sessionId);
+            if (snapshot != null) {
+                String passedAt = snapshot.passedAt() == null ? null : snapshot.passedAt().toString();
+                return new Handoff(
+                        snapshot.sessionId(),
+                        snapshot.applicationId(),
+                        snapshot.handoffVersion(),
+                        snapshot.handoffVersion(),
+                        snapshot.userId(),
+                        snapshot.minecraftBinding(),
+                        snapshot.reviewDirection(),
+                        snapshot.attemptType(),
+                        snapshot.result(),
+                        snapshot.scoreSummary(),
+                        passedAt);
+            }
+        }
+
+        if (!stubHandoffsEnabled) {
+            // 查不到真实交接且桩关闭：如实报不可用，不再伪造任何 actor 数据。
+            throw new WhitelistException(502, 47010, "exam handoff unavailable");
+        }
+
         return switch (sessionId) {
             case "session-passed" -> new Handoff(sessionId, "onb-user", 1, 1, "user", minecraft("UserSteve", "uuid-user"), "REDSTONE", "FIRST_TIME", "PASSED", score(), NOW);
             case "session-user-mismatch" -> new Handoff(sessionId, "onb-other", 1, 1, "not-" + user.userId(), minecraft("MismatchSteve", "uuid-mismatch"), "GENERAL", "FIRST_TIME", "PASSED", score(), NOW);

@@ -246,8 +246,10 @@ class OnboardingApiContractTest {
         assertThat(advanced.at("/data/status").asText()).isEqualTo("READY_FOR_EXAM");
         assertThat(advanced.at("/data/currentStep").asText()).isEqualTo("EXAM_READY");
         assertThat(advanced.at("/data/nextAction/targetModule").asText()).isEqualTo("EXAM");
-        assertThat(advanced.at("/data/nextAction/targetModuleStatus").asText()).isEqualTo("NOT_IMPLEMENTED");
-        assertThat(advanced.at("/data/nextAction/enabled").asBoolean()).isFalse();
+        // exam 模块真实可用（能建会话/交卷/判卷），此前这里断言 NOT_IMPLEMENTED 是把接口壳时代
+        // 的错误行为固化了：用户看到「下一步不可用」就永远走不到考试。
+        assertThat(advanced.at("/data/nextAction/targetModuleStatus").asText()).isEqualTo("AVAILABLE");
+        assertThat(advanced.at("/data/nextAction/enabled").asBoolean()).isTrue();
         assertThat(advanced.at("/data/completedAt").isNull()).isTrue();
         performJson(patch("/api/v1/onboarding/me/direction").header("Authorization", bearer("minecraft-bound-token")),
                 Map.of("reviewDirection", "GENERAL"), 409, 43815);
@@ -259,7 +261,9 @@ class OnboardingApiContractTest {
 
         JsonNode next = performJson(get("/api/v1/onboarding/me/next-action").header("Authorization", bearer("minecraft-bound-token")), 200);
         assertThat(next.at("/data/targetRoute").asText()).isEqualTo("/exam/start");
-        assertThat(next.at("/data/enabled").asBoolean()).isFalse();
+        // exam 模块真实可用，这一步应是「可执行」而非「未实现」。
+        assertThat(next.at("/data/enabled").asBoolean()).isTrue();
+        assertThat(next.at("/data/targetModuleStatus").asText()).isEqualTo("AVAILABLE");
         assertNoSecrets(next);
     }
 
@@ -350,7 +354,7 @@ class OnboardingApiContractTest {
         assertThat(handoff.at("/data/readyForExam").asBoolean()).isTrue();
         assertThat(handoff.at("/data/handoffAllowed").asBoolean()).isTrue();
         assertThat(handoff.at("/data/targetModule").asText()).isEqualTo("EXAM");
-        assertThat(handoff.at("/data/targetModuleStatus").asText()).isEqualTo("NOT_IMPLEMENTED");
+        assertThat(handoff.at("/data/targetModuleStatus").asText()).isEqualTo("AVAILABLE");
         assertThat(handoff.at("/data/handoffVersion").asInt()).isEqualTo(1);
         assertThat(handoff.at("/data/reviewDirection").asText()).isEqualTo("REDSTONE");
         assertThat(handoff.at("/data/minecraftBindingSnapshot/minecraftId").asText()).isEqualTo("ReadySteve");

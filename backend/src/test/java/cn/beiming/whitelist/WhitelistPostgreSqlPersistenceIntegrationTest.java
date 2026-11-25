@@ -39,7 +39,8 @@ import static org.assertj.core.api.Assertions.assertThat;
                 "spring.autoconfigure.exclude=",
                 "spring.flyway.enabled=true",
                 "whitelist.test-controls.enabled=false",
-                "whitelist.auth.stub-tokens-enabled=true"
+                "whitelist.auth.stub-tokens-enabled=true",
+                "whitelist.stub-handoffs-enabled=true"
         }
 )
 @Testcontainers

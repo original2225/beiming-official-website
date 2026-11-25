@@ -277,6 +277,25 @@ class ProfileEvidenceConfig {
      * 而持久化层只实现了写。不读回的话，服务重启一次列表就变空——库里的数据还在，
      * 接口却查不到，表现为「数据莫名其妙消失了」。
      */
+    /**
+     * 给下游（whitelist 审批）提供真实的建档 + 激活能力。
+     *
+     * <p>此前 whitelist 审批只往 {@code profileActivation} 塞了一串编造字段
+     * （{@code memberId = "member-" + userId}、{@code profileStatus = "ACTIVE"}），
+     * 实际既没建档也没升级 auth 状态。真实用户走完全部准入流程后
+     * {@code GET /profile/me} 仍回 43200、{@code GET /auth/me} 仍是 PENDING_PROFILE。
+     *
+     * <p>这里把「建档」与「auth 状态提升为 ACTIVE」绑成一个幂等操作交出去。
+     */
+    @Bean
+    cn.beiming.core.ProfileActivationResolver profileActivationResolver(
+            ProfileStore store,
+            ProfileAuthContextProvider auth,
+            org.springframework.beans.factory.ObjectProvider<cn.beiming.core.UserActivationResolver> userActivationResolver) {
+        return (userId, reason) -> store.activateFromWhitelist(userId, auth, reason,
+                userActivationResolver.getIfAvailable());
+    }
+
     @Bean
     ApplicationRunner profileHydrateFromStore(ProfileStore store) {
         return args -> store.hydrateFromStore();
@@ -635,6 +654,11 @@ class ProfilePostgresPersistence implements ProfilePersistence {
     }
 
     private void insertRequestLog(HttpServletRequest request, String actorUserId, int responseCode) {
+        // 跨模块调用（白名单审批 → 建档）没有 HTTP 请求可记；请求日志属于真实请求的产物，
+        // 此处跳过而不是伪造一条 method/path 为空的记录。
+        if (request == null) {
+            return;
+        }
         jdbc.update("""
                 INSERT INTO app_request_logs(id, request_id, method, path, actor_user_id, source_ip, response_code, result, failure_reason, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, 'SUCCESS', NULL, now())
@@ -656,11 +680,18 @@ class ProfilePostgresPersistence implements ProfilePersistence {
     }
 
     private String requestId(HttpServletRequest request) {
+        // 跨模块调用（白名单审批 → 建档）没有 HttpServletRequest，不能直接解引用。
+        if (request == null) {
+            return RequestIdFilter.currentRequestId();
+        }
         String value = request.getHeader("X-Request-Id");
         return value == null || value.isBlank() ? RequestIdFilter.currentRequestId() : value;
     }
 
     private String sourceIp(HttpServletRequest request) {
+        if (request == null) {
+            return null;
+        }
         String forwarded = request.getHeader("X-Forwarded-For");
         if (forwarded != null && !forwarded.isBlank()) {
             return forwarded.split(",")[0].trim();
@@ -1144,6 +1175,77 @@ class ProfileStore {
 
     synchronized Map<String, Object> adminMember(String memberId) {
         return adminProfile(profile(memberId));
+    }
+
+    /**
+     * 白名单审批通过后真实建档（由 {@link cn.beiming.core.ProfileActivationResolver} 调进来）。
+     *
+     * <p>此前 whitelist 只往 {@code profileActivation} 写了串编造字段，实际没建档：
+     * 成员走完全部准入流程后 {@code GET /profile/me} 仍回 43200。这里补上真正的写入。
+     *
+     * <p>幂等：已有档案直接返回 ALREADY_ACTIVE，不重复创建、不报 43210。
+     * 不抛异常：失败以 {@code status=FAILED} 返回，让调用方决定是否把申请置 APPROVAL_BLOCKED。
+     */
+    synchronized cn.beiming.core.ProfileActivationResolver.ActivationResult activateFromWhitelist(
+            String userId, ProfileAuthContextProvider auth, String reason,
+            cn.beiming.core.UserActivationResolver userActivationResolver) {
+        if (userId == null || userId.isBlank()) {
+            return cn.beiming.core.ProfileActivationResolver.ActivationResult.failed("43204", "auth user not found");
+        }
+        String existingMemberId = memberIdByUserId.get(userId);
+        if (existingMemberId != null) {
+            MemberProfile existing = profilesById.get(existingMemberId);
+            return cn.beiming.core.ProfileActivationResolver.ActivationResult.alreadyActive(
+                    existingMemberId, existing == null ? null : existing.status);
+        }
+        AuthUser target;
+        try {
+            target = auth.targetUser(userId);
+        } catch (ApiException exception) {
+            return cn.beiming.core.ProfileActivationResolver.ActivationResult.failed(
+                    String.valueOf(exception.code), exception.getMessage());
+        }
+        if (!Set.of("PENDING_PROFILE", "ACTIVE").contains(target.status)) {
+            return cn.beiming.core.ProfileActivationResolver.ActivationResult.failed(
+                    "43215", "auth user status invalid");
+        }
+        // 建档前先把 auth 状态提升为 ACTIVE：否则档案里记下的还是 PENDING_PROFILE，
+        // 而 GET /auth/me 也一直停在待审——成员走完全部流程却仍不是成员。
+        if (userActivationResolver != null) {
+            cn.beiming.core.UserActivationResolver.ActivationOutcome outcome =
+                    userActivationResolver.activate(userId);
+            if (!outcome.activated()) {
+                return cn.beiming.core.ProfileActivationResolver.ActivationResult.failed(
+                        outcome.failureCode() == null ? "44020" : outcome.failureCode(),
+                        outcome.failureReason());
+            }
+            // 状态已改写，重新读一次目标用户，让档案带上正确的 ACTIVE。
+            try {
+                target = auth.targetUser(userId);
+            } catch (ApiException exception) {
+                return cn.beiming.core.ProfileActivationResolver.ActivationResult.failed(
+                        String.valueOf(exception.code), exception.getMessage());
+            }
+        }
+        String minecraftId = target.minecraftBinding == null ? null : target.minecraftBinding.minecraftId;
+        String minecraftUuid = target.minecraftBinding == null ? null : target.minecraftBinding.minecraftUuid;
+        try {
+            ensureMinecraftUnique(null, minecraftId, minecraftUuid);
+        } catch (ApiException exception) {
+            return cn.beiming.core.ProfileActivationResolver.ActivationResult.failed(
+                    String.valueOf(exception.code), exception.getMessage());
+        }
+        MemberProfile profile = new MemberProfile("mem_" + UUID.randomUUID(), userId, target.displayName,
+                target.status, target.roles, null, minecraftId, minecraftUuid, null, null, "ACTIVE",
+                "PUBLIC", now(), null, null, now(), now(), null);
+        String afterState = state(profile);
+        profilesById.put(profile.memberId, profile);
+        memberIdByUserId.put(userId, profile.memberId);
+        persistence.persistMemberWrite(null, target, profile, "PROFILE_MEMBER_ACTIVATED",
+                reason == null ? "whitelist approved" : reason,
+                Set.of("userId"), null, afterState, null, null, adminProfile(profile), 201);
+        return cn.beiming.core.ProfileActivationResolver.ActivationResult.activated(
+                profile.memberId, profile.status);
     }
 
     synchronized Map<String, Object> activateMember(AuthUser actor, ProfileAuthContextProvider auth, HttpServletRequest request, Map<String, Object> body) {

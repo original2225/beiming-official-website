@@ -407,6 +407,26 @@ class AuthLocalWebConfig {
         };
     }
 
+    /**
+     * 给下游（profile 建档）提供「把用户提升为 ACTIVE」的能力。
+     *
+     * <p>注册产生的用户一律是 {@code PENDING_PROFILE}，此前只有 admin 的
+     * {@code PATCH /auth/admin/users/{id}} 能改它。白名单审批通过后成员仍停在
+     * PENDING_PROFILE，profile 建档也就只能记下一个错误状态——表现为「流程走完但永远不是成员」。
+     *
+     * <p>这里只暴露「提升为 ACTIVE」这一件事，不开放任意状态改写（禁用/封禁仍只走 admin）。
+     */
+    @Bean
+    cn.beiming.core.UserActivationResolver userActivationResolver(AuthStore store) {
+        return userId -> {
+            if (userId == null || userId.isBlank()) {
+                return cn.beiming.core.UserActivationResolver.ActivationOutcome
+                        .failed(null, "43100", "user not found");
+            }
+            return store.activateForOnboardingApproval(userId);
+        };
+    }
+
     @Bean
     AuthFlowEvidenceRecorder authFlowEvidenceRecorder() {
         return new NoopAuthFlowEvidenceRecorder();
@@ -485,6 +505,15 @@ interface AuthPersistence {
     void persistLogout(HttpServletRequest request, UserAccount user, SessionRecord session, int responseCode);
 
     void persistReplayRequest(HttpServletRequest request, String actorUserId, int responseCode);
+
+    /**
+     * 持久化用户状态变更（准入流程提升 PENDING_PROFILE → ACTIVE）。
+     *
+     * <p>此前这个接口只有注册/登录/登出/回放四类写入，没有用户状态更新——于是 admin 的
+     * {@code updateUser} 只改内存+写审计，重启后状态回滚；准入流程更是完全无法把用户提升为
+     * ACTIVE。这里补一条最小写入：只更新 status / updated_at，不碰密码、角色与显示名。
+     */
+    void persistUserStatus(UserAccount user);
 }
 
 class NoopAuthPostgresPersistence implements AuthPersistence {
@@ -534,6 +563,11 @@ class NoopAuthPostgresPersistence implements AuthPersistence {
 
     @Override
     public void persistLogout(HttpServletRequest request, UserAccount user, SessionRecord session, int responseCode) {
+    }
+
+    @Override
+    public void persistUserStatus(UserAccount user) {
+        // 无数据库上下文时只保留内存状态，由读回逻辑自身保证一致性。
     }
 
     @Override
@@ -742,6 +776,13 @@ class AuthPostgresPersistence implements AuthPersistence {
     @Transactional
     public void persistReplayRequest(HttpServletRequest request, String actorUserId, int responseCode) {
         insertRequestLog(request, actorUserId, responseCode, "SUCCESS", null);
+    }
+
+    @Override
+    public void persistUserStatus(UserAccount user) {
+        // 只更新状态与更新时间：准入流程不该改写密码、角色或显示名。
+        jdbc.update("UPDATE auth_users SET status = ?, updated_at = ? WHERE user_id = ?",
+                user.status, timestamp(user.updatedAt), user.id);
     }
 
     private void upsertUser(UserAccount user) {
@@ -1309,6 +1350,39 @@ class AuthStore implements AuthSessionResolver {
         return userSummary(user);
     }
 
+    /**
+     * 准入流程通过后，把用户从 {@code PENDING_PROFILE} 提升为 {@code ACTIVE}。
+     *
+     * <p>这是 profile 建档时经由 {@link cn.beiming.core.UserActivationResolver} 调进来的内部路径，
+     * 不走 admin 接口（成员自己走不到 admin）。只允许这一种状态转换：
+     * PENDING_PROFILE → ACTIVE。其余情形一律如实返回失败，不替调用方兜假值。
+     *
+     * <p>幂等：已是 ACTIVE 直接返回成功，不重复写库。
+     */
+    synchronized cn.beiming.core.UserActivationResolver.ActivationOutcome activateForOnboardingApproval(String userId) {
+        UserAccount target = usersById.get(userId);
+        if (target == null) {
+            return cn.beiming.core.UserActivationResolver.ActivationOutcome
+                    .failed(null, "43100", "user not found");
+        }
+        String previous = target.status;
+        if ("ACTIVE".equals(previous)) {
+            return cn.beiming.core.UserActivationResolver.ActivationOutcome.alreadyActive(previous);
+        }
+        if (!"PENDING_PROFILE".equals(previous)) {
+            // DISABLED / BANNED / DELETED 不能被准入流程悄悄复活。
+            return cn.beiming.core.UserActivationResolver.ActivationOutcome
+                    .failed(previous, "43116", "user status invalid for activation");
+        }
+        String before = state(target);
+        target.status = "ACTIVE";
+        target.updatedAt = Instant.now();
+        String after = state(target);
+        persistence.persistUserStatus(target);
+        // 状态变更本身已落库；未征得 admin 同意不改名、不改角色、不签发会话。
+        return cn.beiming.core.UserActivationResolver.ActivationOutcome.activated(previous);
+    }
+
     synchronized Map<String, Object> updateUser(UserAccount actor, String userId, String displayName, String status, String reason) {
         UserAccount target = usersById.get(userId);
         if (target == null) {
@@ -1464,7 +1538,8 @@ class AuthStore implements AuthSessionResolver {
             return null;
         }
         return new AuthSessionResolver.ResolvedSession(
-                user.id, user.username, primaryRole(user.roles), List.copyOf(user.permissions));
+                user.id, user.username, primaryRole(user.roles), List.copyOf(user.permissions),
+                user.minecraftBinding == null ? null : minecraftBindingMap(user.minecraftBinding));
     }
 
     /** 角色优先级 OWNER > ADMIN > HELPER > USER，与前端 mapBackendUser 保持一致 */

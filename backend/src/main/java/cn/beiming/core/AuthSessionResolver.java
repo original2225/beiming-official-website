@@ -26,9 +26,18 @@ public interface AuthSessionResolver {
     ResolvedSession resolve(String authorization);
 
     /**
-     * 会话主体。{@code role} 取 OWNER/ADMIN/HELPER/USER 中优先级最高的一个，
+     * 会话主体。
+     *
+     * <p>{@code role} 取 OWNER/ADMIN/HELPER/USER 中优先级最高的一个，
      * {@code permissions} 是该用户显式授予的能力（可能为空，按角色下发默认能力是调用方的决定）。
+     *
+     * <p>{@code minecraftBinding} 是该用户已绑定的 Minecraft 身份，键为
+     * {@code minecraftId} / {@code minecraftUuid} / {@code verifiedAt} / {@code source}；未绑定为
+     * {@code null}。下游（exam / whitelist / attendance）需要在真实会话路径上拿到这个值——
+     * 此前 record 里没有它，导致真实用户考完试交接时 whitelist 一律判
+     * {@code 47012 exam handoff incompatible}（考试会话的 minecraftBinding 为空）。
      */
-    record ResolvedSession(String userId, String username, String role, List<String> permissions) {
+    record ResolvedSession(String userId, String username, String role, List<String> permissions,
+                           java.util.Map<String, Object> minecraftBinding) {
     }
 }

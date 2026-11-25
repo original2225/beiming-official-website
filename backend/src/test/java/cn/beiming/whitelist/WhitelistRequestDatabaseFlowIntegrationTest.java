@@ -35,7 +35,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest(
         classes = AdmissionCoreServiceApplication.class,
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = {"whitelist.test-controls.enabled=true", "whitelist.auth.stub-tokens-enabled=true"}
+        properties = {"whitelist.test-controls.enabled=true", "whitelist.auth.stub-tokens-enabled=true",
+                "whitelist.stub-handoffs-enabled=true"
+        }
 )
 class WhitelistRequestDatabaseFlowIntegrationTest {
     private static final String FLOW_ID = "whitelist-flow-" + UUID.randomUUID();

@@ -64,6 +64,27 @@ class OnboardingModule {
         return new TestOnboardingAuthProvider(sessionResolver, stubTokensEnabled);
     }
 
+    /**
+     * 把 onboarding 实际登记的审核方向暴露给下游（exam 出卷要用）。
+     *
+     * <p>exam 原本靠 switch(applicationId) 猜方向，真实申请 ID 一律被判成 REDSTONE，
+     * 导致选了 GENERAL 的用户也收到红石卷。这里用 OnboardingDirectionResolver 交出真实值。
+     */
+    @Bean
+    cn.beiming.core.OnboardingDirectionResolver onboardingDirectionResolver(OnboardingStore store) {
+        return applicationId -> {
+            if (applicationId == null || applicationId.isBlank()) {
+                return null;
+            }
+            ApplicationRecord app = store.byApplicationId(applicationId);
+            if (app == null) {
+                return null;
+            }
+            String direction = app.reviewDirection;
+            return direction == null || direction.isBlank() ? null : direction;
+        };
+    }
+
     @Bean
     OnboardingTestControls onboardingTestControls(@Value("${onboarding.test-controls.enabled:false}") boolean enabled) {
         return new OnboardingTestControls(enabled);
@@ -259,6 +280,18 @@ class OnboardingStore {
     OnboardingStore(OnboardingTestControls testControls, OnboardingPersistence persistence) {
         this.testControls = testControls;
         this.persistence = persistence;
+    }
+
+    /**
+     * 按申请 ID 查登记记录，供下游（exam 出卷）读取真实审核方向。
+     *
+     * <p>只读、不抛异常：申请不存在返回 {@code null}，由调用方决定错误码。
+     */
+    ApplicationRecord byApplicationId(String applicationId) {
+        if (applicationId == null || applicationId.isBlank()) {
+            return null;
+        }
+        return applications.get(applicationId);
     }
 
     void seed() {
@@ -491,7 +524,9 @@ class OnboardingStore {
                 "readyForExam", true,
                 "handoffAllowed", true,
                 "targetModule", "EXAM",
-                "targetModuleStatus", "NOT_IMPLEMENTED",
+                // exam 真实可用；此前写 NOT_IMPLEMENTED 会让下游把「已可考」当成「模块缺失」。
+                "targetModuleStatus", "AVAILABLE",
+                "targetApi", "/api/v1/exams/me/sessions",
                 "blocked", false,
                 "blockedReason", null,
                 "handoffVersion", 1,
@@ -643,6 +678,9 @@ class OnboardingStore {
             view.put("steps", steps(null, source, rule));
             view.put("reviewDirection", null);
             view.put("ruleConfirmation", null);
+            // 前端「确认规则」要发送 ruleContentId + ruleVersion，此前接口完全不输出这两个值，
+            // 用户无法完成该步骤（只能靠前端硬编码猜）。
+            view.put("rules", ruleView(rule));
             view.put("profileConfirmation", null);
             view.put("nextAction", next(null, source));
             view.put("blockedReason", null);
@@ -669,6 +707,7 @@ class OnboardingStore {
         view.put("steps", steps(app, source, rule));
         view.put("reviewDirection", app.reviewDirection);
         view.put("ruleConfirmation", app.ruleConfirmation);
+        view.put("rules", ruleView(rule));
         view.put("profileConfirmation", app.profileConfirmation);
         view.put("nextAction", next(app, source));
         view.put("blockedReason", app.blockedReason);
@@ -697,8 +736,14 @@ class OnboardingStore {
         rows.add(step("PROFILE_CONFIRMED", profile ? "COMPLETED" : (bound ? "AVAILABLE" : "LOCKED"), "Confirm profile", true, completed(app == null ? null : app.profileConfirmation), null, "/onboarding/profile", "/api/v1/onboarding/me/profile-confirmation"));
         rows.add(step("RULES_CONFIRMED", rules ? "COMPLETED" : (rule == null ? "BLOCKED" : "AVAILABLE"), "Confirm rules", true, completed(app == null ? null : app.ruleConfirmation), rule == null ? "Rules unavailable" : null, "/rules", "/api/v1/onboarding/me/rules-confirmation"));
         rows.add(step("DIRECTION_SELECTED", direction ? "COMPLETED" : (profile && rules ? "AVAILABLE" : "LOCKED"), "Select direction", true, direction ? NOW : null, null, "/onboarding/direction", "/api/v1/onboarding/me/direction"));
-        rows.add(step("EXAM_READY", ready ? "WAITING_MODULE" : (direction ? "AVAILABLE" : "LOCKED"), "Exam ready", true, null, ready ? "Exam module is not implemented" : null, "/exam/start", null));
-        rows.add(step("WHITELIST_READY", "LOCKED", "Whitelist ready", true, null, "Whitelist module is not implemented", "/whitelist", null));
+        // exam 模块是真实可用的（能建会话、能交卷、能判卷）。
+        // 此前这里把「已到 READY_FOR_EXAM」显示成 WAITING_MODULE + "not implemented"，
+        // 用户看到的就是「下一步不可用」，整条入服流程卡死在这一步。
+        rows.add(step("EXAM_READY", ready ? "AVAILABLE" : (direction ? "AVAILABLE" : "LOCKED"), "Exam ready",
+                true, ready ? NOW : null, null, "/exam/start", "/api/v1/exams/me/sessions"));
+        // whitelist 同样真实可用（能建申请、能审批）。此前无条件写 LOCKED + "not implemented"。
+        rows.add(step("WHITELIST_READY", ready ? "AVAILABLE" : "LOCKED", "Whitelist ready",
+                true, null, ready ? null : "Exam not passed yet", "/whitelist", "/api/v1/whitelist/me/applications"));
         if (blocked) {
             rows.replaceAll(row -> {
                 if ("COMPLETED".equals(row.get("status"))) return row;
@@ -719,7 +764,8 @@ class OnboardingStore {
         if (app.profileConfirmation == null) return next("PROFILE_CONFIRMED", "Confirm profile", "/onboarding/profile", "/api/v1/onboarding/me/profile-confirmation", "ONBOARDING", "AVAILABLE", true, null);
         if (app.ruleConfirmation == null) return next("RULES_CONFIRMED", "Confirm rules", "/rules", "/api/v1/onboarding/me/rules-confirmation", "ONBOARDING", "AVAILABLE", true, null);
         if (app.reviewDirection == null) return next("DIRECTION_SELECTED", "Select direction", "/onboarding/direction", "/api/v1/onboarding/me/direction", "ONBOARDING", "AVAILABLE", true, null);
-        return next("EXAM_READY", "Start exam", "/exam/start", null, "EXAM", "NOT_IMPLEMENTED", false, "Exam module is not implemented");
+        // 到了这一步就是「现在可以去考试」，而不是「模块没实现」。
+        return next("EXAM_READY", "Start exam", "/exam/start", "/api/v1/exams/me/sessions", "EXAM", "AVAILABLE", true, null);
     }
 
     private String currentStep(ApplicationRecord app, AuthContext user) {
@@ -1021,6 +1067,22 @@ class OnboardingStore {
         return confirmation == null ? null : string(confirmation.getOrDefault("confirmedAt", NOW));
     }
 
+    /**
+     * 把当前生效的规则摘要输出给前端。
+     *
+     * <p>{@code ruleContentId} / {@code ruleVersion} 是「确认规则」接口的必填参数，
+     * 前端必须能读到它们；{@code null} 表示没有持久化后端或内容依赖不可用。
+     */
+    private Map<String, Object> ruleView(RuleSummary rule) {
+        if (rule == null) {
+            return null;
+        }
+        return mapOf("ruleContentId", rule.ruleContentId(),
+                "ruleVersion", rule.ruleVersion(),
+                "ruleTitle", rule.ruleTitle(),
+                "guideRoute", rule.guideRoute());
+    }
+
     private RuleSummary defaultRule() {
         return new RuleSummary("rule-current", "2026-05-22", "\u5317\u51a5\u670d\u52a1\u5668\u89c4\u5219", "/rules");
     }
@@ -1095,7 +1157,7 @@ class TestOnboardingAuthProvider {
                 if (resolved.role() != null && !resolved.role().isBlank()) {
                     roles.add(resolved.role());
                 }
-                return new AuthContext(resolved.userId(), resolved.username(), roles, "ACTIVE", null, null);
+                return new AuthContext(resolved.userId(), resolved.username(), roles, "ACTIVE", resolved.minecraftBinding(), null);
             }
         }
 
