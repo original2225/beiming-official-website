@@ -64,10 +64,12 @@ import cn.beiming.core.AuthSessionResolver;
 class AuthController {
     private final AuthStore store;
     private final AuthFlowEvidenceRecorder evidenceRecorder;
+    private final MinecraftIdentityResolver minecraftResolver;
 
-    AuthController(AuthStore store, AuthFlowEvidenceRecorder evidenceRecorder) {
+    AuthController(AuthStore store, AuthFlowEvidenceRecorder evidenceRecorder, MinecraftIdentityResolver minecraftResolver) {
         this.store = store;
         this.evidenceRecorder = evidenceRecorder;
+        this.minecraftResolver = minecraftResolver;
     }
 
     @PostMapping("/register")
@@ -81,7 +83,19 @@ class AuthController {
         validateUsername(username);
         validatePassword(password);
         validateDisplayName(displayName);
-        Map<String, Object> payload = store.register(request, invitationCode, username, password, displayName, optionalString(body, "idempotencyKey"));
+        // MC 绑定（花蝉 2026-11-27）：昵称由前端填（默认等于用户名），平台选
+        // LITTLESKIN / MOJANG / OFFLINE，UUID 一律服务端查，用户不用知道。
+        // 传了昵称但查不到 → 43102 明确告知（静默忽略会让用户以为绑上了）；
+        // 压根没传 → 不绑定，注册照常走。
+        String minecraftName = optionalString(body, "minecraftName");
+        MinecraftIdentityResolver.Identity minecraftIdentity = null;
+        if (minecraftName != null && !minecraftName.isBlank()) {
+            minecraftIdentity = minecraftResolver.resolve(minecraftName, optionalString(body, "minecraftPlatform"));
+            if (minecraftIdentity == null) {
+                throw new ApiException(43102, HttpStatus.BAD_REQUEST, "minecraft identity not found");
+            }
+        }
+        Map<String, Object> payload = store.register(request, invitationCode, username, password, displayName, optionalString(body, "idempotencyKey"), minecraftIdentity);
         ResponseEntity<Map<String, Object>> response = created(payload);
         evidenceRecorder.recordRegisterSuccess(request, invitationCode, username, payload, response.getStatusCode().value());
         return response;
@@ -633,9 +647,28 @@ class AuthPostgresPersistence implements AuthPersistence {
         this.objectMapper = objectMapper;
     }
 
+    /** 整表读取 MC 绑定，key 是 auth_minecraft_bindings.user_id（text，与 auth_users.user_id 对应） */
+    private Map<String, MinecraftBinding> loadBindings() {
+        Map<String, MinecraftBinding> bindings = new LinkedHashMap<>();
+        jdbc.query("""
+                SELECT user_id, minecraft_id, minecraft_uuid, verified_at, source
+                FROM auth_minecraft_bindings
+                """, result -> {
+            bindings.put(result.getString("user_id"), new MinecraftBinding(
+                    result.getString("minecraft_id"),
+                    result.getString("minecraft_uuid"),
+                    timestampOf(result.getTimestamp("verified_at")),
+                    result.getString("source")));
+        });
+        return bindings;
+    }
+
+
     @Override
     public List<UserAccount> loadUsers() {
         List<UserAccount> loaded = new ArrayList<>();
+        // 先把绑定整表读进 map，避免一边查用户一边逐条查绑定
+        Map<String, MinecraftBinding> bindingsByUserId = loadBindings();
         jdbc.query("""
                 SELECT user_id, username, display_name, password_hash, roles::text, permissions::text, status,
                        created_at, updated_at, last_login_at
@@ -653,6 +686,13 @@ class AuthPostgresPersistence implements AuthPersistence {
                     timestampOf(result.getTimestamp("updated_at")));
             if (result.getTimestamp("last_login_at") != null) {
                 account.lastLoginAt = timestampOf(result.getTimestamp("last_login_at"));
+            }
+            // MC 绑定必须一起读回来。原来这里只查 auth_users，不碰
+            // auth_minecraft_bindings —— 结果绑定写进库了，但后端一重启
+            // 所有人绑定集体消失（2026-11-27 实测：库里数据在、/me 返回 null）。
+            MinecraftBinding binding = bindingsByUserId.get(account.id);
+            if (binding != null) {
+                account.minecraftBinding = binding;
             }
             loaded.add(account);
         });
@@ -786,6 +826,11 @@ class AuthPostgresPersistence implements AuthPersistence {
     @Transactional
     public void persistRegister(HttpServletRequest request, String rawInvitationCode, InvitationRecord invitation, UserAccount user, SessionRecord session, String idempotencyKey, String fingerprint, Map<String, Object> payload, int responseCode) {
         upsertUser(user);
+        // 注册时若带了 MC 绑定，必须一并落库。否则绑定只活在内存里，
+        // 后端一重启就没了——2026-11-27 实测发现只写内存，库里查不到。
+        if (user.minecraftBinding != null) {
+            seedMinecraftBinding(user.id, user.minecraftBinding);
+        }
         upsertInvitation(invitation);
         jdbc.update("""
                 INSERT INTO auth_invitation_usage_records(id, usage_id, invitation_id, used_by_user_id, used_by_username, source_ip, request_id, used_at)
@@ -1102,6 +1147,19 @@ class AuthStore implements AuthSessionResolver {
         }
     }
 
+    /**
+     * 测试专用：只清内存里的用户索引，不动数据库。
+     *
+     * 用来模拟「进程重启」——重启后内存是空的、库还在，启动时走
+     * seedLocalDevDataIfEmpty() 从库读回。这样能验出「写了库但读不回来」
+     * 这一类 bug（MC 绑定就栽在这上面）。
+     * 不能用 reset()：它会连库一起 truncate，重启语义就不成立了。
+     */
+    synchronized void clearUserIndexesForReloadTest() {
+        usersById.clear();
+        userIdByUsername.clear();
+    }
+
     synchronized void seedLocalDevDataIfEmpty() {
         if (!usersById.isEmpty()) {
             return;
@@ -1215,7 +1273,7 @@ class AuthStore implements AuthSessionResolver {
         failNextAudit = true;
     }
 
-    synchronized Map<String, Object> register(HttpServletRequest request, String rawCode, String username, String password, String displayName, String idempotencyKey) {
+    synchronized Map<String, Object> register(HttpServletRequest request, String rawCode, String username, String password, String displayName, String idempotencyKey, MinecraftIdentityResolver.Identity minecraftIdentity) {
         String attemptKey = clientIp(request);
         int attempts = nextAttempt(registerAttempts, attemptKey);
         if (attempts > REGISTER_LIMIT) {
@@ -1249,6 +1307,12 @@ class AuthStore implements AuthSessionResolver {
         int beforeUsedCount = invitation.usedCount;
         int beforeUsageSize = invitation.usageRecords.size();
         UserAccount user = new UserAccount(id, username, displayName, encoder.encode(password), invitation.boundRoles, invitation.boundPermissions, "PENDING_PROFILE", Instant.now(), Instant.now());
+        // 注册时就带上 MC 绑定（花蝉 2026-11-27 要的）：昵称就是用户名，
+        // UUID 由服务端按平台查好再传进来，用户不用知道 UUID 是多少。
+        // 查不到就只填昵称、不绑定，不阻断注册——注册不该被第三方服务拖垮。
+        if (minecraftIdentity != null) {
+            user.minecraftBinding = new MinecraftBinding(minecraftIdentity.name(), minecraftIdentity.uuid(), Instant.now(), minecraftIdentity.platform().name());
+        }
         try {
             usersById.put(id, user);
             userIdByUsername.put(username.toLowerCase(Locale.ROOT), id);

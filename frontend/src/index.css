@@ -330,4 +330,52 @@
     border-radius: var(--radius-lg);
     box-shadow: 0 0 0 1px rgba(46, 90, 107, 0.12);
   }
+
+  /* ── 报错警示动画（花蝉 2026-11-27 要的「最后加点动画警示一下」）─
+     光靠红色不够醒目：字体小、又在弹窗上半部，眼睛容易跳过。
+     这里用「抖一下 + 图标弹一下」，动作短（400ms 内）不刺眼，
+     但能明确传达「你被打回来了」。 */
+  @keyframes bm-error-shake {
+    0%   { transform: translateX(0); }
+    12%  { transform: translateX(-5px); }
+    24%  { transform: translateX(4px); }
+    36%  { transform: translateX(-3px); }
+    48%  { transform: translateX(2px); }
+    60%  { transform: translateX(-1px); }
+    100% { transform: translateX(0); }
+  }
+  @keyframes bm-error-fade-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes bm-error-icon-pop {
+    0%   { transform: scale(0.4) rotate(-12deg); opacity: 0; }
+    55%  { transform: scale(1.15) rotate(4deg); opacity: 1; }
+    100% { transform: scale(1) rotate(0); opacity: 1; }
+  }
+
+  .bm-error-alert {
+    animation: bm-error-fade-in 140ms ease-out both, bm-error-shake 380ms cubic-bezier(.36,.07,.19,.97) 140ms both;
+  }
+  .bm-error-alert .bm-error-icon {
+    width: 1rem;
+    height: 1rem;
+    line-height: 1rem;
+    text-align: center;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    border-radius: 999px;
+    background: #B93A3A;
+    color: #FFF7F5;
+    animation: bm-error-icon-pop 320ms cubic-bezier(.34,1.56,.64,1) 160ms both;
+  }
+
+  /* 系统设了「减少动态效果」就别抖：对前庭敏感的人抖动会不舒服。
+     颜色、图标、左侧红条都还在，信息一点没少。 */
+  @media (prefers-reduced-motion: reduce) {
+    .bm-error-alert,
+    .bm-error-alert .bm-error-icon {
+      animation: none;
+    }
+  }
 }

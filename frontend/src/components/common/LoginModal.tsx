@@ -51,7 +51,16 @@ export function LoginModal({ open, onClose, onSwitchToRegister }: LoginModalProp
           <p className="text-sm text-[#6B7B85] mt-1 mb-6">登录你的北冥账号</p>
 
           {error && (
-            <p className="text-sm mb-4 px-3 py-2 rounded-md" style={{ color: '#B93A3A', background: 'rgba(185,58,58,0.10)' }}>{error}</p>
+            <div
+              key={error}
+              className="bm-error-alert text-sm mb-4 px-3 py-2 rounded-md flex items-start gap-2"
+              style={{ color: '#B93A3A', background: 'rgba(185,58,58,0.10)', borderLeft: '3px solid #B93A3A' }}
+              role="alert"
+              aria-live="assertive"
+            >
+              <span aria-hidden="true" className="bm-error-icon shrink-0">!</span>
+              <span className="flex-1">{error}</span>
+            </div>
           )}
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
