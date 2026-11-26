@@ -8,6 +8,7 @@ import { ROUTES } from '../../constants/routes'
 const ITEMS = [
   { label: '概览', to: ROUTES.ADMIN },
   { label: '用户管理', to: ROUTES.ADMIN_USERS },
+  { label: '邀请码', to: ROUTES.ADMIN_INVITATIONS },
   { label: '内容管理', to: ROUTES.ADMIN_CONTENT },
   { label: '审核待办', to: ROUTES.ADMIN_APPROVALS },
 ]

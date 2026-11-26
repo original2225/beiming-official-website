@@ -43,6 +43,7 @@ import { AdminOverviewPage } from '../pages/admin/AdminOverviewPage'
 import { AdminUsersPage } from '../pages/admin/AdminUsersPage'
 import { AdminContentPage } from '../pages/admin/AdminContentPage'
 import { AdminApprovalsPage } from '../pages/admin/AdminApprovalsPage'
+import { AdminInvitationsPage } from '../pages/admin/AdminInvitationsPage'
 
 // 运维
 import { OpsOverviewPage } from '../pages/ops/OpsOverviewPage'
@@ -90,6 +91,7 @@ export function AppRouter() {
       <Route path={ROUTES.ADMIN_USERS} element={<ProtectedRoute requiredRole="HELPER"><AdminUsersPage /></ProtectedRoute>} />
       <Route path={ROUTES.ADMIN_CONTENT} element={<ProtectedRoute requiredRole="HELPER"><AdminContentPage /></ProtectedRoute>} />
       <Route path={ROUTES.ADMIN_APPROVALS} element={<ProtectedRoute requiredRole="HELPER"><AdminApprovalsPage /></ProtectedRoute>} />
+      <Route path={ROUTES.ADMIN_INVITATIONS} element={<ProtectedRoute requiredRole="HELPER"><AdminInvitationsPage /></ProtectedRoute>} />
 
       {/* 运维 */}
       <Route path={ROUTES.OPS} element={<ProtectedRoute requiredRole="HELPER"><OpsOverviewPage /></ProtectedRoute>} />

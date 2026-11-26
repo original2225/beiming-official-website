@@ -44,6 +44,7 @@ export const ROUTES = {
   ADMIN_USERS: '/admin/users',
   ADMIN_CONTENT: '/admin/content',
   ADMIN_APPROVALS: '/admin/approvals',
+  ADMIN_INVITATIONS: '/admin/invitations',
 
   // 运维
   OPS: '/ops',

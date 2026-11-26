@@ -6,6 +6,7 @@ import { useState } from 'react'
 import { useAuth } from '../../hooks/useAuth'
 import { login } from '../../api/modules/account'
 import { ApiError } from '../../types/api'
+import { describeApiError } from '../../api/errorMessages'
 import { img } from '../../constants/images'
 
 interface LoginModalProps {
@@ -32,7 +33,7 @@ export function LoginModal({ open, onClose, onSwitchToRegister }: LoginModalProp
       setLogin(result.token, result.user)
       onClose()
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : '登录失败')
+      setError(e instanceof ApiError ? describeApiError(e.code, e.message) : '登录失败，请稍后重试')
     } finally {
       setLoading(false)
     }

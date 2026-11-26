@@ -1322,7 +1322,13 @@ class GatewayWebConfig {
                                 "http://localhost:5174",
                                 "http://127.0.0.1:5174",
                                 "http://localhost:5182",
-                                "http://127.0.0.1:5182"
+                                "http://127.0.0.1:5182",
+                                // 前端容器映射到 8080：5173 落在 Windows 动态端口保留段
+                                // 5111-5610 里绑不上，所以 compose 改成 8080:5173。
+                                // 不在这里放行，浏览器会因 CORS 预检 403 直接 fail，
+                                // 页面只看到「注册失败，请稍后重试」，非常难查。
+                                "http://localhost:8080",
+                                "http://127.0.0.1:8080"
                         )
                         .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
                         .allowedHeaders("Authorization", "Content-Type", "Accept-Language", "X-Request-Id", "X-Requested-With", "Accept")

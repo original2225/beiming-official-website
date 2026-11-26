@@ -44,7 +44,12 @@ services:
       backend:
         condition: service_healthy
     ports:
-      - "5173:5173"
+      # 5173 落在 Windows 的动态端口保留段 5111-5610 里，映射时报
+      # "bind: An attempt was made to access a socket in a way forbidden by its
+      #  access permissions"，前端容器一启动就被 SIGTERM（退出码 143）。
+      # 要腾出 5173 得用管理员权限跑 netsh int ipv4 add excludedportrange，
+      # 所以直接换到保留段外的 8080。容器内部仍监听 5173，Dockerfile 不动。
+      - "8080:5173"
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:5173/ | grep -q '<!doctype html>'"]
       interval: 20s

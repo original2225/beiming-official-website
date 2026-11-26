@@ -64,12 +64,15 @@ function ensureObject(value: unknown): Record<string, unknown> {
 }
 
 // ── auth ──
-export const register = (body: unknown) => {
+export const register = async (body: unknown): Promise<LoginResult> => {
   const payload = ensureObject(body)
-  return post<unknown>(ep.auth.register(), {
+  // 后端 register 直接返回 accessToken + 完整 user，和 login 是同一种 payload。
+  // 之前这里吞掉了 token 只当 unknown 透传，导致注册成功后还得让用户再登录一遍。
+  const session = await post<BackendSessionPayload>(ep.auth.register(), {
     ...payload,
     displayName: payload.displayName ?? payload.username,
   })
+  return { token: session.accessToken, user: mapBackendUser(session.user) }
 }
 export const login = async (body: unknown): Promise<LoginResult> => {
   const session = await post<BackendSessionPayload>(ep.auth.login(), body)

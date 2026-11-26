@@ -54,6 +54,7 @@ export function SecurityPage() {
           </FormField>
           <FormField label="新密码">
             <input type="password" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} className="bg-surface-dark border border-ink-600 text-text-primary px-3 py-1 text-sm rounded-md outline-none focus:border-indigo" required />
+            <span className="text-xs text-text-muted mt-1">6-128 位，至少含两类字符（字母、数字、符号任选两类）</span>
           </FormField>
           <button type="submit" className="btn-ink text-xs self-start">修改密码</button>
           {pwdMsg && <span className="text-xs text-jade">{pwdMsg}</span>}

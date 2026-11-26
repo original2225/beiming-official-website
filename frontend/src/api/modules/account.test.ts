@@ -78,21 +78,69 @@ describe('account api adapters', () => {
     })
   })
 
-  it('fills displayName for registration when the existing form only provides username', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      json: async () => ({ code: 0, message: 'success', data: {} }),
-    })
-    vi.stubGlobal('fetch', fetchMock)
+  it('sends displayName and returns the session that register already established', async () => {
+      // 后端 register 返回的就是和 login 一样的 { accessToken, user }。
+      // 之前这里 mock 成 data: {}，等于默许前端把 token 丢掉、让用户再登录一遍；
+      // 现在注册后直接建会话，所以 mock 必须按真实形状给。
+      const fetchMock = vi.fn().mockResolvedValue({
+        json: async () => ({
+          code: 0,
+          message: 'success',
+          data: {
+            accessToken: 'ses_reg',
+            user: {
+              id: 'usr_3',
+              username: 'steve',
+              displayName: '史蒂夫',
+              roles: ['USER'],
+              permissions: [],
+              minecraftBinding: null,
+            },
+          },
+        }),
+      })
+      vi.stubGlobal('fetch', fetchMock)
 
-    await register({ username: 'steve', password: 'secret123', invitationCode: 'INVITE' })
+      const result = await register({
+        username: 'steve',
+        displayName: '史蒂夫',
+        password: 'secret123',
+        invitationCode: 'INVITE',
+      })
 
-    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
-      username: 'steve',
-      displayName: 'steve',
-      password: 'secret123',
-      invitationCode: 'INVITE',
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+        username: 'steve',
+        displayName: '史蒂夫',
+        password: 'secret123',
+        invitationCode: 'INVITE',
+      })
+      // 注册即登录：token 和用户都要带出来，authStore 才接得上
+      expect(result).toMatchObject({ token: 'ses_reg' })
+      expect(result.user).toMatchObject({ userId: 'usr_3', username: 'steve', role: 'USER' })
     })
-  })
+
+    it('still falls back to username when a caller omits displayName', async () => {
+      const fetchMock = vi.fn().mockResolvedValue({
+        json: async () => ({
+          code: 0,
+          message: 'success',
+          data: {
+            accessToken: 'ses_reg2',
+            user: { id: 'usr_4', username: 'alex', roles: ['USER'], permissions: [], minecraftBinding: null },
+          },
+        }),
+      })
+      vi.stubGlobal('fetch', fetchMock)
+
+      await register({ username: 'alex', password: 'secret123', invitationCode: 'INVITE' })
+
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+        username: 'alex',
+        displayName: 'alex',
+        password: 'secret123',
+        invitationCode: 'INVITE',
+      })
+    })
 
   it('adapts password changes to the backend contract', async () => {
     const fetchMock = vi.fn().mockResolvedValue({

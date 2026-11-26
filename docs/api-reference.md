@@ -125,7 +125,7 @@ PostgreSQL 是正式持久化数据库。所有涉及新增、更新、状态流
 
 基础角色固定为 `OWNER`、`ADMIN`、`HELPER`、`USER`，运维能力点固定为 `NODE_READ`、`NODE_WRITE`、`CONTAINER_OPERATE`、`VM_OPERATE`、`FILE_MANAGE`、`TERMINAL_ACCESS`、`HIGH_RISK_APPROVE`。基础角色不自动等于全部运维能力，能力点必须单独授予。用户状态包括 `PENDING_PROFILE`、`ACTIVE`、`DISABLED`、`BANNED` 和 `DELETED`，注册成功后为 `PENDING_PROFILE`；只有 `ACTIVE` 用户能正常登录和操作，`DISABLED` 和 `BANNED` 用户被拒绝，`DELETED` 为终态。邀请码类型包括 `PLAYER` 和 `ADMIN`，`ADMIN` 类型邀请码只能由 `OWNER` 创建；邀请码状态包括 `ACTIVE`、`DISABLED`、`EXPIRED` 和 `EXHAUSTED`。
 
-字段校验规则固定为：`username` 匹配 `[A-Za-z0-9_]{3,32}`；`displayName` 长度 2 到 24；`password` 长度 10 到 128，必须同时含字母和数字，且不得命中常见弱口令表。校验不通过统一返回 `400/40001`，并在 `errors` 中给出 `field` 和 `reason`。
+字段校验规则固定为：`username` 匹配 `[A-Za-z0-9_]{3,32}`；`displayName` 长度 2 到 24；`password` 长度 6 到 128，且必须包含至少两类字符（大写字母、小写字母、数字、符号中任取两类），不得命中常见弱口令表。校验不通过统一返回 `400/40001`，并在 `errors` 中给出 `field` 和 `reason`。
 
 注册接口为 `POST /register`，请求字段为 `invitationCode`、`username`、`password`、`displayName`，可选 `idempotencyKey`，成功返回 `201` 和会话载荷。登录接口为 `POST /login`，请求字段为 `username`、`password`，可选 `idempotencyKey`，成功返回 `200` 和会话载荷。会话载荷字段包括 `accessToken`、`tokenType`（固定 `Bearer`）、`expiresAt` 和 `user`。`user` 字段包括 `id`、`username`、`displayName`、`roles`、`permissions`、`status`、`minecraftBinding`、`createdAt`、`updatedAt` 和 `lastLoginAt`；`minecraftBinding` 为对象时含 `minecraftId`、`minecraftUuid`、`verifiedAt` 和 `source`，未绑定时为 `null`。会话默认有效期 2 小时，`accessToken` 前缀为 `ses_`，会话标识前缀为 `ssn_`。
 

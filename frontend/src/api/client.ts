@@ -40,26 +40,53 @@ export async function request<T>(
 
   const url = buildUrl(path, params)
 
-  const res = await fetch(url, {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(tokenGetter?.() ? { Authorization: `Bearer ${tokenGetter!()}` } : {}),
-      ...headers,
-    },
-    body: body ? JSON.stringify(body) : undefined,
-    signal: abortSignal,
-  })
+  let res: Response
+  try {
+    res = await fetch(url, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(tokenGetter?.() ? { Authorization: `Bearer ${tokenGetter!()}` } : {}),
+        ...headers,
+      },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: abortSignal,
+    })
+  } catch (e) {
+    clearTimeout(timeoutId)
+    // fetch 只在「请求根本没发出去」时抛 TypeError：网络断了、跨域被 CORS 拦、
+    // 后端没起、DNS 解析失败。它拿不到状态码也拿不到响应体，如果原样往上抛，
+    // 页面只能显示一句兜底文案，用户和开发者都看不出到底哪里错了。
+    // 所以这里一律翻译成带原因的 ApiError。
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      throw new ApiError(0, '请求超时，请检查网络后重试')
+    }
+    throw new ApiError(
+      0,
+      `无法连接到服务器（${API_BASE_URL}）。可能是后端未启动、网络中断，或浏览器拦截了跨域请求。`,
+    )
+  }
 
   clearTimeout(timeoutId)
 
-  const json: ApiResponse<T> = await res.json()
-
-  if (json.code !== 0) {
-    throw new ApiError(json.code, json.message, json.requestId, json.errors)
+  // 非 2xx 也要读响应体：后端在 4xx/5xx 时同样返回 { code, message }，
+  // 直接把状态码丢掉会让「邀请码已用尽」这类具体原因变成一句「请求失败」。
+  let json: ApiResponse<T> | null = null
+  try {
+    json = (await res.json()) as ApiResponse<T>
+  } catch {
+    json = null
   }
 
-  return json.data
+  if (json && typeof json.code === 'number') {
+    if (json.code !== 0) {
+      throw new ApiError(json.code, json.message || `请求失败（HTTP ${res.status}）`, json.requestId, json.errors)
+    }
+    return json.data
+  }
+
+  // 响应体不是约定的 { code, message } 结构（网关 502 HTML 页、静态服务兜底页等）
+  throw new ApiError(0, `服务器返回异常响应（HTTP ${res.status}），请稍后重试`)
 }
 
 // 便捷方法

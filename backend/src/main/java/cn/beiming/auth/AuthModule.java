@@ -39,6 +39,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -348,9 +349,51 @@ class AuthController {
 
     static void validatePassword(String password) {
         Set<String> commonWeakPasswords = Set.of("password123", "password1234", "qwerty12345", "admin123456", "welcome123", "letmein123");
-        if (password.length() < 10 || password.length() > 128 || !password.matches(".*[A-Za-z].*") || !password.matches(".*\\d.*") || commonWeakPasswords.contains(password.toLowerCase(Locale.ROOT))) {
+        if (password.length() < 6 || password.length() > 128
+                || characterClassCount(password) < 2
+                || commonWeakPasswords.contains(password.toLowerCase(Locale.ROOT))) {
             throw ApiException.badRequest("password");
         }
+    }
+
+    /**
+     * 数密码里出现了几类字符：大写字母、小写字母、数字、其他符号。
+     * 规则要求至少两类，而不是指定某两类 —— 这样「abc123」「Abcdef」「abcd!@」
+     * 都能过，纯数字或纯字母过不了，既守住强度又不逼用户记死一种组合。
+     *
+     * 2026-11-26 花蝉定的：下限 6 位，任意两类字符即可（原先是 10 位 + 必须字母加数字）。
+     */
+    static int characterClassCount(String password) {
+        boolean upper = false;
+        boolean lower = false;
+        boolean digit = false;
+        boolean symbol = false;
+        for (int i = 0; i < password.length(); i++) {
+            char c = password.charAt(i);
+            if (Character.isUpperCase(c)) {
+                upper = true;
+            } else if (Character.isLowerCase(c)) {
+                lower = true;
+            } else if (Character.isDigit(c)) {
+                digit = true;
+            } else {
+                symbol = true;
+            }
+        }
+        int classes = 0;
+        if (upper) {
+            classes++;
+        }
+        if (lower) {
+            classes++;
+        }
+        if (digit) {
+            classes++;
+        }
+        if (symbol) {
+            classes++;
+        }
+        return classes;
     }
 
     @SuppressWarnings("unchecked")
@@ -388,7 +431,13 @@ class AuthLocalWebConfig {
                                 "http://localhost:5174",
                                 "http://127.0.0.1:5174",
                                 "http://localhost:5182",
-                                "http://127.0.0.1:5182"
+                                "http://127.0.0.1:5182",
+                                // 前端容器映射到 8080：5173 落在 Windows 动态端口保留段
+                                // 5111-5610 里绑不上，所以 compose 改成 8080:5173。
+                                // 不在这里放行，浏览器会因 CORS 预检 403 直接 fail，
+                                // 页面只看到「注册失败，请稍后重试」，非常难查。
+                                "http://localhost:8080",
+                                "http://127.0.0.1:8080"
                         )
                         .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
                         .allowedHeaders("*")
@@ -906,7 +955,65 @@ class AuthStore implements AuthSessionResolver {
     private final Map<String, IdempotencyRecord> invitationIdempotency = new ConcurrentHashMap<>();
     private final Map<String, IdempotencyRecord> loginIdempotency = new ConcurrentHashMap<>();
     private final Map<String, Integer> loginFailures = new ConcurrentHashMap<>();
-    private final Map<String, Integer> registerAttempts = new ConcurrentHashMap<>();
+    /**
+     * 注册尝试限流：按客户端 IP 计数，带 10 分钟时间窗口。
+     *
+     * 2026-11-26 花蝉定的。原来只有一个 key 写死 "global" 的全局计数器，
+     * 阈值 5 且没有过期时间 —— 任何人试错 5 次，整站就没人能注册了，
+     * 而且只能重启后端才恢复（当天测试被它卡住 3 次）。
+     * 现在按 IP 分桶，互不连坐；窗口过期自动清零，不需要重启。
+     */
+    /** 每个 IP 在窗口内允许的注册尝试次数 */
+    static final int REGISTER_LIMIT = 5;
+
+    /** 限流窗口长度：10 分钟 */
+    static final Duration REGISTER_WINDOW = Duration.ofMinutes(10);
+
+    /**
+     * 一个限流桶：窗口起点 + 窗口内已计数。
+     * 用不可变 record + 每次替换，配 computeIfPresent 保证并发下不会
+     * 出现「两个线程同时重置窗口导致计数丢失」。
+     */
+    record AttemptWindow(Instant windowStart, int count) {
+        AttemptWindow increment() {
+            return new AttemptWindow(windowStart, count + 1);
+        }
+    }
+
+    /**
+     * 返回本次请求之后的累计次数（含本次）。
+     * 窗口过期就重新开一个桶，所以不需要任何定时任务或重启。
+     */
+    static int nextAttempt(Map<String, AttemptWindow> buckets, String key) {
+        Instant now = Instant.now();
+        AttemptWindow updated = buckets.compute(key, (ignored, existing) -> {
+            if (existing == null || existing.windowStart().plus(REGISTER_WINDOW).isBefore(now)) {
+                return new AttemptWindow(now, 1);
+            }
+            return existing.increment();
+        });
+        return updated == null ? 1 : updated.count();
+    }
+
+    /**
+     * 取客户端 IP 作为限流键。
+     * 容器前面可能有反向代理，优先读 X-Forwarded-For 的第一个地址；
+     * 都没有就退回 remoteAddr。拿不到就用固定串，避免 NPE 把注册整个打挂。
+     */
+    static String clientIp(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            int comma = forwarded.indexOf(',');
+            String first = comma > 0 ? forwarded.substring(0, comma) : forwarded;
+            if (!first.isBlank()) {
+                return first.trim();
+            }
+        }
+        String remote = request.getRemoteAddr();
+        return remote == null || remote.isBlank() ? "unknown" : remote;
+    }
+
+    private final Map<String, AttemptWindow> registerAttempts = new ConcurrentHashMap<>();
     private final Map<String, Integer> passwordResetAttempts = new ConcurrentHashMap<>();
     private boolean failNextSessionCreation;
     private boolean failNextAudit;
@@ -1109,8 +1216,9 @@ class AuthStore implements AuthSessionResolver {
     }
 
     synchronized Map<String, Object> register(HttpServletRequest request, String rawCode, String username, String password, String displayName, String idempotencyKey) {
-        int attempts = registerAttempts.merge("global", 1, Integer::sum);
-        if (attempts > 5) {
+        String attemptKey = clientIp(request);
+        int attempts = nextAttempt(registerAttempts, attemptKey);
+        if (attempts > REGISTER_LIMIT) {
             throw new ApiException(44101, HttpStatus.TOO_MANY_REQUESTS, "too many register attempts");
         }
         String signature = signature(rawCode, username, password, displayName);
