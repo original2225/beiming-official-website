@@ -51,9 +51,10 @@ class WhitelistModule {
                                   org.springframework.beans.factory.ObjectProvider<cn.beiming.core.ExamHandoffResolver> examHandoffResolver,
                                   @org.springframework.beans.factory.annotation.Value("${whitelist.stub-handoffs-enabled:false}") boolean stubHandoffsEnabled,
                                   org.springframework.beans.factory.ObjectProvider<cn.beiming.core.ProfileActivationResolver> profileActivationResolver,
-                                  org.springframework.beans.factory.ObjectProvider<cn.beiming.core.MinecraftIdentityResolver> minecraftIdentityResolver) {
+                                  org.springframework.beans.factory.ObjectProvider<cn.beiming.core.MinecraftIdentityResolver> minecraftIdentityResolver,
+                                  org.springframework.beans.factory.ObjectProvider<cn.beiming.core.InvitationOriginResolver> invitationOriginResolver) {
         return new WhitelistStore(testControls, whitelistPersistence, examHandoffResolver, stubHandoffsEnabled,
-                profileActivationResolver, minecraftIdentityResolver);
+                profileActivationResolver, minecraftIdentityResolver, invitationOriginResolver.getIfAvailable());
     }
 
     /**
@@ -326,6 +327,8 @@ class WhitelistStore {
     private org.springframework.beans.factory.ObjectProvider<cn.beiming.core.ProfileActivationResolver> profileActivationResolver;
     /** 申请时验证「游戏昵称在该平台是否存在」；可选注入，未装配时跳过验证（旧测试上下文）。 */
     private org.springframework.beans.factory.ObjectProvider<cn.beiming.core.MinecraftIdentityResolver> minecraftIdentityResolver;
+    /** 邀请码来源：判断是否管理员签发的码（B 方案免审核）。可为 null（测试上下文未装配）。 */
+    private cn.beiming.core.InvitationOriginResolver invitationOriginResolver;
     private final List<Map<String, Object>> audits = Collections.synchronizedList(new ArrayList<>());
     private final WhitelistTestControls testControls;
     private final WhitelistPersistence persistence;
@@ -350,12 +353,23 @@ class WhitelistStore {
                    boolean stubHandoffsEnabled,
                    org.springframework.beans.factory.ObjectProvider<cn.beiming.core.ProfileActivationResolver> profileActivationResolver,
                    org.springframework.beans.factory.ObjectProvider<cn.beiming.core.MinecraftIdentityResolver> minecraftIdentityResolver) {
+        this(testControls, persistence, examHandoffResolver, stubHandoffsEnabled,
+                profileActivationResolver, minecraftIdentityResolver, null);
+    }
+
+    WhitelistStore(WhitelistTestControls testControls, WhitelistPersistence persistence,
+                   org.springframework.beans.factory.ObjectProvider<cn.beiming.core.ExamHandoffResolver> examHandoffResolver,
+                   boolean stubHandoffsEnabled,
+                   org.springframework.beans.factory.ObjectProvider<cn.beiming.core.ProfileActivationResolver> profileActivationResolver,
+                   org.springframework.beans.factory.ObjectProvider<cn.beiming.core.MinecraftIdentityResolver> minecraftIdentityResolver,
+                   cn.beiming.core.InvitationOriginResolver invitationOriginResolver) {
         this.testControls = testControls;
         this.persistence = persistence;
         this.examHandoffResolver = examHandoffResolver;
         this.stubHandoffsEnabled = stubHandoffsEnabled;
         this.profileActivationResolver = profileActivationResolver;
         this.minecraftIdentityResolver = minecraftIdentityResolver;
+        this.invitationOriginResolver = invitationOriginResolver;
     }
 
     synchronized MutationResult createApplication(WhitelistUser user, Map<String, Object> body, HttpServletRequest request) {
@@ -422,10 +436,73 @@ class WhitelistStore {
         currentByUser.put(app.userId, app.applicationId);
         audit(user, app.applicationId, "WHITELIST_APPLICATION_CREATED", "LOW", null, app.status, "create application");
         auditNotificationFailure(user, app);
+
+        // B 方案（花蝉 2026-11-27 定）：邀请码只用于注册；
+        // 管理员签发的邀请码 = 免审核；考试已通过 = 直接给白名单，不再走人工。
+        // 判定依据是邀请码类型（ADMIN）与考核结果（PASSED），都不是玩家自己填的字段。
+        String autoApproveReason = autoApproveReason(app.userId, handoff);
+        if (autoApproveReason != null) {
+            autoApprove(user, app, autoApproveReason);
+        }
+
         Map<String, Object> value = view(app, false);
         remember(user.userId(), "create", body, value);
         persistence.persistApplicationWrite(request, user.userId(), actorRole(user), "whitelist.create-application", "WHITELIST_APPLICATION_CREATED", null, app.status, "create application", idempotencyKey(body), canonical(body), whitelistPersistenceView(app), value, 201);
         return new MutationResult(true, value);
+    }
+
+    /**
+     * 判断这次申请是否该免审核直接过。
+     *
+     * <p>两个条件同时成立才自动过：① 考核结果 PASSED（没考过当然不能放行）；
+     * ② 该玩家的注册邀请码是 ADMIN 类型（管理员签发的码）。
+     *
+     * <p>返回 null 表示不自动过，走原来的 PENDING_REVIEW 人工审核。
+     * 这里宁可漏判也不误判：查不到来源一律按普通玩家处理。
+     */
+    private String autoApproveReason(String userId, Handoff handoff) {
+        if (!"PASSED".equalsIgnoreCase(String.valueOf(handoff.result()))) return null;
+        if (invitationOriginResolver == null) return null;
+        cn.beiming.core.InvitationOriginResolver.Origin origin = invitationOriginResolver.resolve(userId);
+        if (origin == null || !origin.admin()) return null;
+        return "管理员邀请码（" + origin.type() + "/" + origin.code() + "）注册，考核已通过，自动发放白名单";
+    }
+
+    /**
+     * 免审核直接置为 APPROVED，并走与人工审核相同的建档链路。
+     *
+     * <p>复用 {@link #approveApplication} 太绕（它要 actor、reviewComment、幂等键），
+     * 这里直接调 profile 激活，失败则退回 APPROVAL_BLOCKED 等人工，
+     * 绝不让「已发白名单」和「profile 没建」两者不一致。
+     */
+    private void autoApprove(WhitelistUser user, WhitelistApplicationRecord app, String reason) {
+        String before = app.status;
+        app.reviewerUserId = "system:auto-approve";
+        app.reviewerDisplayNameSnapshot = "系统自动审核";
+        app.reviewComment = reason;
+        app.reviewedAt = NOW;
+        cn.beiming.core.ProfileActivationResolver.ActivationResult activation = activateProfile(app.userId);
+        if (activation != null && "FAILED".equals(activation.status())) {
+            app.status = "APPROVAL_BLOCKED";
+            app.result = "PENDING";
+            app.profileActivation = linkedMap("status", "FAILED", "memberId", null, "profileStatus", null,
+                    "calledAt", NOW, "failureCode", activation.failureCode(),
+                    "failureReason", activation.failureReason());
+            audit(user, app.applicationId, "WHITELIST_PROFILE_ACTIVATION_FAILED", "MEDIUM", before, app.status, reason);
+            return;
+        }
+        app.status = "APPROVED";
+        app.result = "APPROVED";
+        app.approvedAt = NOW;
+        app.profileActivation = linkedMap("status", "ACTIVATED",
+                "memberId", activation == null ? "member-" + app.userId : activation.memberId(),
+                "profileStatus", activation == null ? "ACTIVE" : activation.profileStatus(),
+                "calledAt", NOW, "failureCode", null, "failureReason", null);
+        app.attendanceHandoff = handoffView(app);
+        app.updatedAt = NOW;
+        audit(user, app.applicationId, "WHITELIST_AUTO_APPROVED", "MEDIUM", before, app.status, reason);
+        audit(user, app.applicationId, "WHITELIST_PROFILE_ACTIVATED", "MEDIUM", before, app.status, "profile activated");
+        auditNotificationFailure(user, app);
     }
 
     /**

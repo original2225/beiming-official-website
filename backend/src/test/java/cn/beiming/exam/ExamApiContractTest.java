@@ -220,6 +220,15 @@ class ExamApiContractTest {
                 Map.of("stem", "Updated stem", "reason", "update", "idempotencyKey", "question-update-1"), 200);
         assertThat(modified.at("/data/version").asInt()).isEqualTo(2);
 
+        // DRAFT -> ACTIVE：缺这一步，接口新建的题永远选不中（试卷只挑 ACTIVE），
+        // 线上表现就是「后台建了题但考生考不到」，且不报任何错
+        JsonNode activated = performJson(patch("/api/v1/exams/admin/question-bank/questions/" + questionId).header("Authorization", bearer("admin-token")),
+                Map.of("status", "ACTIVE", "reason", "activate", "idempotencyKey", "question-activate-1"), 200);
+        assertThat(activated.at("/data/status").asText()).isEqualTo("ACTIVE");
+        // 非法状态必须被拒，别让拼错的值把题变成选不中的幽灵
+        performJson(patch("/api/v1/exams/admin/question-bank/questions/" + questionId).header("Authorization", bearer("admin-token")),
+                Map.of("status", "ENABLED", "reason", "bad status", "idempotencyKey", "question-activate-bad"), 400, 40001);
+
         JsonNode archived = performJson(patch("/api/v1/exams/admin/question-bank/questions/" + questionId + "/archive").header("Authorization", bearer("admin-token")),
                 Map.of("reason", "archive", "idempotencyKey", "question-archive-1"), 200);
         assertThat(archived.at("/data/status").asText()).isEqualTo("ARCHIVED");

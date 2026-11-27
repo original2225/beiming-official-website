@@ -518,6 +518,21 @@ class AuthLocalWebConfig {
         return new NoopAuthFlowEvidenceRecorder();
     }
 
+    /**
+     * 邀请码来源查询：供 whitelist 判断「这个玩家是不是管理员码注册进来的」。
+     *
+     * <p>B 方案（花蝉 2026-11-27 定）：用 ADMIN 类邀请码注册的，白名单免人工审核；
+     * PLAYER 码注册的仍走审核。依据是邀请码类型，不是注册时随手填的东西。
+     *
+     * <p>查不到时返回 null 而不是抛异常：auth 抖动或用户没有来源记录，
+     * 都不该把白名单申请整条链路带成 500。null 在这里的含义是「按普通玩家处理」。
+     */
+    @Bean
+    cn.beiming.core.InvitationOriginResolver invitationOriginResolver(AuthStore store) {
+        return userId -> store.resolveInvitationOrigin(userId);
+    }
+
+
     @Bean
     AuthPersistence authPersistence(ObjectProvider<JdbcTemplate> jdbcTemplate, ObjectMapper objectMapper) {
         JdbcTemplate available = jdbcTemplate.getIfAvailable();
@@ -572,6 +587,15 @@ interface AuthPersistence {
      */
     List<LoadedInvitation> loadInvitations();
 
+    /**
+     * 查询某用户注册时用的邀请码类型（B 方案：ADMIN 码注册 = 白名单免审核）。
+     *
+     * <p>返回 {@code {type, codePrefix}}；查不到返回 null。
+     * 注意「查不到」与「查到了但不是 ADMIN」是两件事：前者按普通玩家处理，
+     * 后者明确是 PLAYER 码，都不该被自动放行。
+     */
+    Map<String, Object> findInvitationOrigin(String userId);
+
     /** 邀请码读回载体：rawCode 是明文，invitation 是已建好的记录。 */
     record LoadedInvitation(String rawCode, InvitationRecord invitation) {
     }
@@ -623,6 +647,12 @@ class NoopAuthPostgresPersistence implements AuthPersistence {
     @Override
     public List<LoadedInvitation> loadInvitations() {
         return List.of();
+    }
+
+    /** 内存模式没有 usage 表可查；返回 null 表示「查不到来源」，上层按普通玩家处理。 */
+    @Override
+    public Map<String, Object> findInvitationOrigin(String userId) {
+        return null;
     }
 
     @Override
@@ -750,6 +780,24 @@ class AuthPostgresPersistence implements AuthPersistence {
             loaded.add(session);
         });
         return loaded;
+    }
+
+    @Override
+    public Map<String, Object> findInvitationOrigin(String userId) {
+        if (userId == null || userId.isBlank()) return null;
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                SELECT i.type AS type, i.code_prefix AS code_prefix
+                  FROM auth_invitation_usage_records u
+                  JOIN auth_invitations i ON i.invitation_id = u.invitation_id
+                 WHERE u.used_by_user_id = ?
+                 ORDER BY u.used_at DESC
+                 LIMIT 1
+                """, userId);
+        if (rows.isEmpty()) return null;
+        Map<String, Object> origin = new java.util.LinkedHashMap<>();
+        origin.put("type", rows.get(0).get("type"));
+        origin.put("codePrefix", rows.get(0).get("code_prefix"));
+        return origin;
     }
 
     @Override
@@ -1592,6 +1640,37 @@ class AuthStore implements AuthSessionResolver {
      *
      * <p>幂等：已是 ACTIVE 直接返回成功，不重复写库。
      */
+    /**
+     * 查询用户的注册来源邀请码类型（B 方案：ADMIN 码注册 = 白名单免审核）。
+     *
+     * <p>数据来源是 {@code auth_invitation_usage_records}——注册消耗邀请码时写入，
+     * 记录 {@code used_by_user_id}。这里取该用户最近一次使用的邀请码类型。
+     *
+     * <p>刻意不抛异常：查询失败当作「查不到」，让上层按普通玩家处理，
+     * 而不是把白名单申请带成 500。
+     */
+    synchronized cn.beiming.core.InvitationOriginResolver.Origin resolveInvitationOrigin(String userId) {
+        if (userId == null || userId.isBlank()) return null;
+        // 内存优先：本地/测试上下文没有 jdbc 时，用 usageRecords 现算
+        for (InvitationRecord invitation : invitationsById.values()) {
+            for (Map<String, Object> record : invitation.usageRecords) {
+                if (userId.equals(String.valueOf(record.get("userId")))) {
+                    return new cn.beiming.core.InvitationOriginResolver.Origin(
+                            invitation.type, "ADMIN".equalsIgnoreCase(invitation.type), invitation.codePrefix);
+                }
+            }
+        }
+        try {
+            Map<String, Object> origin = persistence.findInvitationOrigin(userId);
+            if (origin == null) return null;
+            String type = String.valueOf(origin.get("type"));
+            return new cn.beiming.core.InvitationOriginResolver.Origin(
+                    type, "ADMIN".equalsIgnoreCase(type), String.valueOf(origin.get("codePrefix")));
+        } catch (RuntimeException exception) {
+            return null;
+        }
+    }
+
     synchronized cn.beiming.core.UserActivationResolver.ActivationOutcome activateForOnboardingApproval(String userId) {
         UserAccount target = usersById.get(userId);
         if (target == null) {

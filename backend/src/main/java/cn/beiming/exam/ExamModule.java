@@ -370,6 +370,8 @@ class ExamStore implements cn.beiming.core.ExamHandoffResolver {
      */
     private static final Set<String> SERVER_TYPES = Set.of("SURVIVAL", "MODPACK");
     private static final Set<String> TYPES = Set.of("SINGLE_CHOICE", "MULTIPLE_CHOICE", "TRUE_FALSE", "SHORT_TEXT");
+    /** 题目状态。DRAFT 建出来后必须显式置 ACTIVE 才进试卷池（此前缺这一步，接口建的题永远选不中） */
+    private static final Set<String> QUESTION_STATUSES = Set.of("DRAFT", "ACTIVE");
     private static final Set<String> DIFFICULTIES = Set.of("NORMAL", "RECHECK");
     private static final Set<String> SESSION_STATUSES = Set.of("IN_PROGRESS", "PENDING_MANUAL_REVIEW", "NEEDS_SUPPLEMENT", "SUPPLEMENT_SUBMITTED", "AUTO_PASSED", "AUTO_FAILED", "MANUAL_PASSED", "MANUAL_FAILED", "EXPIRED", "CANCELLED");
     private static final Set<String> RESULTS = Set.of("PENDING", "PASSED", "FAILED", "NEEDS_SUPPLEMENT", "EXPIRED", "CANCELLED");
@@ -819,6 +821,12 @@ class ExamStore implements cn.beiming.core.ExamHandoffResolver {
         ExamQuestionRecord updated = copyQuestion(old);
         if (body.containsKey("stem")) updated.stem = validateRequiredString(body, "stem", 1, 2000);
         if (body.containsKey("score")) updated.score = intValue(body.get("score"), 1, 100, 40001);
+        // 状态流转：DRAFT -> ACTIVE。少了这一段，接口创建的题永远停在 DRAFT，
+        // 试卷选题只认 ACTIVE，于是「新建题目」这个功能在真实使用里是死的（只有种子数据能考）。
+        if (body.containsKey("status")) {
+            String next = validateEnum(body, "status", QUESTION_STATUSES);
+            updated.status = next;
+        }
         updated.version = old.version + 1;
         updated.updatedAt = NOW;
         questions.put(questionId, updated);

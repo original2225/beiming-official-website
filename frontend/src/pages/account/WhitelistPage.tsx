@@ -64,13 +64,17 @@ export function WhitelistPage() {
     if (nameMissing) { setMsg('生电服需要填写游戏昵称'); return }
     setSubmitting(true)
     try {
-      await createWhitelistApplication({
+      const created = await createWhitelistApplication({
         serverType,
         minecraftPlatform: platform,
         minecraftName: mcName.trim() || undefined,
         qqGroupNickname: qqNick.trim() || undefined,
-      })
-      setMsg('申请已提交')
+      }) as { status?: string } | undefined
+      // B 方案：管理员邀请码 + 考核通过会当场给白名单，不再是「提交后等人审」。
+      // 这里必须按返回状态说清楚，否则用户会以为还要排队等。
+      setMsg(created?.status === 'APPROVED'
+        ? '考核已通过，白名单已发放，可以直接进服了'
+        : '申请已提交，等待管理员审核')
       run(() => getMyWhitelistApplications())
     } catch (e) {
       setMsg(e instanceof Error ? e.message : '提交失败')

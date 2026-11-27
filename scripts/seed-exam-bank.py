@@ -10,7 +10,9 @@
   python scripts/seed-exam-bank.py --token <ADMIN_TOKEN> [--base http://127.0.0.1:8135] [--dry-run]
 
 要点（踩过的坑）：
-  - 题目创建只建 DRAFT，必须再 PATCH .../publish 才进试卷池；模板同理。
+  - 题目创建只建 DRAFT，必须再 PATCH 把 status 改 ACTIVE 才进试卷池；模板要走 /publish。
+  - options 每项必须是 {optionId,label,text}；写成 {id,text} 能存进去但答案校验按
+    optionId 比对，考生答对也会判无效选项（43916），是静默坏数据。
   - 每个写请求都要 idempotencyKey，重复跑不会灌两遍（按 key 幂等）。
   - 模板的 questionRules 用 tags 限定题目；tags 里没题会报 43915「题库不足」。
 """
