@@ -108,6 +108,31 @@ class WhitelistDirectEntryTest {
         assertThat(result.getResponse().getStatus()).isIn(401, 403);
     }
 
+    @Test
+    @DisplayName("WL-DIRECT-004 玩家还没注册官网时录入：白名单照给，但档案如实标记待关联，不谎报 ACTIVATED")
+    void placeholderUserGetsApprovedButProfilePendingBinding() throws Exception {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("minecraftName", "NotRegisteredYet");
+        body.put("minecraftPlatform", "OFFLINE");
+        body.put("serverType", "MODPACK");
+        body.put("reason", "player has no website account yet");
+        body.put("idempotencyKey", "direct-entry-placeholder");
+        // 刻意不传 userId：纯游戏玩家，只在 MC 里存在
+
+        JsonNode created = performJson(post("/api/v1/whitelist/admin/applications/direct")
+                .header("Authorization", bearer("admin-token")), body, 201);
+
+        // 白名单该给就给——管理员有权录一个没注册官网的人
+        assertThat(created.at("/data/status").asText()).isEqualTo("APPROVED");
+        assertThat(created.at("/data/result").asText()).isEqualTo("APPROVED");
+        // 但没有 auth 用户就等于没有档案可建，不能谎报 ACTIVATED
+        assertThat(created.at("/data/profileActivation/status").asText())
+                .isEqualTo("PENDING_USER_BINDING");
+        assertThat(created.at("/data/profileActivation/memberId").isNull()).isTrue();
+        // 占位 userId 形如 direct-<序号>，便于日后人工关联真实账号
+        assertThat(created.at("/data/userId").asText()).startsWith("direct-");
+    }
+
     private String bearer(String token) {
         return "Bearer " + token;
     }

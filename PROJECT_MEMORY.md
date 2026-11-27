@@ -57,3 +57,66 @@ curl 不管 CORS，打接口永远正常。前三轮就是因为只用 curl 验�
 - 邀请码管理页的「新建」流程未在浏览器中实测（接口已验证可用）。
 - 注册限流的 IP 取自 `X-Forwarded-For` 首个地址，回退 `remoteAddr`；公网部署时需确认前置代理会正确透传。
 - 临时测试账号 `adminview01` 与测试邀请码 `ADMINVIEW-CODE` 仍留在库中，可清理。
+
+## 2026-11-27｜准入体系重构：考核分服型 → B 方案免审核 → 白名单系统录入 → 持久化治理
+
+### 主题
+花蝉定下准入流程四件事：①服型分卷（生电/整合包考核内容不同）；②B 方案（邀请码只用于注册、管理员码免审核、考过直接给白名单）；③邀请码两套不共用、白名单改后台「系统录入」；④治「重启就丢数据」。
+
+### 已完成（四个提交，全部已推送）
+
+| commit | 内容 |
+|---|---|
+| `65ab320` | 考核按服型分卷，绑定挪到申请邀请码时（前置批次） |
+| `a787025` | **B 方案**：`core/InvitationOriginResolver` 契约 + 管理员码免审核 + 考过直发白名单 |
+| `ebd1eae` | **持久化治理**：题库/白名单补回读链路与缺失列 |
+| `480c2a9` | **白名单后台系统录入**：`POST /whitelist/admin/applications/direct` + `AdminWhitelistDirectPage` |
+
+### 决定与偏好（花蝉定的，带日期）
+
+1. **2026-11-27 服型必须在 onboarding 选方向时定**：考核在申请之前，服型不能拖到申请时才选，否则考生考的是通用卷、申请时才发现该考生电卷，等于要重考。三处 `SERVER_TYPES` 常量（onboarding/exam/whitelist）必须同名同值。
+2. **2026-11-27 B 方案**：邀请码只作注册凭证；`ADMIN` 类邀请码 = 免人工审核；考核 `PASSED` 即直接发白名单。
+3. **2026-11-27 `邀请码是两套`**：官网注册码与北冥皮肤站码不共用，别想对齐成一套。
+4. **2026-11-27 白名单不走邀请码**：改官网后台「系统录入」，管理员直接把玩家录进白名单。注册要码、白名单不要码。
+5. **放行条件必须两条同时成立**：`result==PASSED` 且来源是 `ADMIN` 码。PLAYER 码或查不到来源一律留 `PENDING_REVIEW`；管理员码但没考过更早被 `409/44010` 拒——**管理员码不豁免考核**。
+
+### 关键实现
+
+- 跨模块只能走 `cn.beiming.core` 契约（`compatibilityAndBoundaryContract` 扫源码，whitelist 出现 `cn.beiming.auth.` 直接红灯）。新增 `InvitationOriginResolver`。
+- `autoApprove` / `directEntry` 都必须调 `activateProfile`，失败降 `APPROVAL_BLOCKED` 交人工；**绝不允许「状态 APPROVED 但档案空/编造」**。
+- 系统录入不编造考核数据：`examSessionId=direct-entry`、`examPassedAt=null`；`userId` 可空（纯游戏玩家用 `direct-<序号>` 占位）。
+
+### 踩过的坑
+
+**1. 假持久化第三次复发（最值钱的教训）**
+`ExamPersistence` / `WhitelistPersistence` 只有写方法、**一个读方法都没有**。接口 200、库里有行、审计也写了，但重启后内存只剩硬编码 5 道英文种子题，题库/申请/审核状态全"消失"，无异常无告警。前两次是 auth 的 `persistRegister` 不写 + `loadUsers` 不读回。
+→ 改法：加 `loadQuestions/loadTemplates/loadApplications`，`seed()` 末尾覆盖式回读；**`idSeq` 要跟着推进**否则新申请 `wl-1001` 撞老单主键。
+
+**2. 表里根本没有这些列**
+`exam_questions` 没有 `server_type`、`whitelist_applications` 没有 `server_type`/`qq_group_nickname`，一直只活在 Java 对象里。补 `V19__add_exam_server_type.sql`（`ADD COLUMN IF NOT EXISTS`，NULL = 两服共用）。
+
+**3. `copyQuestion` 漏拷 `serverType`（最阴）**
+`updateQuestion` 走 `copyQuestion(old)` 再改字段，它只复刻构造参数那批，`serverType` 是构造后单独赋的 → **任何一次 update（含 DRAFT→ACTIVE 激活）都把服型洗成 null**，生电专属题悄悄变两服通用题。单元测试全绿，只有真跑「建题→激活→查库」才暴露。
+
+**4. `mvn` 绝对不能并行**
+一边改代码一边后台跑全量测试，会得到 `703 run / 42 failures / 276 errors` 全片 `Failed to load ApplicationContext`——共享 `target/` 和固定测试端口互撞。这类红灯不是代码问题，别改代码；清进程后单跑即可。
+
+**5. 编辑 `*Module.java`（一文件多类）时 patch 易把两行拼一起**
+锚点末尾多带一个换行，替换后 `synchronized ... {` 会和下一行 `UserAccount target = ...` 并成一行。每次 patch 后看 diff 前 3 行。
+
+**6. Surefire 多类用逗号**：`-Dtest=A,B,C`，用 `+` 报 `No matching tests`。
+
+**7. 加接口要同步更新路由快照**
+`AdmissionCoreApiContractTest.registersExactlySecondBatchAndSelfApiRoutes` 断言路由条数（86→87）——这是防「悄悄多出接口」的闸门，加完接口必须一起改。
+
+### 测试基线
+- 后端 **711/711** BUILD SUCCESS
+- 前端 `tsc` 0 错误、`npm test` **33/33**
+- 持久化验收用 Testcontainers 真库（`ExamBankReloadIntegrationTest` 直接 `SELECT server_type` 断言列值）——**内存模式下「读得回来」根本无从验证，这正是假持久化能一直绿的原因**
+
+### 待办 / 下一步
+
+1. **容器已重建到 `480c2a9`**（本轮收工前完成）。
+2. 题库仍是 5 道英文占位题（`"Rules apply before whitelist approval."` 这类），测试硬编码引用其 ID 不能删。**生产环境需要一套真实中文题库**：`docs/rules/exam-question-bank.seed.json` 已有 25 题（4 通用/14 生电/7 整合包），`scripts/seed-exam-bank.py` 可灌，但需 admin token。
+3. `WhitelistPage.tsx` 玩家自助申请页与新的「后台系统录入」是两条独立入口，产品上要确认两者都保留还是要收敛。
+4. 邀请码 `used_count` 虚高未回退（`OKMSG-CODE` 5/50、`PWTEST-CODE` 2/50，使用记录已删）。

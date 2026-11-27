@@ -204,7 +204,10 @@ public class WhitelistPostgresPersistence implements WhitelistPersistence {
 
     private void persistActivationAndHandoff(HttpServletRequest request, String actorUserId, Map<String, Object> app) {
         Map<String, Object> activation = mapValue(app.get("profileActivation"));
-        if (!activation.isEmpty()) {
+        // 只把真正的建档动作结果写进从表。status 是 PENDING_USER_BINDING 时表示
+        // 「根本没建档」（玩家还没注册官网），此时不该有 activation 记录——
+        // 而且该表 status 列有 CHECK 只认 ACTIVATED/FAILED，写进去会直接违约。
+        if (!activation.isEmpty() && !"PENDING_USER_BINDING".equals(text(activation, "status"))) {
             jdbc.update("""
                     INSERT INTO whitelist_profile_activations(id, activation_id, application_id, member_id, status, activation_payload, request_id, created_at)
                     VALUES (?, ?, ?, ?, ?, CAST(? AS jsonb), ?, now())

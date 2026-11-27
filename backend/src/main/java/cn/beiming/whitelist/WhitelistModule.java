@@ -1347,19 +1347,31 @@ class WhitelistStore {
 
         // 建档：与人工审核走同一条链路，失败就退回 APPROVAL_BLOCKED 等人工，
         // 绝不允许出现「状态 APPROVED 但档案是空的」
-        cn.beiming.core.ProfileActivationResolver.ActivationResult activation = activateProfile(app.userId);
-        if (activation != null && "FAILED".equals(activation.status())) {
-            app.status = "APPROVAL_BLOCKED";
-            app.result = "PENDING";
-            app.profileActivation = linkedMap("status", "FAILED", "memberId", null, "profileStatus", null,
-                    "calledAt", NOW, "failureCode", activation.failureCode(),
-                    "failureReason", activation.failureReason());
+        //
+        // 但「玩家还没注册官网」是系统录入的合法场景（花蝉 2026-11-27）：此时
+        // userId 只是占位串，auth 里没有这个人，建档必然 43204。
+        // 这种情况不是失败，是「等他有账号了再关联」，所以单独标一个
+        // PENDING_USER_BINDING，不进 APPROVAL_BLOCKED、不谎报 ACTIVATED。
+        if (placeholderUser) {
+            app.profileActivation = linkedMap("status", "PENDING_USER_BINDING",
+                    "memberId", null, "profileStatus", null, "calledAt", NOW,
+                    "failureCode", null,
+                    "failureReason", "玩家尚未注册官网，等注册后关联 userId 再建档");
         } else {
-            app.profileActivation = linkedMap("status", "ACTIVATED",
-                    "memberId", activation == null ? "member-" + app.userId : activation.memberId(),
-                    "profileStatus", activation == null ? "ACTIVE" : activation.profileStatus(),
-                    "calledAt", NOW, "failureCode", null, "failureReason", null);
-            app.attendanceHandoff = handoffView(app);
+            cn.beiming.core.ProfileActivationResolver.ActivationResult activation = activateProfile(app.userId);
+            if (activation != null && "FAILED".equals(activation.status())) {
+                app.status = "APPROVAL_BLOCKED";
+                app.result = "PENDING";
+                app.profileActivation = linkedMap("status", "FAILED", "memberId", null, "profileStatus", null,
+                        "calledAt", NOW, "failureCode", activation.failureCode(),
+                        "failureReason", activation.failureReason());
+            } else {
+                app.profileActivation = linkedMap("status", "ACTIVATED",
+                        "memberId", activation == null ? "member-" + app.userId : activation.memberId(),
+                        "profileStatus", activation == null ? "ACTIVE" : activation.profileStatus(),
+                        "calledAt", NOW, "failureCode", null, "failureReason", null);
+                app.attendanceHandoff = handoffView(app);
+            }
         }
 
         applications.put(app.applicationId, app);
@@ -1763,6 +1775,8 @@ class WhitelistException extends RuntimeException {
 
 @RestControllerAdvice(basePackages = "cn.beiming.whitelist")
 class WhitelistExceptionHandler {
+    private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(WhitelistExceptionHandler.class);
+
     @ExceptionHandler(WhitelistException.class)
     ResponseEntity<Map<String, Object>> handle(WhitelistException ex) {
         return ResponseEntity.status(ex.httpStatus).body(error(ex.code, ex.getMessage()));
@@ -1775,6 +1789,8 @@ class WhitelistExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     ResponseEntity<Map<String, Object>> handleUnexpected(Exception ex) {
+        // 兜底不能吞异常：不记日志就只剩一句 52000，线上根本无从查起（2026-11-27 踩过）
+        LOG.error("whitelist internal error, requestId={}", WhitelistController.requestId(), ex);
         return ResponseEntity.status(500).body(error(52000, "whitelist internal error"));
     }
 
