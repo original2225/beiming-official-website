@@ -3,6 +3,8 @@ package cn.beiming.auth;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Component;
+import cn.beiming.core.MinecraftIdentityResolver.Identity;
+import cn.beiming.core.MinecraftIdentityResolver.Platform;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -32,30 +34,37 @@ import java.util.UUID;
  * 这里不抛异常，避免第三方服务抖动直接把注册流程打挂。
  */
 @Component
-public class MinecraftIdentityResolver {
+public class MinecraftIdentityResolver implements cn.beiming.core.MinecraftIdentityResolver {
 
-    /** 支持的外置登录平台 */
-    public enum Platform {
-        LITTLESKIN, MOJANG, OFFLINE;
-
-        static Platform parse(String raw) {
-            if (raw == null || raw.isBlank()) {
-                return OFFLINE;
-            }
-            try {
-                return valueOf(raw.trim().toUpperCase(Locale.ROOT));
-            } catch (IllegalArgumentException e) {
-                return null;
-            }
+    /**
+     * 沿用 core 契约里的枚举，避免两套 Platform 各说各话。
+     * 解析失败返回 null（不静默当离线——那会把任何人绑成同一身份）。
+     */
+    static Platform parsePlatform(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return Platform.OFFLINE;
+        }
+        try {
+            return Platform.valueOf(raw.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            return null;
         }
     }
 
-    /** 解析结果：昵称 + 32 位无连字符小写 UUID + 来源平台 */
-    public record Identity(String name, String uuid, Platform platform) {
-    }
+
 
     static final String LITTLESKIN_ENDPOINT = "https://littleskin.cn/api/yggdrasil/api/profiles/minecraft";
     static final String MOJANG_ENDPOINT = "https://api.mojang.com/users/profiles/minecraft/";
+    /**
+     * 北冥皮肤站：自建 Yggdrasil，官方文档给的认证服务器是
+     * `https://skinserver.beiming.games/api/yggdrasil`。
+     * 实测那天该站整站 523（Cloudflare 源站不可达），没拿到真实路径，
+     * 所以这里按 blessing skin 系的两种常见层级依次试，命中哪个用哪个。
+     */
+    static final String[] BEIMING_ENDPOINTS = {
+            "https://skinserver.beiming.games/api/yggdrasil/api/profiles/minecraft",
+            "https://skinserver.beiming.games/api/yggdrasil/profiles/minecraft",
+    };
 
     private static final Duration TIMEOUT = Duration.ofSeconds(6);
 
@@ -69,19 +78,25 @@ public class MinecraftIdentityResolver {
      * 按昵称解析身份。昵称不合法或查不到都返回 null。
      * 昵称规则与 Minecraft 一致：3-16 位字母数字下划线。
      */
+    @Override
     public Identity resolve(String rawName, String rawPlatform) {
         String name = rawName == null ? "" : rawName.trim();
         if (!name.matches("[A-Za-z0-9_]{3,16}")) {
             return null;
         }
-        Platform platform = Platform.parse(rawPlatform);
+        Platform platform = parsePlatform(rawPlatform);
         if (platform == null) {
             return null;
         }
         if (platform == Platform.OFFLINE) {
             return new Identity(name, offlineUuid(name), Platform.OFFLINE);
         }
-        String uuid = platform == Platform.LITTLESKIN ? fromLittleSkin(name) : fromMojang(name);
+        String uuid = switch (platform) {
+            case LITTLESKIN -> profilesLookup(LITTLESKIN_ENDPOINT, name);
+            case BEIMING -> firstNonNullLookup(BEIMING_ENDPOINTS, name);
+            case MOJANG -> fromMojang(name);
+            case OFFLINE -> offlineUuid(name);
+        };
         return uuid == null ? null : new Identity(name, uuid, platform);
     }
 
@@ -107,16 +122,29 @@ public class MinecraftIdentityResolver {
         return sb.toString();
     }
 
+    /** 依次尝试多个候选端点，返回第一个查到的 UUID */
+    private String firstNonNullLookup(String[] endpoints, String name) {
+        for (String endpoint : endpoints) {
+            String uuid = profilesLookup(endpoint, name);
+            if (uuid != null) {
+                return uuid;
+            }
+        }
+        return null;
+    }
+
     /**
-     * LittleSkin：POST JSON 数组到 Yggdrasil 标准查名端点。
-     * 返回 [{"id":"...","name":"..."}]，查不到返回 []。
-     * 注意路径必须带 `/api/yggdrasil` 前缀，少一层会 404（实测
-     * `/api/yggdrasil/profiles/minecraft` 与 `/api/yggdrasil/api/users/profiles/minecraft` 都是 404）。
+     * Yggdrasil 标准查名端点（blessing skin 系，LittleSkin 与北冥皮肤站同构）：
+     * POST JSON 数组到 `.../api/profiles/minecraft`，返回 [{"id":"...","name":"..."}]，查不到返回 []。
+     *
+     * <p>路径层级各站不同：LittleSkin 是 `/api/yggdrasil/api/profiles/minecraft`，
+     * 北冥皮肤站按官方文档的认证服务器 `.../api/yggdrasil` 推得同样要再补一层 `/api`。
+     * 少一层会 404，所以端点由调用方以常量传入，这里只管协议。
      */
-    private String fromLittleSkin(String name) {
+    private String profilesLookup(String endpoint, String name) {
         try {
             String body = mapper.writeValueAsString(List.of(name));
-            HttpRequest request = HttpRequest.newBuilder(URI.create(LITTLESKIN_ENDPOINT))
+            HttpRequest request = HttpRequest.newBuilder(URI.create(endpoint))
                     .timeout(TIMEOUT)
                     .header("Content-Type", "application/json")
                     .header("Accept", "application/json")
@@ -131,7 +159,7 @@ public class MinecraftIdentityResolver {
                 return null;
             }
             JsonNode first = root.get(0);
-            String id = first.path("id").asText("");
+            String id = first.path("id").asText("").toLowerCase(Locale.ROOT);
             String found = first.path("name").asText("");
             // 昵称必须对得上，避免大小写不同被换成别人
             if (!id.matches("[a-f0-9]{32}") || !found.equalsIgnoreCase(name)) {

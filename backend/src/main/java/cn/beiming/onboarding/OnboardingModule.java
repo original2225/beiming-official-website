@@ -72,16 +72,30 @@ class OnboardingModule {
      */
     @Bean
     cn.beiming.core.OnboardingDirectionResolver onboardingDirectionResolver(OnboardingStore store) {
-        return applicationId -> {
-            if (applicationId == null || applicationId.isBlank()) {
-                return null;
+        // 两个方法都要查同一份 ApplicationRecord，所以用匿名类而不是 lambda（lambda 只能实现单抽象方法）
+        return new cn.beiming.core.OnboardingDirectionResolver() {
+            @Override
+            public String resolveReviewDirection(String applicationId) {
+                ApplicationRecord app = lookup(applicationId);
+                if (app == null) return null;
+                String direction = app.reviewDirection;
+                return direction == null || direction.isBlank() ? null : direction;
             }
-            ApplicationRecord app = store.byApplicationId(applicationId);
-            if (app == null) {
-                return null;
+
+            @Override
+            public String resolveServerType(String applicationId) {
+                ApplicationRecord app = lookup(applicationId);
+                if (app == null) return null;
+                String serverType = app.serverType;
+                return serverType == null || serverType.isBlank() ? null : serverType;
             }
-            String direction = app.reviewDirection;
-            return direction == null || direction.isBlank() ? null : direction;
+
+            private ApplicationRecord lookup(String applicationId) {
+                if (applicationId == null || applicationId.isBlank()) {
+                    return null;
+                }
+                return store.byApplicationId(applicationId);
+            }
         };
     }
 
@@ -267,6 +281,12 @@ class OnboardingStore {
     private static final String NOW = "2026-05-22T12:00:00Z";
     private static final Set<String> STATUSES = Set.of("NOT_STARTED", "IN_PROGRESS", "BLOCKED", "READY_FOR_EXAM", "WAITING_EXAM", "READY_FOR_WHITELIST", "WAITING_WHITELIST", "COMPLETED", "CANCELLED");
     private static final Set<String> DIRECTIONS = Set.of("REDSTONE", "LATE_GAME", "BUILDING", "GENERAL");
+    /**
+     * 服型（花蝉 2026-11-27 定）：决定考核内容与后续绑定是否强制。
+     * SURVIVAL 原版生电服 → 按《生电服服规》出题（更新抑制/立项/假人/打印机等 13+ 条硬性规定）；
+     * MODPACK 整合包服 → 只考《服务器守则》基本友好合作，不考生电技术条款。
+     */
+    private static final Set<String> SERVER_TYPES = Set.of("SURVIVAL", "MODPACK");
     private static final Set<String> RESET_STEPS = Set.of("ACCOUNT_READY", "PROFILE_CONFIRMED", "RULES_CONFIRMED", "DIRECTION_SELECTED");
     private final Map<String, ApplicationRecord> applications = new ConcurrentHashMap<>();
     private final Map<String, String> currentByUser = new ConcurrentHashMap<>();
@@ -410,6 +430,13 @@ class OnboardingStore {
 
     synchronized Map<String, Object> direction(AuthContext user, Map<String, Object> body, HttpServletRequest request) {
         String direction = validateEnum(body, "reviewDirection", DIRECTIONS);
+        // 服型和方向一起选：考核内容由服型决定，选完就不该再改（否则考完再换服型等于换了套题）。
+        // 缺省按 MODPACK（整合包）——它的考核最宽松，老数据/未传时不会被硬拦；
+        // 要走进生电必须显式选 SURVIVAL，那时申请阶段才强制绑定。
+        String rawServerType = string(body.get("serverType"));
+        String serverType = rawServerType == null || rawServerType.isBlank()
+                ? "MODPACK"
+                : validateEnum(body, "serverType", SERVER_TYPES);
         validateIdempotencyKey(body);
         IdempotencyRecord replay = replay(user.userId(), "DIRECTION", body);
         if (replay != null) return replay.value();
@@ -423,6 +450,7 @@ class OnboardingStore {
         }
         failBeforeWrite(request);
         app.reviewDirection = direction;
+        app.serverType = serverType;
         app.updatedAt = NOW;
         audit(user, app, "ONBOARDING_DIRECTION_SELECTED", "LOW", app.status, app.status, null);
         applyAuxNotification(app, request);
@@ -441,7 +469,8 @@ class OnboardingStore {
         requireCompleteBinding(user);
         requireProfileWrite(user, request);
         RuleSummary rule = requireRuleForWrite(user, request);
-        if (app.profileConfirmation == null || app.ruleConfirmation == null || app.reviewDirection == null) {
+        if (app.profileConfirmation == null || app.ruleConfirmation == null || app.reviewDirection == null
+                || app.serverType == null) {
             throw new OnboardingException(409, 43811, "step prerequisite missing");
         }
         if (!rule.ruleVersion().equals(string(app.ruleConfirmation.get("ruleVersion")))) {
@@ -517,6 +546,7 @@ class OnboardingStore {
                 "userId", app.userId,
                 "displayNameSnapshot", app.displayName,
                 "minecraftBindingSnapshot", app.minecraftBinding,
+                "serverType", app.serverType,
                 "profileConfirmation", app.profileConfirmation,
                 "ruleConfirmation", app.ruleConfirmation,
                 "reviewDirection", app.reviewDirection,
@@ -553,6 +583,7 @@ class OnboardingStore {
             app.profileConfirmation = null;
             app.ruleConfirmation = null;
             app.reviewDirection = null;
+            app.serverType = null;
         } else if ("PROFILE_CONFIRMED".equals(step)) {
             app.ruleConfirmation = null;
             app.reviewDirection = null;
@@ -1261,6 +1292,8 @@ class ApplicationRecord {
     String status;
     String previousStatus;
     String reviewDirection;
+    /** 服型：SURVIVAL 原版生电 / MODPACK 整合包；考核按它出卷 */
+    String serverType;
     Map<String, Object> profileConfirmation;
     Map<String, Object> ruleConfirmation;
     String blockedReason;

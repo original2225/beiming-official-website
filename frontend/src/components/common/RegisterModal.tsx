@@ -56,13 +56,6 @@ function isPasswordAcceptable(password: string): boolean {
 }
 
 
-/** 游戏平台：决定服务端去哪里查 UUID */
-const PLATFORMS = [
-  { value: 'LITTLESKIN', label: 'LittleSkin 外置登录', hint: '在 littleskin.cn 注册的外置账号' },
-  { value: 'MOJANG', label: 'Mojang 正版', hint: '买了正版、用微软账号登录的' },
-  { value: 'OFFLINE', label: '离线服', hint: '北冥离线服，UUID 由昵称算出来' },
-] as const
-
 interface RegisterModalProps {
   open: boolean
   onClose: () => void
@@ -77,7 +70,6 @@ export function RegisterModal({ open, onClose, onSwitchToLogin }: RegisterModalP
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [invitationCode, setInvitationCode] = useState('')
-  const [platform, setPlatform] = useState<(typeof PLATFORMS)[number]['value']>('LITTLESKIN')
   const [error, setError] = useState('')
   // 记录是哪一类错误，用来把对应的输入框标红（报错条在最上面，
   // 光有文字的话用户不知道是哪一格出的问题）
@@ -129,15 +121,13 @@ export function RegisterModal({ open, onClose, onSwitchToLogin }: RegisterModalP
       setLoading(true)
       try {
         // 后端 register 直接返回 accessToken，用不着让用户再登录一次。
-        // minecraftName 与用户名同值：服务端按 minecraftPlatform 查 UUID 并绑定，
-        // 用户不需要知道自己的 UUID 是多少。
+        // 游戏账号不在注册阶段绑定（花蝉 2026-11-27 定）：注册时填名字只是声称，
+        // 服务端查得到名字存在，并不等于这个人拥有它。绑定挪到个人中心再走验证。
         const result = await register({
           username,
           displayName: trimmedDisplay,
           password,
           invitationCode: invitationCode.trim(),
-          minecraftName: username,
-          minecraftPlatform: platform,
         })
         // 一次性邀请码已经用掉了，清掉避免重复提交时撞「邀请码已用尽」
         setInvitationCode('')
@@ -280,24 +270,8 @@ export function RegisterModal({ open, onClose, onSwitchToLogin }: RegisterModalP
               required
             />
 
-            {/* 5. 游戏平台：服务端据此去查你的 UUID */}
-            <div className="flex flex-col gap-1">
-              <label className="text-xs text-[#6B7B85]">你的游戏账号在哪个平台</label>
-              <select
-                value={platform}
-                onChange={(e) => setPlatform(e.target.value as typeof platform)}
-                className="auth-input-light"
-              >
-                {PLATFORMS.map((p) => (
-                  <option key={p.value} value={p.value}>
-                    {p.label}
-                  </option>
-                ))}
-              </select>
-              <span className="text-xs text-[#6B7B85]">
-                {PLATFORMS.find((p) => p.value === platform)?.hint}
-              </span>
-            </div>
+            {/* 游戏账号绑定不在注册阶段做：注册只建站内账号。
+                绑定去「账号安全」页，那里选平台、走验证。 */}
 
             <button type="submit" disabled={loading} className="btn-auth-light mt-2">
               {loading ? '注册中...' : '注册'}

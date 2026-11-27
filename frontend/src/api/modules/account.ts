@@ -93,15 +93,33 @@ export const changePassword = (body: unknown) => {
 }
 export const requestPasswordReset = (body: unknown) => post<unknown>(ep.auth.passwordResetRequest(), body)
 export const confirmPasswordReset = (body: unknown) => post<unknown>(ep.auth.passwordResetConfirm(), body)
+/**
+ * 绑定游戏账号。
+ *
+ * 两条路径：
+ * - 主路径：只传 minecraftName + minecraftPlatform，UUID 由服务端按平台去查。
+ *   玩家不需要知道自己的 UUID 是多少，也不该被要求填。
+ * - 兼容路径：调用方自带 minecraftId + minecraftUuid（管理员手工写入场景）时直传。
+ *
+ * 旧版这里强制要求 minecraftUuid 和 verificationCode，而 verificationCode 后端
+ * 从未校验过——等于逼前端凑一个假验证码，主路径反而走不通。
+ */
 export const bindMinecraft = (body: unknown) => {
   const payload = ensureObject(body)
-  if (!payload.minecraftUuid || !payload.verificationCode) {
-    return Promise.reject(new ApiError(40001, '当前绑定需要 Minecraft UUID 和验证码'))
+  if (payload.minecraftId && payload.minecraftUuid) {
+    return put<unknown>(ep.auth.minecraftBinding(), {
+      minecraftId: payload.minecraftId,
+      minecraftUuid: payload.minecraftUuid,
+    })
+  }
+  const name = payload.minecraftName
+  const platform = payload.minecraftPlatform
+  if (!name || !platform) {
+    return Promise.reject(new ApiError(40001, '请选择游戏平台并填写游戏昵称'))
   }
   return put<unknown>(ep.auth.minecraftBinding(), {
-    minecraftId: payload.minecraftId ?? payload.minecraftName,
-    minecraftUuid: payload.minecraftUuid,
-    verificationCode: payload.verificationCode,
+    minecraftName: name,
+    minecraftPlatform: platform,
   })
 }
 export const unbindMinecraft = () => del<unknown>(ep.auth.minecraftBinding(), { reason: 'USER_MINECRAFT_UNBIND' })

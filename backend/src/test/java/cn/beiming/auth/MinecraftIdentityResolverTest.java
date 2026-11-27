@@ -98,4 +98,37 @@ class MinecraftIdentityResolverTest {
         assertThat(identity).isNotNull();
         assertThat(identity.name()).isEqualTo("Steve");
     }
+
+    @Test
+    @DisplayName("MCID-010 北冥皮肤站是合法平台（站不可达时解析失败但不算未知平台）")
+    void beimingPlatformIsRecognized() {
+        // 平台名能解析出来：返回 null 说明「查不到身份」，而不是「平台不认识」。
+        // 该站实测 523（Cloudflare 源站不可达），所以这里只断言不抛异常、不误判成其他平台。
+        var identity = resolver.resolve("Steve", "BEIMING");
+        assertThat(identity).isNull();
+        // 关键：不能因为皮肤站挂了就退化成离线 UUID（那会把任何人绑成同一个假身份）
+        assertThat(MinecraftIdentityResolver.parsePlatform("BEIMING"))
+                .isEqualTo(MinecraftIdentityResolver.Platform.BEIMING);
+    }
+
+    @Test
+    @DisplayName("MCID-011 平台优先级：正版 > LittleSkin > 北冥皮肤站 > 离线")
+    void platformOrderMatchesDecision() {
+        // 花蝉 2026-11-27 定的优先级，枚举顺序要跟它一致，前端下拉也按这个排
+        assertThat(MinecraftIdentityResolver.Platform.values())
+                .containsExactly(
+                        MinecraftIdentityResolver.Platform.MOJANG,
+                        MinecraftIdentityResolver.Platform.LITTLESKIN,
+                        MinecraftIdentityResolver.Platform.BEIMING,
+                        MinecraftIdentityResolver.Platform.OFFLINE);
+    }
+
+    @Test
+    @DisplayName("MCID-012 北冥皮肤站有多个候选端点，不会只押一个路径")
+    void beimingHasMultipleCandidateEndpoints() {
+        assertThat(MinecraftIdentityResolver.BEIMING_ENDPOINTS).hasSizeGreaterThan(1);
+        for (String endpoint : MinecraftIdentityResolver.BEIMING_ENDPOINTS) {
+            assertThat(endpoint).startsWith("https://skinserver.beiming.games/");
+        }
+    }
 }

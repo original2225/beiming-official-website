@@ -383,9 +383,14 @@ class WhitelistApiContractTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .accept(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(body)))
-                .andExpect(status().is(status))
                 .andReturn();
-        return objectMapper.readTree(result.getResponse().getContentAsString());
+        int actual = result.getResponse().getStatus();
+        String payload = result.getResponse().getContentAsString();
+        if (actual != status) {
+            // 失败时把业务错误码带出来：只断言状态码会丢掉 code/message，排查要重跑
+            throw new AssertionError("expected status " + status + " but was " + actual + ", body=" + payload);
+        }
+        return objectMapper.readTree(payload);
     }
 
     private JsonNode performJson(MockHttpServletRequestBuilder builder, Map<String, Object> body, int status, int code) throws Exception {

@@ -83,17 +83,17 @@ class AuthController {
         validateUsername(username);
         validatePassword(password);
         validateDisplayName(displayName);
-        // MC 绑定（花蝉 2026-11-27）：昵称由前端填（默认等于用户名），平台选
-        // LITTLESKIN / MOJANG / OFFLINE，UUID 一律服务端查，用户不用知道。
-        // 传了昵称但查不到 → 43102 明确告知（静默忽略会让用户以为绑上了）；
-        // 压根没传 → 不绑定，注册照常走。
+        // MC 绑定（花蝉 2026-11-27 二次修正）：注册阶段一律不绑游戏账号。
+        // 原因：注册时填名字只是「声称」，服务端查得到该名字存在，并等于这个人拥有它——
+        // 任何人填 Notch 都能把 Notch 认领走。真正的归属验证要么走平台登录换 token，
+        // 要么由管理员按 multilogin 白名单核对，两者都在玩家进服之后才发生。
+        // 所以注册只建站内账号，绑定放到个人中心（PUT /me/minecraft-binding）再走验证流程。
+        // 兼容：仍接受 minecraftName 字段但只做「名字格式 + 平台存在性」预检，
+        // 结果不回传给 store，避免把未验证的绑定落库。
         String minecraftName = optionalString(body, "minecraftName");
         MinecraftIdentityResolver.Identity minecraftIdentity = null;
         if (minecraftName != null && !minecraftName.isBlank()) {
-            minecraftIdentity = minecraftResolver.resolve(minecraftName, optionalString(body, "minecraftPlatform"));
-            if (minecraftIdentity == null) {
-                throw new ApiException(43102, HttpStatus.BAD_REQUEST, "minecraft identity not found");
-            }
+            minecraftIdentity = null; // 注册不做任何绑定，见上方说明
         }
         Map<String, Object> payload = store.register(request, invitationCode, username, password, displayName, optionalString(body, "idempotencyKey"), minecraftIdentity);
         ResponseEntity<Map<String, Object>> response = created(payload);
@@ -179,18 +179,41 @@ class AuthController {
         return ok(null);
     }
 
+    /**
+     * 绑定游戏账号（花蝉 2026-11-27 定的流程：注册先建站内账号，绑定放到个人中心）。
+     *
+     * <p>只收「游戏昵称 + 平台」，UUID 由服务端按平台去查，玩家不用知道 UUID 是什么。
+     * 旧实现要求前端自己传 32 位 UUID，实际前端根本传不出来，等于这个接口不可用；
+     * 且旧实现里的 verificationCode 只做了必填检查、内容从未校验，是假验证——已删掉。
+     *
+     * <p>平台取值：MOJANG（正版）/ LITTLESKIN / BEIMING（北冥皮肤站）/ OFFLINE（离线）。
+     * 查不到身份一律 43102，不静默落库——绑一个查无此人的名字没有意义。
+     *
+     * <p>注意这里只校验「该昵称在对应平台存在」，不证明调用者拥有它；
+     * 所有权由后续白名单核对（multilogin whitelist add）确认，见 docs 白名单详解。
+     */
     @PutMapping("/me/minecraft-binding")
     ResponseEntity<Map<String, Object>> bindMinecraft(@RequestHeader(value = "Authorization", required = false) String authorization,
                                                        @RequestBody(required = false) Map<String, Object> body) {
         CurrentSession session = store.requireSession(authorization);
         body = bodyOrEmpty(body);
-        String minecraftId = requiredString(body, "minecraftId");
-        String minecraftUuid = requiredString(body, "minecraftUuid");
-        requiredString(body, "verificationCode");
-        if (!Pattern.matches("[A-Za-z0-9_]{3,16}", minecraftId) || !Pattern.matches("[a-f0-9]{32}", minecraftUuid)) {
-            throw ApiException.badRequest("minecraftBinding");
+        // 兼容旧调用方：仍接受 minecraftId / minecraftUuid 直传（管理员手工写入场景）
+        String rawId = optionalString(body, "minecraftId");
+        String rawUuid = optionalString(body, "minecraftUuid");
+        if (rawId != null && !rawId.isBlank() && rawUuid != null && rawUuid.matches("[a-f0-9]{32}")) {
+            if (!Pattern.matches("[A-Za-z0-9_]{3,16}", rawId)) {
+                throw ApiException.badRequest("minecraftBinding");
+            }
+            return ok(store.bindMinecraft(session.user.username, rawId, rawUuid, "MANUAL_VERIFICATION"));
         }
-        return ok(store.bindMinecraft(session.user.username, minecraftId, minecraftUuid));
+        // 主路径：昵称 + 平台，服务端解析
+        String name = requiredString(body, "minecraftName");
+        String platform = requiredString(body, "minecraftPlatform");
+        MinecraftIdentityResolver.Identity identity = minecraftResolver.resolve(name, platform);
+        if (identity == null) {
+            throw new ApiException(43102, HttpStatus.BAD_REQUEST, "minecraft identity not found");
+        }
+        return ok(store.bindMinecraft(session.user.username, identity.name(), identity.uuid(), identity.platform().name()));
     }
 
     @DeleteMapping("/me/minecraft-binding")
@@ -559,6 +582,9 @@ interface AuthPersistence {
 
     void seedMinecraftBinding(String userId, MinecraftBinding binding);
 
+    /** 解除绑定：删掉该用户的绑定行 */
+    void deleteMinecraftBinding(String userId);
+
     Map<String, Object> replay(String actorUserId, String scope, String idempotencyKey, String fingerprint);
 
     void persistRegister(HttpServletRequest request, String rawInvitationCode, InvitationRecord invitation, UserAccount user, SessionRecord session, String idempotencyKey, String fingerprint, Map<String, Object> payload, int responseCode);
@@ -609,6 +635,10 @@ class NoopAuthPostgresPersistence implements AuthPersistence {
 
     @Override
     public void seedMinecraftBinding(String userId, MinecraftBinding binding) {
+    }
+
+    @Override
+    public void deleteMinecraftBinding(String userId) {
     }
 
     @Override
@@ -815,6 +845,12 @@ class AuthPostgresPersistence implements AuthPersistence {
                 ON CONFLICT (user_id) DO UPDATE SET minecraft_id = EXCLUDED.minecraft_id, minecraft_uuid = EXCLUDED.minecraft_uuid, verified_at = EXCLUDED.verified_at, source = EXCLUDED.source
                 """,
                 UUID.randomUUID(), userId, binding.minecraftId, binding.minecraftUuid, timestamp(binding.verifiedAt), binding.source);
+    }
+
+    @Override
+    @Transactional
+    public void deleteMinecraftBinding(String userId) {
+        jdbc.update("DELETE FROM auth_minecraft_bindings WHERE user_id = ?", userId);
     }
 
     @Override
@@ -1465,7 +1501,7 @@ class AuthStore implements AuthSessionResolver {
         audit("AUTH_PASSWORD_RESET_CONFIRMED", null, user, "SUCCESS", null, null, null);
     }
 
-    synchronized Map<String, Object> bindMinecraft(String username, String minecraftId, String minecraftUuid) {
+    synchronized Map<String, Object> bindMinecraft(String username, String minecraftId, String minecraftUuid, String source) {
         UserAccount user = findByUsername(username);
         if (user.minecraftBinding != null) {
             if (user.minecraftBinding.minecraftId.equals(minecraftId) && user.minecraftBinding.minecraftUuid.equals(minecraftUuid)) {
@@ -1479,7 +1515,9 @@ class AuthStore implements AuthSessionResolver {
         if (occupied) {
             throw new ApiException(43115, HttpStatus.CONFLICT, "minecraft identity bound");
         }
-        user.minecraftBinding = new MinecraftBinding(minecraftId, minecraftUuid, Instant.now(), "MANUAL_VERIFICATION");
+        user.minecraftBinding = new MinecraftBinding(minecraftId, minecraftUuid, Instant.now(), source);
+        // 只改内存不写库 = 重启即丢。这里补持久化（与 register 那次同一个坑）。
+        persistMinecraftBinding(user, user.minecraftBinding);
         audit("AUTH_MINECRAFT_BOUND", user, user, "SUCCESS", null, null, null);
         return minecraftBindingMap(user.minecraftBinding);
     }
@@ -1490,7 +1528,30 @@ class AuthStore implements AuthSessionResolver {
             throw new ApiException(43102, HttpStatus.NOT_FOUND, "minecraft binding not found");
         }
         user.minecraftBinding = null;
+        persistMinecraftBinding(user, null);
         audit("AUTH_MINECRAFT_UNBOUND", user, user, "SUCCESS", reason, null, null);
+    }
+
+    /**
+     * 把绑定写进 auth_minecraft_bindings；传 null 表示解除绑定（删行）。
+     *
+     * <p>{@code seedMinecraftBinding} 本身就是 upsert（ON CONFLICT (user_id) DO UPDATE），
+     * 复用它而不是新加一个接口方法。persistence 为空时（不接库的测试上下文）跳过。
+     */
+    private void persistMinecraftBinding(UserAccount user, MinecraftBinding binding) {
+        if (persistence == null) {
+            return;
+        }
+        try {
+            if (binding == null) {
+                persistence.deleteMinecraftBinding(user.id);
+            } else {
+                persistence.seedMinecraftBinding(user.id, binding);
+            }
+        } catch (RuntimeException e) {
+            // 写库失败不能让内存状态和库体不一致地「成功」返回
+            throw new ApiException(50900, HttpStatus.INTERNAL_SERVER_ERROR, "minecraft binding persist failed");
+        }
     }
 
     synchronized Map<String, Object> listUsers(int page, int pageSize, String keyword, String status, String role, String sort) {

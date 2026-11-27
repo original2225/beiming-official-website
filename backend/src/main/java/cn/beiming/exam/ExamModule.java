@@ -363,6 +363,12 @@ class ExamController {
 class ExamStore implements cn.beiming.core.ExamHandoffResolver {
     private static final String NOW = "2026-05-23T12:00:00Z";
     private static final Set<String> DIRECTIONS = Set.of("REDSTONE", "LATE_GAME", "BUILDING", "GENERAL");
+    /**
+     * 服型（花蝉 2026-11-27 定）：考核内容分岔的维度。
+     * SURVIVAL 原版生电服按《生电服服规》出题（更新抑制/立项/假人/打印机等硬性条款），
+     * MODPACK 整合包服只考《服务器守则》的基本友好合作。
+     */
+    private static final Set<String> SERVER_TYPES = Set.of("SURVIVAL", "MODPACK");
     private static final Set<String> TYPES = Set.of("SINGLE_CHOICE", "MULTIPLE_CHOICE", "TRUE_FALSE", "SHORT_TEXT");
     private static final Set<String> DIFFICULTIES = Set.of("NORMAL", "RECHECK");
     private static final Set<String> SESSION_STATUSES = Set.of("IN_PROGRESS", "PENDING_MANUAL_REVIEW", "NEEDS_SUPPLEMENT", "SUPPLEMENT_SUBMITTED", "AUTO_PASSED", "AUTO_FAILED", "MANUAL_PASSED", "MANUAL_FAILED", "EXPIRED", "CANCELLED");
@@ -439,7 +445,7 @@ class ExamStore implements cn.beiming.core.ExamHandoffResolver {
         }
         String difficulty = "REMOVED".equals(user.profileStatus()) ? "RECHECK" : "NORMAL";
         String attemptType = "REMOVED".equals(user.profileStatus()) ? "RECHECK" : "FIRST_TIME";
-        PaperTemplateRecord template = latestTemplate(handoff.reviewDirection(), difficulty);
+        PaperTemplateRecord template = latestTemplate(handoff.reviewDirection(), difficulty, handoff.serverType());
         if (template == null) throw new ExamException(409, 43914, "no published template");
         if (requiresContent(user, template, request)) throw new ExamException(502, 46930, "content unavailable");
         List<ExamQuestionRecord> selected = selectQuestions(template);
@@ -453,6 +459,7 @@ class ExamStore implements cn.beiming.core.ExamHandoffResolver {
         session.displayName = user.displayName();
         session.minecraftBinding = user.minecraftBinding();
         session.reviewDirection = handoff.reviewDirection();
+        session.serverType = template.serverType != null ? template.serverType : handoff.serverType();
         session.attemptType = attemptType;
         session.difficulty = difficulty;
         session.status = "IN_PROGRESS";
@@ -746,7 +753,7 @@ class ExamStore implements cn.beiming.core.ExamHandoffResolver {
         if (!Set.of("AUTO_PASSED", "MANUAL_PASSED").contains(session.status)) throw new ExamException(409, 43924, "not passed");
         whitelistHandoffSnapshotsTotal++;
         whitelistHandoffGenerated.add(sessionId);
-        Map<String, Object> snapshot = mapOf("sessionId", session.sessionId, "applicationId", session.applicationId, "handoffVersion", 1, "onboardingHandoffVersion", session.onboardingHandoffVersion, "userId", session.userId, "minecraftBindingSnapshot", session.minecraftBinding, "reviewDirection", session.reviewDirection, "attemptType", session.attemptType, "result", "PASSED", "scoreSummary", scoreSummary(session), "passedAt", session.passedAt == null ? NOW : session.passedAt, "reviewerSnapshot", reviewerSnapshot(session), "generatedAt", NOW);
+        Map<String, Object> snapshot = mapOf("sessionId", session.sessionId, "applicationId", session.applicationId, "handoffVersion", 1, "onboardingHandoffVersion", session.onboardingHandoffVersion, "userId", session.userId, "minecraftBindingSnapshot", session.minecraftBinding, "reviewDirection", session.reviewDirection, "serverType", session.serverType, "attemptType", session.attemptType, "result", "PASSED", "scoreSummary", scoreSummary(session), "passedAt", session.passedAt == null ? NOW : session.passedAt, "reviewerSnapshot", reviewerSnapshot(session), "generatedAt", NOW);
         persistence.persistHandoff(request, actor.userId(), snapshot);
         return snapshot;
     }
@@ -1025,18 +1032,36 @@ class ExamStore implements cn.beiming.core.ExamHandoffResolver {
                 default -> "REDSTONE";
             };
         }
-        return new Handoff(applicationId, user.userId(), direction);
+        String serverType = onboardingDirectionResolver == null
+                ? null
+                : onboardingDirectionResolver.resolveServerType(applicationId);
+        return new Handoff(applicationId, user.userId(), direction, serverType);
     }
 
     private boolean requiresContent(ExamUser user, PaperTemplateRecord template, HttpServletRequest request) {
         return (testControls.enabled() && "CONTENT_UNAVAILABLE".equals(user.profileStatus())) || "CONTENT:UNAVAILABLE".equals(testHeader(request, "X-Test-Dependency-Mode"));
     }
 
-    private PaperTemplateRecord latestTemplate(String direction, String difficulty) {
+    /**
+     * 挑最新已发布模板。
+     *
+     * <p>服型优先精确匹配：生电考生电的卷、整合包考整合包的卷。
+     * 找不到该服型的专属模板时退回「两服通用」（{@code serverType == null}），
+     * 这样上线初期只有一套通用题也能正常考，不会因为缺模板把所有人卡在 43914。
+     */
+    private PaperTemplateRecord latestTemplate(String direction, String difficulty, String serverType) {
+        String wanted = serverType == null ? null : serverType.trim().toUpperCase(java.util.Locale.ROOT);
+        PaperTemplateRecord exact = latestTemplateWhere(direction, difficulty, t -> wanted != null && wanted.equals(t.serverType));
+        return exact != null ? exact : latestTemplateWhere(direction, difficulty, t -> t.serverType == null);
+    }
+
+    private PaperTemplateRecord latestTemplateWhere(String direction, String difficulty,
+                                                    java.util.function.Predicate<PaperTemplateRecord> extra) {
         return templates.values().stream()
                 .filter(template -> "PUBLISHED".equals(template.status))
                 .filter(template -> direction.equals(template.reviewDirection))
                 .filter(template -> difficulty.equals(template.difficulty))
+                .filter(extra)
                 .max(Comparator.comparing(template -> template.publishedAt == null ? "" : template.publishedAt))
                 .orElse(null);
     }
@@ -1062,6 +1087,8 @@ class ExamStore implements cn.beiming.core.ExamHandoffResolver {
                 .filter(q -> "ACTIVE".equals(q.status))
                 .filter(q -> template.reviewDirection.equals(q.reviewDirection))
                 .filter(q -> template.difficulty.equals(q.difficulty))
+                // 服型：题目标了服型就必须一致；题目没标（serverType==null）＝两服通用，都收
+                .filter(q -> q.serverType == null || q.serverType.equals(template.serverType))
                 .filter(q -> type.equals(q.type))
                 .filter(q -> tags.isEmpty() || q.tags.stream().anyMatch(tags::contains))
                 .sorted(Comparator.comparing(q -> q.questionId));
@@ -1218,7 +1245,7 @@ class ExamStore implements cn.beiming.core.ExamHandoffResolver {
     }
 
     private Map<String, Object> questionView(ExamQuestionRecord question, boolean admin) {
-        Map<String, Object> view = mapOf("questionId", question.questionId, "version", question.version, "type", question.type, "reviewDirection", question.reviewDirection, "difficulty", question.difficulty, "stem", question.stem, "options", question.options, "score", question.score, "tags", question.tags, "status", question.status, "createdAt", question.createdAt, "updatedAt", question.updatedAt, "archivedAt", question.archivedAt);
+        Map<String, Object> view = mapOf("questionId", question.questionId, "version", question.version, "type", question.type, "reviewDirection", question.reviewDirection, "serverType", question.serverType, "difficulty", question.difficulty, "stem", question.stem, "options", question.options, "score", question.score, "tags", question.tags, "status", question.status, "createdAt", question.createdAt, "updatedAt", question.updatedAt, "archivedAt", question.archivedAt);
         if (admin) {
             view.put("correctOptionIds", question.correctOptionIds);
             view.put("referenceAnswer", question.referenceAnswer);
@@ -1227,7 +1254,7 @@ class ExamStore implements cn.beiming.core.ExamHandoffResolver {
     }
 
     private Map<String, Object> templateView(PaperTemplateRecord template) {
-        return mapOf("templateId", template.templateId, "version", template.version, "name", template.name, "reviewDirection", template.reviewDirection, "difficulty", template.difficulty, "status", template.status, "timeLimitMinutes", template.timeLimitMinutes, "passScore", template.passScore, "objectivePassScore", template.objectivePassScore, "questionRules", template.questionRules, "contentRuleVersion", template.contentRuleVersion, "retakeCooldownHours", template.retakeCooldownHours, "createdAt", template.createdAt, "updatedAt", template.updatedAt, "publishedAt", template.publishedAt);
+        return mapOf("templateId", template.templateId, "version", template.version, "name", template.name, "reviewDirection", template.reviewDirection, "serverType", template.serverType, "difficulty", template.difficulty, "status", template.status, "timeLimitMinutes", template.timeLimitMinutes, "passScore", template.passScore, "objectivePassScore", template.objectivePassScore, "questionRules", template.questionRules, "contentRuleVersion", template.contentRuleVersion, "retakeCooldownHours", template.retakeCooldownHours, "createdAt", template.createdAt, "updatedAt", template.updatedAt, "publishedAt", template.publishedAt);
     }
 
     private Map<String, Object> sessionPersistenceView(ExamSessionRecord session) {
@@ -1293,12 +1320,24 @@ class ExamStore implements cn.beiming.core.ExamHandoffResolver {
             if ("TRUE_FALSE".equals(type) && options.size() != 2) throw new ExamException(400, 40001, "invalid true false question");
         }
         List<String> tags = body.get("tags") instanceof List<?> list ? list.stream().map(Object::toString).limit(10).toList() : List.of();
-        return question(id, type, direction, difficulty, stem, options, correct, reference, score, tags, status, version);
+        // 服型可选：不填 = 两服通用（基本友好合作守则这类题就该两服都考）
+        String rawQServerType = string(body.get("serverType"));
+        String qServerType = rawQServerType == null || rawQServerType.isBlank()
+                ? null
+                : validateEnum(body, "serverType", SERVER_TYPES);
+        ExamQuestionRecord record = question(id, type, direction, difficulty, stem, options, correct, reference, score, tags, status, version);
+        record.serverType = qServerType;
+        return record;
     }
 
     private PaperTemplateRecord parseTemplate(String id, Map<String, Object> body, String status, int version) {
         String name = validateRequiredString(body, "name", 1, 80);
         String direction = validateEnum(body, "reviewDirection", DIRECTIONS);
+        // 服型可选：不填 = 两服通用模板（老数据与上线初期的兜底口径）
+        String rawServerType = string(body.get("serverType"));
+        String serverType = rawServerType == null || rawServerType.isBlank()
+                ? null
+                : validateEnum(body, "serverType", SERVER_TYPES);
         String difficulty = validateEnum(body, "difficulty", DIFFICULTIES);
         int timeLimit = intValue(body.get("timeLimitMinutes"), 15, 180, 40001);
         int passScore = intValue(body.get("passScore"), 1, 10000, 40001);
@@ -1315,6 +1354,7 @@ class ExamStore implements cn.beiming.core.ExamHandoffResolver {
         if (passScore > total || objectivePassScore > total) throw new ExamException(400, 40001, "score threshold invalid");
         int cooldown = intValue(body.get("retakeCooldownHours"), 0, 720, 40001);
         PaperTemplateRecord template = template(id, name, direction, difficulty, status, version, timeLimit, passScore, objectivePassScore, rules);
+        template.serverType = serverType;
         template.contentRuleVersion = string(body.get("contentRuleVersion"));
         template.retakeCooldownHours = cooldown;
         return template;
@@ -1733,7 +1773,13 @@ class NoopExamFlowEvidenceRecorder implements ExamFlowEvidenceRecorder {
 record ExamUser(String userId, String displayName, Set<String> roles, String status, Map<String, Object> minecraftBinding, String profileStatus) {
 }
 
-record Handoff(String applicationId, String userId, String reviewDirection) {
+/**
+ * exam 从 onboarding 拿到的交接。
+ *
+ * @param serverType 服型（SURVIVAL / MODPACK）。考核内容按它分岔：生电服考硬性服规，
+ *                   整合包只考基本友好合作；为 null 时按 MODPACK 处理（宽松兜底，不误拦人）。
+ */
+record Handoff(String applicationId, String userId, String reviewDirection, String serverType) {
 }
 
 record IdempotencyRecord(String fingerprint, Map<String, Object> value) {
@@ -1753,6 +1799,8 @@ class ExamSessionRecord {
     String displayName;
     Map<String, Object> minecraftBinding;
     String reviewDirection;
+    /** 本场考试按哪套服型出的卷；出卷时快照下来，事后考生换服型也不影响已考记录 */
+    String serverType;
     String attemptType;
     String difficulty;
     String status;
@@ -1791,6 +1839,8 @@ class ExamQuestionRecord {
     int version;
     String type;
     String reviewDirection;
+    /** 该题适用的服型；null 表示两服通用（基本守则类题目） */
+    String serverType;
     String difficulty;
     String stem;
     List<Map<String, Object>> options = List.of();
@@ -1809,6 +1859,8 @@ class PaperTemplateRecord {
     int version;
     String name;
     String reviewDirection;
+    /** 服型：SURVIVAL 生电 / MODPACK 整合包。同一方向 + 难度下，两套题的界就在这里 */
+    String serverType;
     String difficulty;
     String status;
     int timeLimitMinutes;

@@ -50,8 +50,10 @@ class WhitelistModule {
     WhitelistStore whitelistStore(WhitelistTestControls testControls, WhitelistPersistence whitelistPersistence,
                                   org.springframework.beans.factory.ObjectProvider<cn.beiming.core.ExamHandoffResolver> examHandoffResolver,
                                   @org.springframework.beans.factory.annotation.Value("${whitelist.stub-handoffs-enabled:false}") boolean stubHandoffsEnabled,
-                                  org.springframework.beans.factory.ObjectProvider<cn.beiming.core.ProfileActivationResolver> profileActivationResolver) {
-        return new WhitelistStore(testControls, whitelistPersistence, examHandoffResolver, stubHandoffsEnabled, profileActivationResolver);
+                                  org.springframework.beans.factory.ObjectProvider<cn.beiming.core.ProfileActivationResolver> profileActivationResolver,
+                                  org.springframework.beans.factory.ObjectProvider<cn.beiming.core.MinecraftIdentityResolver> minecraftIdentityResolver) {
+        return new WhitelistStore(testControls, whitelistPersistence, examHandoffResolver, stubHandoffsEnabled,
+                profileActivationResolver, minecraftIdentityResolver);
     }
 
     /**
@@ -299,6 +301,16 @@ class WhitelistStore {
     private static final Set<String> APPLICATION_STATUSES = Set.of("DRAFT", "PENDING_REVIEW", "UNDER_REVIEW", "NEEDS_SUPPLEMENT", "SUPPLEMENT_SUBMITTED", "APPROVAL_BLOCKED", "APPROVED", "REJECTED", "WITHDRAWN", "REMOVED", "REAPPLYING", "ARCHIVED");
     private static final Set<String> RESULTS = Set.of("PENDING", "NEEDS_SUPPLEMENT", "APPROVED", "REJECTED", "WITHDRAWN", "REMOVED");
     private static final Set<String> DIRECTIONS = Set.of("REDSTONE", "LATE_GAME", "BUILDING", "GENERAL");
+    /**
+     * 服型（花蝉 2026-11-27 定）：决定考核内容与绑定是否强制。
+     * <ul>
+     *   <li>SURVIVAL 原版生电服：考核按《生电服服规》13+ 条硬性规定，游戏账号**强制**绑定</li>
+     *   <li>MODPACK 整合包服：考核只走《服务器守则》基本友好合作，游戏账号**建议**绑定</li>
+     * </ul>
+     */
+    private static final String SERVER_SURVIVAL = "SURVIVAL";
+    private static final String SERVER_MODPACK = "MODPACK";
+    private static final Set<String> SERVER_TYPES = Set.of(SERVER_SURVIVAL, SERVER_MODPACK);
     private static final Set<String> ATTEMPT_TYPES = Set.of("FIRST_TIME", "RECHECK");
     private final Map<String, WhitelistApplicationRecord> applications = new ConcurrentHashMap<>();
     private final Map<String, String> currentByUser = new ConcurrentHashMap<>();
@@ -312,6 +324,8 @@ class WhitelistStore {
     private final boolean stubHandoffsEnabled;
     /** 审批通过后真实建档；为 null（未装配）时只保留原编造视图，供旧测试上下文运行。 */
     private org.springframework.beans.factory.ObjectProvider<cn.beiming.core.ProfileActivationResolver> profileActivationResolver;
+    /** 申请时验证「游戏昵称在该平台是否存在」；可选注入，未装配时跳过验证（旧测试上下文）。 */
+    private org.springframework.beans.factory.ObjectProvider<cn.beiming.core.MinecraftIdentityResolver> minecraftIdentityResolver;
     private final List<Map<String, Object>> audits = Collections.synchronizedList(new ArrayList<>());
     private final WhitelistTestControls testControls;
     private final WhitelistPersistence persistence;
@@ -321,18 +335,27 @@ class WhitelistStore {
     WhitelistStore(WhitelistTestControls testControls, WhitelistPersistence persistence,
                    org.springframework.beans.factory.ObjectProvider<cn.beiming.core.ExamHandoffResolver> examHandoffResolver,
                    boolean stubHandoffsEnabled) {
-        this(testControls, persistence, examHandoffResolver, stubHandoffsEnabled, null);
+        this(testControls, persistence, examHandoffResolver, stubHandoffsEnabled, null, null);
     }
 
     WhitelistStore(WhitelistTestControls testControls, WhitelistPersistence persistence,
                    org.springframework.beans.factory.ObjectProvider<cn.beiming.core.ExamHandoffResolver> examHandoffResolver,
                    boolean stubHandoffsEnabled,
                    org.springframework.beans.factory.ObjectProvider<cn.beiming.core.ProfileActivationResolver> profileActivationResolver) {
+        this(testControls, persistence, examHandoffResolver, stubHandoffsEnabled, profileActivationResolver, null);
+    }
+
+    WhitelistStore(WhitelistTestControls testControls, WhitelistPersistence persistence,
+                   org.springframework.beans.factory.ObjectProvider<cn.beiming.core.ExamHandoffResolver> examHandoffResolver,
+                   boolean stubHandoffsEnabled,
+                   org.springframework.beans.factory.ObjectProvider<cn.beiming.core.ProfileActivationResolver> profileActivationResolver,
+                   org.springframework.beans.factory.ObjectProvider<cn.beiming.core.MinecraftIdentityResolver> minecraftIdentityResolver) {
         this.testControls = testControls;
         this.persistence = persistence;
         this.examHandoffResolver = examHandoffResolver;
         this.stubHandoffsEnabled = stubHandoffsEnabled;
         this.profileActivationResolver = profileActivationResolver;
+        this.minecraftIdentityResolver = minecraftIdentityResolver;
     }
 
     synchronized MutationResult createApplication(WhitelistUser user, Map<String, Object> body, HttpServletRequest request) {
@@ -344,7 +367,18 @@ class WhitelistStore {
         Handoff handoff = handoff(sessionId, user);
         if (!"PASSED".equals(handoff.result())) throw new WhitelistException(409, 44010, "exam result not passed");
         if (!Objects.equals(handoff.userId(), user.userId())) throw new WhitelistException(409, 44011, "handoff user mismatch");
-        if (handoff.minecraftBinding() == null || handoff.minecraftBinding().get("minecraftUuid") == null) throw new WhitelistException(502, 47012, "exam handoff incompatible");
+        // 服型：决定考核内容与绑定是否强制。
+        // 缺省按 MODPACK（整合包）处理——它的要求最宽松（不强制绑定），
+        // 意味着「没声明服型」不会被硬性拦住；要走进生电必须自己显式选 SURVIVAL。
+        String rawServerType = string(body.get("serverType"));
+        String serverType = rawServerType == null || rawServerType.isBlank()
+                ? SERVER_MODPACK
+                : rawServerType.trim().toUpperCase(java.util.Locale.ROOT);
+        if (!SERVER_TYPES.contains(serverType)) throw new WhitelistException(400, 40001, "serverType");
+        // 绑定不再从考核快照强制取（注册已不绑），改由申请时玩家提交、服务端验真后写入。
+        // 生电服强制；整合包建议填，留空也放行。
+        Map<String, Object> binding = resolveApplicationBinding(body, serverType, examHandoffResolver == null ? null : handoff, user);
+        String qqNick = string(body.get("qqGroupNickname"));
         String handoffKey = handoff.sessionId() + ":" + handoff.handoffVersion();
         String currentId = currentByUser.get(user.userId());
         if (currentId != null) {
@@ -367,9 +401,11 @@ class WhitelistStore {
         app.onboardingHandoffVersion = handoff.onboardingHandoffVersion();
         app.userId = handoff.userId();
         app.displayNameSnapshot = user.displayName();
-        app.minecraftBindingSnapshot = handoff.minecraftBinding();
+        app.minecraftBindingSnapshot = binding;
         app.reviewDirection = handoff.reviewDirection();
         app.attemptType = handoff.attemptType();
+        app.serverType = serverType;
+        app.qqGroupNickname = qqNick;
         app.status = "PENDING_REVIEW";
         app.result = "PENDING";
         app.materials = normalizeMaterials(body.get("materials"), false);
@@ -390,6 +426,49 @@ class WhitelistStore {
         remember(user.userId(), "create", body, value);
         persistence.persistApplicationWrite(request, user.userId(), actorRole(user), "whitelist.create-application", "WHITELIST_APPLICATION_CREATED", null, app.status, "create application", idempotencyKey(body), canonical(body), whitelistPersistenceView(app), value, 201);
         return new MutationResult(true, value);
+    }
+
+    /**
+     * 解析并验证申请时的游戏账号绑定（花蝉 2026-11-27 定的流程：申请邀请码时才绑）。
+     *
+     * <p>为什么不沿用考核快照：注册阶段已不绑定（查得到名字 ≠ 拥有它），
+     * 所以快照必然为空。绑定改在申请时由玩家提交「平台 + 昵称」，
+     * 服务端按平台去查 UUID —— 查不到直接拒，不让查无此人的名字落库。
+     *
+     * <p>强制策略：SURVIVAL（生电）必须填；MODPACK（整合包）建议填、留空放行。
+     *
+     * @return 绑定视图（含 minecraftId / minecraftUuid / platform），未绑定返回 null
+     */
+    private Map<String, Object> resolveApplicationBinding(Map<String, Object> body, String serverType, Handoff handoff, WhitelistUser user) {
+        String mcName = string(body.get("minecraftName"));
+        String mcPlatform = string(body.get("minecraftPlatform"));
+
+        if (mcName == null || mcName.isBlank()) {
+            if (SERVER_SURVIVAL.equals(serverType)) {
+                // 生电服：没有游戏账号进不去，必须填
+                throw new WhitelistException(400, 44013, "minecraft binding required for survival");
+            }
+            // 整合包：建议填，留空放行。若考核快照里恰好有绑定，就沿用它。
+            return handoff == null ? null : handoff.minecraftBinding();
+        }
+        if (mcPlatform == null || mcPlatform.isBlank()) {
+            throw new WhitelistException(400, 40001, "minecraftPlatform");
+        }
+        cn.beiming.core.MinecraftIdentityResolver resolver =
+                minecraftIdentityResolver == null ? null : minecraftIdentityResolver.getIfAvailable();
+        cn.beiming.core.MinecraftIdentityResolver.Identity identity = resolver == null
+                ? null
+                : resolver.resolve(mcName.trim(), mcPlatform);
+        if (identity == null) {
+            // 43102：该平台查不到这个名字（站挂了、名字错、或平台选错都会走到这里）
+            throw new WhitelistException(400, 43102, "minecraft identity not found");
+        }
+        return linkedMap(
+                "minecraftId", identity.name(),
+                "minecraftUuid", identity.uuid(),
+                "platform", identity.platform().name(),
+                "verifiedAt", NOW,
+                "source", identity.platform().name());
     }
 
     Map<String, Object> currentApplication(WhitelistUser user, HttpServletRequest request) {
@@ -897,6 +976,8 @@ class WhitelistStore {
                 "minecraftBindingSnapshot", app.minecraftBindingSnapshot,
                 "reviewDirection", app.reviewDirection,
                 "attemptType", app.attemptType,
+                "serverType", app.serverType,
+                "qqGroupNickname", app.qqGroupNickname,
                 "status", app.status,
                 "result", app.result,
                 "materials", app.materials,
@@ -1300,6 +1381,10 @@ class WhitelistApplicationRecord {
     Map<String, Object> minecraftBindingSnapshot;
     String reviewDirection;
     String attemptType;
+    /** 服型：SURVIVAL（原版生电）/ MODPACK（整合包），决定考核内容与绑定是否强制 */
+    String serverType;
+    /** 申请时玩家自填的 QQ 群昵称，供管理与游戏昵称人工核对 */
+    String qqGroupNickname;
     String status;
     String result;
     List<Map<String, Object>> materials = List.of();

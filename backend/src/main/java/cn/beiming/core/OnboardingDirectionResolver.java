@@ -26,4 +26,15 @@ public interface OnboardingDirectionResolver {
      * @return {@code GENERAL} / {@code REDSTONE} 等方向值；申请不存在或尚未选择方向返回 {@code null}
      */
     String resolveReviewDirection(String applicationId);
+
+    /**
+     * 查出该 onboarding 申请登记的服型。
+     *
+     * <p>考核内容按服型分岔，所以出卷前必须先拿到它：生电服考生电服服规（更新抑制报备、立项报备、
+     * 假人/打印机限制等硬性条款），整合包服只考《服务器守则》里的基本友好合作。
+     *
+     * @param applicationId onboarding 申请 ID；为空或不存在返回 {@code null}
+     * @return {@code SURVIVAL} / {@code MODPACK}；申请不存在或尚未选择服型返回 {@code null}
+     */
+    String resolveServerType(String applicationId);
 }
