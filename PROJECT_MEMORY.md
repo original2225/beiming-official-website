@@ -116,7 +116,25 @@ curl 不管 CORS，打接口永远正常。前三轮就是因为只用 curl 验�
 
 ### 待办 / 下一步
 
-1. **容器已重建到 `480c2a9`**（本轮收工前完成）。
+1. **容器已重建到 `fd18bdf`**，白名单系统录入两种场景已在真容器实测通过（占位玩家 `wl-1008` / 真实用户 `wl-1006`）。
 2. 题库仍是 5 道英文占位题（`"Rules apply before whitelist approval."` 这类），测试硬编码引用其 ID 不能删。**生产环境需要一套真实中文题库**：`docs/rules/exam-question-bank.seed.json` 已有 25 题（4 通用/14 生电/7 整合包），`scripts/seed-exam-bank.py` 可灌，但需 admin token。
 3. `WhitelistPage.tsx` 玩家自助申请页与新的「后台系统录入」是两条独立入口，产品上要确认两者都保留还是要收敛。
 4. 邀请码 `used_count` 虚高未回退（`OKMSG-CODE` 5/50、`PWTEST-CODE` 2/50，使用记录已删）。
+
+### 重建后实测发现的问题（52000 三连击，已修）
+
+**教训：单元测试全绿不等于功能可用。** 前端 tsc 0 错、`npm test` 33/33、后端全量 711/711 绿，推上去重建容器后调真接口直接 `{"code":52000,"message":"whitelist internal error"}`，连报三次，每次根因都不同，全是 schema 里按「必经考核」写死的约束：
+
+| # | 报错约束 | 原因 | 修法 |
+|---|---|---|---|
+| 1 | `onboarding_application_id` NOT NULL | 系统录入无前置申请单 | V20 放开非空，NULL = 非 onboarding 来源 |
+| 2 | `CHECK (exam_handoff_version > 0)` 与其 onboarding 孪生约束 | 无交接，版本号只能 0 | V21 改成 `>= 0`，0 = 无交接 |
+| 3 | `CHECK (status IN ('ACTIVATED','FAILED'))` on `whitelist_profile_activations` | 新状态 `PENDING_USER_BINDING` 不在白名单 | **不写这张从表**——占位玩家没有建档动作就不该有记录 |
+
+**为什么测试全绿还漏**：内存模式只走 Java 对象、不碰真库约束；`createEvidenceTables()` 的 DDL 是测试自己写的，**不含 Flyway 迁移里的约束**。
+
+→ **判别口径：新增数据路径（尤其绕过原流程的）必须在跑 Flyway 真迁移的容器里做一次真写操作。内存绿、证据表绿都不算数。**
+
+**顺带修的真缺陷**：`WhitelistExceptionHandler.handleUnexpected` 只 `return 500` 不打日志，线上 500 是哑巴。已补 `LOG.error` 带 requestId + 堆栈——这次三次根因全靠它才定位。
+
+**业务口径**（花蝉 2026-11-27）：管理员有权录还没注册官网的玩家，`userId` 空时用 `direct-<序号>` 占位；这类人档案状态是 `PENDING_USER_BINDING`（等关联），不是 `APPROVAL_BLOCKED`（建档失败）、更不谎报 `ACTIVATED`。
