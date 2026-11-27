@@ -60,6 +60,12 @@ export const rejectWhitelist = (applicationId: string) => patch<unknown>(`/api/v
 export const requestSupplementWhitelist = (applicationId: string) => patch<unknown>(`/api/v1/whitelist/admin/applications/${applicationId}/request-supplement`)
 export const removeWhitelist = (applicationId: string) => patch<unknown>(`/api/v1/whitelist/admin/applications/${applicationId}/remove`)
 
+/**
+ * 管理员直接把玩家录进白名单（花蝉 2026-11-27 定）。
+ * 不走邀请码、不需要考核，后端建完即 APPROVED 并同步建好成员档案。
+ */
+export const directEntryWhitelist = (body: unknown) => post<unknown>('/api/v1/whitelist/admin/applications/direct', body)
+
 // ── attendance 后台 ──
 export const getAdminAttendanceAccounts = (params?: Record<string, string | number | boolean | undefined>) => get<unknown>('/api/v1/attendance/admin/accounts', { params })
 export const adjustAttendancePoints = (accountId: string, body: unknown) => post<unknown>(`/api/v1/attendance/admin/accounts/${accountId}/adjustments`, body)

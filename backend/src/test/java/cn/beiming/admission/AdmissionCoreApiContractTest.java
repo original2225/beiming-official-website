@@ -176,13 +176,15 @@ class AdmissionCoreApiContractTest {
                 .filter(pattern -> pattern.startsWith("/api/v1/"))
                 .collect(Collectors.toCollection(java.util.TreeSet::new));
 
-        assertThat(apiRouteMappings).isEqualTo(86);
+        assertThat(apiRouteMappings).isEqualTo(87);
         assertThat(apiRoutes).contains(
                 "/api/v1/admission-core/health",
                 "/api/v1/admission-core/admin/ops/summary",
                 "/api/v1/onboarding/me/progress",
                 "/api/v1/exams/me/sessions/current",
                 "/api/v1/whitelist/me/applications/current",
+                // 管理员直接录入白名单（花蝉 2026-11-27 定）：白名单不走邀请码
+                "/api/v1/whitelist/admin/applications/direct",
                 "/api/v1/attendance/leaderboard"
         );
     }

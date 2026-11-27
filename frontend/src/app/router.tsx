@@ -44,6 +44,7 @@ import { AdminUsersPage } from '../pages/admin/AdminUsersPage'
 import { AdminContentPage } from '../pages/admin/AdminContentPage'
 import { AdminApprovalsPage } from '../pages/admin/AdminApprovalsPage'
 import { AdminInvitationsPage } from '../pages/admin/AdminInvitationsPage'
+import { AdminWhitelistDirectPage } from '../pages/admin/AdminWhitelistDirectPage'
 
 // 运维
 import { OpsOverviewPage } from '../pages/ops/OpsOverviewPage'
@@ -92,6 +93,8 @@ export function AppRouter() {
       <Route path={ROUTES.ADMIN_CONTENT} element={<ProtectedRoute requiredRole="HELPER"><AdminContentPage /></ProtectedRoute>} />
       <Route path={ROUTES.ADMIN_APPROVALS} element={<ProtectedRoute requiredRole="HELPER"><AdminApprovalsPage /></ProtectedRoute>} />
       <Route path={ROUTES.ADMIN_INVITATIONS} element={<ProtectedRoute requiredRole="HELPER"><AdminInvitationsPage /></ProtectedRoute>} />
+<Route path={ROUTES.ADMIN_INVITATIONS} element={<ProtectedRoute requiredRole="HELPER"><AdminInvitationsPage /></ProtectedRoute>} />
+        <Route path={ROUTES.ADMIN_WHITELIST_DIRECT} element={<ProtectedRoute requiredRole="ADMIN"><AdminWhitelistDirectPage /></ProtectedRoute>} />
 
       {/* 运维 */}
       <Route path={ROUTES.OPS} element={<ProtectedRoute requiredRole="HELPER"><OpsOverviewPage /></ProtectedRoute>} />

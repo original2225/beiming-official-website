@@ -45,6 +45,7 @@ export const ROUTES = {
   ADMIN_CONTENT: '/admin/content',
   ADMIN_APPROVALS: '/admin/approvals',
   ADMIN_INVITATIONS: '/admin/invitations',
+  ADMIN_WHITELIST_DIRECT: '/admin/whitelist-direct',
 
   // 运维
   OPS: '/ops',

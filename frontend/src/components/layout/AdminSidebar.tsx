@@ -11,6 +11,7 @@ const ITEMS = [
   { label: '邀请码', to: ROUTES.ADMIN_INVITATIONS },
   { label: '内容管理', to: ROUTES.ADMIN_CONTENT },
   { label: '审核待办', to: ROUTES.ADMIN_APPROVALS },
+  { label: '白名单录入', to: ROUTES.ADMIN_WHITELIST_DIRECT },
 ]
 
 export function AdminSidebar() {

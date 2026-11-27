@@ -232,6 +232,26 @@ class WhitelistController {
         return ok(store.reject(actor, applicationId, bodyOrEmpty(body), request));
     }
 
+    /**
+     * 管理员直接把玩家录进白名单（花蝉 2026-11-27 定）。
+     *
+     * <p>这条路不走玩家自助申请、不需要考核、不消耗邀请码：管理员在后台填好
+     * 玩家信息就当场建一张 APPROVED 的白名单，省掉「发码 → 玩家注册 → 考 →
+     * 申请 → 审核」整条链。适合已经在群里待着、管理直接认可的老玩家。
+     *
+     * <p>与自助申请写的是同一张表、同一套 profile 建档链路，
+     * 所以下游（成员档案、考勤交接）不用区别对待。
+     */
+    @PostMapping("/admin/applications/direct")
+    ResponseEntity<Map<String, Object>> directEntry(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                                    @RequestBody(required = false) Map<String, Object> body,
+                                                    HttpServletRequest request) {
+        WhitelistUser actor = auth.requireAny(authorization, request, "ADMIN", "OWNER");
+        Map<String, Object> payload = store.directEntry(actor, bodyOrEmpty(body), request);
+        evidenceRecorder.recordApplicationWrite(request, "WHITELIST_DIRECT_ENTRY", payload, HttpStatus.CREATED.value());
+        return ResponseEntity.status(HttpStatus.CREATED).body(ok(payload));
+    }
+
     @PatchMapping("/admin/applications/{applicationId}/remove")
     Map<String, Object> remove(@RequestHeader(value = "Authorization", required = false) String authorization,
                                @PathVariable String applicationId,
@@ -1243,6 +1263,126 @@ class WhitelistStore {
 
     private void audit(WhitelistUser actor, String applicationId, String action, String risk, String before, String after, String reason) {
         audits.add(linkedMap("id", "audit-" + (++idSeq), "requestId", WhitelistController.requestId(), "actorUserId", actor.userId(), "actorRole", actor.roles().iterator().next(), "actorPermissions", List.of(), "sourceIp", "127.0.0.1", "targetType", "WHITELIST_APPLICATION", "targetId", applicationId, "action", action, "riskLevel", risk, "reason", reason, "paramsSummary", "summary", "beforeState", before, "afterState", after, "result", "SUCCESS", "failureReason", null, "createdAt", NOW));
+    }
+
+    /**
+     * 管理员直接录入白名单（花蝉 2026-11-27 定的「系统录入」）。
+     *
+     * <p>与玩家自助申请的区别：不要求 {@code examSessionId}、不要求考核通过、
+     * 不消耗邀请码。管理员在后台填完玩家信息就当场建一张 {@code APPROVED} 的白名单。
+     *
+     * <p>共同点：写同一张 {@code whitelist_applications} 表、走同一套 profile 建档，
+     * 所以成员档案与考勤交接不需要区分来源。缺少考核数据是正常的——
+     * {@code examSessionId} 记为 {@code direct-entry}，{@code examPassedAt} 留空。
+     *
+     * <p>为什么允许 {@code userId} 为空：管理员录入的可能是还没注册官网的纯游戏玩家，
+     * 此时建档用占位 id（{@code direct-<序号>}），等对方注册后再人工关联。
+     */
+    synchronized Map<String, Object> directEntry(WhitelistUser actor, Map<String, Object> body, HttpServletRequest request) {
+        validateReason(body);
+        validateIdempotencyKey(body);
+        IdempotencyRecord replay = replay(actor.userId(), "DIRECT_ENTRY", body);
+        if (replay != null) return replay.value();
+        failBeforeWrite(request);
+
+        String rawServerType = string(body.get("serverType"));
+        String serverType = rawServerType == null || rawServerType.isBlank()
+                ? SERVER_MODPACK
+                : rawServerType.trim().toUpperCase(java.util.Locale.ROOT);
+        if (!SERVER_TYPES.contains(serverType)) throw new WhitelistException(400, 40001, "serverType");
+
+        // 游戏账号：管理员录入时昵称必填（否则白名单没法对上人），平台缺省离线
+        String gameName = validateRequiredString(body, "minecraftName", 1, 32);
+        String platform = string(body.getOrDefault("minecraftPlatform", "OFFLINE"));
+        Map<String, Object> binding = linkedMap("platform", platform, "minecraftName", gameName,
+                "uuid", null, "verified", false);
+        if (minecraftIdentityResolver != null && minecraftIdentityResolver.getIfAvailable() != null) {
+            // 能查就查一次，查不到只记 verified=false，不拦——管理员有权录一个平台暂时查不到的人
+            try {
+                cn.beiming.core.MinecraftIdentityResolver.Identity identity =
+                        minecraftIdentityResolver.getIfAvailable().resolve(platform, gameName);
+                if (identity != null) {
+                    binding.put("uuid", identity.uuid());
+                    binding.put("verified", true);
+                }
+            } catch (RuntimeException ignored) {
+                // 平台抖动不该让录入失败
+            }
+        }
+
+        String targetUserId = string(body.get("userId"));
+        boolean placeholderUser = targetUserId == null || targetUserId.isBlank();
+        if (placeholderUser) targetUserId = "direct-" + (++idSeq);
+
+        WhitelistApplicationRecord app = new WhitelistApplicationRecord();
+        app.applicationId = "wl-" + (++idSeq);
+        app.examSessionId = "direct-entry";
+        app.onboardingApplicationId = null;
+        app.examHandoffVersion = 0;
+        app.onboardingHandoffVersion = 0;
+        app.userId = targetUserId;
+        app.displayNameSnapshot = stringOrDefault(body.get("displayName"), gameName);
+        app.minecraftBindingSnapshot = binding;
+        app.reviewDirection = stringOrDefault(body.get("reviewDirection"), "GENERAL");
+        app.serverType = serverType;
+        app.qqGroupNickname = string(body.get("qqGroupNickname"));
+        app.attemptType = "FIRST_TIME";
+        app.status = "APPROVED";
+        app.result = "APPROVED";
+        app.materials = List.of();
+        app.scoreSummary = new LinkedHashMap<>();
+        // 没有考核这一环：不编造分数或通过时间，如实留空
+        app.examPassedAt = null;
+        app.notificationStatus = notificationStatus(request);
+        app.notificationFailure = notificationFailure(request);
+        app.reapplyRequired = false;
+        app.createdAt = NOW;
+        app.updatedAt = NOW;
+        app.submittedAt = NOW;
+        app.reviewedAt = NOW;
+        app.approvedAt = NOW;
+        app.reviewerUserId = actor.userId();
+        app.reviewerDisplayNameSnapshot = actor.displayName();
+        app.reviewComment = stringOrDefault(body.get("reviewComment"), "管理员后台直接录入");
+
+        // 建档：与人工审核走同一条链路，失败就退回 APPROVAL_BLOCKED 等人工，
+        // 绝不允许出现「状态 APPROVED 但档案是空的」
+        cn.beiming.core.ProfileActivationResolver.ActivationResult activation = activateProfile(app.userId);
+        if (activation != null && "FAILED".equals(activation.status())) {
+            app.status = "APPROVAL_BLOCKED";
+            app.result = "PENDING";
+            app.profileActivation = linkedMap("status", "FAILED", "memberId", null, "profileStatus", null,
+                    "calledAt", NOW, "failureCode", activation.failureCode(),
+                    "failureReason", activation.failureReason());
+        } else {
+            app.profileActivation = linkedMap("status", "ACTIVATED",
+                    "memberId", activation == null ? "member-" + app.userId : activation.memberId(),
+                    "profileStatus", activation == null ? "ACTIVE" : activation.profileStatus(),
+                    "calledAt", NOW, "failureCode", null, "failureReason", null);
+            app.attendanceHandoff = handoffView(app);
+        }
+
+        applications.put(app.applicationId, app);
+        currentByUser.put(app.userId, app.applicationId);
+        audit(actor, app.applicationId, "WHITELIST_DIRECT_ENTRY", "MEDIUM", null, app.status,
+                stringOrDefault(body.get("reason"), "admin direct entry"));
+        if ("APPROVED".equals(app.status)) {
+            audit(actor, app.applicationId, "WHITELIST_PROFILE_ACTIVATED", "MEDIUM", null, app.status, "profile activated");
+        }
+        auditNotificationFailure(actor, app);
+
+        Map<String, Object> value = view(app, true);
+        remember(actor.userId(), "DIRECT_ENTRY", body, value);
+        persistence.persistApplicationWrite(request, actor.userId(), actorRole(actor), "whitelist.direct-entry",
+                "WHITELIST_DIRECT_ENTRY", null, app.status,
+                stringOrDefault(body.get("reason"), "admin direct entry"),
+                idempotencyKey(body), canonical(body), whitelistPersistenceView(app), value, 201);
+        return value;
+    }
+
+    private String stringOrDefault(Object value, String fallback) {
+        String text = value == null ? null : String.valueOf(value);
+        return text == null || text.isBlank() ? fallback : text;
     }
 
     private String actorRole(WhitelistUser actor) {
