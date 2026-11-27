@@ -422,6 +422,121 @@ class ExamStore implements cn.beiming.core.ExamHandoffResolver {
         )));
         audits.add(auditRow("audit-seed-1", "admin", "EXAM", "seed", "EXAM_SEEDED", "SUCCESS", "LOW", null, null, null));
         persistence.seed(questions.values().stream().map(question -> questionView(question, true)).toList(), templates.values().stream().map(this::templateView).toList(), audits);
+        loadPersistedBank();
+    }
+
+    /**
+     * 从正式库读回题库与模板，覆盖 seed 的硬编码数据。
+     *
+     * <p>在此之前题库只有写、没有读：进程重启后内存里只剩上面 5 道硬编码种子题，
+     * 管理员通过接口新建的题全部消失（库里明明有行，考生却永远考不到，且不报错）。
+     *
+     * <p>为什么用「覆盖」而不是「合并」：库里那份是运维的真实状态，包括人家把某些
+     * 占位题归档成 ARCHIVED 的决定。合并会让已归档的题又冒出来。
+     *
+     * <p>读回为空（内存模式）就什么都不做，保留 seed 的数据，行为与从前一致。
+     */
+    private void loadPersistedBank() {
+        List<Map<String, Object>> storedQuestions = persistence.loadQuestions();
+        List<Map<String, Object>> storedTemplates = persistence.loadTemplates();
+        if (storedQuestions == null || storedQuestions.isEmpty()) return;
+        Map<String, ExamQuestionRecord> loadedQuestions = new LinkedHashMap<>();
+        for (Map<String, Object> row : storedQuestions) {
+            ExamQuestionRecord question = questionFromRow(row);
+            if (question != null) loadedQuestions.put(question.questionId, question);
+        }
+        if (!loadedQuestions.isEmpty()) {
+            questions.clear();
+            questions.putAll(loadedQuestions);
+        }
+        if (storedTemplates == null || storedTemplates.isEmpty()) return;
+        Map<String, PaperTemplateRecord> loadedTemplates = new LinkedHashMap<>();
+        for (Map<String, Object> row : storedTemplates) {
+            PaperTemplateRecord template = templateFromRow(row);
+            if (template != null) loadedTemplates.put(template.templateId, template);
+        }
+        if (!loadedTemplates.isEmpty()) {
+            templates.clear();
+            templates.putAll(loadedTemplates);
+        }
+    }
+
+    private ExamQuestionRecord questionFromRow(Map<String, Object> row) {
+        Object id = row.get("questionId");
+        if (id == null) return null;
+        ExamQuestionRecord question = new ExamQuestionRecord();
+        question.questionId = String.valueOf(id);
+        question.type = stringOr(row.get("type"), "SINGLE_CHOICE");
+        question.reviewDirection = stringOr(row.get("reviewDirection"), "GENERAL");
+        question.difficulty = stringOr(row.get("difficulty"), "NORMAL");
+        question.stem = stringOr(row.get("stem"), "");
+        question.options = asOptionList(row.get("options"));
+        question.correctOptionIds = asStringList(row.get("correctOptionIds"));
+        question.referenceAnswer = row.get("referenceAnswer") == null ? null : String.valueOf(row.get("referenceAnswer"));
+        question.score = row.get("score") instanceof Number number ? number.intValue() : 0;
+        question.tags = asStringList(row.get("tags"));
+        question.status = stringOr(row.get("status"), "DRAFT");
+        // 服型：NULL 表示两服共用，别硬塞成 MODPACK，否则通用题就变成整合包专属了
+        question.serverType = row.get("serverType") == null ? null : String.valueOf(row.get("serverType"));
+        question.version = row.get("version") instanceof Number number ? number.intValue() : 1;
+        question.createdAt = row.get("createdAt") == null ? NOW : String.valueOf(row.get("createdAt"));
+        question.updatedAt = row.get("updatedAt") == null ? NOW : String.valueOf(row.get("updatedAt"));
+        return question;
+    }
+
+    private PaperTemplateRecord templateFromRow(Map<String, Object> row) {
+        Object id = row.get("templateId");
+        if (id == null) return null;
+        PaperTemplateRecord template = new PaperTemplateRecord();
+        template.templateId = String.valueOf(id);
+        template.name = stringOr(row.get("name"), "");
+        template.reviewDirection = stringOr(row.get("reviewDirection"), "GENERAL");
+        template.difficulty = stringOr(row.get("difficulty"), "NORMAL");
+        template.status = stringOr(row.get("status"), "DRAFT");
+        template.serverType = row.get("serverType") == null ? null : String.valueOf(row.get("serverType"));
+        template.timeLimitMinutes = row.get("timeLimitMinutes") instanceof Number number ? number.intValue() : 0;
+        template.passScore = row.get("passScore") instanceof Number number ? number.intValue() : 0;
+        template.objectivePassScore = row.get("objectivePassScore") instanceof Number number ? number.intValue() : 0;
+        template.contentRuleVersion = row.get("contentRuleVersion") == null ? null : String.valueOf(row.get("contentRuleVersion"));
+        template.retakeCooldownHours = row.get("retakeCooldownHours") instanceof Number number ? number.intValue() : 0;
+        template.version = row.get("version") instanceof Number number ? number.intValue() : 1;
+        template.createdAt = row.get("createdAt") == null ? NOW : String.valueOf(row.get("createdAt"));
+        template.updatedAt = row.get("updatedAt") == null ? NOW : String.valueOf(row.get("updatedAt"));
+        template.publishedAt = row.get("publishedAt") == null ? null : String.valueOf(row.get("publishedAt"));
+        template.questionRules = asRuleList(row.get("questionRules"));
+        return template;
+    }
+
+    private String stringOr(Object value, String fallback) {
+        return value == null || String.valueOf(value).isBlank() ? fallback : String.valueOf(value);
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> asOptionList(Object raw) {
+        if (!(raw instanceof List<?> list)) return new ArrayList<>();
+        List<Map<String, Object>> options = new ArrayList<>();
+        for (Object item : list) {
+            if (item instanceof Map<?, ?> map) {
+                Map<String, Object> option = new LinkedHashMap<>();
+                map.forEach((key, value) -> option.put(String.valueOf(key), value));
+                options.add(option);
+            }
+        }
+        return options;
+    }
+
+    private List<String> asStringList(Object raw) {
+        if (!(raw instanceof List<?> list)) return new ArrayList<>();
+        List<String> values = new ArrayList<>();
+        for (Object item : list) {
+            if (item != null) values.add(String.valueOf(item));
+        }
+        return values;
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> asRuleList(Object raw) {
+        return asOptionList(raw);
     }
 
     synchronized MutationResult createSession(ExamUser user, Map<String, Object> body, HttpServletRequest request) {
@@ -1394,6 +1509,9 @@ class ExamStore implements cn.beiming.core.ExamHandoffResolver {
     private ExamQuestionRecord copyQuestion(ExamQuestionRecord source) {
         ExamQuestionRecord copy = question(source.questionId, source.type, source.reviewDirection, source.difficulty, source.stem, source.options, source.correctOptionIds, source.referenceAnswer, source.score, source.tags, source.status, source.version);
         copy.archivedAt = source.archivedAt;
+        // 服型必须一起复制：漏了这一步，任何一次 update（比如激活 DRAFT→ACTIVE）
+        // 都会把 serverType 洗成 null，生电专属题悄悄变成两服通用题。
+        copy.serverType = source.serverType;
         return copy;
     }
 

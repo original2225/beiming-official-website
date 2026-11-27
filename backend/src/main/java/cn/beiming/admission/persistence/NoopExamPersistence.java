@@ -39,6 +39,17 @@ public class NoopExamPersistence implements ExamPersistence {
     public void persistHandoff(HttpServletRequest request, String actorUserId, Map<String, Object> snapshot) {
     }
 
+    /** 内存模式没有库可读，返回空表示「按 seed 的硬编码数据走」。 */
+    @Override
+    public List<Map<String, Object>> loadQuestions() {
+        return List.of();
+    }
+
+    @Override
+    public List<Map<String, Object>> loadTemplates() {
+        return List.of();
+    }
+
     @Override
     public Map<String, Object> counts() {
         return Map.of("storageMode", "IN_MEMORY");

@@ -370,6 +370,125 @@ class WhitelistStore {
         this.profileActivationResolver = profileActivationResolver;
         this.minecraftIdentityResolver = minecraftIdentityResolver;
         this.invitationOriginResolver = invitationOriginResolver;
+        loadPersistedApplications();
+    }
+
+    /**
+     * 从正式库读回申请单。
+     *
+     * <p>此前只有 {@code persistApplicationWrite} 写、没有读：进程重启后待审列表、
+     * 已发白名单、审核记录全变空，而库里明明有行——运维会以为数据丢了。
+     *
+     * <p>同时要把 {@code idSeq} 推到已有序号之后，否则重启后新建的申请会从
+     * {@code wl-1001} 开始，与库里的老单撞号（application_id 是主键）。
+     */
+    private void loadPersistedApplications() {
+        List<Map<String, Object>> stored = persistence.loadApplications();
+        if (stored == null || stored.isEmpty()) return;
+        for (Map<String, Object> row : stored) {
+            WhitelistApplicationRecord app = applicationFromRow(row);
+            if (app == null) continue;
+            applications.put(app.applicationId, app);
+            if ("PENDING_REVIEW".equals(app.status) || "UNDER_REVIEW".equals(app.status)
+                    || "NEEDS_SUPPLEMENT".equals(app.status) || "SUPPLEMENT_SUBMITTED".equals(app.status)
+                    || "APPROVAL_BLOCKED".equals(app.status) || "APPROVED".equals(app.status)) {
+                currentByUser.put(app.userId, app.applicationId);
+            }
+            // 从 wl-1023 这种 id 里抽出 1023，保证 idSeq 大于它
+            String id = app.applicationId;
+            int dash = id == null ? -1 : id.lastIndexOf('-');
+            if (dash > 0) {
+                try {
+                    idSeq = Math.max(idSeq, Integer.parseInt(id.substring(dash + 1)));
+                } catch (NumberFormatException ignored) {
+                    // id 不是 wl-数字 形态就跳过，不影响主流程
+                }
+            }
+        }
+    }
+
+    private WhitelistApplicationRecord applicationFromRow(Map<String, Object> row) {
+        Object id = row.get("applicationId");
+        if (id == null) return null;
+        WhitelistApplicationRecord app = new WhitelistApplicationRecord();
+        app.applicationId = String.valueOf(id);
+        app.examSessionId = stringValue(row.get("examSessionId"));
+        app.onboardingApplicationId = stringValue(row.get("onboardingApplicationId"));
+        app.examHandoffVersion = intOf(row.get("examHandoffVersion"), 1);
+        app.onboardingHandoffVersion = intOf(row.get("onboardingHandoffVersion"), 1);
+        app.userId = stringValue(row.get("userId"));
+        app.displayNameSnapshot = stringValue(row.get("displayNameSnapshot"));
+        app.minecraftBindingSnapshot = mapOf(row.get("minecraftBindingSnapshot"));
+        app.reviewDirection = stringValue(row.get("reviewDirection"));
+        // 服型与群昵称是审核与强制绑定的依据，必须从库里读回来
+        app.serverType = stringValue(row.get("serverType"));
+        app.qqGroupNickname = stringValue(row.get("qqGroupNickname"));
+        app.attemptType = stringValue(row.get("attemptType"));
+        app.status = stringValue(row.get("status"));
+        app.result = stringValue(row.get("result"));
+        app.materials = listOfMaps(row.get("materials"));
+        app.scoreSummary = mapOf(row.get("scoreSummary"));
+        app.examPassedAt = stringValue(row.get("examPassedAt"));
+        app.reviewerUserId = stringValue(row.get("reviewerUserId"));
+        app.reviewerDisplayNameSnapshot = stringValue(row.get("reviewerDisplayNameSnapshot"));
+        app.reviewComment = stringValue(row.get("reviewComment"));
+        app.internalNote = stringValue(row.get("internalNote"));
+        app.supplementRequest = mapOf(row.get("supplementRequest"));
+        app.profileActivation = mapOf(row.get("profileActivation"));
+        app.attendanceHandoff = mapOf(row.get("attendanceHandoff"));
+        app.notificationStatus = stringValue(row.get("notificationStatus"));
+        app.notificationFailure = mapOf(row.get("notificationFailure"));
+        app.removedAt = stringValue(row.get("removedAt"));
+        app.removedBy = stringValue(row.get("removedBy"));
+        app.removalReason = stringValue(row.get("removalReason"));
+        app.reapplyRequired = Boolean.TRUE.equals(row.get("reapplyRequired"));
+        app.nextExamAttemptType = stringValue(row.get("nextExamAttemptType"));
+        app.createdAt = stringValue(row.get("createdAt"));
+        app.updatedAt = stringValue(row.get("updatedAt"));
+        app.submittedAt = stringValue(row.get("submittedAt"));
+        app.reviewedAt = stringValue(row.get("reviewedAt"));
+        app.approvedAt = stringValue(row.get("approvedAt"));
+        app.rejectedAt = stringValue(row.get("rejectedAt"));
+        app.withdrawnAt = stringValue(row.get("withdrawnAt"));
+        app.archivedAt = stringValue(row.get("archivedAt"));
+        return app;
+    }
+
+    private String stringValue(Object value) {
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private int intOf(Object value, int fallback) {
+        if (value instanceof Number number) return number.intValue();
+        try {
+            return value == null ? fallback : Integer.parseInt(String.valueOf(value));
+        } catch (NumberFormatException exception) {
+            return fallback;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> mapOf(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            map.forEach((key, item) -> result.put(String.valueOf(key), item));
+            return result;
+        }
+        return new LinkedHashMap<>();
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> listOfMaps(Object value) {
+        if (!(value instanceof List<?> list)) return new ArrayList<>();
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Object item : list) {
+            if (item instanceof Map<?, ?> map) {
+                Map<String, Object> row = new LinkedHashMap<>();
+                map.forEach((key, value2) -> row.put(String.valueOf(key), value2));
+                result.add(row);
+            }
+        }
+        return result;
     }
 
     synchronized MutationResult createApplication(WhitelistUser user, Map<String, Object> body, HttpServletRequest request) {

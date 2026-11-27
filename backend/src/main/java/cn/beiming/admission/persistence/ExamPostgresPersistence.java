@@ -131,6 +131,87 @@ public class ExamPostgresPersistence implements ExamPersistence {
     }
 
     @Override
+    public List<Map<String, Object>> loadQuestions() {
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                SELECT question_id, version, type, review_direction, difficulty, stem, options::text AS options,
+                       correct_option_ids::text AS correct_option_ids, reference_answer, score, tags::text AS tags,
+                       status, server_type, created_at, updated_at, archived_at
+                  FROM exam_questions
+                 ORDER BY question_id
+                """);
+        List<Map<String, Object>> questions = new java.util.ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            Map<String, Object> question = new java.util.LinkedHashMap<>();
+            question.put("questionId", row.get("question_id"));
+            question.put("version", row.get("version"));
+            question.put("type", row.get("type"));
+            question.put("reviewDirection", row.get("review_direction"));
+            question.put("difficulty", row.get("difficulty"));
+            question.put("stem", row.get("stem"));
+            // jsonb 读回来是字符串，必须解回对象，否则 options/correctOptionIds 会变成 String
+            question.put("options", readJson(row.get("options")));
+            question.put("correctOptionIds", readJson(row.get("correct_option_ids")));
+            question.put("referenceAnswer", row.get("reference_answer"));
+            question.put("score", row.get("score"));
+            question.put("tags", readJson(row.get("tags")));
+            question.put("status", row.get("status"));
+            question.put("serverType", row.get("server_type"));
+            question.put("createdAt", stringOf(row.get("created_at")));
+            question.put("updatedAt", stringOf(row.get("updated_at")));
+            question.put("archivedAt", stringOf(row.get("archived_at")));
+            questions.add(question);
+        }
+        return questions;
+    }
+
+    @Override
+    public List<Map<String, Object>> loadTemplates() {
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                SELECT template_id, version, name, review_direction, difficulty, status, server_type,
+                       time_limit_minutes, pass_score, objective_pass_score, question_rules::text AS question_rules,
+                       content_rule_version, retake_cooldown_hours, created_at, updated_at, published_at
+                  FROM exam_paper_templates
+                 ORDER BY template_id
+                """);
+        List<Map<String, Object>> templates = new java.util.ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            Map<String, Object> template = new java.util.LinkedHashMap<>();
+            template.put("templateId", row.get("template_id"));
+            template.put("version", row.get("version"));
+            template.put("name", row.get("name"));
+            template.put("reviewDirection", row.get("review_direction"));
+            template.put("difficulty", row.get("difficulty"));
+            template.put("status", row.get("status"));
+            template.put("serverType", row.get("server_type"));
+            template.put("timeLimitMinutes", row.get("time_limit_minutes"));
+            template.put("passScore", row.get("pass_score"));
+            template.put("objectivePassScore", row.get("objective_pass_score"));
+            template.put("questionRules", readJson(row.get("question_rules")));
+            template.put("contentRuleVersion", row.get("content_rule_version"));
+            template.put("retakeCooldownHours", row.get("retake_cooldown_hours"));
+            template.put("createdAt", stringOf(row.get("created_at")));
+            template.put("updatedAt", stringOf(row.get("updated_at")));
+            template.put("publishedAt", stringOf(row.get("published_at")));
+            templates.add(template);
+        }
+        return templates;
+    }
+
+    /** jsonb 列读回来是字符串，解回 List/Map；空值给空集合，别让下游 NPE。 */
+    private Object readJson(Object raw) {
+        if (raw == null) return List.of();
+        try {
+            return objectMapper.readValue(raw.toString(), Object.class);
+        } catch (Exception exception) {
+            return List.of();
+        }
+    }
+
+    private String stringOf(Object value) {
+        return value == null ? null : value.toString();
+    }
+
+    @Override
     public Map<String, Object> counts() {
         return Map.of(
                 "storageMode", "POSTGRESQL_PRIMARY",
@@ -201,11 +282,12 @@ public class ExamPostgresPersistence implements ExamPersistence {
 
     private void upsertQuestion(Map<String, Object> question) {
         jdbc.update("""
-                INSERT INTO exam_questions(id, question_id, version, type, review_direction, difficulty, stem, options, correct_option_ids, reference_answer, score, tags, status, created_at, updated_at, archived_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, CAST(? AS jsonb), CAST(? AS jsonb), ?, ?, CAST(? AS jsonb), ?, ?, ?, ?)
+                INSERT INTO exam_questions(id, question_id, version, type, review_direction, difficulty, stem, options, correct_option_ids, reference_answer, score, tags, status, server_type, created_at, updated_at, archived_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, CAST(? AS jsonb), CAST(? AS jsonb), ?, ?, CAST(? AS jsonb), ?, ?, ?, ?, ?)
                 ON CONFLICT (question_id) DO UPDATE SET
                     version = EXCLUDED.version,
                     stem = EXCLUDED.stem,
+                    server_type = EXCLUDED.server_type,
                     options = EXCLUDED.options,
                     correct_option_ids = EXCLUDED.correct_option_ids,
                     reference_answer = EXCLUDED.reference_answer,
@@ -216,7 +298,7 @@ public class ExamPostgresPersistence implements ExamPersistence {
                     archived_at = EXCLUDED.archived_at
                 """, UUID.randomUUID(), text(question, "questionId"), intValue(question.get("version"), 1), text(question, "type"), text(question, "reviewDirection"),
                 text(question, "difficulty"), text(question, "stem"), json(question.get("options")), json(question.get("correctOptionIds")), text(question, "referenceAnswer"),
-                intValue(question.get("score"), 0), json(question.get("tags")), text(question, "status"), ts(text(question, "createdAt")), ts(text(question, "updatedAt")), ts(text(question, "archivedAt")));
+                intValue(question.get("score"), 0), json(question.get("tags")), text(question, "status"), text(question, "serverType"), ts(text(question, "createdAt")), ts(text(question, "updatedAt")), ts(text(question, "archivedAt")));
     }
 
     private void upsertQuestionVersion(Map<String, Object> question) {
@@ -229,12 +311,13 @@ public class ExamPostgresPersistence implements ExamPersistence {
 
     private void upsertTemplate(Map<String, Object> template) {
         jdbc.update("""
-                INSERT INTO exam_paper_templates(id, template_id, version, name, review_direction, difficulty, status, time_limit_minutes, pass_score, objective_pass_score, question_rules, content_rule_version, retake_cooldown_hours, created_at, updated_at, published_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS jsonb), ?, ?, ?, ?, ?)
+                INSERT INTO exam_paper_templates(id, template_id, version, name, review_direction, difficulty, status, server_type, time_limit_minutes, pass_score, objective_pass_score, question_rules, content_rule_version, retake_cooldown_hours, created_at, updated_at, published_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS jsonb), ?, ?, ?, ?, ?)
                 ON CONFLICT (template_id) DO UPDATE SET
                     version = EXCLUDED.version,
                     name = EXCLUDED.name,
                     status = EXCLUDED.status,
+                    server_type = EXCLUDED.server_type,
                     time_limit_minutes = EXCLUDED.time_limit_minutes,
                     pass_score = EXCLUDED.pass_score,
                     objective_pass_score = EXCLUDED.objective_pass_score,
@@ -244,7 +327,7 @@ public class ExamPostgresPersistence implements ExamPersistence {
                     updated_at = EXCLUDED.updated_at,
                     published_at = EXCLUDED.published_at
                 """, UUID.randomUUID(), text(template, "templateId"), intValue(template.get("version"), 1), text(template, "name"), text(template, "reviewDirection"),
-                text(template, "difficulty"), text(template, "status"), intValue(template.get("timeLimitMinutes"), 0), intValue(template.get("passScore"), 0),
+                text(template, "difficulty"), text(template, "status"), text(template, "serverType"), intValue(template.get("timeLimitMinutes"), 0), intValue(template.get("passScore"), 0),
                 intValue(template.get("objectivePassScore"), 0), json(template.get("questionRules")), text(template, "contentRuleVersion"), intValue(template.get("retakeCooldownHours"), 0),
                 ts(text(template, "createdAt")), ts(text(template, "updatedAt")), ts(text(template, "publishedAt")));
     }

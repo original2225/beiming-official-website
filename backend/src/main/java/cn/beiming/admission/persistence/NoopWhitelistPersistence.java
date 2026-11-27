@@ -22,4 +22,10 @@ public class NoopWhitelistPersistence implements WhitelistPersistence {
     public Map<String, Object> counts() {
         return Map.of("storageMode", "IN_MEMORY");
     }
+
+    /** 内存模式没有库可读，返回空表示「从空表开始」，与改造前行为一致。 */
+    @Override
+    public java.util.List<Map<String, Object>> loadApplications() {
+        return java.util.List.of();
+    }
 }

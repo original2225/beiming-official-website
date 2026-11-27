@@ -66,6 +66,82 @@ public class WhitelistPostgresPersistence implements WhitelistPersistence {
     }
 
     @Override
+    public List<Map<String, Object>> loadApplications() {
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                SELECT application_id, exam_session_id, onboarding_application_id, exam_handoff_version,
+                       onboarding_handoff_version, user_id, display_name_snapshot, minecraft_binding_snapshot::text AS minecraft_binding_snapshot,
+                       review_direction, server_type, qq_group_nickname, attempt_type, status, result,
+                       materials_payload::text AS materials_payload, score_summary::text AS score_summary, exam_passed_at,
+                       reviewer_user_id, reviewer_display_name_snapshot, review_comment, internal_note,
+                       supplement_request::text AS supplement_request, profile_activation::text AS profile_activation,
+                       attendance_handoff::text AS attendance_handoff, notification_status, notification_failure::text AS notification_failure,
+                       removed_at, removed_by, removal_reason, reapply_required, next_exam_attempt_type,
+                       created_at, updated_at, submitted_at, reviewed_at, approved_at, rejected_at, withdrawn_at, archived_at
+                  FROM whitelist_applications
+                 ORDER BY created_at
+                """);
+        List<Map<String, Object>> applications = new java.util.ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            Map<String, Object> app = new java.util.LinkedHashMap<>();
+            app.put("applicationId", row.get("application_id"));
+            app.put("examSessionId", row.get("exam_session_id"));
+            app.put("onboardingApplicationId", row.get("onboarding_application_id"));
+            app.put("examHandoffVersion", row.get("exam_handoff_version"));
+            app.put("onboardingHandoffVersion", row.get("onboarding_handoff_version"));
+            app.put("userId", row.get("user_id"));
+            app.put("displayNameSnapshot", row.get("display_name_snapshot"));
+            app.put("minecraftBindingSnapshot", readJson(row.get("minecraft_binding_snapshot")));
+            app.put("reviewDirection", row.get("review_direction"));
+            app.put("serverType", row.get("server_type"));
+            app.put("qqGroupNickname", row.get("qq_group_nickname"));
+            app.put("attemptType", row.get("attempt_type"));
+            app.put("status", row.get("status"));
+            app.put("result", row.get("result"));
+            app.put("materials", readJson(row.get("materials_payload")));
+            app.put("scoreSummary", readJson(row.get("score_summary")));
+            app.put("examPassedAt", stringOf(row.get("exam_passed_at")));
+            app.put("reviewerUserId", row.get("reviewer_user_id"));
+            app.put("reviewerDisplayNameSnapshot", row.get("reviewer_display_name_snapshot"));
+            app.put("reviewComment", row.get("review_comment"));
+            app.put("internalNote", row.get("internal_note"));
+            app.put("supplementRequest", readJson(row.get("supplement_request")));
+            app.put("profileActivation", readJson(row.get("profile_activation")));
+            app.put("attendanceHandoff", readJson(row.get("attendance_handoff")));
+            app.put("notificationStatus", row.get("notification_status"));
+            app.put("notificationFailure", readJson(row.get("notification_failure")));
+            app.put("removedAt", stringOf(row.get("removed_at")));
+            app.put("removedBy", row.get("removed_by"));
+            app.put("removalReason", row.get("removal_reason"));
+            app.put("reapplyRequired", row.get("reapply_required"));
+            app.put("nextExamAttemptType", row.get("next_exam_attempt_type"));
+            app.put("createdAt", stringOf(row.get("created_at")));
+            app.put("updatedAt", stringOf(row.get("updated_at")));
+            app.put("submittedAt", stringOf(row.get("submitted_at")));
+            app.put("reviewedAt", stringOf(row.get("reviewed_at")));
+            app.put("approvedAt", stringOf(row.get("approved_at")));
+            app.put("rejectedAt", stringOf(row.get("rejected_at")));
+            app.put("withdrawnAt", stringOf(row.get("withdrawn_at")));
+            app.put("archivedAt", stringOf(row.get("archived_at")));
+            applications.add(app);
+        }
+        return applications;
+    }
+
+    /** jsonb 读回来是字符串，解回对象；空值给空 Map，避免下游 NPE。 */
+    private Object readJson(Object raw) {
+        if (raw == null) return new java.util.LinkedHashMap<String, Object>();
+        try {
+            return objectMapper.readValue(raw.toString(), Object.class);
+        } catch (Exception exception) {
+            return new java.util.LinkedHashMap<String, Object>();
+        }
+    }
+
+    private String stringOf(Object value) {
+        return value == null ? null : value.toString();
+    }
+
+    @Override
     public Map<String, Object> counts() {
         return Map.of(
                 "storageMode", "POSTGRESQL_PRIMARY",
@@ -80,8 +156,8 @@ public class WhitelistPostgresPersistence implements WhitelistPersistence {
 
     private void upsertApplication(Map<String, Object> app) {
         jdbc.update("""
-                INSERT INTO whitelist_applications(id, application_id, exam_session_id, onboarding_application_id, exam_handoff_version, onboarding_handoff_version, user_id, display_name_snapshot, minecraft_binding_snapshot, review_direction, attempt_type, status, result, materials_payload, score_summary, exam_passed_at, reviewer_user_id, reviewer_display_name_snapshot, review_comment, internal_note, supplement_request, profile_activation, attendance_handoff, notification_status, notification_failure, removed_at, removed_by, removal_reason, reapply_required, next_exam_attempt_type, created_at, updated_at, submitted_at, reviewed_at, approved_at, rejected_at, withdrawn_at, archived_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS jsonb), ?, ?, ?, ?, CAST(? AS jsonb), CAST(? AS jsonb), ?, ?, ?, ?, ?, CAST(? AS jsonb), CAST(? AS jsonb), CAST(? AS jsonb), ?, CAST(? AS jsonb), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO whitelist_applications(id, application_id, exam_session_id, onboarding_application_id, exam_handoff_version, onboarding_handoff_version, user_id, display_name_snapshot, minecraft_binding_snapshot, review_direction, server_type, qq_group_nickname, attempt_type, status, result, materials_payload, score_summary, exam_passed_at, reviewer_user_id, reviewer_display_name_snapshot, review_comment, internal_note, supplement_request, profile_activation, attendance_handoff, notification_status, notification_failure, removed_at, removed_by, removal_reason, reapply_required, next_exam_attempt_type, created_at, updated_at, submitted_at, reviewed_at, approved_at, rejected_at, withdrawn_at, archived_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, CAST(? AS jsonb), ?, ?, ?, ?, ?, ?, CAST(? AS jsonb), CAST(? AS jsonb), ?, ?, ?, ?, ?, CAST(? AS jsonb), CAST(? AS jsonb), CAST(? AS jsonb), ?, CAST(? AS jsonb), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (application_id) DO UPDATE SET
                     status = EXCLUDED.status,
                     result = EXCLUDED.result,
@@ -98,6 +174,8 @@ public class WhitelistPostgresPersistence implements WhitelistPersistence {
                     removed_at = EXCLUDED.removed_at,
                     removed_by = EXCLUDED.removed_by,
                     removal_reason = EXCLUDED.removal_reason,
+                    server_type = EXCLUDED.server_type,
+                    qq_group_nickname = EXCLUDED.qq_group_nickname,
                     reapply_required = EXCLUDED.reapply_required,
                     next_exam_attempt_type = EXCLUDED.next_exam_attempt_type,
                     updated_at = EXCLUDED.updated_at,
@@ -109,7 +187,7 @@ public class WhitelistPostgresPersistence implements WhitelistPersistence {
                     archived_at = EXCLUDED.archived_at
                 """, UUID.randomUUID(), text(app, "applicationId"), text(app, "examSessionId"), text(app, "onboardingApplicationId"),
                 intValue(app.get("examHandoffVersion"), 1), intValue(app.get("onboardingHandoffVersion"), 1), text(app, "userId"), text(app, "displayNameSnapshot"),
-                json(app.get("minecraftBindingSnapshot")), text(app, "reviewDirection"), text(app, "attemptType"), text(app, "status"), text(app, "result"),
+                json(app.get("minecraftBindingSnapshot")), text(app, "reviewDirection"), text(app, "serverType"), text(app, "qqGroupNickname"), text(app, "attemptType"), text(app, "status"), text(app, "result"),
                 json(app.get("materials")), json(app.get("scoreSummary")), ts(text(app, "examPassedAt")), text(app, "reviewerUserId"), text(app, "reviewerDisplayNameSnapshot"),
                 text(app, "reviewComment"), text(app, "internalNote"), json(app.get("supplementRequest")), json(app.get("profileActivation")), json(app.get("attendanceHandoff")),
                 text(app, "notificationStatus"), json(app.get("notificationFailure")), ts(text(app, "removedAt")), text(app, "removedBy"), text(app, "removalReason"),
