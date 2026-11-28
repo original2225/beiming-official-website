@@ -5,8 +5,7 @@
 
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { LoginModal } from '../../components/common/LoginModal'
-import { RegisterModal } from '../../components/common/RegisterModal'
+import { AuthBook } from '../../components/auth/AuthBook'
 import { useAuthStore } from '../../store/authStore'
 import { ROUTES } from '../../constants/routes'
 
@@ -18,6 +17,7 @@ export function LoginPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  // 登录 / 注册是同一本活页册子的两页（花蝉 2026-11-28 定的）
   const [mode, setMode] = useState<'login' | 'register'>('login')
 
   const from = (location.state as LoginLocationState | null)?.from ?? ROUTES.HOME
@@ -33,15 +33,11 @@ export function LoginPage() {
 
   return (
     <div className="min-h-screen bg-surface flex items-center justify-center">
-      <LoginModal
-        open={mode === 'login'}
+      <AuthBook
+        open
+        page={mode}
         onClose={close}
-        onSwitchToRegister={() => setMode('register')}
-      />
-      <RegisterModal
-        open={mode === 'register'}
-        onClose={close}
-        onSwitchToLogin={() => setMode('login')}
+        onSwitchToPage={setMode}
       />
     </div>
   )

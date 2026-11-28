@@ -5,8 +5,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { LoadingState } from '../../components/feedback/LoadingState'
-import { LoginModal } from '../../components/common/LoginModal'
-import { RegisterModal } from '../../components/common/RegisterModal'
+import { AuthBook } from '../../components/auth/AuthBook'
 import { EmptyState } from '../../components/feedback/EmptyState'
 import { TimeDisplay } from '../../components/data-display/TimeDisplay'
 import { useRequest } from '../../hooks/useRequest'
@@ -330,10 +329,10 @@ function FooterBlock() {
 // ═══════════════════════════════════════════════
 
 export function HomePage() {
-  const [loginOpen, setLoginOpen] = useState(false)
-  const [registerOpen, setRegisterOpen] = useState(false)
-  const openRegister = () => { setLoginOpen(false); setRegisterOpen(true) }
-  const openLogin = () => { setRegisterOpen(false); setLoginOpen(true) }
+  // 登录 / 注册是同一本活页册子的两页（花蝉 2026-11-28 定的）
+  const [authOpen, setAuthOpen] = useState(false)
+  const [authPage, setAuthPage] = useState<'login' | 'register'>('login')
+  const openLogin = () => { setAuthPage('login'); setAuthOpen(true) }
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const currentUser = useAuthStore((s) => s.user)
   const logout = useAuthStore((s) => s.clearAuth)
@@ -355,12 +354,16 @@ export function HomePage() {
               <button onClick={logout} className="hover:text-ochre">退出</button>
             </>
           ) : (
-            <button onClick={() => setLoginOpen(true)} className="hover:text-ochre">登录</button>
+            <button onClick={openLogin} className="hover:text-ochre">登录</button>
           )}
         </div>
       </nav>
-      <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} onSwitchToRegister={openRegister} />
-      <RegisterModal open={registerOpen} onClose={() => setRegisterOpen(false)} onSwitchToLogin={openLogin} />
+      <AuthBook
+        open={authOpen}
+        page={authPage}
+        onClose={() => setAuthOpen(false)}
+        onSwitchToPage={setAuthPage}
+      />
       <HeroSection />
       <StatusBlock />
       <AnnounceBlock />

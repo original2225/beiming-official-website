@@ -6,8 +6,7 @@ import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { ROUTES } from '../../constants/routes'
 import { useAuthStore } from '../../store/authStore'
-import { LoginModal } from '../common/LoginModal'
-import { RegisterModal } from '../common/RegisterModal'
+import { AuthBook } from '../auth/AuthBook'
 
 const NAV_ITEMS = [
   { label: '首页', to: ROUTES.HOME },
@@ -26,11 +25,11 @@ const NAV_ITEMS = [
 export function PublicNav() {
   const location = useLocation()
   const { isAuthenticated, user } = useAuthStore()
-  const [loginOpen, setLoginOpen] = useState(false)
-  const [registerOpen, setRegisterOpen] = useState(false)
+  // 登录 / 注册是同一本活页册子的两页（花蝉 2026-11-28 定的）
+  const [authOpen, setAuthOpen] = useState(false)
+  const [authPage, setAuthPage] = useState<'login' | 'register'>('login')
 
-  const openRegister = () => { setLoginOpen(false); setRegisterOpen(true) }
-  const openLogin = () => { setRegisterOpen(false); setLoginOpen(true) }
+  const openLogin = () => { setAuthPage('login'); setAuthOpen(true) }
 
   const isActive = (to: string) => {
     if (location.pathname === to) return true
@@ -70,7 +69,7 @@ export function PublicNav() {
                   {user?.username ?? '用户中心'}
                 </Link>
               ) : (
-                <button onClick={() => setLoginOpen(true)} className="px-3 py-1 text-sm text-indigo hover:text-ochre">
+                <button onClick={openLogin} className="px-3 py-1 text-sm text-indigo hover:text-ochre">
                   登录
                 </button>
               )}
@@ -79,8 +78,12 @@ export function PublicNav() {
         </div>
       </nav>
 
-      <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} onSwitchToRegister={openRegister} />
-      <RegisterModal open={registerOpen} onClose={() => setRegisterOpen(false)} onSwitchToLogin={openLogin} />
+      <AuthBook
+        open={authOpen}
+        page={authPage}
+        onClose={() => setAuthOpen(false)}
+        onSwitchToPage={setAuthPage}
+      />
     </>
   )
 }
