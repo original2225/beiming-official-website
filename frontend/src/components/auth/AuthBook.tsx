@@ -153,6 +153,8 @@ export function AuthBook({ open, page, onClose, onSwitchToPage }: AuthBookProps)
     )
   }
 
+  // 登录 / 注册两页高度必须一致，否则翻动时卡片会跳。
+  // 取两者较大值：登录页多出的空白由内容撑开（垂直居中），注册页刚好占满。
   const topHeight = Math.max(topHeights.login, topHeights.register)
 
   /** 上半两页的类名：正在翻的那页转，另一页静止；翻完目标页成为正面。 */
@@ -178,7 +180,16 @@ export function AuthBook({ open, page, onClose, onSwitchToPage }: AuthBookProps)
           {Array.from({ length: 6 }).map((_, i) => <span key={i} className="bm-ring" />)}
         </div>
 
-        <div className="bm-sheet">
+        <div className={`bm-sheet ${flipping ? 'is-flipping' : ''}`}>
+          {/* 右侧四色索引标签：对应四类内容（守则 / 生电服规 / 愚者服规 / 入服指南） */}
+          <div className="bm-tabs" aria-hidden="true">
+            <span className="bm-tab is-general" />
+            <span className="bm-tab is-survival" />
+            <span className="bm-tab is-modpack" />
+            <span className="bm-tab is-guide" />
+          </div>
+
+          <div className="bm-paper">
           {/* ── 上半：表单，绕上边框翻 ── */}
           <div
             className="bm-top"
@@ -187,6 +198,7 @@ export function AuthBook({ open, page, onClose, onSwitchToPage }: AuthBookProps)
             <div
               ref={loginTopRef}
               className={topClass('login')}
+              style={topHeight ? { minHeight: topHeight } : undefined}
               aria-hidden={!(flipping ? flipping.to === 'login' : page === 'login')}
               onAnimationEnd={(e) => { if (e.target === e.currentTarget) setFlipping(null) }}
             >
@@ -196,6 +208,7 @@ export function AuthBook({ open, page, onClose, onSwitchToPage }: AuthBookProps)
             <div
               ref={registerTopRef}
               className={topClass('register')}
+              style={topHeight ? { minHeight: topHeight } : undefined}
               aria-hidden={!(flipping ? flipping.to === 'register' : page === 'register')}
               onAnimationEnd={(e) => { if (e.target === e.currentTarget) setFlipping(null) }}
             >
@@ -223,6 +236,7 @@ export function AuthBook({ open, page, onClose, onSwitchToPage }: AuthBookProps)
             aria-label="入服须知"
           >
             <EntryNoticeSheet expanded={noticeExpanded} />
+          </div>
           </div>
         </div>
 

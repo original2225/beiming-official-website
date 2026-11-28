@@ -380,25 +380,24 @@
   }
 
 
-  /* ── 登录卡：一页「上下都能翻」的活页纸（花蝉 2026-11-28 定的最终形态）─
-     上下各有一排活页环挂在纸的上下边框上；上半（表单）绕上边框翻，
-     下半（流动提示 / 入服须知）绕下边框翻；中间一条虚线分隔。
-     配色沿用网站的青蓝 #2E5A6B + 米白纸面。 */
+  /* ── 登录卡：一页「上下都能翻」的活页纸（花蝉 2026-11-28 定，配色照他给的活页本参考图）─
+     参考图 1：深蓝色硬壳描边 + 右侧四色索引标签（绿/棕/红/黄）+ 左侧螺旋装订
+     参考图 2：青绿底板 + 黑色金属环 + 白色横线内页
+     这里取两者的共同点：深蓝壳边、黑色环、纸面横线、右侧彩色索引标签。 */
 
   .bm-book {
     position: relative;
-    width: 400px;
-    /* 上下两排环各占一点高度，给翻转留出空间不被裁 */
+    width: 420px;
     padding: 18px 0;
     perspective: 1800px;
     perspective-origin: 50% 50%;
   }
 
-  /* ── 活页环：一排金属环压在纸的上下边框上 ── */
+  /* ── 活页环：黑色金属环压在上/下边框 ── */
   .bm-rings {
     position: absolute;
-    left: -6px;
-    right: -6px;
+    left: 8px;
+    right: 8px;
     height: 26px;
     display: flex;
     align-items: center;
@@ -406,37 +405,70 @@
     z-index: 40;
     pointer-events: none;
   }
-  .bm-rings-top { top: 0; }
-  .bm-rings-bottom { bottom: 0; }
+  /* 上下环跨在硬壳的上/下边线上：一半在壳外、一半压着纸 */
+  .bm-rings-top { top: -6px; }
+  .bm-rings-bottom { bottom: -6px; }
 
   .bm-ring {
-    width: 16px;
-    height: 26px;
-    border: 2.5px solid #7C8B94;
+    width: 17px;
+    height: 28px;
+    border: 3px solid #1A252B;
     border-radius: 50%;
-    background: linear-gradient(180deg, #E3EAEE 0%, #AAB7BF 55%, #7C8B94 100%);
+    background: linear-gradient(180deg, #8A99A2 0%, #4E5D66 45%, #232E35 100%);
     box-shadow:
-      0 2px 3px rgba(0, 0, 0, 0.35),
-      0 1px 0 rgba(255, 255, 255, 0.6) inset;
+      0 2px 4px rgba(0, 0, 0, 0.55),
+      0 1px 0 rgba(255, 255, 255, 0.25) inset;
   }
-  /* 下排环上下翻转，看起来像环穿过来 */
   .bm-rings-bottom .bm-ring { transform: rotate(180deg); }
 
-  /* 纸面本体 */
+  /* ── 纸面：深蓝硬壳边 + 内层白纸 ── */
   .bm-sheet {
     position: relative;
-    background-color: #EDF1F4;
-    border: 1px solid rgba(46, 90, 107, 0.22);
-    border-radius: 4px;
+    background-color: #1B3A57;      /* 深蓝硬壳 */
+    border-radius: 6px;
+    padding: 9px;                    /* 露出硬壳当外框 */
     box-shadow:
-      0 18px 48px rgba(0, 0, 0, 0.45),
-      0 1px 0 rgba(255, 255, 255, 0.7) inset;
-    color: #1F2A30;
+      0 20px 52px rgba(0, 0, 0, 0.5),
+      0 1px 0 rgba(255, 255, 255, 0.14) inset;
     transform-style: preserve-3d;
-    /* 纸面顶上留出上排环压着的边 */
-    padding-top: 10px;
-    padding-bottom: 10px;
   }
+
+  /* 内层白纸：带横线格 */
+  .bm-paper {
+    position: relative;
+    background-color: #FBFBF7;
+    background-image: repeating-linear-gradient(
+      180deg,
+      transparent 0px,
+      transparent 27px,
+      rgba(46, 90, 107, 0.10) 27px,
+      rgba(46, 90, 107, 0.10) 28px
+    );
+    border-radius: 3px;
+    color: #1F2A30;
+    overflow: hidden;
+  }
+
+  /* ── 右侧四色索引标签（参考图 1 的分色书签） ── */
+  .bm-tabs {
+    position: absolute;
+    top: 96px;
+    right: -9px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    z-index: 20;
+  }
+  .bm-tab {
+    width: 22px;
+    height: 40px;
+    border-radius: 0 6px 6px 0;
+    box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.3);
+  }
+  .bm-tab.is-general { background: #4E9A6B; }   /* 绿：服务器守则 */
+  .bm-tab.is-survival { background: #B5793C; }  /* 棕：生电服规 */
+  .bm-tab.is-modpack { background: #C25B4A; }   /* 红：愚者服规 */
+  .bm-tab.is-guide { background: #D9B441; }     /* 黄：入服指南 */
 
   /* ── 上半：表单区，绕上边框翻 ── */
   .bm-top {
@@ -448,15 +480,19 @@
   }
 
   .bm-top-flap {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
     transform-origin: top center;
     backface-visibility: hidden;
     -webkit-backface-visibility: hidden;
     transition: transform 420ms cubic-bezier(.4, .1, .3, 1);
     will-change: transform;
+    /* 背景透明：横线格画在外层 .bm-paper 上，flap 再铺不透明底就把线盖没了 */
+    background: transparent;
+    height: 100%;
   }
-  /* 正面那页 */
   .bm-top-flap.is-front { position: relative; z-index: 2; transform: rotateX(0deg); }
-  /* 背面那页：预先转 180°，翻页时一起转，露出来时正好是正的 */
   .bm-top-flap.is-back {
     position: absolute;
     inset: 0;
@@ -464,9 +500,7 @@
     transform: rotateX(-180deg);
     pointer-events: none;
   }
-  /* 翻走：转到背面去 */
   .bm-top-flap.is-flipping-away { animation: bm-flap-away 620ms cubic-bezier(.42,.05,.28,1) forwards; }
-  /* 翻来：从背面转到正面 */
   .bm-top-flap.is-flipping-in { animation: bm-flap-in 620ms cubic-bezier(.42,.05,.28,1) forwards; }
 
   @keyframes bm-flap-away {
@@ -478,7 +512,7 @@
     100% { transform: rotateX(0deg); }
   }
 
-  /* ── 中间分隔虚线：可点，翻起下半看条文 ── */
+  /* ── 中间分隔虚线 ── */
   .bm-divider {
     position: relative;
     z-index: 5;
@@ -487,65 +521,69 @@
     align-items: center;
     justify-content: space-between;
     gap: 0.5rem;
-    padding: 0.55rem 2rem;
-    background: transparent;
+    padding: 0.5rem 1.6rem;
+    background: rgba(27, 58, 87, 0.06);
     border: none;
-    border-top: 1px dashed rgba(46, 90, 107, 0.45);
+    border-top: 1px dashed rgba(27, 58, 87, 0.4);
     cursor: pointer;
     text-align: left;
     transition: background 0.15s ease;
   }
-  .bm-divider:hover { background: rgba(46, 90, 107, 0.06); }
+  .bm-divider:hover { background: rgba(27, 58, 87, 0.11); }
   .bm-divider-label {
     font-family: var(--font-display);
     font-size: 0.75rem;
     font-weight: 600;
     letter-spacing: 0.03em;
-    color: #2E5A6B;
+    color: #1B3A57;
   }
   .bm-divider-chevron {
     font-size: 0.8rem;
-    color: #2E5A6B;
+    color: #1B3A57;
     transition: transform 0.3s ease;
   }
   .bm-divider.is-open .bm-divider-chevron { transform: rotate(180deg); }
 
+  /* 翻页进行中：上半那页翻起来时会盖住下半区（花蝉 2026-11-28 要求）——
+     注册页比登录页多两行，翻的时候如果下半还在旁边露着会显得乱，
+     所以翻动期间把上半抬到下半之上，并给翻起的纸压个投影。 */
+  .bm-sheet.is-flipping .bm-top { z-index: 30; }
+  .bm-sheet.is-flipping .bm-top-flap {
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+  }
+  .bm-sheet.is-flipping .bm-bottom { pointer-events: none; }
+
   /* ── 下半：绕下边框翻 ── */
   .bm-bottom {
     position: relative;
-    /* 绕最下方的边框转 —— 这是花蝉说的「以最下方的方框边界为轴」 */
     transform-origin: bottom center;
-    transition: transform 480ms cubic-bezier(.4, .1, .3, 1), background 0.2s ease;
-    background: linear-gradient(180deg, #F6F1E7 0%, #EFE9DC 100%);
-    border-radius: 0 0 4px 4px;
-    max-height: 150px;
+    transition: transform 480ms cubic-bezier(.4, .1, .3, 1);
+    background: linear-gradient(180deg, #F4F6F3 0%, #E9EEE9 100%);
+    max-height: 118px;
     overflow: hidden;
   }
-  /* 翻起来：整体向上掀起，露出完整条文。
-     展开后不限内部高度——内容有 800+ px，限高只能出现「内层滚动条套外层滚动条」，
-     阅读体验很差。改成按自然高度撑开，由弹窗外层统一滚动。 */
   .bm-bottom.is-expanded {
-    transform: rotateX(-4deg);
+    transform: rotateX(-3deg);
     max-height: none;
     overflow: visible;
   }
 
   .bm-notice-inner {
-    padding: 0.7rem 2rem 0.9rem;
+    padding: 0.6rem 1.6rem 0.8rem;
     display: flex;
     flex-direction: column;
-    gap: 0.7rem;
+    gap: 0.65rem;
   }
 
-  /* 流动提示：折叠时就是一条轮播 */
+  /* 流动提示 */
   .bm-note-ticker {
     display: flex;
     gap: 0.5rem;
     align-items: flex-start;
-    background: rgba(46, 90, 107, 0.14);
-    border-left: 3px solid #2E5A6B;
+    background: rgba(27, 58, 87, 0.10);
+    border-left: 3px solid #1B3A57;
     border-radius: 0 var(--radius-md) var(--radius-md) 0;
-    padding: 0.55rem 0.7rem;
+    padding: 0.5rem 0.65rem;
     animation: bm-note-fade 0.3s ease both;
   }
   @keyframes bm-note-fade {
@@ -556,27 +594,27 @@
     flex-shrink: 0;
     font-size: 0.625rem;
     font-weight: 700;
-    color: #F7F5F0;
-    background: #2E5A6B;
+    color: #FBFBF7;
+    background: #1B3A57;
     border-radius: 999px;
     padding: 0.1rem 0.45rem;
     margin-top: 1px;
     white-space: nowrap;
   }
-  .bm-note-text { font-size: 0.75rem; font-weight: 500; line-height: 1.5; color: #2A3841; }
+  .bm-note-text { font-size: 0.75rem; font-weight: 500; line-height: 1.5; color: #22333D; }
 
   .bm-notice-scope {
     font-size: 0.6875rem;
     line-height: 1.6;
-    color: #64747E;
-    background: rgba(255, 255, 255, 0.7);
-    border: 1px solid rgba(46, 90, 107, 0.14);
+    color: #5E6E77;
+    background: rgba(255, 255, 255, 0.85);
+    border: 1px solid rgba(27, 58, 87, 0.16);
     border-radius: var(--radius-md);
     padding: 0.5rem 0.65rem;
   }
-  .bm-notice-scope strong { color: #2E5A6B; }
+  .bm-notice-scope strong { color: #1B3A57; }
 
-  .bm-rule-group { display: flex; flex-direction: column; gap: 0.35rem; }
+  .bm-rule-group { display: flex; flex-direction: column; gap: 0.3rem; }
   .bm-rule-head { display: flex; align-items: center; gap: 0.45rem; }
   .bm-rule-scope {
     font-size: 0.625rem;
@@ -585,10 +623,11 @@
     padding: 0.08rem 0.4rem;
     white-space: nowrap;
   }
-  .bm-rule-scope.scope-general { color: #2E5A6B; background: rgba(46, 90, 107, 0.14); }
-  .bm-rule-scope.scope-survival { color: #7A5230; background: rgba(150, 94, 44, 0.16); }
-  .bm-rule-scope.scope-modpack { color: #5A4A76; background: rgba(88, 70, 128, 0.16); }
-  .bm-rule-title { font-size: 0.75rem; font-weight: 600; color: #1F2A30; }
+  /* 与右侧索引标签同色 */
+  .bm-rule-scope.scope-general { color: #FBFBF7; background: #4E9A6B; }
+  .bm-rule-scope.scope-survival { color: #FBFBF7; background: #B5793C; }
+  .bm-rule-scope.scope-modpack { color: #FBFBF7; background: #C25B4A; }
+  .bm-rule-title { font-size: 0.75rem; font-weight: 600; color: #1B3A57; }
   .bm-rule-list {
     margin: 0;
     padding-left: 1.05rem;
@@ -599,7 +638,7 @@
   .bm-rule-list li {
     font-size: 0.6875rem;
     line-height: 1.55;
-    color: #45535C;
+    color: #3E4C55;
     list-style: '· ';
   }
   .bm-rule-doc {
@@ -610,6 +649,11 @@
     text-underline-offset: 2px;
   }
   .bm-notice-foot { font-size: 0.625rem; color: #8C9AA3; text-align: right; }
+
+  /* 表单控件在横线纸上：给输入框白底遮住横线，别让横线穿过文字 */
+  .bm-top-flap .auth-input-light { background-color: #FFFFFF; }
+  .bm-top-flap .btn-auth-light { background-color: #1B3A57; border-color: #1B3A57; }
+  .bm-top-flap .btn-auth-light:hover:not(:disabled) { background-color: #2C567E; border-color: #2C567E; }
 
   @media (prefers-reduced-motion: reduce) {
     .bm-top-flap { transition: none; }
