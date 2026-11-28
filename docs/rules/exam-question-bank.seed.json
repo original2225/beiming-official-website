@@ -1,12 +1,12 @@
 {
-  "_说明": "北冥准入考核初始题库（2026-11-27 初稿）。取材全部来自 docs/rules/生电服服规.txt 与 docs/rules/愚者服服规.txt，未自行添加服规里没有的条款。",
+  "_说明": "北冥准入考核题库（2026-11-27 初稿，2026-11-28 扩充）。初稿取材 docs/rules/生电服服规.txt 与 docs/rules/愚者服服规.txt；扩充另取材花蝉提供的四份 WPS 审核问卷（红石向/生电后勤/建筑向/见习玩家），红石知识题均已按 Minecraft Wiki 核对事实。未自行添加资料里没有的条款。",
   "_口径": {
     "serverType": "SURVIVAL=原版生电服，MODPACK=整合包服，null=两服通用（基本成员公约类）",
     "reviewDirection": "沿用现有四方向；生电题按内容归到 REDSTONE/LATE_GAME/BUILDING/GENERAL",
     "difficulty": "NORMAL / RECHECK",
-    "注意": "纯中文题干、选项中文；昵称类题目不要写死具体人名，用 huachan / Yuan492 这类站内示例"
+    "注意": "纯中文题干、选项中文；昵称类题目不要写死具体人名，用 huachan / Yuan492 这类站内示例",
+    "补充": "四份问卷里，红石向含可客观化的红石知识题（已收进 REDSTONE 方向题库）；后勤(LATE_GAME)/建筑(BUILDING)/见习(GENERAL) 多为开放问答和人工面试，不宜做成客观题，仍走人工审核。"
   },
-
   "questions": [
     {
       "serverType": null,
@@ -14,10 +14,24 @@
       "difficulty": "NORMAL",
       "type": "TRUE_FALSE",
       "stem": "在服务器内以任何形式传播黄色或不良信息，只是个人行为，不影响他人即可。",
-      "options": [{"optionId": "A", "text": "对"}, {"optionId": "B", "text": "错"}],
-      "correctOptionIds": ["B"],
+      "options": [
+        {
+          "optionId": "A",
+          "text": "对"
+        },
+        {
+          "optionId": "B",
+          "text": "错"
+        }
+      ],
+      "correctOptionIds": [
+        "B"
+      ],
       "score": 5,
-      "tags": ["成员公约", "红线"]
+      "tags": [
+        "成员公约",
+        "红线"
+      ]
     },
     {
       "serverType": null,
@@ -26,14 +40,31 @@
       "type": "SINGLE_CHOICE",
       "stem": "发现其他成员有违规行为时，下列做法最正确的是？",
       "options": [
-        {"optionId": "A", "text": "当作没看见，免得惹麻烦"},
-        {"optionId": "B", "text": "在群里公开指责对方"},
-        {"optionId": "C", "text": "截屏记录证据，及时向管理反映"},
-        {"optionId": "D", "text": "私下报复回去"}
+        {
+          "optionId": "A",
+          "text": "当作没看见，免得惹麻烦"
+        },
+        {
+          "optionId": "B",
+          "text": "在群里公开指责对方"
+        },
+        {
+          "optionId": "C",
+          "text": "截屏记录证据，及时向管理反映"
+        },
+        {
+          "optionId": "D",
+          "text": "私下报复回去"
+        }
       ],
-      "correctOptionIds": ["C"],
+      "correctOptionIds": [
+        "C"
+      ],
       "score": 5,
-      "tags": ["成员守则", "监督"]
+      "tags": [
+        "成员守则",
+        "监督"
+      ]
     },
     {
       "serverType": null,
@@ -41,10 +72,23 @@
       "difficulty": "NORMAL",
       "type": "TRUE_FALSE",
       "stem": "破坏他人财产、公共设施，或在游戏内非法掠夺他人获得的物品，属于被明令禁止的行为。",
-      "options": [{"optionId": "A", "text": "对"}, {"optionId": "B", "text": "错"}],
-      "correctOptionIds": ["A"],
+      "options": [
+        {
+          "optionId": "A",
+          "text": "对"
+        },
+        {
+          "optionId": "B",
+          "text": "错"
+        }
+      ],
+      "correctOptionIds": [
+        "A"
+      ],
       "score": 5,
-      "tags": ["成员公约"]
+      "tags": [
+        "成员公约"
+      ]
     },
     {
       "serverType": null,
@@ -52,12 +96,25 @@
       "difficulty": "NORMAL",
       "type": "TRUE_FALSE",
       "stem": "把自己的游戏账号和密码告诉别人代玩，出了问题自己不用负责。",
-      "options": [{"optionId": "A", "text": "对"}, {"optionId": "B", "text": "错"}],
-      "correctOptionIds": ["B"],
+      "options": [
+        {
+          "optionId": "A",
+          "text": "对"
+        },
+        {
+          "optionId": "B",
+          "text": "错"
+        }
+      ],
+      "correctOptionIds": [
+        "B"
+      ],
       "score": 5,
-      "tags": ["成员守则", "账号安全"]
+      "tags": [
+        "成员守则",
+        "账号安全"
+      ]
     },
-
     {
       "serverType": "SURVIVAL",
       "reviewDirection": "REDSTONE",
@@ -65,14 +122,32 @@
       "type": "SINGLE_CHOICE",
       "stem": "使用更新抑制（如粉板、CCE、声音抑制、红石粉跳略、铁轨跳略、OOM 等装置）的正确做法是？",
       "options": [
-        {"optionId": "A", "text": "先建好用起来，被发现了再说"},
-        {"optionId": "B", "text": "先向管理报备，获批后再使用，用完后及时拆除"},
-        {"optionId": "C", "text": "只要不影响别人就不用管"},
-        {"optionId": "D", "text": "偷偷建在很远的地方就没人发现"}
+        {
+          "optionId": "A",
+          "text": "先建好用起来，被发现了再说"
+        },
+        {
+          "optionId": "B",
+          "text": "先向管理报备，获批后再使用，用完后及时拆除"
+        },
+        {
+          "optionId": "C",
+          "text": "只要不影响别人就不用管"
+        },
+        {
+          "optionId": "D",
+          "text": "偷偷建在很远的地方就没人发现"
+        }
       ],
-      "correctOptionIds": ["B"],
+      "correctOptionIds": [
+        "B"
+      ],
       "score": 10,
-      "tags": ["生电服规", "更新抑制", "报备"]
+      "tags": [
+        "生电服规",
+        "更新抑制",
+        "报备"
+      ]
     },
     {
       "serverType": "SURVIVAL",
@@ -80,10 +155,24 @@
       "difficulty": "NORMAL",
       "type": "TRUE_FALSE",
       "stem": "报备并获批的更新抑制装置，可以长期保留在服里，不必拆除。",
-      "options": [{"optionId": "A", "text": "对"}, {"optionId": "B", "text": "错"}],
-      "correctOptionIds": ["B"],
+      "options": [
+        {
+          "optionId": "A",
+          "text": "对"
+        },
+        {
+          "optionId": "B",
+          "text": "错"
+        }
+      ],
+      "correctOptionIds": [
+        "B"
+      ],
       "score": 10,
-      "tags": ["生电服规", "更新抑制"]
+      "tags": [
+        "生电服规",
+        "更新抑制"
+      ]
     },
     {
       "serverType": "SURVIVAL",
@@ -92,15 +181,38 @@
       "type": "MULTIPLE_CHOICE",
       "stem": "在生电服里，下列哪些属于「立项」需要向管理报备的范围？",
       "options": [
-        {"optionId": "A", "text": "全物品这类大型机器"},
-        {"optionId": "B", "text": "手挖刷石机这类小工程"},
-        {"optionId": "C", "text": "建筑"},
-        {"optionId": "D", "text": "地图画"},
-        {"optionId": "E", "text": "自己一个人挖矿"}
+        {
+          "optionId": "A",
+          "text": "全物品这类大型机器"
+        },
+        {
+          "optionId": "B",
+          "text": "手挖刷石机这类小工程"
+        },
+        {
+          "optionId": "C",
+          "text": "建筑"
+        },
+        {
+          "optionId": "D",
+          "text": "地图画"
+        },
+        {
+          "optionId": "E",
+          "text": "自己一个人挖矿"
+        }
       ],
-      "correctOptionIds": ["A", "B", "C", "D"],
+      "correctOptionIds": [
+        "A",
+        "B",
+        "C",
+        "D"
+      ],
       "score": 10,
-      "tags": ["生电服规", "立项报备"]
+      "tags": [
+        "生电服规",
+        "立项报备"
+      ]
     },
     {
       "serverType": "SURVIVAL",
@@ -109,16 +221,43 @@
       "type": "MULTIPLE_CHOICE",
       "stem": "报备立项时，需要说明的内容包括？",
       "options": [
-        {"optionId": "A", "text": "地点"},
-        {"optionId": "B", "text": "规模"},
-        {"optionId": "C", "text": "卡顿情况（MSPT）"},
-        {"optionId": "D", "text": "是否在镜像测试过"},
-        {"optionId": "E", "text": "是否有实装必要"},
-        {"optionId": "F", "text": "你的真实姓名和住址"}
+        {
+          "optionId": "A",
+          "text": "地点"
+        },
+        {
+          "optionId": "B",
+          "text": "规模"
+        },
+        {
+          "optionId": "C",
+          "text": "卡顿情况（MSPT）"
+        },
+        {
+          "optionId": "D",
+          "text": "是否在镜像测试过"
+        },
+        {
+          "optionId": "E",
+          "text": "是否有实装必要"
+        },
+        {
+          "optionId": "F",
+          "text": "你的真实姓名和住址"
+        }
       ],
-      "correctOptionIds": ["A", "B", "C", "D", "E"],
+      "correctOptionIds": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E"
+      ],
       "score": 10,
-      "tags": ["生电服规", "立项报备"]
+      "tags": [
+        "生电服规",
+        "立项报备"
+      ]
     },
     {
       "serverType": "SURVIVAL",
@@ -127,14 +266,31 @@
       "type": "SINGLE_CHOICE",
       "stem": "关于个人用途的假人（bot），服规的要求是？",
       "options": [
-        {"optionId": "A", "text": "想召唤多少个都行，反正不占资源"},
-        {"optionId": "B", "text": "只能召唤本人 ID 的假人，严禁未经报备召唤大量假人"},
-        {"optionId": "C", "text": "随便用别人的 ID 召唤"},
-        {"optionId": "D", "text": "假人越多效率越高，鼓励多用"}
+        {
+          "optionId": "A",
+          "text": "想召唤多少个都行，反正不占资源"
+        },
+        {
+          "optionId": "B",
+          "text": "只能召唤本人 ID 的假人，严禁未经报备召唤大量假人"
+        },
+        {
+          "optionId": "C",
+          "text": "随便用别人的 ID 召唤"
+        },
+        {
+          "optionId": "D",
+          "text": "假人越多效率越高，鼓励多用"
+        }
       ],
-      "correctOptionIds": ["B"],
+      "correctOptionIds": [
+        "B"
+      ],
       "score": 10,
-      "tags": ["生电服规", "假人"]
+      "tags": [
+        "生电服规",
+        "假人"
+      ]
     },
     {
       "serverType": "SURVIVAL",
@@ -142,10 +298,25 @@
       "difficulty": "NORMAL",
       "type": "TRUE_FALSE",
       "stem": "召唤大量假人会让数据库读取变慢、导致服务器卡顿，所以这是被限制的行为。",
-      "options": [{"optionId": "A", "text": "对"}, {"optionId": "B", "text": "错"}],
-      "correctOptionIds": ["A"],
+      "options": [
+        {
+          "optionId": "A",
+          "text": "对"
+        },
+        {
+          "optionId": "B",
+          "text": "错"
+        }
+      ],
+      "correctOptionIds": [
+        "A"
+      ],
       "score": 10,
-      "tags": ["生电服规", "假人", "卡顿"]
+      "tags": [
+        "生电服规",
+        "假人",
+        "卡顿"
+      ]
     },
     {
       "serverType": "SURVIVAL",
@@ -154,16 +325,43 @@
       "type": "MULTIPLE_CHOICE",
       "stem": "生电服不禁止打印机，但下列哪些是明确禁止的用法？",
       "options": [
-        {"optionId": "A", "text": "使用三改及以上"},
-        {"optionId": "B", "text": "在世吞挖沟以外的地方使用挖掘模式"},
-        {"optionId": "C", "text": "擅自打开破基岩模式"},
-        {"optionId": "D", "text": "在不懂机器构造和原理的情况下打印机器"},
-        {"optionId": "E", "text": "为了冲「榜单」乱开打印机"},
-        {"optionId": "F", "text": "在遵守条例的前提下正常使用打印机"}
+        {
+          "optionId": "A",
+          "text": "使用三改及以上"
+        },
+        {
+          "optionId": "B",
+          "text": "在世吞挖沟以外的地方使用挖掘模式"
+        },
+        {
+          "optionId": "C",
+          "text": "擅自打开破基岩模式"
+        },
+        {
+          "optionId": "D",
+          "text": "在不懂机器构造和原理的情况下打印机器"
+        },
+        {
+          "optionId": "E",
+          "text": "为了冲「榜单」乱开打印机"
+        },
+        {
+          "optionId": "F",
+          "text": "在遵守条例的前提下正常使用打印机"
+        }
       ],
-      "correctOptionIds": ["A", "B", "C", "D", "E"],
+      "correctOptionIds": [
+        "A",
+        "B",
+        "C",
+        "D",
+        "E"
+      ],
       "score": 10,
-      "tags": ["生电服规", "打印机"]
+      "tags": [
+        "生电服规",
+        "打印机"
+      ]
     },
     {
       "serverType": "SURVIVAL",
@@ -171,10 +369,24 @@
       "difficulty": "NORMAL",
       "type": "TRUE_FALSE",
       "stem": "未经允许制造常加载卡服机，一经发现会被勒令整改并给予处分。",
-      "options": [{"optionId": "A", "text": "对"}, {"optionId": "B", "text": "错"}],
-      "correctOptionIds": ["A"],
+      "options": [
+        {
+          "optionId": "A",
+          "text": "对"
+        },
+        {
+          "optionId": "B",
+          "text": "错"
+        }
+      ],
+      "correctOptionIds": [
+        "A"
+      ],
       "score": 10,
-      "tags": ["生电服规", "卡服机"]
+      "tags": [
+        "生电服规",
+        "卡服机"
+      ]
     },
     {
       "serverType": "SURVIVAL",
@@ -182,10 +394,24 @@
       "difficulty": "NORMAL",
       "type": "TRUE_FALSE",
       "stem": "大型工程施工期间，可以为了方便自己随时关掉伪和平。",
-      "options": [{"optionId": "A", "text": "对"}, {"optionId": "B", "text": "错"}],
-      "correctOptionIds": ["B"],
+      "options": [
+        {
+          "optionId": "A",
+          "text": "对"
+        },
+        {
+          "optionId": "B",
+          "text": "错"
+        }
+      ],
+      "correctOptionIds": [
+        "B"
+      ],
       "score": 10,
-      "tags": ["生电服规", "伪和平"]
+      "tags": [
+        "生电服规",
+        "伪和平"
+      ]
     },
     {
       "serverType": "SURVIVAL",
@@ -193,10 +419,25 @@
       "difficulty": "NORMAL",
       "type": "TRUE_FALSE",
       "stem": "在生电服里可以随便无意义死亡，装备丢了直接拿新人盒子里的装备就行。",
-      "options": [{"optionId": "A", "text": "对"}, {"optionId": "B", "text": "错"}],
-      "correctOptionIds": ["B"],
+      "options": [
+        {
+          "optionId": "A",
+          "text": "对"
+        },
+        {
+          "optionId": "B",
+          "text": "错"
+        }
+      ],
+      "correctOptionIds": [
+        "B"
+      ],
       "score": 10,
-      "tags": ["生电服规", "无意义死亡", "新人保护"]
+      "tags": [
+        "生电服规",
+        "无意义死亡",
+        "新人保护"
+      ]
     },
     {
       "serverType": "SURVIVAL",
@@ -204,10 +445,24 @@
       "difficulty": "NORMAL",
       "type": "TRUE_FALSE",
       "stem": "未经原作者同意，复制或传播别人的原创机器 / 建筑投影是允许的，只要标了出处。",
-      "options": [{"optionId": "A", "text": "对"}, {"optionId": "B", "text": "错"}],
-      "correctOptionIds": ["B"],
+      "options": [
+        {
+          "optionId": "A",
+          "text": "对"
+        },
+        {
+          "optionId": "B",
+          "text": "错"
+        }
+      ],
+      "correctOptionIds": [
+        "B"
+      ],
       "score": 10,
-      "tags": ["生电服规", "原创机器"]
+      "tags": [
+        "生电服规",
+        "原创机器"
+      ]
     },
     {
       "serverType": "SURVIVAL",
@@ -216,14 +471,31 @@
       "type": "SINGLE_CHOICE",
       "stem": "不小心把你的机器弄坏了，正确做法是？",
       "options": [
-        {"optionId": "A", "text": "装作不知道，能拖就拖"},
-        {"optionId": "B", "text": "自己硬修，修坏了也算了"},
-        {"optionId": "C", "text": "及时报备，自己尽力修，不会修就去看原视频或找人帮忙"},
-        {"optionId": "D", "text": "直接把机器拆了重建"}
+        {
+          "optionId": "A",
+          "text": "装作不知道，能拖就拖"
+        },
+        {
+          "optionId": "B",
+          "text": "自己硬修，修坏了也算了"
+        },
+        {
+          "optionId": "C",
+          "text": "及时报备，自己尽力修，不会修就去看原视频或找人帮忙"
+        },
+        {
+          "optionId": "D",
+          "text": "直接把机器拆了重建"
+        }
       ],
-      "correctOptionIds": ["C"],
+      "correctOptionIds": [
+        "C"
+      ],
       "score": 10,
-      "tags": ["生电服规", "损坏报备"]
+      "tags": [
+        "生电服规",
+        "损坏报备"
+      ]
     },
     {
       "serverType": "SURVIVAL",
@@ -231,10 +503,25 @@
       "difficulty": "NORMAL",
       "type": "TRUE_FALSE",
       "stem": "为了节省时间，可以使用外挂端或脚本加速行走、跑图。",
-      "options": [{"optionId": "A", "text": "对"}, {"optionId": "B", "text": "错"}],
-      "correctOptionIds": ["B"],
+      "options": [
+        {
+          "optionId": "A",
+          "text": "对"
+        },
+        {
+          "optionId": "B",
+          "text": "错"
+        }
+      ],
+      "correctOptionIds": [
+        "B"
+      ],
       "score": 10,
-      "tags": ["生电服规", "外挂", "跑图"]
+      "tags": [
+        "生电服规",
+        "外挂",
+        "跑图"
+      ]
     },
     {
       "serverType": "SURVIVAL",
@@ -244,19 +531,36 @@
       "stem": "请简述：如果你想在生电服建一台新机器，需要提前做哪些事？（至少写出两项）",
       "referenceAnswer": "向管理报备立项，说明地点、规模、卡顿（MSPT）、是否在镜像测试过、是否有实装必要；如涉及更新抑制类装置需单独报备，批准后使用、用完拆除。",
       "score": 15,
-      "tags": ["生电服规", "立项报备", "简答"]
+      "tags": [
+        "生电服规",
+        "立项报备",
+        "简答"
+      ]
     },
-
     {
       "serverType": "MODPACK",
       "reviewDirection": "GENERAL",
       "difficulty": "NORMAL",
       "type": "TRUE_FALSE",
       "stem": "刚进服的新人，你可以直接把一整套流派遗物都送给他，帮他快速起飞。",
-      "options": [{"optionId": "A", "text": "对"}, {"optionId": "B", "text": "错"}],
-      "correctOptionIds": ["B"],
+      "options": [
+        {
+          "optionId": "A",
+          "text": "对"
+        },
+        {
+          "optionId": "B",
+          "text": "错"
+        }
+      ],
+      "correctOptionIds": [
+        "B"
+      ],
       "score": 10,
-      "tags": ["愚者服规", "新人体验"]
+      "tags": [
+        "愚者服规",
+        "新人体验"
+      ]
     },
     {
       "serverType": "MODPACK",
@@ -265,14 +569,31 @@
       "type": "SINGLE_CHOICE",
       "stem": "给新人提供遗物时，合适的做法是？",
       "options": [
-        {"optionId": "A", "text": "全套流派遗物一次给齐"},
-        {"optionId": "B", "text": "只给基础属性的遗物（如加生命、护甲、攻击），避免给全套流派"},
-        {"optionId": "C", "text": "什么都不给，让新人自己摸索"},
-        {"optionId": "D", "text": "把不要的二手装备塞给新人"}
+        {
+          "optionId": "A",
+          "text": "全套流派遗物一次给齐"
+        },
+        {
+          "optionId": "B",
+          "text": "只给基础属性的遗物（如加生命、护甲、攻击），避免给全套流派"
+        },
+        {
+          "optionId": "C",
+          "text": "什么都不给，让新人自己摸索"
+        },
+        {
+          "optionId": "D",
+          "text": "把不要的二手装备塞给新人"
+        }
       ],
-      "correctOptionIds": ["B"],
+      "correctOptionIds": [
+        "B"
+      ],
       "score": 10,
-      "tags": ["愚者服规", "新人体验"]
+      "tags": [
+        "愚者服规",
+        "新人体验"
+      ]
     },
     {
       "serverType": "MODPACK",
@@ -280,10 +601,24 @@
       "difficulty": "NORMAL",
       "type": "TRUE_FALSE",
       "stem": "完成愚者第 3 章任务之后，应该自觉在离出生点稍远的位置安家，方便新人找 boss。",
-      "options": [{"optionId": "A", "text": "对"}, {"optionId": "B", "text": "错"}],
-      "correctOptionIds": ["A"],
+      "options": [
+        {
+          "optionId": "A",
+          "text": "对"
+        },
+        {
+          "optionId": "B",
+          "text": "错"
+        }
+      ],
+      "correctOptionIds": [
+        "A"
+      ],
       "score": 10,
-      "tags": ["愚者服规", "安家位置"]
+      "tags": [
+        "愚者服规",
+        "安家位置"
+      ]
     },
     {
       "serverType": "MODPACK",
@@ -291,10 +626,24 @@
       "difficulty": "NORMAL",
       "type": "TRUE_FALSE",
       "stem": "在愚者服跑图会影响到其他玩家，所以应该尽量少跑。",
-      "options": [{"optionId": "A", "text": "对"}, {"optionId": "B", "text": "错"}],
-      "correctOptionIds": ["B"],
+      "options": [
+        {
+          "optionId": "A",
+          "text": "对"
+        },
+        {
+          "optionId": "B",
+          "text": "错"
+        }
+      ],
+      "correctOptionIds": [
+        "B"
+      ],
       "score": 10,
-      "tags": ["愚者服规", "跑图"]
+      "tags": [
+        "愚者服规",
+        "跑图"
+      ]
     },
     {
       "serverType": "MODPACK",
@@ -303,14 +652,31 @@
       "type": "SINGLE_CHOICE",
       "stem": "在愚者服使用机械动力（Create）搭机器时，下列说法正确的是？",
       "options": [
-        {"optionId": "A", "text": "机器越快越好，卡不卡无所谓"},
-        {"optionId": "B", "text": "记得给机器「包一下」，否则可能很卡；大型机器运转时避免长时间逗留"},
-        {"optionId": "C", "text": "机械动力不会影响服务器性能"},
-        {"optionId": "D", "text": "机器越复杂越应该建在出生点旁边"}
+        {
+          "optionId": "A",
+          "text": "机器越快越好，卡不卡无所谓"
+        },
+        {
+          "optionId": "B",
+          "text": "记得给机器「包一下」，否则可能很卡；大型机器运转时避免长时间逗留"
+        },
+        {
+          "optionId": "C",
+          "text": "机械动力不会影响服务器性能"
+        },
+        {
+          "optionId": "D",
+          "text": "机器越复杂越应该建在出生点旁边"
+        }
       ],
-      "correctOptionIds": ["B"],
+      "correctOptionIds": [
+        "B"
+      ],
       "score": 10,
-      "tags": ["愚者服规", "机械动力"]
+      "tags": [
+        "愚者服规",
+        "机械动力"
+      ]
     },
     {
       "serverType": "MODPACK",
@@ -320,10 +686,435 @@
       "stem": "请简述：在愚者服里，新人提问而你正好知道答案时，恰当的处理方式是什么？",
       "referenceAnswer": "可以回答并允许简单的幽默，但最终要能真正帮对方解决问题；服务器没人时可以 @ 感觉娱乐。",
       "score": 10,
-      "tags": ["愚者服规", "问答", "简答"]
+      "tags": [
+        "愚者服规",
+        "问答",
+        "简答"
+      ]
+    },
+    {
+      "serverType": "SURVIVAL",
+      "reviewDirection": "REDSTONE",
+      "difficulty": "NORMAL",
+      "type": "TRUE_FALSE",
+      "stem": "在 Java 版 Minecraft 中，红石信号强度的最大值为 15 级。",
+      "options": [
+        {
+          "optionId": "A",
+          "text": "对"
+        },
+        {
+          "optionId": "B",
+          "text": "错"
+        }
+      ],
+      "correctOptionIds": [
+        "A"
+      ],
+      "score": 10,
+      "tags": [
+        "红石知识",
+        "信号"
+      ]
+    },
+    {
+      "serverType": "SURVIVAL",
+      "reviewDirection": "REDSTONE",
+      "difficulty": "NORMAL",
+      "type": "SINGLE_CHOICE",
+      "stem": "石质按钮被玩家按下后，会保持激活状态多久？",
+      "options": [
+        {
+          "optionId": "A",
+          "text": "5 红石刻（0.5 秒）"
+        },
+        {
+          "optionId": "B",
+          "text": "10 红石刻（1 秒）"
+        },
+        {
+          "optionId": "C",
+          "text": "15 红石刻（1.5 秒）"
+        },
+        {
+          "optionId": "D",
+          "text": "20 红石刻（2 秒）"
+        }
+      ],
+      "correctOptionIds": [
+        "B"
+      ],
+      "score": 10,
+      "tags": [
+        "红石知识",
+        "按钮"
+      ]
+    },
+    {
+      "serverType": "SURVIVAL",
+      "reviewDirection": "REDSTONE",
+      "difficulty": "NORMAL",
+      "type": "SINGLE_CHOICE",
+      "stem": "两个绊线钩之间可以连接的最大绊线距离（不含绊线钩本身）是多少格？",
+      "options": [
+        {
+          "optionId": "A",
+          "text": "32 格"
+        },
+        {
+          "optionId": "B",
+          "text": "40 格"
+        },
+        {
+          "optionId": "C",
+          "text": "64 格"
+        },
+        {
+          "optionId": "D",
+          "text": "128 格"
+        }
+      ],
+      "correctOptionIds": [
+        "B"
+      ],
+      "score": 10,
+      "tags": [
+        "红石知识",
+        "绊线"
+      ]
+    },
+    {
+      "serverType": "SURVIVAL",
+      "reviewDirection": "REDSTONE",
+      "difficulty": "NORMAL",
+      "type": "TRUE_FALSE",
+      "stem": "用剪刀剪断绊线时，对应的绊线钩不会被激活。",
+      "options": [
+        {
+          "optionId": "A",
+          "text": "对"
+        },
+        {
+          "optionId": "B",
+          "text": "错"
+        }
+      ],
+      "correctOptionIds": [
+        "A"
+      ],
+      "score": 10,
+      "tags": [
+        "红石知识",
+        "绊线"
+      ]
+    },
+    {
+      "serverType": "SURVIVAL",
+      "reviewDirection": "REDSTONE",
+      "difficulty": "NORMAL",
+      "type": "SINGLE_CHOICE",
+      "stem": "避雷针被闪电击中时，输出的红石信号强度和持续时间是？",
+      "options": [
+        {
+          "optionId": "A",
+          "text": "15 级，持续约 8 游戏刻"
+        },
+        {
+          "optionId": "B",
+          "text": "15 级，持续到雨停"
+        },
+        {
+          "optionId": "C",
+          "text": "10 级，持续约 8 游戏刻"
+        },
+        {
+          "optionId": "D",
+          "text": "7 级，持续约 4 游戏刻"
+        }
+      ],
+      "correctOptionIds": [
+        "A"
+      ],
+      "score": 10,
+      "tags": [
+        "红石知识",
+        "避雷针"
+      ]
+    },
+    {
+      "serverType": "SURVIVAL",
+      "reviewDirection": "REDSTONE",
+      "difficulty": "NORMAL",
+      "type": "SINGLE_CHOICE",
+      "stem": "用红石比较器读取陷阱箱时，输出的信号强度取决于什么？",
+      "options": [
+        {
+          "optionId": "A",
+          "text": "陷阱箱内物品的占空比（数量）"
+        },
+        {
+          "optionId": "B",
+          "text": "当前查看该陷阱箱的玩家数量"
+        },
+        {
+          "optionId": "C",
+          "text": "陷阱箱的朝向"
+        },
+        {
+          "optionId": "D",
+          "text": "陷阱箱上方方块的光照"
+        }
+      ],
+      "correctOptionIds": [
+        "A"
+      ],
+      "score": 10,
+      "tags": [
+        "红石知识",
+        "比较器"
+      ]
+    },
+    {
+      "serverType": "SURVIVAL",
+      "reviewDirection": "REDSTONE",
+      "difficulty": "NORMAL",
+      "type": "TRUE_FALSE",
+      "stem": "粘性活塞无法把红石块拉回来，因为红石块不能被活塞推动或拉动。",
+      "options": [
+        {
+          "optionId": "A",
+          "text": "对"
+        },
+        {
+          "optionId": "B",
+          "text": "错"
+        }
+      ],
+      "correctOptionIds": [
+        "A"
+      ],
+      "score": 10,
+      "tags": [
+        "红石知识",
+        "活塞"
+      ]
+    },
+    {
+      "serverType": "SURVIVAL",
+      "reviewDirection": "REDSTONE",
+      "difficulty": "NORMAL",
+      "type": "SINGLE_CHOICE",
+      "stem": "侦测器的输出特性是？",
+      "options": [
+        {
+          "optionId": "A",
+          "text": "检测其前方方块的状态更新，在状态变化时输出一个脉冲"
+        },
+        {
+          "optionId": "B",
+          "text": "持续检测光照强度并输出对应信号"
+        },
+        {
+          "optionId": "C",
+          "text": "只对玩家经过做出反应"
+        },
+        {
+          "optionId": "D",
+          "text": "检测前方方块是否为红石导体"
+        }
+      ],
+      "correctOptionIds": [
+        "A"
+      ],
+      "score": 10,
+      "tags": [
+        "红石知识",
+        "侦测器"
+      ]
+    },
+    {
+      "serverType": "SURVIVAL",
+      "reviewDirection": "REDSTONE",
+      "difficulty": "NORMAL",
+      "type": "SINGLE_CHOICE",
+      "stem": "红石中继器与红石比较器相比，中继器独有的作用是？",
+      "options": [
+        {
+          "optionId": "A",
+          "text": "把信号重新增强到 15 级并延长传输距离，且延迟可调"
+        },
+        {
+          "optionId": "B",
+          "text": "比较两个输入信号的强弱"
+        },
+        {
+          "optionId": "C",
+          "text": "读取容器内物品占空比"
+        },
+        {
+          "optionId": "D",
+          "text": "检测方块更新并锁存信号"
+        }
+      ],
+      "correctOptionIds": [
+        "A"
+      ],
+      "score": 10,
+      "tags": [
+        "红石知识",
+        "中继器"
+      ]
+    },
+    {
+      "serverType": "SURVIVAL",
+      "reviewDirection": "REDSTONE",
+      "difficulty": "NORMAL",
+      "type": "TRUE_FALSE",
+      "stem": "红石火把在亮灭交替过快时会“烧毁”，需要一次方块更新才能重新点亮。",
+      "options": [
+        {
+          "optionId": "A",
+          "text": "对"
+        },
+        {
+          "optionId": "B",
+          "text": "错"
+        }
+      ],
+      "correctOptionIds": [
+        "A"
+      ],
+      "score": 10,
+      "tags": [
+        "红石知识",
+        "红石火把"
+      ]
+    },
+    {
+      "serverType": "SURVIVAL",
+      "reviewDirection": "REDSTONE",
+      "difficulty": "NORMAL",
+      "type": "SINGLE_CHOICE",
+      "stem": "标靶被箭射中时，输出的信号强度取决于？",
+      "options": [
+        {
+          "optionId": "A",
+          "text": "命中位置越靠近方块中心信号越强（边缘 1 到中心 15）"
+        },
+        {
+          "optionId": "B",
+          "text": "固定输出 15 级"
+        },
+        {
+          "optionId": "C",
+          "text": "射中它的箭的数量"
+        },
+        {
+          "optionId": "D",
+          "text": "附近玩家数量"
+        }
+      ],
+      "correctOptionIds": [
+        "A"
+      ],
+      "score": 10,
+      "tags": [
+        "红石知识",
+        "标靶"
+      ]
+    },
+    {
+      "serverType": "SURVIVAL",
+      "reviewDirection": "REDSTONE",
+      "difficulty": "NORMAL",
+      "type": "SINGLE_CHOICE",
+      "stem": "测重压力板输出的信号强度与什么有关？",
+      "options": [
+        {
+          "optionId": "A",
+          "text": "压在其上的实体数量"
+        },
+        {
+          "optionId": "B",
+          "text": "玩家的视角方向"
+        },
+        {
+          "optionId": "C",
+          "text": "所在方块的光照强度"
+        },
+        {
+          "optionId": "D",
+          "text": "游戏内时间"
+        }
+      ],
+      "correctOptionIds": [
+        "A"
+      ],
+      "score": 10,
+      "tags": [
+        "红石知识",
+        "测重压力板"
+      ]
+    },
+    {
+      "serverType": "SURVIVAL",
+      "reviewDirection": "GENERAL",
+      "difficulty": "NORMAL",
+      "type": "TRUE_FALSE",
+      "stem": "若某位管理员推荐免审的新成员严重违反服规，该管理员的免审名额会减少 2 个。",
+      "options": [
+        {
+          "optionId": "A",
+          "text": "对"
+        },
+        {
+          "optionId": "B",
+          "text": "错"
+        }
+      ],
+      "correctOptionIds": [
+        "A"
+      ],
+      "score": 10,
+      "tags": [
+        "生电服规",
+        "管理"
+      ]
+    },
+    {
+      "serverType": "SURVIVAL",
+      "reviewDirection": "GENERAL",
+      "difficulty": "NORMAL",
+      "type": "SINGLE_CHOICE",
+      "stem": "受到处罚后，关于申诉的说法正确的是？",
+      "options": [
+        {
+          "optionId": "A",
+          "text": "每人有一次申诉机会，管理层超三分之二同意可取消处罚；触发永久封禁的还需额外获 9 位服内成员同意"
+        },
+        {
+          "optionId": "B",
+          "text": "处罚不可申诉"
+        },
+        {
+          "optionId": "C",
+          "text": "申诉一律由做出处罚的管理员自己裁定"
+        },
+        {
+          "optionId": "D",
+          "text": "任意一名管理员同意即可取消处罚"
+        }
+      ],
+      "correctOptionIds": [
+        "A"
+      ],
+      "score": 10,
+      "tags": [
+        "生电服规",
+        "处罚"
+      ]
     }
   ],
-
   "templates": [
     {
       "name": "生电服准入考核·通用",
@@ -334,8 +1125,22 @@
       "passScore": 60,
       "objectivePassScore": 50,
       "questionRules": [
-        {"type": "TRUE_FALSE", "count": 3, "scoreEach": 5, "tags": ["成员公约"]},
-        {"type": "SINGLE_CHOICE", "count": 1, "scoreEach": 5, "tags": ["成员守则"]}
+        {
+          "type": "TRUE_FALSE",
+          "count": 3,
+          "scoreEach": 5,
+          "tags": [
+            "成员公约"
+          ]
+        },
+        {
+          "type": "SINGLE_CHOICE",
+          "count": 1,
+          "scoreEach": 5,
+          "tags": [
+            "成员守则"
+          ]
+        }
       ],
       "_待办": "生电专属题（更新抑制/立项/假人/打印机等）需另配模板：reviewDirection 按 REDSTONE、LATE_GAME 各出一套，questionRules 里用 tags 限定到 ['生电服规']"
     },
@@ -348,8 +1153,49 @@
       "passScore": 50,
       "objectivePassScore": 40,
       "questionRules": [
-        {"type": "TRUE_FALSE", "count": 2, "scoreEach": 5, "tags": ["成员公约"]},
-        {"type": "SINGLE_CHOICE", "count": 1, "scoreEach": 5, "tags": ["成员守则"]}
+        {
+          "type": "TRUE_FALSE",
+          "count": 2,
+          "scoreEach": 5,
+          "tags": [
+            "成员公约"
+          ]
+        },
+        {
+          "type": "SINGLE_CHOICE",
+          "count": 1,
+          "scoreEach": 5,
+          "tags": [
+            "成员守则"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "生电服准入考核·红石向",
+      "serverType": "SURVIVAL",
+      "reviewDirection": "REDSTONE",
+      "difficulty": "NORMAL",
+      "timeLimitMinutes": 20,
+      "passScore": 60,
+      "objectivePassScore": 60,
+      "questionRules": [
+        {
+          "type": "TRUE_FALSE",
+          "count": 2,
+          "scoreEach": 10,
+          "tags": [
+            "红石知识"
+          ]
+        },
+        {
+          "type": "SINGLE_CHOICE",
+          "count": 3,
+          "scoreEach": 10,
+          "tags": [
+            "红石知识"
+          ]
+        }
       ]
     }
   ]
