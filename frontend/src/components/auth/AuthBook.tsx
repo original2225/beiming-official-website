@@ -1,19 +1,15 @@
 /**
  * 登录 / 注册卡 —— 浅色活页纸，两页纸真实翻动（花蝉 2026-11-28 定稿 v6）。
  *
- *   ┌── ○ ○ ○ ○ ○ ○ ──  上排圆扣（浅色）
- *   │  主活页：登录 / 注册       ← 真实纸页，绕上边框（圆扣那条线）翻转
- *   └───────────────────
- *        ↕ 两块纸之间的间隙（花蝉要求「和上方的主活页分离」）
- *   ┌───────────────────
- *   │  提示条：一条一条随机播放，不可展开
- *   └── ○ ○ ○ ○ ○ ○ ──  下排圆扣（浅色）
+ *   ┌── ○ ○ ○ ○ ○ ○ ──  上排圆扣
+ *   │  主活页：登录（含底部温馨提示）/ 注册   ← 绕上边框翻转
+ *   └── ○ ○ ○ ○ ○ ○ ──  下排圆扣
  *
- * 翻页语义（花蝉原话：注册页是「从外面（登录页面后方）翻一页上来」）：
- *   · 登录页平放在上面；注册页塞在这张纸后面、翻到卡片外侧待命。
- *   · 点「注册」：注册页从卡片外侧绕上边框翻上来，盖住登录页（翻上来）。
- *   · 点「登录」：注册页抬起翻回去，重新露出下面的登录页（翻回去）。
- *   · 始终只有一张纸在动，另一张静止躺着 —— 这是"真实纸页"和"卡片内部切换"的区别。
+ * 只有一张纸、正反两面（花蝉 2026-11-28 定稿 v8）：
+ *   · 登录页 = 正面。表单在上，剩余空白用「温馨提示」轮播填满（否则下方空一块）。
+ *   · 注册页 = 反面。点「注册」整张纸绕上边框翻过去，翻下来的注册页把登录页
+ *     连同底部的温馨提示一起盖住；点「登录」翻回去。
+ *   · 只有一张纸在动，所以「盖住」是物理遮挡，不是靠层级硬压。
  *
  * 踩过的坑（别再改回去）：
  *   · 两页同时对转，转到 90° 时两页都不可见，会露出背景 → 只转一张。
@@ -25,7 +21,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { LoginPageContent } from './LoginPageContent'
 import { RegisterPageContent } from './RegisterPageContent'
-import { EntryNoticeSheet } from './EntryNoticeSheet'
 
 export type AuthPage = 'login' | 'register'
 
@@ -159,11 +154,6 @@ export function AuthBook({ open, page, onClose, onSwitchToPage }: AuthBookProps)
               <RegisterPageContent onClose={onClose} onSwitchToLogin={() => switchTo('login')} />
             </div>
           </div>
-        </div>
-
-        {/* ── 下方提示条：与主活页分开的第二块纸，只轮播、不展开 ── */}
-        <div className="bm-note-strip" role="region" aria-label="入服提示">
-          <EntryNoticeSheet />
         </div>
 
         {/* ── 下排活页环：压在提示条下沿 ── */}

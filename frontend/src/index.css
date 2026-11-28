@@ -393,7 +393,6 @@
     width: 420px;
     display: flex;
     flex-direction: column;
-    gap: 14px;
     padding: 22px 0;
     perspective: 1400px;           /* 透视在最外层：纸翻出去才有纵深，也才看得见"翻到卡片外" */
     perspective-origin: 50% 0%;
@@ -478,27 +477,48 @@
 
   /* 纸的两种静止姿态。
      坑：绕上边框转 180° 后，纸会整个镜像到卡片【上方】（实测 top -311px，跑出视口）。
-     必须在旋转之后补 translateY(-100%)，把它拉回卡片位置 —— 位置对了才像"翻到背面"，
-     不然就是整块纸凭空跳到卡片上方。
+     必须在旋转之后补 translateY(-100%)，把它拉回卡片位置。
      注意 translateY 必须写在 rotateX 后面（同一坐标系），提前写会推到别的方向。 */
   .bm-leaf.is-showing-login    { transform: rotateX(0deg); }
   .bm-leaf.is-showing-register { transform: rotateX(-180deg) translateY(-100%); }
 
-  /* 翻动：整张纸绕上边框转 180°，同时沿卡片背面下沉，落回卡片位置（不消失、不跳空） */
+  /* 翻动：整张纸绕上边框转 180°，同时沿卡片背面下沉，落回卡片位置。
+     缓动口径（花蝉 2026-11-28：「很生硬，可以先快后慢」）：
+       不用单一 cubic-bezier 调"先快后慢" —— 控制点一激进，中段会僵住几百毫秒
+       （实测 cubic-bezier(.12,.9,.18,1) 这类曲线会停住）。改成关键帧均匀分段、
+       每段给明确中间值、整体 linear 跑，速度从 4.0°/1% 单调降到 0.25°/1%，
+       观感就是干脆地甩过去、再轻轻落位。 */
   .bm-leaf.is-flipping-to-register {
-    animation: bm-flip-to-register 640ms cubic-bezier(.38, .06, .26, 1) forwards;
+    animation: bm-flip-to-register 700ms linear forwards;
   }
   .bm-leaf.is-flipping-to-login {
-    animation: bm-flip-to-login 640ms cubic-bezier(.38, .06, .26, 1) forwards;
+    animation: bm-flip-to-login 700ms linear forwards;
   }
 
+  /* 先抬后转：开头 8% 只把纸抬起来（轻微放大），不转 —— 不先离开原位直接转，
+     看着像「贴在背景上被压扁」。之后每段递减，最后轻轻落位。 */
   @keyframes bm-flip-to-register {
-    0%   { transform: rotateX(0deg)    translateY(0); }
-    100% { transform: rotateX(-180deg) translateY(-100%); }
+    0%   { transform: rotateX(0deg)     translateY(0)     scale(1); }
+    8%   { transform: rotateX(0deg)     translateY(0)     scale(1.018); }
+    18%  { transform: rotateX(-34deg)   translateY(-19%)  scale(1.01); }
+    30%  { transform: rotateX(-78deg)   translateY(-43%)  scale(1); }
+    44%  { transform: rotateX(-115deg)  translateY(-64%);  }
+    58%  { transform: rotateX(-145deg)  translateY(-80%);  }
+    72%  { transform: rotateX(-165deg)  translateY(-91%);  }
+    84%  { transform: rotateX(-175deg)  translateY(-97%);  }
+    93%  { transform: rotateX(-179deg)  translateY(-99%);  }
+    100% { transform: rotateX(-180deg)  translateY(-100%); }
   }
   @keyframes bm-flip-to-login {
-    0%   { transform: rotateX(-180deg) translateY(-100%); }
-    100% { transform: rotateX(0deg)    translateY(0); }
+    0%   { transform: rotateX(-180deg)  translateY(-100%); }
+    7%   { transform: rotateX(-146deg)  translateY(-81%);  }
+    18%  { transform: rotateX(-106deg)  translateY(-59%);  }
+    32%  { transform: rotateX(-66deg)   translateY(-36%);  }
+    47%  { transform: rotateX(-35deg)   translateY(-19%);  }
+    62%  { transform: rotateX(-14deg)   translateY(-8%)   scale(1.01);  }
+    78%  { transform: rotateX(-4deg)    translateY(-2%)   scale(1.018); }
+    90%  { transform: rotateX(0deg)     translateY(0)     scale(1.006); }
+    100% { transform: rotateX(0deg)     translateY(0)     scale(1); }
   }
 
   /* 背面朝上时，正面不该还能点（反之亦然） */
@@ -508,16 +528,32 @@
   /* 翻动过程中纸会压到卡片外面去：允许溢出、并且抬到最上层 */
   .bm-leaf.is-flipping { z-index: 5; }
 
-  /* ── 下方提示条：独立一块纸，不展开 ── */
-  .bm-note-strip {
-    position: relative;
-    background-color: #FCFCF8;
-    border-radius: 5px;
-    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
-    padding: 0.6rem 0.9rem;
-    min-height: 48px;
+  /* ── 登录页底部的「温馨提示」：填满卡片下半的空白 ──
+     卡片高度由注册页决定，登录页内容比它矮一截，不填就是一块空。
+     放在登录面内部，所以注册页翻下来会连它一起盖住。 */
+  .bm-login-tip {
+    border-top: 1px dashed rgba(46, 90, 107, 0.30);
+  }
+  .bm-login-tip-head {
     display: flex;
-    align-items: center;
+    align-items: baseline;
+    gap: 0.5rem;
+    margin-bottom: 0.45rem;
+  }
+  .bm-login-tip-tag {
+    font-size: 0.625rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: #2E5A6B;
+    background: rgba(46, 90, 107, 0.10);
+    border-radius: 999px;
+    padding: 0.1rem 0.5rem;
+    white-space: nowrap;
+  }
+  .bm-login-tip-sub {
+    font-size: 0.625rem;
+    color: #93A2AB;
+    white-space: nowrap;
   }
 
   .bm-note-inner { width: 100%; }

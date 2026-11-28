@@ -11,6 +11,7 @@ import { login } from '../../api/modules/account'
 import { ApiError } from '../../types/api'
 import { describeApiError } from '../../api/errorMessages'
 import { img } from '../../constants/images'
+import { EntryNoticeSheet } from './EntryNoticeSheet'
 
 interface LoginPageContentProps {
   onClose: () => void
@@ -40,7 +41,9 @@ export function LoginPageContent({ onClose, onSwitchToRegister }: LoginPageConte
   }
 
   return (
-    <div className="px-8 pt-7 pb-5">
+    // 整页撑满卡片高度：上半是表单，下方用「温馨提示」吃满剩下的空白。
+    // （卡片高度由注册页决定，登录页内容比它矮 158px，不填就是一块空。花蝉 2026-11-28）
+    <div className="flex h-full flex-col px-8 pt-7 pb-5">
         <img src={img('logo')} alt="" className="auth-logo absolute right-3 top-3" />
 
         <h2 className="text-xl font-display font-bold text-[#1F2A30]">登录</h2>
@@ -78,6 +81,15 @@ export function LoginPageContent({ onClose, onSwitchToRegister }: LoginPageConte
             注册
           </button>
         </p>
+
+        {/* 温馨提示：吃满下方空白，注册页翻下来时被一起盖住 */}
+        <div className="bm-login-tip mt-auto pt-4">
+          <div className="bm-login-tip-head">
+            <span className="bm-login-tip-tag">温馨提示</span>
+            <span className="bm-login-tip-sub">进服前先看一眼</span>
+          </div>
+          <EntryNoticeSheet />
+        </div>
     </div>
   )
 }
