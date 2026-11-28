@@ -378,4 +378,149 @@
       animation: none;
     }
   }
+
+  /* ── 登录卡下沿「入服须知」书页（花蝉 2026-11-28 定的交互）─
+     上半（标题到密码）不动；这条贴在卡片下沿，点一下，内容区像便利贴/书页
+     从折边往上/往下翻开顶出来。折边用 dashed 边框模拟撕纸/折痕。 */
+
+  /* 触发条：卡片下沿那一条，永远可见 */
+  .bm-notice-tab {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.8rem 2rem;
+    background: linear-gradient(180deg, rgba(46, 90, 107, 0.05), rgba(46, 90, 107, 0.1));
+    border: none;
+    border-top: 1px dashed rgba(46, 90, 107, 0.32);
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.15s ease;
+  }
+  .bm-notice-tab:hover {
+    background: linear-gradient(180deg, rgba(46, 90, 107, 0.09), rgba(46, 90, 107, 0.15));
+  }
+  .bm-notice-tab-left { display: flex; flex-direction: column; gap: 2px; }
+  .bm-notice-tab-title {
+    font-family: var(--font-display);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: #2E5A6B;
+    letter-spacing: 0.04em;
+  }
+  .bm-notice-tab-sub { font-size: 0.6875rem; color: #64747E; }
+  .bm-notice-chevron {
+    font-size: 0.875rem;
+    color: #2E5A6B;
+    transition: transform 0.32s cubic-bezier(.34,1.4,.64,1);
+  }
+  /* 合上时箭头朝下（提示还有内容可展开），翻开后翻上来（提示可收起） */
+  .bm-notice-chevron.open { transform: rotate(180deg); }
+
+  /* 内容区：折叠动画。max-height 从 0 缓到「视口内放得下的高度」，
+     既不像固定 60vh 那样在大屏浪费、在小屏把整张卡顶出视口。 */
+  .bm-notice-body {
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    transform-origin: top center;
+    transition: max-height 0.42s cubic-bezier(.25,.8,.3,1), opacity 0.28s ease;
+  }
+  .bm-notice.is-open .bm-notice-body {
+    /* 32rem ≈ 上半表单 + 外边距；给个 180px 下限，极矮屏也总有内容可看 */
+    max-height: clamp(180px, calc(100vh - 32rem), 620px);
+    overflow-y: auto;
+    opacity: 1;
+  }
+
+  /* 书页纸面：比卡片底再暖一点，和上半区分开；顶部一道折痕阴影 */
+  .bm-notice-clip {
+    background: #F6F1E7;
+    border-top: 1px solid rgba(46, 90, 107, 0.18);
+  }
+  .bm-notice-inner {
+    padding: 1rem 2rem 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    animation: bm-notice-unfold 0.42s ease both;
+  }
+  @keyframes bm-notice-unfold {
+    from { transform: perspective(600px) rotateX(-12deg); transform-origin: top center; }
+    to   { transform: perspective(600px) rotateX(0deg); }
+  }
+
+  /* 轮播提示：每 4 秒换一条，切换时淡入。底色调深一点，保证一眼能读清。 */
+  .bm-note-ticker {
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-start;
+    background: rgba(46, 90, 107, 0.14);
+    border-left: 3px solid #2E5A6B;
+    border-radius: 0 var(--radius-md) var(--radius-md) 0;
+    padding: 0.55rem 0.7rem;
+    animation: bm-note-fade 0.3s ease both;
+  }
+  @keyframes bm-note-fade {
+    from { opacity: 0.55; transform: translateY(-3px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .bm-note-tag {
+    flex-shrink: 0;
+    font-size: 0.625rem;
+    font-weight: 700;
+    color: #F7F5F0;
+    background: #2E5A6B;
+    border-radius: 999px;
+    padding: 0.1rem 0.45rem;
+    margin-top: 1px;
+    white-space: nowrap;
+  }
+  .bm-note-text { font-size: 0.75rem; font-weight: 500; line-height: 1.5; color: #2A3841; }
+
+  .bm-notice-scope {
+    font-size: 0.6875rem;
+    line-height: 1.6;
+    color: #6B7B85;
+    background: rgba(255, 255, 255, 0.6);
+    border: 1px solid rgba(46, 90, 107, 0.14);
+    border-radius: var(--radius-md);
+    padding: 0.5rem 0.65rem;
+  }
+  .bm-notice-scope strong { color: #2E5A6B; }
+
+  .bm-rule-group { display: flex; flex-direction: column; gap: 0.35rem; }
+  .bm-rule-head { display: flex; align-items: center; gap: 0.45rem; }
+  .bm-rule-scope {
+    font-size: 0.625rem;
+    font-weight: 700;
+    border-radius: 4px;
+    padding: 0.08rem 0.4rem;
+    white-space: nowrap;
+  }
+  .bm-rule-scope.scope-general { color: #2E5A6B; background: rgba(46, 90, 107, 0.14); }
+  .bm-rule-scope.scope-survival { color: #7A5230; background: rgba(150, 94, 44, 0.16); }
+  .bm-rule-scope.scope-modpack { color: #5A4A76; background: rgba(88, 70, 128, 0.16); }
+  .bm-rule-title { font-size: 0.75rem; font-weight: 600; color: #1F2A30; }
+  .bm-rule-list {
+    margin: 0;
+    padding-left: 1.05rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.22rem;
+  }
+  .bm-rule-list li {
+    font-size: 0.6875rem;
+    line-height: 1.55;
+    color: #45535C;
+    list-style: '· ';
+  }
+  .bm-notice-foot { font-size: 0.625rem; color: #8C9AA3; text-align: right; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .bm-notice-body { transition: none; }
+    .bm-notice-inner, .bm-note-ticker { animation: none; }
+  }
 }
