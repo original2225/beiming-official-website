@@ -521,8 +521,17 @@
   }
 
   /* ── 登录页底部的「温馨提示」 ── */
+  /* 撑满表单以下的剩余空间：虚线紧贴在「注册」链接下方，
+     提示内容贴底排。否则会留出 78px 的空洞，看着像残空。 */
   .bm-login-tip {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    gap: 0.35rem;
     border-top: 1px dashed rgba(46, 90, 107, 0.30);
+    padding-top: 0.75rem;
+    margin-top: 0.75rem;
   }
   .bm-login-tip-head {
     display: flex;

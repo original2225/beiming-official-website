@@ -25,6 +25,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { LoginPageContent } from './LoginPageContent'
 import { RegisterPageContent } from './RegisterPageContent'
+import { CurlSheet } from './CurlSheet'
 
 export type AuthPage = 'login' | 'register'
 
@@ -43,7 +44,7 @@ const FLIP_MS = 700
  *   away = 把当前这张翻走（点注册时：翻走登录页）
  *   back = 把翻走的那张翻回来（点登录时）
  */
-type Flipping = { dir: 'away' | 'back'; mover: AuthPage } | null
+type Flipping = { dir: 'away' | 'back'; mover: AuthPage; angle: number } | null
 
 /** 每张纸的上沿打 6 个正圆孔 */
 const HOLE_COUNT = 6
@@ -91,28 +92,46 @@ export function AuthBook({ open, page, onClose, onSwitchToPage }: AuthBookProps)
 
   if (!open) return null
 
-  /** 用「经过时间轮询」兜底复位，避免后台标签页节流把状态卡死。 */
-  const scheduleReset = (done: () => void, ms: number) => {
+  /**
+   * 翻页：用 rAF 连续推进「纸的弯曲角度」。
+   * 不能用 CSS transition/keyframes —— 弯曲是多层叠出来的，只有外层角度在 0~-180 上连续变化，
+   * 内层每层的 -bend 是固定值，叠起来才是弧面。角度必须由 JS 逐帧喂进去。
+   *
+   * 缓动：先快后慢（花蝉 2026-11-28）。用 1-(1-t)^3 的变体再压一下尾段，
+   * 避免像 cubic-bezier 那样中段僵住。
+   */
+  const runFlip = (dir: 'away' | 'back') => {
+    const mover: AuthPage = 'login'
     clearFlipTimer()
-    const startedAt = performance.now()
-    const tick = () => {
-      if (performance.now() - startedAt >= ms) {
-        done()
-        return
+    const t0 = performance.now()
+    const from = dir === 'away' ? 0 : -180
+    const to = dir === 'away' ? -180 : 0
+
+    const step = () => {
+      const t = Math.min(1, (performance.now() - t0) / FLIP_MS)
+      // 先快后慢：前 35% 走掉约 60%
+      const eased = t < 0.35
+        ? (t / 0.35) * 0.6
+        : 0.6 + ((t - 0.35) / 0.65) * 0.4
+      // 尾段再收一下，避免"啪"地停住
+      const soft = eased > 0.9 ? 0.9 + (eased - 0.9) * 0.6 : eased
+      const angle = from + (to - from) * Math.min(1, soft)
+      setFlipping({ dir, mover, angle })
+      if (t < 1) {
+        flipTimer.current = window.setTimeout(step, 16)
+      } else {
+        setFlipping(null)
       }
-      flipTimer.current = window.setTimeout(tick, 60)
     }
-    flipTimer.current = window.setTimeout(tick, 60)
+    setFlipping({ dir, mover, angle: from })
+    step()
   }
 
   const switchTo = (next: AuthPage) => {
     if (next === page) return
-    // 点注册：把上面这张（登录）翻走；点登录：把它翻回来。动的永远是登录那张。
-    const mover: AuthPage = 'login'
     const dir: 'away' | 'back' = next === 'register' ? 'away' : 'back'
-    setFlipping({ dir, mover })
     onSwitchToPage(next)
-    scheduleReset(() => setFlipping(null), FLIP_MS)
+    runFlip(dir)
   }
 
   /**
@@ -149,14 +168,24 @@ export function AuthBook({ open, page, onClose, onSwitchToPage }: AuthBookProps)
             <RegisterPageContent onClose={onClose} onSwitchToLogin={() => switchTo('login')} />
           </div>
 
-          {/* 上面那张：登录页。翻走/翻回的都是它 */}
+          {/* 上面那张：登录页。翻走/翻回的都是它。
+              翻动时把它换成「会弯的纸」——硬板绕轴转会变成一条线（看着像平移）。 */}
           <div
             className={pageClass('login')}
             aria-hidden={page !== 'login'}
             onAnimationEnd={(e) => { if (e.target === e.currentTarget) setFlipping(null) }}
           >
-            {renderHoles()}
-            <LoginPageContent onClose={onClose} onSwitchToRegister={() => switchTo('register')} />
+            {flipping && flipping.mover === 'login' ? (
+              <CurlSheet angle={flipping.angle} bend={7}>
+                {renderHoles()}
+                <LoginPageContent onClose={onClose} onSwitchToRegister={() => switchTo('register')} />
+              </CurlSheet>
+            ) : (
+              <>
+                {renderHoles()}
+                <LoginPageContent onClose={onClose} onSwitchToRegister={() => switchTo('register')} />
+              </>
+            )}
           </div>
         </div>
       </div>
