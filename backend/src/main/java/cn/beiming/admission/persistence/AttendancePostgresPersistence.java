@@ -138,6 +138,237 @@ public class AttendancePostgresPersistence implements AttendancePersistence {
     }
 
     @Override
+    public List<Map<String, Object>> loadAccounts() {
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                SELECT account_id, user_id, member_id, display_name_snapshot, avatar_url_snapshot,
+                       member_group_snapshot, member_status_snapshot, minecraft_binding_snapshot::text AS minecraft_binding_snapshot,
+                       status, score_balance, initial_score, total_earned, total_deducted,
+                       last_positive_activity_at, last_deducted_at, last_ledger_id,
+                       whitelist_application_id, whitelist_handoff_id, whitelist_handoff_version,
+                       review_direction, attempt_type, notification_status, notification_failure::text AS notification_failure,
+                       profile_snapshot_stale, created_at, updated_at, archived_at
+                  FROM attendance_accounts
+                 ORDER BY account_id
+                """);
+        List<Map<String, Object>> accounts = new java.util.ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            Map<String, Object> account = new java.util.LinkedHashMap<>();
+            account.put("accountId", row.get("account_id"));
+            account.put("userId", row.get("user_id"));
+            account.put("memberId", row.get("member_id"));
+            account.put("displayNameSnapshot", row.get("display_name_snapshot"));
+            account.put("avatarUrlSnapshot", row.get("avatar_url_snapshot"));
+            account.put("memberGroupSnapshot", row.get("member_group_snapshot"));
+            account.put("memberStatusSnapshot", row.get("member_status_snapshot"));
+            Object binding = readJsonOrNull(row.get("minecraft_binding_snapshot"));
+            account.put("minecraftBindingSnapshot", binding == null ? Map.of() : binding);
+            account.put("status", row.get("status"));
+            account.put("scoreBalance", intOf(row.get("score_balance")));
+            account.put("initialScore", intOf(row.get("initial_score")));
+            account.put("totalEarned", intOf(row.get("total_earned")));
+            account.put("totalDeducted", intOf(row.get("total_deducted")));
+            account.put("lastPositiveActivityAt", stringOf(row.get("last_positive_activity_at")));
+            account.put("lastDeductedAt", stringOf(row.get("last_deducted_at")));
+            account.put("lastLedgerId", row.get("last_ledger_id"));
+            account.put("whitelistApplicationId", row.get("whitelist_application_id"));
+            account.put("whitelistHandoffId", row.get("whitelist_handoff_id"));
+            account.put("whitelistHandoffVersion", intOf(row.get("whitelist_handoff_version")));
+            account.put("reviewDirection", row.get("review_direction"));
+            account.put("attemptType", row.get("attempt_type"));
+            account.put("notificationStatus", row.get("notification_status"));
+            account.put("notificationFailure", readJsonOrNull(row.get("notification_failure")));
+            account.put("profileSnapshotStale", row.get("profile_snapshot_stale"));
+            account.put("createdAt", stringOf(row.get("created_at")));
+            account.put("updatedAt", stringOf(row.get("updated_at")));
+            account.put("archivedAt", stringOf(row.get("archived_at")));
+            accounts.add(account);
+        }
+        return accounts;
+    }
+
+    @Override
+    public List<Map<String, Object>> loadLedgers() {
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                SELECT ledger_id, account_id, member_id, user_id, type, status, delta, balance_before, balance_after,
+                       source_module, source_id, cycle_key, reason, public_reason, operator_user_id, idempotency_key,
+                       reversal_of_ledger_id, reversed_by_ledger_id, notification_status,
+                       notification_failure::text AS notification_failure, created_at, reversed_at
+                  FROM attendance_ledgers
+                 ORDER BY ledger_id
+                """);
+        List<Map<String, Object>> ledgers = new java.util.ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            Map<String, Object> ledger = new java.util.LinkedHashMap<>();
+            ledger.put("ledgerId", row.get("ledger_id"));
+            ledger.put("accountId", row.get("account_id"));
+            ledger.put("memberId", row.get("member_id"));
+            ledger.put("userId", row.get("user_id"));
+            ledger.put("type", row.get("type"));
+            ledger.put("status", row.get("status"));
+            ledger.put("delta", intOf(row.get("delta")));
+            ledger.put("balanceBefore", intOf(row.get("balance_before")));
+            ledger.put("balanceAfter", intOf(row.get("balance_after")));
+            ledger.put("sourceModule", row.get("source_module"));
+            ledger.put("sourceId", row.get("source_id"));
+            ledger.put("cycleKey", row.get("cycle_key"));
+            ledger.put("reason", row.get("reason"));
+            ledger.put("publicReason", row.get("public_reason"));
+            ledger.put("operatorUserId", row.get("operator_user_id"));
+            ledger.put("idempotencyKey", row.get("idempotency_key"));
+            ledger.put("reversalOfLedgerId", row.get("reversal_of_ledger_id"));
+            ledger.put("reversedByLedgerId", row.get("reversed_by_ledger_id"));
+            ledger.put("notificationStatus", row.get("notification_status"));
+            ledger.put("notificationFailure", readJsonOrNull(row.get("notification_failure")));
+            ledger.put("createdAt", stringOf(row.get("created_at")));
+            ledger.put("reversedAt", stringOf(row.get("reversed_at")));
+            ledgers.add(ledger);
+        }
+        return ledgers;
+    }
+
+    @Override
+    public List<Map<String, Object>> loadContributions() {
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                SELECT contribution_id, account_id, member_id, user_id, type, source_module, source_id,
+                       title, description, occurred_at, score_delta, ledger_id, operator_user_id,
+                       correction_of_contribution_id, created_at, updated_at
+                  FROM attendance_contributions
+                 ORDER BY contribution_id
+                """);
+        List<Map<String, Object>> contributions = new java.util.ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            Map<String, Object> contribution = new java.util.LinkedHashMap<>();
+            contribution.put("contributionId", row.get("contribution_id"));
+            contribution.put("accountId", row.get("account_id"));
+            contribution.put("memberId", row.get("member_id"));
+            contribution.put("userId", row.get("user_id"));
+            contribution.put("type", row.get("type"));
+            contribution.put("sourceModule", row.get("source_module"));
+            contribution.put("sourceId", row.get("source_id"));
+            contribution.put("title", row.get("title"));
+            contribution.put("description", row.get("description"));
+            contribution.put("occurredAt", stringOf(row.get("occurred_at")));
+            contribution.put("scoreDelta", intOf(row.get("score_delta")));
+            contribution.put("ledgerId", row.get("ledger_id"));
+            contribution.put("operatorUserId", row.get("operator_user_id"));
+            contribution.put("correctionOfContributionId", row.get("correction_of_contribution_id"));
+            contribution.put("createdAt", stringOf(row.get("created_at")));
+            contribution.put("updatedAt", stringOf(row.get("updated_at")));
+            contributions.add(contribution);
+        }
+        return contributions;
+    }
+
+    @Override
+    public List<Map<String, Object>> loadMonthlyRuns() {
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                SELECT run_id, cycle_key, status, dry_run, reason, deduction_score, eligible_accounts,
+                       deducted_accounts, skipped_accounts, candidate_created, idempotency_key,
+                       started_at, completed_at, failure_reason, created_by, created_at
+                  FROM attendance_monthly_runs
+                 ORDER BY run_id
+                """);
+        List<Map<String, Object>> runs = new java.util.ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            Map<String, Object> run = new java.util.LinkedHashMap<>();
+            run.put("runId", row.get("run_id"));
+            run.put("cycleKey", row.get("cycle_key"));
+            run.put("status", row.get("status"));
+            run.put("dryRun", row.get("dry_run"));
+            run.put("reason", row.get("reason"));
+            run.put("deductionScore", intOf(row.get("deduction_score")));
+            run.put("eligibleAccounts", intOf(row.get("eligible_accounts")));
+            run.put("deductedAccounts", intOf(row.get("deducted_accounts")));
+            run.put("skippedAccounts", intOf(row.get("skipped_accounts")));
+            run.put("candidateCreated", intOf(row.get("candidate_created")));
+            run.put("idempotencyKey", row.get("idempotency_key"));
+            run.put("startedAt", stringOf(row.get("started_at")));
+            run.put("completedAt", stringOf(row.get("completed_at")));
+            run.put("failureReason", row.get("failure_reason"));
+            run.put("createdBy", row.get("created_by"));
+            run.put("createdAt", stringOf(row.get("created_at")));
+            runs.add(run);
+        }
+        return runs;
+    }
+
+    @Override
+    public List<Map<String, Object>> loadRemovalCandidates() {
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                SELECT candidate_id, account_id, member_id, user_id, display_name_snapshot, score_balance,
+                       cycle_key, status, reason, public_reason, recommended_action,
+                       confirmed_by, confirmed_at, dismissed_by, dismissed_at, dismiss_reason,
+                       created_at, updated_at
+                  FROM attendance_removal_candidates
+                 ORDER BY candidate_id
+                """);
+        List<Map<String, Object>> candidates = new java.util.ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            Map<String, Object> candidate = new java.util.LinkedHashMap<>();
+            candidate.put("candidateId", row.get("candidate_id"));
+            candidate.put("accountId", row.get("account_id"));
+            candidate.put("memberId", row.get("member_id"));
+            candidate.put("userId", row.get("user_id"));
+            candidate.put("displayNameSnapshot", row.get("display_name_snapshot"));
+            candidate.put("scoreBalance", intOf(row.get("score_balance")));
+            candidate.put("cycleKey", row.get("cycle_key"));
+            candidate.put("status", row.get("status"));
+            candidate.put("reason", row.get("reason"));
+            candidate.put("publicReason", row.get("public_reason"));
+            candidate.put("recommendedAction", row.get("recommended_action"));
+            candidate.put("confirmedBy", row.get("confirmed_by"));
+            candidate.put("confirmedAt", stringOf(row.get("confirmed_at")));
+            candidate.put("dismissedBy", row.get("dismissed_by"));
+            candidate.put("dismissedAt", stringOf(row.get("dismissed_at")));
+            candidate.put("dismissReason", row.get("dismiss_reason"));
+            candidate.put("createdAt", stringOf(row.get("created_at")));
+            candidate.put("updatedAt", stringOf(row.get("updated_at")));
+            candidates.add(candidate);
+        }
+        return candidates;
+    }
+
+    @Override
+    public List<Map<String, Object>> loadLeaderboardSnapshots() {
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                SELECT snapshot_id, cycle_key, entries_payload::text AS entries_payload, rebuilt_by, request_id, rebuilt_at
+                  FROM attendance_leaderboard_snapshots
+                 ORDER BY rebuilt_at
+                """);
+        List<Map<String, Object>> snapshots = new java.util.ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            Map<String, Object> snapshot = new java.util.LinkedHashMap<>();
+            snapshot.put("snapshotId", row.get("snapshot_id"));
+            snapshot.put("cycleKey", row.get("cycle_key"));
+            snapshot.put("entries", readJsonOrNull(row.get("entries_payload")));
+            snapshot.put("rebuiltBy", row.get("rebuilt_by"));
+            snapshot.put("requestId", row.get("request_id"));
+            snapshot.put("rebuiltAt", stringOf(row.get("rebuilt_at")));
+            snapshots.add(snapshot);
+        }
+        return snapshots;
+    }
+
+    /** jsonb 列读回来是字符串，解回对象；空值返回 null（区别于「空集合」语义）。 */
+    private Object readJsonOrNull(Object raw) {
+        if (raw == null) return null;
+        try {
+            return objectMapper.readValue(raw.toString(), Object.class);
+        } catch (Exception exception) {
+            return null;
+        }
+    }
+
+    private int intOf(Object value) {
+        if (value instanceof Number number) return number.intValue();
+        return value == null ? 0 : Integer.parseInt(value.toString());
+    }
+
+    private String stringOf(Object value) {
+        return value == null ? null : value.toString();
+    }
+
+    @Override
     public Map<String, Object> counts() {
         return Map.of(
                 "storageMode", "POSTGRESQL_PRIMARY",

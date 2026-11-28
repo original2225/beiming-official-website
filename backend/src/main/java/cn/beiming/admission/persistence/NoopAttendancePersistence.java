@@ -40,6 +40,36 @@ public class NoopAttendancePersistence implements AttendancePersistence {
     }
 
     @Override
+    public List<Map<String, Object>> loadAccounts() {
+        return List.of();
+    }
+
+    @Override
+    public List<Map<String, Object>> loadLedgers() {
+        return List.of();
+    }
+
+    @Override
+    public List<Map<String, Object>> loadContributions() {
+        return List.of();
+    }
+
+    @Override
+    public List<Map<String, Object>> loadMonthlyRuns() {
+        return List.of();
+    }
+
+    @Override
+    public List<Map<String, Object>> loadRemovalCandidates() {
+        return List.of();
+    }
+
+    @Override
+    public List<Map<String, Object>> loadLeaderboardSnapshots() {
+        return List.of();
+    }
+
+    @Override
     public Map<String, Object> counts() {
         return Map.of("storageMode", "IN_MEMORY");
     }

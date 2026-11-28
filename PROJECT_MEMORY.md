@@ -138,3 +138,31 @@ curl 不管 CORS，打接口永远正常。前三轮就是因为只用 curl 验�
 **顺带修的真缺陷**：`WhitelistExceptionHandler.handleUnexpected` 只 `return 500` 不打日志，线上 500 是哑巴。已补 `LOG.error` 带 requestId + 堆栈——这次三次根因全靠它才定位。
 
 **业务口径**（花蝉 2026-11-27）：管理员有权录还没注册官网的玩家，`userId` 空时用 `direct-<序号>` 占位；这类人档案状态是 `PENDING_USER_BINDING`（等关联），不是 `APPROVAL_BLOCKED`（建档失败）、更不谎报 `ACTIVATED`。
+
+## 2026-11-28｜attendance 考勤积分：补回读链路（假持久化第三例收口）
+
+### 主题
+按第 27 条固定模块顺序，whitelist 之后做 attendance。核实发现它与 exam、whitelist 同病：`AttendancePersistence` 只有 7 个 persist、一个 load 都没有，`AttendanceStore` 15 个内存 Map 是唯一存储；接口 200、库里有行、审计也写，但重启后第一批玩家的考勤全丢，无异常无告警。线上 `attendance_accounts` 当时 0 行，尚未暴雷。
+
+### 已完成
+| 项 | 内容 |
+|---|---|
+| API 文档 | `docs/api-reference.md` attendance 章节补「持久化必须闭环到读」口径：六个 load、覆盖式回读、重建派生索引、推进主键序号、月度周期回读防重复扣 |
+| 接口 | `AttendancePersistence` 增 `loadAccounts/loadLedgers/loadContributions/loadMonthlyRuns/loadRemovalCandidates/loadLeaderboardSnapshots`；`NoopAttendancePersistence` 全返空集合 |
+| Postgres 实现 | `AttendancePostgresPersistence` 六个 load 用 `queryForList` + 显式列别名映射成 camelCase；jsonb 列 `::text` 读回再用 ObjectMapper 解 |
+| 模块回读 | `AttendanceStore.hydrate()` 在 `attendanceStore` Bean 构造后调用，六张表覆盖式读回（库里有行就以库为准整体替换，不合并）；重建 `userId/memberId/applicationId → accountId` 派生索引与贡献来源去重键；`advanceIdSeq()` 把最大数字后缀抬到 `idSeq` 之上防撞主键 |
+| 测试 | 新增 `AttendanceReloadIntegrationTest`（Testcontainers 真库）：写账号+流水+贡献+月度结算 → `new AttendanceStore(...) + hydrate()` 重建实例 → 断言账户余额/状态、三个派生索引、流水类型与 delta、贡献字段、月度 run 全部一致；另加覆盖式回读用例（内存幽灵账户被清、idSeq 推进） |
+
+### 踩过的坑
+1. **加了回读，旧测试的「删库=清空」假设失效**：`AttendancePostgreSqlPersistenceIntegrationTest` 用 `@DirtiesContext(BEFORE_EACH)` 重建上下文，但同一个 Testcontainers 库数据不随上下文重建清空，新上下文启动即 `hydrate()` 把上一用例的行读进内存；`@BeforeEach` 的 SQL 删库只清了库、没清内存，后续用例跑在幽灵账户上 → `contribution` 报 53000、`candidate confirm` 读到空状态。修法：给 store 加同包可见 `reset()`，在 `@BeforeEach` 删库后同步清内存。**教训：一旦模块有了启动回读，测试的隔离就必须同时管库和内存两层。**
+2. 月度扣分会被「本周期有贡献」跳过（`noContributionInCycle`）：贡献写在 2026-05，扣分也放 2026-05 就不扣。测试里扣分改用 2026-06。
+3. 测试断言要看内存态本身（`accountsSnapshot()` 等），不能走 HTTP 读——新起实例的 HTTP 读会被内存响应模型冒充成持久化，这正是假持久化能一直绿的原因。
+
+### 测试基线
+- 后端 **714/714** BUILD SUCCESS（712 基线 + 新增 AttendanceReloadIntegrationTest 2 条，无掉项）
+- attendance 模块单独 20/20 全绿（ApiContract 7 / PostgreSql 6 / ProductionHardening 1 / Reload 2 / RequestDatabaseFlow 4）
+
+### 待办 / 下一步
+1. 本轮只做了「写→读」闭环，**未新增数据路径**，因此不需要新迁移；V11 六张表的 NOT NULL/CHECK 未动（本轮无绕过原流程的新写入）。若日后放开 attendance 某条新写入路径，仍须先全库查该表 CHECK/NOT NULL 再上新迁移。
+2. `attendance_leaderboard_snapshots` 只留档排障、不参与实时榜单，回读不覆盖内存（内存不存快照），仅推进序号；如需「重启后仍能看历史快照」再单开。
+3. 下一模块按顺序是 `community`，动它之前先做同样的「Persistence 有没有读方法 + 模块启动是否调它」四步判定。

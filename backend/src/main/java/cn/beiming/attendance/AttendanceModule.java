@@ -48,7 +48,9 @@ import java.util.concurrent.ConcurrentHashMap;
 class AttendanceModule {
     @Bean
     AttendanceStore attendanceStore(AttendanceTestControls testControls, AttendancePersistence persistence) {
-        return new AttendanceStore(testControls, persistence);
+        AttendanceStore store = new AttendanceStore(testControls, persistence);
+        store.hydrate();
+        return store;
     }
 
     /**
@@ -321,6 +323,348 @@ class AttendanceStore {
     AttendanceStore(AttendanceTestControls testControls, AttendancePersistence persistence) {
         this.testControls = testControls;
         this.persistence = persistence;
+    }
+
+    /**
+     * 启动时从正式库把六张表读回内存，覆盖初始状态。
+     *
+     * <p>此前内存 Map 就是唯一存储：接口 200、库里有行，但进程重启后第一批玩家的考勤账户、
+     * 流水、贡献、月度结算全部消失，无异常无告警（假持久化，与 exam / whitelist 同型）。
+     *
+     * <p>覆盖而非合并：库里那份是运维的真实状态，包含「已被删除/归档」这类决定，合并会让
+     * 已删除的记录复活。读回为空（内存模式、或空库首次启动）就什么都不做，保持初始状态。
+     *
+     * <p>回读后必须重建派生索引并推进 {@code idSeq}——否则重启后新建的 {@code att-acc-1001}
+     * 会撞上库里已有的同号主键（这是 whitelist 那轮踩过的坑）。
+     */
+    synchronized void hydrate() {
+        List<Map<String, Object>> storedAccounts = persistence.loadAccounts();
+        if (storedAccounts != null && !storedAccounts.isEmpty()) {
+            Map<String, AttendanceAccountRecord> loadedAccounts = new LinkedHashMap<>();
+            for (Map<String, Object> row : storedAccounts) {
+                AttendanceAccountRecord account = accountFromRow(row);
+                if (account != null) loadedAccounts.put(account.accountId, account);
+            }
+            if (!loadedAccounts.isEmpty()) {
+                accounts.clear();
+                accounts.putAll(loadedAccounts);
+                accountByUser.clear();
+                accountByMember.clear();
+                initByApplication.clear();
+                for (AttendanceAccountRecord account : loadedAccounts.values()) {
+                    if (account.userId != null) accountByUser.put(account.userId, account.accountId);
+                    if (account.memberId != null) accountByMember.put(account.memberId, account.accountId);
+                    if (account.whitelistApplicationId != null) initByApplication.put(account.whitelistApplicationId, account.accountId);
+                }
+            }
+        }
+
+        List<Map<String, Object>> storedLedgers = persistence.loadLedgers();
+        if (storedLedgers != null && !storedLedgers.isEmpty()) {
+            Map<String, AttendanceLedgerRecord> loaded = new LinkedHashMap<>();
+            for (Map<String, Object> row : storedLedgers) {
+                AttendanceLedgerRecord ledger = ledgerFromRow(row);
+                if (ledger != null) loaded.put(ledger.ledgerId, ledger);
+            }
+            if (!loaded.isEmpty()) {
+                ledgers.clear();
+                ledgers.putAll(loaded);
+            }
+        }
+
+        List<Map<String, Object>> storedContributions = persistence.loadContributions();
+        if (storedContributions != null && !storedContributions.isEmpty()) {
+            Map<String, ContributionRecord> loaded = new LinkedHashMap<>();
+            sourceContribution.clear();
+            for (Map<String, Object> row : storedContributions) {
+                ContributionRecord contribution = contributionFromRow(row);
+                if (contribution == null) continue;
+                loaded.put(contribution.contributionId, contribution);
+                if (contribution.accountId != null && contribution.sourceModule != null && contribution.sourceId != null) {
+                    sourceContribution.put(contribution.accountId + ":" + contribution.sourceModule + ":" + contribution.sourceId, contribution.contributionId);
+                }
+            }
+            if (!loaded.isEmpty()) {
+                contributions.clear();
+                contributions.putAll(loaded);
+            }
+        }
+
+        List<Map<String, Object>> storedRuns = persistence.loadMonthlyRuns();
+        if (storedRuns != null && !storedRuns.isEmpty()) {
+            Map<String, MonthlyRunRecord> loaded = new LinkedHashMap<>();
+            for (Map<String, Object> row : storedRuns) {
+                MonthlyRunRecord run = monthlyRunFromRow(row);
+                if (run != null) loaded.put(run.runId, run);
+            }
+            if (!loaded.isEmpty()) {
+                monthlyRuns.clear();
+                monthlyRuns.putAll(loaded);
+            }
+        }
+
+        List<Map<String, Object>> storedCandidates = persistence.loadRemovalCandidates();
+        if (storedCandidates != null && !storedCandidates.isEmpty()) {
+            Map<String, RemovalCandidateRecord> loaded = new LinkedHashMap<>();
+            for (Map<String, Object> row : storedCandidates) {
+                RemovalCandidateRecord candidate = candidateFromRow(row);
+                if (candidate != null) loaded.put(candidate.candidateId, candidate);
+            }
+            if (!loaded.isEmpty()) {
+                candidates.clear();
+                candidates.putAll(loaded);
+            }
+        }
+
+        // 榜单快照只留档排障，不参与实时榜单计算，读回不覆盖内存（内存不存快照），仅用于推进序号。
+        advanceIdSeq();
+    }
+
+    /**
+     * 把所有以 {@code att-xxx-<n>} 形式生成的标识里最大的 n 抬到 {@code idSeq} 之上，
+     * 保证重启后新建记录不会撞主键。库里历史 ID 可能来自更早的序号空间，也可能非本格式，
+     * 解析不出来的忽略即可。
+     */
+    private void advanceIdSeq() {
+        int max = idSeq;
+        for (String id : accounts.keySet()) max = Math.max(max, numericSuffix(id));
+        for (String id : ledgers.keySet()) max = Math.max(max, numericSuffix(id));
+        for (String id : contributions.keySet()) max = Math.max(max, numericSuffix(id));
+        for (String id : monthlyRuns.keySet()) max = Math.max(max, numericSuffix(id));
+        for (String id : candidates.keySet()) max = Math.max(max, numericSuffix(id));
+        idSeq = max;
+    }
+
+    private int numericSuffix(String id) {
+        if (id == null) return Integer.MIN_VALUE;
+        int dash = id.lastIndexOf('-');
+        if (dash < 0 || dash == id.length() - 1) return Integer.MIN_VALUE;
+        try {
+            return Integer.parseInt(id.substring(dash + 1));
+        } catch (NumberFormatException exception) {
+            return Integer.MIN_VALUE;
+        }
+    }
+
+    /**
+     * 清空内存态回到初始（仅同包可见，供测试建立干净基线）。
+     *
+     * <p>有了 {@link #hydrate()} 之后，「删库」不再等于「内存也空」——启动时已把库读进内存。
+     * 测试若只用 SQL 删库、不重置内存，就会在幽灵数据上继续跑。生产路径不会调用它。
+     */
+    synchronized void reset() {
+        accounts.clear();
+        ledgers.clear();
+        contributions.clear();
+        candidates.clear();
+        monthlyRuns.clear();
+        accountByUser.clear();
+        accountByMember.clear();
+        initByApplication.clear();
+        sourceContribution.clear();
+        idempotency.clear();
+        audits.clear();
+        idSeq = 1000;
+    }
+
+    /**
+     * 回读验收用的内存快照访问器（仅同包可见）。
+     *
+     * <p>{@code hydrate()} 是从库回读进内存的唯一入口，验证它只能看内存态本身——
+     * 走 HTTP 读取会被「新起实例的内存响应」冒充成持久化，正是假持久化能一直绿的原因。
+     */
+    Map<String, AttendanceAccountRecord> accountsSnapshot() {
+        return accounts;
+    }
+
+    Map<String, AttendanceLedgerRecord> ledgersSnapshot() {
+        return ledgers;
+    }
+
+    Map<String, ContributionRecord> contributionsSnapshot() {
+        return contributions;
+    }
+
+    Map<String, MonthlyRunRecord> monthlyRunsSnapshot() {
+        return monthlyRuns;
+    }
+
+    Map<String, RemovalCandidateRecord> candidatesSnapshot() {
+        return candidates;
+    }
+
+    String accountIdByUser(String userId) {
+        return accountByUser.get(userId);
+    }
+
+    String accountIdByMember(String memberId) {
+        return accountByMember.get(memberId);
+    }
+
+    String accountIdByApplication(String applicationId) {
+        return initByApplication.get(applicationId);
+    }
+
+    int currentIdSeq() {
+        return idSeq;
+    }
+
+    private AttendanceAccountRecord accountFromRow(Map<String, Object> row) {
+        Object id = row.get("accountId");
+        if (id == null) return null;
+        AttendanceAccountRecord account = new AttendanceAccountRecord();
+        account.accountId = String.valueOf(id);
+        account.userId = textOf(row.get("userId"));
+        account.memberId = textOf(row.get("memberId"));
+        account.displayNameSnapshot = textOf(row.get("displayNameSnapshot"));
+        account.avatarUrlSnapshot = textOf(row.get("avatarUrlSnapshot"));
+        account.memberGroupSnapshot = textOf(row.get("memberGroupSnapshot"));
+        account.memberStatusSnapshot = textOf(row.get("memberStatusSnapshot"));
+        Object binding = row.get("minecraftBindingSnapshot");
+        account.minecraftBindingSnapshot = binding instanceof Map<?, ?> map ? castMap(map) : Map.of();
+        account.status = textOf(row.get("status"));
+        account.scoreBalance = intOf(row.get("scoreBalance"));
+        account.initialScore = intOf(row.get("initialScore"));
+        account.totalEarned = intOf(row.get("totalEarned"));
+        account.totalDeducted = intOf(row.get("totalDeducted"));
+        account.lastPositiveActivityAt = textOf(row.get("lastPositiveActivityAt"));
+        account.lastDeductedAt = textOf(row.get("lastDeductedAt"));
+        account.lastLedgerId = textOf(row.get("lastLedgerId"));
+        account.whitelistApplicationId = textOf(row.get("whitelistApplicationId"));
+        account.whitelistHandoffId = textOf(row.get("whitelistHandoffId"));
+        account.whitelistHandoffVersion = intOf(row.get("whitelistHandoffVersion"));
+        account.reviewDirection = textOf(row.get("reviewDirection"));
+        account.attemptType = textOf(row.get("attemptType"));
+        account.notificationStatus = textOf(row.get("notificationStatus"));
+        Object failure = row.get("notificationFailure");
+        account.notificationFailure = failure instanceof Map<?, ?> map ? castMap(map) : null;
+        Object stale = row.get("profileSnapshotStale");
+        account.profileSnapshotStale = stale instanceof Boolean bool ? bool : Boolean.parseBoolean(String.valueOf(stale));
+        account.createdAt = textOf(row.get("createdAt"));
+        account.updatedAt = textOf(row.get("updatedAt"));
+        account.archivedAt = textOf(row.get("archivedAt"));
+        return account;
+    }
+
+    private AttendanceLedgerRecord ledgerFromRow(Map<String, Object> row) {
+        Object id = row.get("ledgerId");
+        if (id == null) return null;
+        AttendanceLedgerRecord ledger = new AttendanceLedgerRecord();
+        ledger.ledgerId = String.valueOf(id);
+        ledger.accountId = textOf(row.get("accountId"));
+        ledger.memberId = textOf(row.get("memberId"));
+        ledger.userId = textOf(row.get("userId"));
+        ledger.type = textOf(row.get("type"));
+        ledger.status = textOf(row.get("status"));
+        ledger.delta = intOf(row.get("delta"));
+        ledger.balanceBefore = intOf(row.get("balanceBefore"));
+        ledger.balanceAfter = intOf(row.get("balanceAfter"));
+        ledger.sourceModule = textOf(row.get("sourceModule"));
+        ledger.sourceId = textOf(row.get("sourceId"));
+        ledger.cycleKey = textOf(row.get("cycleKey"));
+        ledger.reason = textOf(row.get("reason"));
+        ledger.publicReason = textOf(row.get("publicReason"));
+        ledger.operatorUserId = textOf(row.get("operatorUserId"));
+        ledger.idempotencyKey = textOf(row.get("idempotencyKey"));
+        ledger.reversalOfLedgerId = textOf(row.get("reversalOfLedgerId"));
+        ledger.reversedByLedgerId = textOf(row.get("reversedByLedgerId"));
+        ledger.notificationStatus = textOf(row.get("notificationStatus"));
+        Object failure = row.get("notificationFailure");
+        ledger.notificationFailure = failure instanceof Map<?, ?> map ? castMap(map) : null;
+        ledger.createdAt = textOf(row.get("createdAt"));
+        ledger.reversedAt = textOf(row.get("reversedAt"));
+        return ledger;
+    }
+
+    private ContributionRecord contributionFromRow(Map<String, Object> row) {
+        Object id = row.get("contributionId");
+        if (id == null) return null;
+        ContributionRecord contribution = new ContributionRecord();
+        contribution.contributionId = String.valueOf(id);
+        contribution.accountId = textOf(row.get("accountId"));
+        contribution.memberId = textOf(row.get("memberId"));
+        contribution.userId = textOf(row.get("userId"));
+        contribution.type = textOf(row.get("type"));
+        contribution.sourceModule = textOf(row.get("sourceModule"));
+        contribution.sourceId = textOf(row.get("sourceId"));
+        contribution.title = textOf(row.get("title"));
+        contribution.description = textOf(row.get("description"));
+        contribution.occurredAt = textOf(row.get("occurredAt"));
+        contribution.scoreDelta = intOf(row.get("scoreDelta"));
+        contribution.ledgerId = textOf(row.get("ledgerId"));
+        contribution.operatorUserId = textOf(row.get("operatorUserId"));
+        contribution.correctionOfContributionId = textOf(row.get("correctionOfContributionId"));
+        contribution.createdAt = textOf(row.get("createdAt"));
+        contribution.updatedAt = textOf(row.get("updatedAt"));
+        return contribution;
+    }
+
+    private MonthlyRunRecord monthlyRunFromRow(Map<String, Object> row) {
+        Object id = row.get("runId");
+        if (id == null) return null;
+        MonthlyRunRecord run = new MonthlyRunRecord();
+        run.runId = String.valueOf(id);
+        run.cycleKey = textOf(row.get("cycleKey"));
+        run.status = textOf(row.get("status"));
+        Object dryRun = row.get("dryRun");
+        run.dryRun = dryRun instanceof Boolean bool ? bool : Boolean.parseBoolean(String.valueOf(dryRun));
+        run.reason = textOf(row.get("reason"));
+        run.deductionScore = intOf(row.get("deductionScore"));
+        run.eligibleAccounts = intOf(row.get("eligibleAccounts"));
+        run.deductedAccounts = intOf(row.get("deductedAccounts"));
+        run.skippedAccounts = intOf(row.get("skippedAccounts"));
+        run.candidateCreated = intOf(row.get("candidateCreated"));
+        run.idempotencyKey = textOf(row.get("idempotencyKey"));
+        run.startedAt = textOf(row.get("startedAt"));
+        run.completedAt = textOf(row.get("completedAt"));
+        run.failureReason = textOf(row.get("failureReason"));
+        run.createdBy = textOf(row.get("createdBy"));
+        run.createdAt = textOf(row.get("createdAt"));
+        return run;
+    }
+
+    private RemovalCandidateRecord candidateFromRow(Map<String, Object> row) {
+        Object id = row.get("candidateId");
+        if (id == null) return null;
+        RemovalCandidateRecord candidate = new RemovalCandidateRecord();
+        candidate.candidateId = String.valueOf(id);
+        candidate.accountId = textOf(row.get("accountId"));
+        candidate.memberId = textOf(row.get("memberId"));
+        candidate.userId = textOf(row.get("userId"));
+        candidate.displayNameSnapshot = textOf(row.get("displayNameSnapshot"));
+        candidate.scoreBalance = intOf(row.get("scoreBalance"));
+        candidate.cycleKey = textOf(row.get("cycleKey"));
+        candidate.status = textOf(row.get("status"));
+        candidate.reason = textOf(row.get("reason"));
+        candidate.publicReason = textOf(row.get("publicReason"));
+        candidate.recommendedAction = textOf(row.get("recommendedAction"));
+        candidate.confirmedBy = textOf(row.get("confirmedBy"));
+        candidate.confirmedAt = textOf(row.get("confirmedAt"));
+        candidate.dismissedBy = textOf(row.get("dismissedBy"));
+        candidate.dismissedAt = textOf(row.get("dismissedAt"));
+        candidate.dismissReason = textOf(row.get("dismissReason"));
+        candidate.createdAt = textOf(row.get("createdAt"));
+        candidate.updatedAt = textOf(row.get("updatedAt"));
+        return candidate;
+    }
+
+    private static String textOf(Object value) {
+        return value == null ? null : value.toString();
+    }
+
+    private static int intOf(Object value) {
+        if (value instanceof Number number) return number.intValue();
+        if (value == null) return 0;
+        try {
+            return Integer.parseInt(value.toString());
+        } catch (NumberFormatException exception) {
+            return 0;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> castMap(Map<?, ?> map) {
+        return (Map<String, Object>) map;
     }
 
     synchronized MutationResult initialize(AttendanceUser actor, Map<String, Object> body, HttpServletRequest request) {

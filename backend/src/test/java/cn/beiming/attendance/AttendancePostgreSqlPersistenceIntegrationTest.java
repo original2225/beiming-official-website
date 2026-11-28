@@ -76,6 +76,9 @@ class AttendancePostgreSqlPersistenceIntegrationTest {
     @Autowired
     Environment environment;
 
+    @Autowired
+    AttendanceStore attendanceStore;
+
     @BeforeEach
     void setUp() throws Exception {
         assertThat(environment.getProperty("spring.flyway.enabled")).isEqualTo("true");
@@ -91,6 +94,9 @@ class AttendancePostgreSqlPersistenceIntegrationTest {
             statement.executeUpdate("DELETE FROM app_audit_logs WHERE target_type LIKE 'ATTENDANCE%'");
             statement.executeUpdate("DELETE FROM app_request_logs WHERE path LIKE '/api/v1/attendance%'");
         }
+        // 有了启动回读后，「删库」不再等于「内存也空」：@DirtiesContext 重建上下文时会 hydrate 上一轮旧行。
+        // 这里的 SQL 清库之后必须同步清内存，否则后续用例跑在幽灵数据上（本文件两个用例曾因此 53000 / 空状态）。
+        attendanceStore.reset();
     }
 
     @Test
