@@ -380,157 +380,147 @@
   }
 
 
-  /* ── 登录卡：浅色活页纸（花蝉 2026-11-28 定稿 v7：真实纸页翻动）
-     · 不要深色围边、不要四色标签，就是中间一张浅色纸
-     · 圆扣浅色
-     · 主活页 与 下方提示条 是【分离的两块纸】
-     · 提示条只做随机轮播，不可展开
-     · 翻页 = 真纸：注册页平时【塞在登录页下面】，点注册它绕上边框翻上来盖住登录页；
-       点登录它翻回去。整张纸翻到卡片外再落到后面，不是卡片内部换内容。 */
+  /* ── 登录卡：浅色活页纸 v9（花蝉 2026-11-28 定稿）
+     · 孔是【正圆】，并且纸的上沿【真的开孔】（不是画在纸外的装饰环）
+     · 翻页是【两张独立的纸】：注册页压在下面，点注册把上面那张（登录页）
+       绕上边框翻走，露出下面那张；点登录把它翻回来。
+       —— 不是一张纸正反翻。 */
 
   .bm-book {
     position: relative;
     width: 420px;
     display: flex;
     flex-direction: column;
-    padding: 22px 0;
-    perspective: 1400px;           /* 透视在最外层：纸翻出去才有纵深，也才看得见"翻到卡片外" */
+    padding: 30px 0 22px;          /* 上边留出打孔区的高度 */
+    perspective: 1400px;
     perspective-origin: 50% 0%;
   }
 
-  /* ── 浅色圆扣 ── */
-  .bm-rings {
-    position: absolute;
-    left: 16px;
-    right: 16px;
-    height: 24px;
-    display: flex;
-    align-items: center;
-    justify-content: space-evenly;
-    pointer-events: none;
-    z-index: 40;
-  }
-  .bm-rings-top { top: 0; }
-  .bm-rings-bottom { bottom: 0; }
-
-  .bm-ring {
-    width: 16px;
-    height: 24px;
-    border: 2.5px solid #DCDFE1;
-    border-radius: 50%;
-    background: linear-gradient(180deg, #FEFEFC 0%, #EDEFF0 55%, #DFE3E5 100%);
-    box-shadow: 0 1px 2px rgba(31, 42, 48, 0.10);
-  }
-
-  /* ── 托盘：本身不画纸、不裁纸 ── */
-  .bm-main {
+  /* ── 叠纸托盘 ── */
+  .bm-stack {
     position: relative;
-    border-radius: 5px;
-    overflow: visible;             /* 纸必须能翻到卡片轮廓以外 */
-    transform-style: preserve-3d;
-  }
-
-  /* ── 一张纸：只有一张，注册页是它翻转后露出的另一面。
-        用 grid 让两面叠在同一格：高度自动取较高的一面（注册比登录高），
-        不用写死 min-height —— 写死会把注册页裁掉一截。 ── */
-  .bm-leaf {
     display: grid;
-    grid-template-areas: "sheet";
+    grid-template-areas: 'stack';
     transform-style: preserve-3d;
-    transform-origin: top center;  /* 绕上边框 = 圆扣那条装订线 */
-    will-change: transform;
+    border-radius: 6px;
   }
 
-  /* 纸的正/反两面：正面登录、反面注册。真纸翻过去背面朝上，这就是"翻页" */
-  .bm-face {
-    grid-area: sheet;
-    backface-visibility: hidden;
-    -webkit-backface-visibility: hidden;
-    border-radius: 5px;
+  /* ── 一张纸（两张纸各一个） ──
+     每张纸自己带打孔：上沿一排正圆孔，孔透出下面的背景色，才是"纸上有洞"。 */
+  .bm-page {
+    grid-area: stack;
+    position: relative;
+    border-radius: 6px;
     background-color: #FCFCF8;
-    background-image: repeating-linear-gradient(
-      180deg,
-      transparent 0px,
-      transparent 27px,
-      rgba(46, 90, 107, 0.09) 27px,
-      rgba(46, 90, 107, 0.09) 28px
-    );
+    background-image:
+      /* 上沿一排孔：用径向渐变"挖洞"，洞外是纸、洞内透明 */
+      radial-gradient(circle 7px at 50% 0, transparent 6.4px, #FCFCF8 7px),
+      repeating-linear-gradient(
+        180deg,
+        transparent 0px,
+        transparent 27px,
+        rgba(46, 90, 107, 0.09) 27px,
+        rgba(46, 90, 107, 0.09) 28px
+      );
+    background-repeat: repeat-x, repeat;
+    background-size: 64px 14px, auto;
+    background-position: 32px 0, 0 0;
     color: #1F2A30;
     display: flex;
     flex-direction: column;
-    justify-content: center;
     overflow: hidden;
-  }
-  .bm-face.is-login {
+    padding-top: 30px;             /* 让出上沿孔位区（孔是完整正圆，占 14px + 边距） */
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.26);
-  }
-  .bm-face.is-register {
-    /* 反面：预先转 180°，纸翻过去正好正着朝上 */
-    transform: rotateX(180deg);
-  }
-
-  /* 翻动中的纸投一层动态阴影，衬出"离开了桌面" */
-  .bm-leaf.is-flipping .bm-face.is-login,
-  .bm-leaf.is-flipping .bm-face.is-register {
-    box-shadow: 0 18px 38px rgba(0, 0, 0, 0.30);
+    transform-origin: top center;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    will-change: transform;
   }
 
-  /* 纸的两种静止姿态。
-     坑：绕上边框转 180° 后，纸会整个镜像到卡片【上方】（实测 top -311px，跑出视口）。
-     必须在旋转之后补 translateY(-100%)，把它拉回卡片位置。
-     注意 translateY 必须写在 rotateX 后面（同一坐标系），提前写会推到别的方向。 */
-  .bm-leaf.is-showing-login    { transform: rotateX(0deg); }
-  .bm-leaf.is-showing-register { transform: rotateX(-180deg) translateY(-100%); }
-
-  /* 翻动：整张纸绕上边框转 180°，同时沿卡片背面下沉，落回卡片位置。
-     缓动口径（花蝉 2026-11-28：「很生硬，可以先快后慢」）：
-       不用单一 cubic-bezier 调"先快后慢" —— 控制点一激进，中段会僵住几百毫秒
-       （实测 cubic-bezier(.12,.9,.18,1) 这类曲线会停住）。改成关键帧均匀分段、
-       每段给明确中间值、整体 linear 跑，速度从 4.0°/1% 单调降到 0.25°/1%，
-       观感就是干脆地甩过去、再轻轻落位。 */
-  .bm-leaf.is-flipping-to-register {
-    animation: bm-flip-to-register 700ms linear forwards;
-  }
-  .bm-leaf.is-flipping-to-login {
-    animation: bm-flip-to-login 700ms linear forwards;
+  /* 打孔后的"纸边"：在最上面盖一条窄带，压出纸的厚度感，
+     并让孔看起来是被撕/冲出来的 */
+  .bm-page::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 14px;
+    pointer-events: none;
+    background: linear-gradient(180deg, rgba(255,255,255,0.55), rgba(255,255,255,0) 70%);
   }
 
-  /* 先抬后转：开头 8% 只把纸抬起来（轻微放大），不转 —— 不先离开原位直接转，
-     看着像「贴在背景上被压扁」。之后每段递减，最后轻轻落位。 */
-  @keyframes bm-flip-to-register {
-    0%   { transform: rotateX(0deg)     translateY(0)     scale(1); }
-    8%   { transform: rotateX(0deg)     translateY(0)     scale(1.018); }
-    18%  { transform: rotateX(-34deg)   translateY(-19%)  scale(1.01); }
-    30%  { transform: rotateX(-78deg)   translateY(-43%)  scale(1); }
-    44%  { transform: rotateX(-115deg)  translateY(-64%);  }
-    58%  { transform: rotateX(-145deg)  translateY(-80%);  }
-    72%  { transform: rotateX(-165deg)  translateY(-91%);  }
-    84%  { transform: rotateX(-175deg)  translateY(-97%);  }
-    93%  { transform: rotateX(-179deg)  translateY(-99%);  }
-    100% { transform: rotateX(-180deg)  translateY(-100%); }
+  /* ── 圆孔：正圆，压在纸的上沿线上（一半在纸内、一半在纸外） ── */
+  .bm-holes {
+    position: absolute;
+    top: 7px;                      /* 整圆留在纸内：完整正圆冲孔，不被纸边截断 */
+    left: 32px;
+    right: 32px;
+    display: flex;
+    justify-content: space-between;
+    pointer-events: none;
+    z-index: 3;
   }
-  @keyframes bm-flip-to-login {
-    0%   { transform: rotateX(-180deg)  translateY(-100%); }
-    7%   { transform: rotateX(-146deg)  translateY(-81%);  }
-    18%  { transform: rotateX(-106deg)  translateY(-59%);  }
-    32%  { transform: rotateX(-66deg)   translateY(-36%);  }
-    47%  { transform: rotateX(-35deg)   translateY(-19%);  }
-    62%  { transform: rotateX(-14deg)   translateY(-8%)   scale(1.01);  }
-    78%  { transform: rotateX(-4deg)    translateY(-2%)   scale(1.018); }
-    90%  { transform: rotateX(0deg)     translateY(0)     scale(1.006); }
-    100% { transform: rotateX(0deg)     translateY(0)     scale(1); }
+  .bm-hole {
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;            /* 正圆 */
+    /* 孔壁：上沿受光、下沿进深，做成"穿透"的坡面 */
+    background:
+      radial-gradient(circle at 50% 118%, rgba(255,255,255,0.85) 0 2px, rgba(255,255,255,0) 3px),
+      radial-gradient(circle at 50% 12%, #0d1620 0 38%, #1b2730 62%, #3a4a55 88%, #6b7c88 100%);
+    box-shadow:
+      inset 0 2px 3px rgba(0, 0, 0, 0.75),      /* 孔内进深 */
+      inset 0 -1px 1.5px rgba(255, 255, 255, 0.5),
+      0 1px 0 rgba(255, 255, 255, 0.9),         /* 孔下沿高光 = 纸的厚度 */
+      0 -0.5px 0 rgba(0, 0, 0, 0.25);           /* 孔上沿一圈浅影 */
   }
 
-  /* 背面朝上时，正面不该还能点（反之亦然） */
-  .bm-leaf.is-showing-login    .bm-face.is-register { pointer-events: none; }
-  .bm-leaf.is-showing-register .bm-face.is-login    { pointer-events: none; }
+  /* 静止：谁在上面谁在下面 */
+  .bm-page.is-top {
+    z-index: 2;
+    transform: rotateX(0deg);
+  }
+  .bm-page.is-under {
+    z-index: 1;
+    transform: rotateX(0deg);
+  }
 
-  /* 翻动过程中纸会压到卡片外面去：允许溢出、并且抬到最上层 */
-  .bm-leaf.is-flipping { z-index: 5; }
+  /* 翻走：上面那张绕上边框抬起、翻到卡片上方外侧，最后落到卡片背后。
+     速度单调递减、开头先抬不转（花蝉 2026-11-28「很生硬，先快后慢」） */
+  .bm-page.is-turning-away {
+    z-index: 3;
+    animation: bm-page-away 700ms linear forwards;
+  }
+  /* 翻回：从卡片背后升回来，落回最上面 */
+  .bm-page.is-turning-back {
+    z-index: 3;
+    animation: bm-page-back 700ms linear forwards;
+  }
 
-  /* ── 登录页底部的「温馨提示」：填满卡片下半的空白 ──
-     卡片高度由注册页决定，登录页内容比它矮一截，不填就是一块空。
-     放在登录面内部，所以注册页翻下来会连它一起盖住。 */
+  @keyframes bm-page-away {
+    0%   { transform: rotateX(0deg)    translateY(0)     scale(1); }
+    8%   { transform: rotateX(0deg)    translateY(0)     scale(1.018); }
+    18%  { transform: rotateX(-34deg)  translateY(-19%)  scale(1.01); }
+    30%  { transform: rotateX(-78deg)  translateY(-43%)  scale(1); }
+    44%  { transform: rotateX(-115deg) translateY(-64%); }
+    58%  { transform: rotateX(-145deg) translateY(-80%); }
+    72%  { transform: rotateX(-165deg) translateY(-91%); }
+    84%  { transform: rotateX(-175deg) translateY(-97%); }
+    93%  { transform: rotateX(-179deg) translateY(-99%); }
+    100% { transform: rotateX(-180deg) translateY(-100%); }
+  }
+  @keyframes bm-page-back {
+    0%   { transform: rotateX(-180deg) translateY(-100%); }
+    7%   { transform: rotateX(-146deg) translateY(-81%); }
+    18%  { transform: rotateX(-106deg) translateY(-59%); }
+    32%  { transform: rotateX(-66deg)  translateY(-36%); }
+    47%  { transform: rotateX(-35deg)  translateY(-19%); }
+    62%  { transform: rotateX(-14deg)  translateY(-8%)  scale(1.01); }
+    78%  { transform: rotateX(-4deg)   translateY(-2%)  scale(1.018); }
+    90%  { transform: rotateX(0deg)    translateY(0)    scale(1.006); }
+    100% { transform: rotateX(0deg)    translateY(0)    scale(1); }
+  }
+
+  /* ── 登录页底部的「温馨提示」 ── */
   .bm-login-tip {
     border-top: 1px dashed rgba(46, 90, 107, 0.30);
   }
@@ -587,13 +577,13 @@
   }
 
   /* 表单控件压在横线纸上：白底遮住横线 */
-  .bm-main .auth-input-light { background-color: #FFFFFF; }
-  .bm-main .btn-auth-light { background-color: #2E5A6B; border-color: #2E5A6B; }
-  .bm-main .btn-auth-light:hover:not(:disabled) { background-color: #3D7488; border-color: #3D7488; }
+  .bm-page .auth-input-light { background-color: #FFFFFF; }
+  .bm-page .btn-auth-light { background-color: #2E5A6B; border-color: #2E5A6B; }
+  .bm-page .btn-auth-light:hover:not(:disabled) { background-color: #3D7488; border-color: #3D7488; }
 
   @media (prefers-reduced-motion: reduce) {
-    .bm-leaf.is-flipping-to-register,
-    .bm-leaf.is-flipping-to-login { animation-duration: 1ms; }
+    .bm-page.is-turning-away,
+    .bm-page.is-turning-back { animation-duration: 1ms; }
     .bm-note-ticker { animation: none; }
   }
 }
