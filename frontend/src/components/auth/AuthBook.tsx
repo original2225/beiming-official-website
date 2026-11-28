@@ -1,21 +1,31 @@
 /**
- * 活页手册外框 —— 登录 / 注册两张卡是同一本册子的两页（花蝉 2026-11-28 定的）。
+ * 登录 / 注册卡 —— 一页「上下都能翻」的活页纸（花蝉 2026-11-28 定的最终形态）。
  *
- * 结构照日历活页：
- *   顶部一根装订杆（带金属环），下面挂着一叠纸页。
- *   点「注册」→ 登录那页整页绕杆向上翻起、翻到杆后面去，露出下面的注册页。
- *   点「登录」→ 登录页从杆后面向下翻回来，盖住注册页。
+ * 版式（参照他给的两张活页本参考图）：
+ *   ┌──────────────── 上排活页环
+ *   │  上半：登录 / 注册表单       ← 绕【上边框】翻，翻开时表单向上翻走，
+ *   │  背面是另一半表单（登录↔注册）
+ *   ├╌╌╌ 中间分隔虚线
+ *   │  下半：流动提示词 / 入服须知   ← 绕【下边框】翻，翻起来才看到完整守则条文
+ *   └──────────────── 下排活页环
  *
- * 翻页要点（踩过的坑）：
- *   1. 不能做成「A 页从 0 转到 -180、同时 B 页从 180 转到 0」——两页同时在转，
- *      视觉上是两张纸互相穿过，反而看不出翻页。只有一页转，另一页静止。
- *   2. 两页高度不同（登录少、注册多一个邀请码）。翻页时翻走的那页变成 absolute，
- *      容器高度会突然跳变，所以这里量两页实际高度，把容器撑到较高的那个。
+ * 三个翻动都是「绕自己那条边框转」，不是整页换页：
+ *   1. 上半翻转：在登录 / 注册之间切换（点「注册」向上翻，点「登录」翻回来）。
+ *      翻动的是上半这一块本身，翻转 180° 时背面露出另一张表单。
+ *   2. 下半翻起：点「入服须知」那一带，下半区绕它的下边框向上翻起来，露出条文。
+ *
+ * 踩过的坑（别再犯）：
+ *   · 两页同时对转会视觉互穿 —— 只有「翻走的那一块」转，另一块静止。
+ *   · 上下两块高度不同（注册多一个邀请码）—— 容器按较高者撑住，别让布局跳。
+ *   · 整卡比视口高时整体缩放，别把活页环顶出屏幕。
+ *   · 复位以 animationend 为主 + 经过时间轮询兜底：后台标签页动画不推进、
+ *     setTimeout 会被节流，只靠定时器会把状态卡死。
  */
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { LoginPageContent } from './LoginPageContent'
 import { RegisterPageContent } from './RegisterPageContent'
+import { EntryNoticeSheet } from './EntryNoticeSheet'
 
 export type AuthPage = 'login' | 'register'
 
@@ -26,68 +36,75 @@ interface AuthBookProps {
   onSwitchToPage: (page: AuthPage) => void
 }
 
-/** 翻页动画时长（ms），与 CSS 的 transition / animation 保持一致 */
+/** 上半翻页动画时长（ms），与 CSS 保持一致 */
 const FLIP_MS = 620
+/** 下半翻起动画时长（ms） */
+const UNFOLD_MS = 480
 
-/** 正在翻的页 + 方向：up = 这页向上翻走；down = 这页从上面翻下来盖住下面 */
-type Turning = { leaf: AuthPage; dir: 'up' | 'down' } | null
+/** 上半正在翻：翻动的是「哪一页的上半」，以及翻完露出的是哪一页 */
+type Flipping = { from: AuthPage; to: AuthPage } | null
 
 export function AuthBook({ open, page, onClose, onSwitchToPage }: AuthBookProps) {
-  const [turning, setTurning] = useState<Turning>(null)
-  const timerRef = useRef<number | null>(null)
-  const loginRef = useRef<HTMLDivElement | null>(null)
-  const registerRef = useRef<HTMLDivElement | null>(null)
-  // 两页各自的实际高度。容器按较高者撑住（翻页不跳），垫在下面的页按当前页高度裁掉，
-  // 否则注册页（比登录页高一个邀请码）会从登录页下方露出半截。
-  const [heights, setHeights] = useState({ login: 0, register: 0 })
-  // 整本册子的缩放比：卡片比视口高时整体缩小，别让装订杆被顶出屏幕
+  // 上半：正在翻动中（null = 静止）
+  const [flipping, setFlipping] = useState<Flipping>(null)
+  // 下半：是否翻起来（看到完整条文）
+  const [noticeExpanded, setNoticeExpanded] = useState(false)
+
+  const flipTimer = useRef<number | null>(null)
+  const unfoldTimer = useRef<number | null>(null)
+
+  const loginTopRef = useRef<HTMLDivElement | null>(null)
+  const registerTopRef = useRef<HTMLDivElement | null>(null)
+  // 上半两页的高度，容器按较高者撑住，翻页时不跳
+  const [topHeights, setTopHeights] = useState({ login: 0, register: 0 })
+  // 整卡缩放比：比视口高时整体缩小，别把活页环顶出屏幕
   const [scale, setScale] = useState(1)
 
-  /** 翻页结束：清掉翻走页的标记。正常情况下由 animationend 触发，定时器只做兜底。 */
-  const finishTurn = () => {
-    clearTimer()
-    setTurning(null)
+  const clearFlipTimer = () => {
+    if (flipTimer.current !== null) {
+      window.clearTimeout(flipTimer.current)
+      flipTimer.current = null
+    }
   }
-
-  const clearTimer = () => {
-    if (timerRef.current !== null) {
-      window.clearTimeout(timerRef.current)
-      timerRef.current = null
+  const clearUnfoldTimer = () => {
+    if (unfoldTimer.current !== null) {
+      window.clearTimeout(unfoldTimer.current)
+      unfoldTimer.current = null
     }
   }
 
-  useEffect(() => clearTimer, [])
+  useEffect(() => () => { clearFlipTimer(); clearUnfoldTimer() }, [])
 
-  // 量两页的自然高度，取较大值。两页都在 DOM 里（一页 absolute 垫着），所以都量得到。
+  // 量上半两页高度 + 算整卡缩放
   useLayoutEffect(() => {
     if (!open) return
     const measure = () => {
-      const a = loginRef.current?.offsetHeight ?? 0
-      const b = registerRef.current?.offsetHeight ?? 0
+      const a = loginTopRef.current?.offsetHeight ?? 0
+      const b = registerTopRef.current?.offsetHeight ?? 0
       if (a > 0 && b > 0) {
-        setHeights((prev) => (prev.login === a && prev.register === b ? prev : { login: a, register: b }))
-        // 装订杆 30 + 上留白 14 + 底边 7 ≈ 51；上下各留 12 就够，再多只是浪费可见面积
-        const need = Math.max(a, b) + 51 + 24
-        const available = window.innerHeight
-        // 下限 0.7：再小表单就看不清了，那时宁可让外层滚动
-        setScale(Math.max(0.7, Math.min(1, available / need)))
+        setTopHeights((prev) => (prev.login === a && prev.register === b ? prev : { login: a, register: b }))
+        const top = Math.max(a, b)
+        // 上下活页杆各 26 + 下半折叠态 ≈ 96 + 上下留白 48
+        const need = top + 26 * 2 + 96 + 48
+        setScale(Math.max(0.72, Math.min(1, window.innerHeight / need)))
       }
     }
     measure()
-    // 字体/图片加载完高度可能变，再量一次
-    const t = window.setTimeout(measure, 120)
+    const t = window.setTimeout(measure, 140)
     return () => window.clearTimeout(t)
   }, [open, page])
 
-  // 弹窗关掉时复位
+  // 关弹窗复位
   useEffect(() => {
     if (!open) {
-      clearTimer()
-      setTurning(null)
+      clearFlipTimer()
+      clearUnfoldTimer()
+      setFlipping(null)
+      setNoticeExpanded(false)
     }
   }, [open])
 
-  // 弹窗打开时锁背景滚动，避免双滚动条与滚动穿透
+  // 打开时锁背景滚动
   useEffect(() => {
     if (!open) return
     const prev = document.body.style.overflow
@@ -97,102 +114,122 @@ export function AuthBook({ open, page, onClose, onSwitchToPage }: AuthBookProps)
 
   if (!open) return null
 
-  const switchTo = (next: AuthPage) => {
-    if (next === page) return
-    // 不因 turning 非空而死锁：上一次翻页的复位若被浏览器节流（后台标签页会把
-    // setTimeout 推迟到 1s+），状态会一直挂着、按钮再也点不动。这里允许直接覆盖。
-    clearTimer()
-    if (next === 'register') {
-      // 向前：登录页向上翻走
-      setTurning({ leaf: 'login', dir: 'up' })
-    } else {
-      // 翻回来：登录页从上方向下翻下来盖住注册页
-      setTurning({ leaf: 'login', dir: 'down' })
-    }
-    onSwitchToPage(next)
-    clearTimer()
-    // 复位方式：animationend 为主（最准）。但浏览器在后台标签页会暂停动画，
-    // animationend 永远不来、setTimeout 也会被节流到 1s+，于是 turning 卡住。
-    // 这里再补一条「点击后按真实经过时间收尾」的轮询，只跑 620ms 出头。
+  /** 用「经过时间轮询」兜底复位，避免后台标签页节流把状态卡死。 */
+  const scheduleReset = (clear: () => void, done: () => void, ms: number, setRef: (id: number) => void) => {
+    clear()
     const startedAt = performance.now()
     const tick = () => {
-      if (performance.now() - startedAt >= FLIP_MS) {
-        setTurning(null)
+      if (performance.now() - startedAt >= ms) {
+        done()
         return
       }
-      timerRef.current = window.setTimeout(tick, 60)
+      setRef(window.setTimeout(tick, 60))
     }
-    timerRef.current = window.setTimeout(tick, 60)
+    setRef(window.setTimeout(tick, 60))
   }
 
-  const tallest = Math.max(heights.login, heights.register)
-  const stackStyle = tallest ? { minHeight: tallest } : undefined
-
-  /** 垫在下面的页只露出「当前页那么高」，多出来的部分裁掉。 */
-  const underStyle = (leaf: AuthPage) => {
-    const currentHeight = page === 'login' ? heights.login : heights.register
-    const isUnder = !(turning && turning.leaf === leaf) && page !== leaf
-    if (!isUnder || !currentHeight) return undefined
-    return { height: currentHeight, overflow: 'hidden' as const }
+  const switchTo = (next: AuthPage) => {
+    if (next === page) return
+    const from = page
+    setFlipping({ from, to: next })
+    onSwitchToPage(next)
+    scheduleReset(
+      clearFlipTimer,
+      () => setFlipping(null),
+      FLIP_MS,
+      (id) => { flipTimer.current = id },
+    )
   }
 
-  /**
-   * 页的类名。
-   *
-   * 注意「翻回来」(dir=down) 的语义：翻动的正是**登录页**，而它同时也是翻完后的当前页。
-   * 所以不能把它当 is-under——那样动画期间就没有任何 is-current，上下文（例如按钮）
-   * 会整个消失。这里把 down 的翻动页同时标成 current，它一边转一边就是首页。
-   */
-  const leafClass = (leaf: AuthPage) => {
-    const base = 'bm-leaf'
-    if (turning && turning.leaf === leaf) {
-      return turning.dir === 'up'
-        ? `${base} is-turning-up`
-        : `${base} is-current is-turning-down`
+  const toggleNotice = () => {
+    const next = !noticeExpanded
+    setNoticeExpanded(next)
+    // 翻起来/收回去都要在动画结束后允许重排
+    scheduleReset(
+      clearUnfoldTimer,
+      () => { /* 状态已设置，这里只需清定时器 */ },
+      UNFOLD_MS,
+      (id) => { unfoldTimer.current = id },
+    )
+  }
+
+  const topHeight = Math.max(topHeights.login, topHeights.register)
+
+  /** 上半两页的类名：正在翻的那页转，另一页静止；翻完目标页成为正面。 */
+  const topClass = (leaf: AuthPage) => {
+    if (flipping) {
+      if (flipping.from === leaf) return 'bm-top-flap is-flipping-away'
+      // 目标页：在背面等着，跟着一起转到正面
+      return 'bm-top-flap is-flipping-in'
     }
-    if (page === leaf) return `${base} is-current`
-    return `${base} is-under`
+    return page === leaf ? 'bm-top-flap is-front' : 'bm-top-flap is-back'
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto py-6">
+    // 外层用 flex + 子元素 m-auto：内容矮时垂直居中；内容比视口高时（下半展开后
+    // 会有 1200px+）从顶部开始并整体滚动。用 items-center 会把顶部直接顶出可视区，
+    // 连上排活页环都看不到，所以这里不能那么写。
+    <div className="fixed inset-0 z-50 flex overflow-y-auto py-6">
       <div className="auth-backdrop" onClick={onClose} />
 
-      <div className="bm-book mx-4" style={scale !== 1 ? { transform: `scale(${scale})` } : undefined}>
-        {/* 顶部装订杆：横穿纸页上沿，翻起的页从它后面转过去 */}
-        <div className="bm-book-bar" aria-hidden="true">
-          <span className="bm-book-ring" />
-          <span className="bm-book-ring" />
-          <span className="bm-book-ring" />
-          <span className="bm-book-ring" />
-          <span className="bm-book-ring" />
-          <span className="bm-book-ring" />
+      <div className="bm-book mx-auto my-auto" style={scale !== 1 ? { transform: `scale(${scale})` } : undefined}>
+        {/* ── 上排活页环：挂在纸上边框 ── */}
+        <div className="bm-rings bm-rings-top" aria-hidden="true">
+          {Array.from({ length: 6 }).map((_, i) => <span key={i} className="bm-ring" />)}
         </div>
 
-        <div className="bm-book-stack" style={stackStyle}>
+        <div className="bm-sheet">
+          {/* ── 上半：表单，绕上边框翻 ── */}
           <div
-            ref={loginRef}
-            className={leafClass('login')}
-            style={underStyle('login')}
-            aria-hidden={page !== 'login'}
-            onAnimationEnd={(e) => { if (e.target === e.currentTarget) finishTurn() }}
+            className="bm-top"
+            style={topHeight ? { minHeight: topHeight } : undefined}
           >
-            <LoginPageContent onClose={onClose} onSwitchToRegister={() => switchTo('register')} />
+            <div
+              ref={loginTopRef}
+              className={topClass('login')}
+              aria-hidden={!(flipping ? flipping.to === 'login' : page === 'login')}
+              onAnimationEnd={(e) => { if (e.target === e.currentTarget) setFlipping(null) }}
+            >
+              <LoginPageContent onClose={onClose} onSwitchToRegister={() => switchTo('register')} />
+            </div>
+
+            <div
+              ref={registerTopRef}
+              className={topClass('register')}
+              aria-hidden={!(flipping ? flipping.to === 'register' : page === 'register')}
+              onAnimationEnd={(e) => { if (e.target === e.currentTarget) setFlipping(null) }}
+            >
+              <RegisterPageContent onClose={onClose} onSwitchToLogin={() => switchTo('login')} />
+            </div>
           </div>
 
-          <div
-            ref={registerRef}
-            className={leafClass('register')}
-            style={underStyle('register')}
-            aria-hidden={page !== 'register'}
-            onAnimationEnd={(e) => { if (e.target === e.currentTarget) finishTurn() }}
+          {/* ── 中间分隔虚线（可点：翻起下半看条文） ── */}
+          <button
+            type="button"
+            onClick={toggleNotice}
+            className={`bm-divider ${noticeExpanded ? 'is-open' : ''}`}
+            aria-expanded={noticeExpanded}
+            aria-controls="bm-notice-region"
           >
-            <RegisterPageContent onClose={onClose} onSwitchToLogin={() => switchTo('login')} />
+            <span className="bm-divider-label">入服须知 · 服务器守则与各服服规</span>
+            <span className="bm-divider-chevron" aria-hidden="true">⌃</span>
+          </button>
+
+          {/* ── 下半：流动提示 / 入服须知，绕下边框翻 ── */}
+          <div
+            id="bm-notice-region"
+            className={`bm-bottom ${noticeExpanded ? 'is-expanded' : ''}`}
+            role="region"
+            aria-label="入服须知"
+          >
+            <EntryNoticeSheet expanded={noticeExpanded} />
           </div>
         </div>
 
-        {/* 册子底边：一叠纸的厚度 */}
-        <div className="bm-book-edge" aria-hidden="true" />
+        {/* ── 下排活页环：挂在纸下边框 ── */}
+        <div className="bm-rings bm-rings-bottom" aria-hidden="true">
+          {Array.from({ length: 6 }).map((_, i) => <span key={i} className="bm-ring" />)}
+        </div>
       </div>
     </div>
   )

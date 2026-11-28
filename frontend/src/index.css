@@ -380,232 +380,164 @@
   }
 
 
-  /* ── 活页手册：登录 / 注册是同一本册子的两页（花蝉 2026-11-28 定的）─
-     顶部一根装订杆，下面挂纸页；点「注册」整页绕杆向上翻走，露出注册页，
-     点「登录」再翻回来。像日历撕页，不是抽拉抽屉。 */
+  /* ── 登录卡：一页「上下都能翻」的活页纸（花蝉 2026-11-28 定的最终形态）─
+     上下各有一排活页环挂在纸的上下边框上；上半（表单）绕上边框翻，
+     下半（流动提示 / 入服须知）绕下边框翻；中间一条虚线分隔。
+     配色沿用网站的青蓝 #2E5A6B + 米白纸面。 */
 
   .bm-book {
     position: relative;
     width: 400px;
-    /* 给翻起的页留出空间，别被裁掉 */
-    padding-top: 14px;
-    perspective: 1600px;
-    perspective-origin: 50% 0%;
-    /* 注册页比登录页多一个邀请码，整本比矮屏还高时，按可用的视口高度整体缩小，
-       别让装订杆被顶到屏幕外。0.78 是缩到仍能看清表单的下限。 */
-    max-height: calc(100vh - 48px);
+    /* 上下两排环各占一点高度，给翻转留出空间不被裁 */
+    padding: 18px 0;
+    perspective: 1800px;
+    perspective-origin: 50% 50%;
   }
 
-  /* 顶部装订杆 */
-  .bm-book-bar {
+  /* ── 活页环：一排金属环压在纸的上下边框上 ── */
+  .bm-rings {
     position: absolute;
-    top: 0;
-    left: -8px;
-    right: -8px;
-    height: 30px;
-    z-index: 30;
+    left: -6px;
+    right: -6px;
+    height: 26px;
     display: flex;
     align-items: center;
     justify-content: space-evenly;
-    border-radius: 10px;
-    background: linear-gradient(180deg, #3C6E80 0%, #2E5A6B 55%, #24485A 100%);
-    box-shadow:
-      0 2px 6px rgba(0, 0, 0, 0.35),
-      0 1px 0 rgba(255, 255, 255, 0.18) inset;
+    z-index: 40;
     pointer-events: none;
   }
-  /* 装订环：从杆下沿露出的金属线圈 */
-  .bm-book-ring {
-    width: 13px;
-    height: 22px;
-    border: 2px solid #D8E2E7;
-    border-top-color: #F2F7F9;
+  .bm-rings-top { top: 0; }
+  .bm-rings-bottom { bottom: 0; }
+
+  .bm-ring {
+    width: 16px;
+    height: 26px;
+    border: 2.5px solid #7C8B94;
     border-radius: 50%;
-    transform: translateY(7px);
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
-    background: linear-gradient(180deg, rgba(255,255,255,0.55), rgba(255,255,255,0));
+    background: linear-gradient(180deg, #E3EAEE 0%, #AAB7BF 55%, #7C8B94 100%);
+    box-shadow:
+      0 2px 3px rgba(0, 0, 0, 0.35),
+      0 1px 0 rgba(255, 255, 255, 0.6) inset;
   }
+  /* 下排环上下翻转，看起来像环穿过来 */
+  .bm-rings-bottom .bm-ring { transform: rotate(180deg); }
 
-  /* 纸页堆：透视容器，两页叠在同一位置 */
-  .bm-book-stack {
-    position: relative;
-    transform-style: preserve-3d;
-  }
-
-  .bm-leaf {
+  /* 纸面本体 */
+  .bm-sheet {
     position: relative;
     background-color: #EDF1F4;
-    border: 1px solid rgba(46, 90, 107, 0.18);
-    border-radius: 8px 8px var(--radius-lg) var(--radius-lg);
+    border: 1px solid rgba(46, 90, 107, 0.22);
+    border-radius: 4px;
     box-shadow:
       0 18px 48px rgba(0, 0, 0, 0.45),
       0 1px 0 rgba(255, 255, 255, 0.7) inset;
     color: #1F2A30;
-    /* 绕杆（上沿）翻转，这是「日历活页」的关键 */
+    transform-style: preserve-3d;
+    /* 纸面顶上留出上排环压着的边 */
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+
+  /* ── 上半：表单区，绕上边框翻 ── */
+  .bm-top {
+    position: relative;
+    transform-style: preserve-3d;
+    perspective: 1600px;
+    perspective-origin: 50% 0%;
+    transform-origin: top center;
+  }
+
+  .bm-top-flap {
     transform-origin: top center;
     backface-visibility: hidden;
     -webkit-backface-visibility: hidden;
-    transition: transform 620ms cubic-bezier(.42, .05, .28, 1);
+    transition: transform 420ms cubic-bezier(.4, .1, .3, 1);
     will-change: transform;
   }
-
-  /* 当前页：平整地放在最上层 */
-  .bm-leaf.is-current {
-    position: relative;
-    z-index: 2;
-  }
-
-  /* 垫在下面的页：静止，等上面的页翻走 */
-  .bm-leaf.is-under {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 1;
-    pointer-events: none;
-  }
-
-  /* 向上翻走：整页绕顶部杆向后转，翻到杆后面去（登录 → 注册） */
-  .bm-leaf.is-turning-up {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 3;
-    pointer-events: none;
-    animation: bm-leaf-turn-up 620ms cubic-bezier(.42, .05, .28, 1) forwards;
-  }
-  /* 向下翻回来：从杆后面转回来盖住下面那页（注册 → 登录） */
-  .bm-leaf.is-turning-down {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 3;
-    pointer-events: none;
-    animation: bm-leaf-turn-down 620ms cubic-bezier(.42, .05, .28, 1) forwards;
-  }
-  /* 翻页时给纸面压一层影子，模拟翻起来离开桌面的立体感 */
-  .bm-leaf.is-turning-up::after,
-  .bm-leaf.is-turning-down::after {
-    content: '';
+  /* 正面那页 */
+  .bm-top-flap.is-front { position: relative; z-index: 2; transform: rotateX(0deg); }
+  /* 背面那页：预先转 180°，翻页时一起转，露出来时正好是正的 */
+  .bm-top-flap.is-back {
     position: absolute;
     inset: 0;
-    border-radius: inherit;
-    background: rgba(20, 30, 36, 0);
-    animation: bm-leaf-shade 620ms ease-in-out forwards;
+    z-index: 1;
+    transform: rotateX(-180deg);
     pointer-events: none;
   }
+  /* 翻走：转到背面去 */
+  .bm-top-flap.is-flipping-away { animation: bm-flap-away 620ms cubic-bezier(.42,.05,.28,1) forwards; }
+  /* 翻来：从背面转到正面 */
+  .bm-top-flap.is-flipping-in { animation: bm-flap-in 620ms cubic-bezier(.42,.05,.28,1) forwards; }
 
-  @keyframes bm-leaf-turn-up {
+  @keyframes bm-flap-away {
     0%   { transform: rotateX(0deg); }
-    55%  { transform: rotateX(-96deg); }
     100% { transform: rotateX(-180deg); }
   }
-  /* 从背面（-180）转回正面（0）：用 visible 兜住中途露出的背面 */
-  @keyframes bm-leaf-turn-down {
+  @keyframes bm-flap-in {
     0%   { transform: rotateX(-180deg); }
-    55%  { transform: rotateX(-96deg); }
     100% { transform: rotateX(0deg); }
   }
-  @keyframes bm-leaf-shade {
-    0%   { background: rgba(20, 30, 36, 0); }
-    55%  { background: rgba(20, 30, 36, 0.18); }
-    100% { background: rgba(20, 30, 36, 0); }
-  }
 
-  /* 册子底边：一叠纸的厚度感 */
-  .bm-book-edge {
-    height: 7px;
-    margin: 0 6px;
-    border-radius: 0 0 8px 8px;
-    background: linear-gradient(180deg, #C9D3D9, #AEBAC1);
-    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
-  }
-
-  /* 系统设了「减少动态效果」：不转，直接换页 */
-  @media (prefers-reduced-motion: reduce) {
-    .bm-leaf { transition: none; }
-    .bm-leaf.is-turning-up,
-    .bm-leaf.is-turning-down { animation-duration: 1ms; }
-    .bm-leaf.is-turning-up::after,
-    .bm-leaf.is-turning-down::after { animation: none; }
-  }
-
-  /* ── 登录卡下沿「入服须知」书页（花蝉 2026-11-28 定的交互）─
-     上半（标题到密码）不动；这条贴在卡片下沿，点一下，内容区像便利贴/书页
-     从折边往上/往下翻开顶出来。折边用 dashed 边框模拟撕纸/折痕。 */
-
-  /* 触发条：卡片下沿那一条，永远可见 */
-  .bm-notice-tab {
+  /* ── 中间分隔虚线：可点，翻起下半看条文 ── */
+  .bm-divider {
+    position: relative;
+    z-index: 5;
     width: 100%;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 0.75rem;
-    padding: 0.8rem 2rem;
-    background: linear-gradient(180deg, rgba(46, 90, 107, 0.05), rgba(46, 90, 107, 0.1));
+    gap: 0.5rem;
+    padding: 0.55rem 2rem;
+    background: transparent;
     border: none;
-    border-top: 1px dashed rgba(46, 90, 107, 0.32);
-    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+    border-top: 1px dashed rgba(46, 90, 107, 0.45);
     cursor: pointer;
     text-align: left;
     transition: background 0.15s ease;
   }
-  .bm-notice-tab:hover {
-    background: linear-gradient(180deg, rgba(46, 90, 107, 0.09), rgba(46, 90, 107, 0.15));
-  }
-  .bm-notice-tab-left { display: flex; flex-direction: column; gap: 2px; }
-  .bm-notice-tab-title {
+  .bm-divider:hover { background: rgba(46, 90, 107, 0.06); }
+  .bm-divider-label {
     font-family: var(--font-display);
-    font-size: 0.8125rem;
+    font-size: 0.75rem;
     font-weight: 600;
+    letter-spacing: 0.03em;
     color: #2E5A6B;
-    letter-spacing: 0.04em;
   }
-  .bm-notice-tab-sub { font-size: 0.6875rem; color: #64747E; }
-  .bm-notice-chevron {
-    font-size: 0.875rem;
+  .bm-divider-chevron {
+    font-size: 0.8rem;
     color: #2E5A6B;
-    transition: transform 0.32s cubic-bezier(.34,1.4,.64,1);
+    transition: transform 0.3s ease;
   }
-  /* 合上时箭头朝下（提示还有内容可展开），翻开后翻上来（提示可收起） */
-  .bm-notice-chevron.open { transform: rotate(180deg); }
+  .bm-divider.is-open .bm-divider-chevron { transform: rotate(180deg); }
 
-  /* 内容区：折叠动画。max-height 从 0 缓到「视口内放得下的高度」，
-     既不像固定 60vh 那样在大屏浪费、在小屏把整张卡顶出视口。 */
-  .bm-notice-body {
-    max-height: 0;
+  /* ── 下半：绕下边框翻 ── */
+  .bm-bottom {
+    position: relative;
+    /* 绕最下方的边框转 —— 这是花蝉说的「以最下方的方框边界为轴」 */
+    transform-origin: bottom center;
+    transition: transform 480ms cubic-bezier(.4, .1, .3, 1), background 0.2s ease;
+    background: linear-gradient(180deg, #F6F1E7 0%, #EFE9DC 100%);
+    border-radius: 0 0 4px 4px;
+    max-height: 150px;
     overflow: hidden;
-    opacity: 0;
-    transform-origin: top center;
-    transition: max-height 0.42s cubic-bezier(.25,.8,.3,1), opacity 0.28s ease;
   }
-  .bm-notice.is-open .bm-notice-body {
-    /* 32rem ≈ 上半表单 + 外边距；给个 180px 下限，极矮屏也总有内容可看 */
-    max-height: clamp(180px, calc(100vh - 32rem), 620px);
-    overflow-y: auto;
-    opacity: 1;
+  /* 翻起来：整体向上掀起，露出完整条文。
+     展开后不限内部高度——内容有 800+ px，限高只能出现「内层滚动条套外层滚动条」，
+     阅读体验很差。改成按自然高度撑开，由弹窗外层统一滚动。 */
+  .bm-bottom.is-expanded {
+    transform: rotateX(-4deg);
+    max-height: none;
+    overflow: visible;
   }
 
-  /* 书页纸面：比卡片底再暖一点，和上半区分开；顶部一道折痕阴影 */
-  .bm-notice-clip {
-    background: #F6F1E7;
-    border-top: 1px solid rgba(46, 90, 107, 0.18);
-  }
   .bm-notice-inner {
-    padding: 1rem 2rem 1.25rem;
+    padding: 0.7rem 2rem 0.9rem;
     display: flex;
     flex-direction: column;
-    gap: 0.85rem;
-    animation: bm-notice-unfold 0.42s ease both;
-  }
-  @keyframes bm-notice-unfold {
-    from { transform: perspective(600px) rotateX(-12deg); transform-origin: top center; }
-    to   { transform: perspective(600px) rotateX(0deg); }
+    gap: 0.7rem;
   }
 
-  /* 轮播提示：每 4 秒换一条，切换时淡入。底色调深一点，保证一眼能读清。 */
+  /* 流动提示：折叠时就是一条轮播 */
   .bm-note-ticker {
     display: flex;
     gap: 0.5rem;
@@ -636,8 +568,8 @@
   .bm-notice-scope {
     font-size: 0.6875rem;
     line-height: 1.6;
-    color: #6B7B85;
-    background: rgba(255, 255, 255, 0.6);
+    color: #64747E;
+    background: rgba(255, 255, 255, 0.7);
     border: 1px solid rgba(46, 90, 107, 0.14);
     border-radius: var(--radius-md);
     padding: 0.5rem 0.65rem;
@@ -670,10 +602,21 @@
     color: #45535C;
     list-style: '· ';
   }
+  .bm-rule-doc {
+    align-self: flex-start;
+    font-size: 0.625rem;
+    color: #2E5A6B;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
   .bm-notice-foot { font-size: 0.625rem; color: #8C9AA3; text-align: right; }
 
   @media (prefers-reduced-motion: reduce) {
-    .bm-notice-body { transition: none; }
-    .bm-notice-inner, .bm-note-ticker { animation: none; }
+    .bm-top-flap { transition: none; }
+    .bm-top-flap.is-flipping-away,
+    .bm-top-flap.is-flipping-in { animation-duration: 1ms; }
+    .bm-bottom { transition: none; }
+    .bm-note-ticker { animation: none; }
   }
 }
+

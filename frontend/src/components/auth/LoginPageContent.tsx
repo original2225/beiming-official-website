@@ -11,7 +11,6 @@ import { login } from '../../api/modules/account'
 import { ApiError } from '../../types/api'
 import { describeApiError } from '../../api/errorMessages'
 import { img } from '../../constants/images'
-import { EntryNoticeSheet } from './EntryNoticeSheet'
 
 interface LoginPageContentProps {
   onClose: () => void
@@ -41,8 +40,7 @@ export function LoginPageContent({ onClose, onSwitchToRegister }: LoginPageConte
   }
 
   return (
-    <>
-      <div className="px-8 pt-7 pb-5">
+    <div className="px-8 pt-7 pb-5">
         <img src={img('logo')} alt="" className="auth-logo absolute right-3 top-3" />
 
         <h2 className="text-xl font-display font-bold text-[#1F2A30]">登录</h2>
@@ -80,9 +78,6 @@ export function LoginPageContent({ onClose, onSwitchToRegister }: LoginPageConte
             注册
           </button>
         </p>
-      </div>
-
-      <EntryNoticeSheet />
-    </>
+    </div>
   )
 }
